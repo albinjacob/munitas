@@ -2,8 +2,10 @@
 
 Two halves. The first is that an action run keyed by an idempotency key stays
 single no matter how many times it is submitted, which is testable now. The
-second is that Temporal resumes a killed worker and reaches that same state,
-which is not: no worker exists until slice 3.
+second is that Temporal resumes a killed worker and reaches that same state.
+That half needs a worker process to kill, so it cannot run inside this
+container. It is verify/v6_durable_retry.py, run by hand on the host, and it
+is not part of run_all.py.
 
 Reporting the first as V6 would overstate it, so the second is skipped by name.
 """
@@ -85,7 +87,7 @@ def main() -> int:
                   "unique" in str(exc).lower(), type(exc).__name__)
 
     skip("Temporal resumes a killed worker and converges on one output",
-         "no Temporal worker exists until slice 3")
+         "not automated: run verify/v6_durable_retry.py by hand, see its docstring")
 
     return summary("V6")
 

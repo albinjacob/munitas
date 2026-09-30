@@ -88,13 +88,24 @@ async def main() -> int:
     print(f"  activities completed: {completions}")
 
     with psycopg.connect(PG_DSN, row_factory=dict_row, autocommit=True) as conn:
+        # Only this workflow's own steps. Without the join, every pipeline run
+        # the database has ever held is counted, and "exactly one per step"
+        # fails as soon as a second run exists.
         versions = conn.execute(
             """select da.name, count(distinct dv.id) as n
                from dataset_version dv
                join action_run ar on ar.id = dv.produced_by_run
+               join pipeline_run pr on pr.id = ar.pipeline_run_id
                join dataset_action da on da.id = ar.action_id
-               group by da.name order by da.name"""
+               where pr.workflow_id = %s
+               group by da.name order by da.name""",
+            (workflow_id,),
         ).fetchall()
+
+    # A filter that matches nothing would leave the loop below with no checks
+    # and the script reporting a clean pass, so the absence is its own check.
+    check("the workflow produced at least one dataset version to count",
+          len(versions) > 0, f"{len(versions)} step(s) found for {workflow_id}")
 
     print("\n  dataset versions per step")
     for row in versions:
