@@ -1,0 +1,39 @@
+name: Deploy docs/public to GitHub Pages
+
+# docs/public is the site root, not the repository root: this project's
+# top-level directory is source code, not a documentation site, and
+# docs/internal stays local (see .gitignore), so a plain branch/folder
+# Pages source can't express this. A workflow that uploads docs/public/
+# as its own artifact can.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/public/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/public
+      - id: deployment
+        uses: actions/deploy-pages@v4
