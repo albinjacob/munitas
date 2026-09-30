@@ -61,6 +61,27 @@ jobs:
           docker compose logs munitas-api
           exit 1
 
+      - name: Start MLflow and wait for it
+        # In the 'full' profile, so the `up` above does not start it, but
+        # U61 (a de-identification run) refuses to run and reports its
+        # checks as skipped while the score store is down. start-dev.ps1
+        # starts it the same way. It installs its database driver on every
+        # start, so it answers later than the API; the wait is bounded and
+        # failing it fails the job rather than silently skipping U61.
+        run: |
+          docker compose --profile full up -d mlflow
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:5000/health > /dev/null; then
+              echo "mlflow is healthy"
+              exit 0
+            fi
+            echo "waiting for mlflow ($i/60)..."
+            sleep 5
+          done
+          echo "mlflow never became healthy"
+          docker compose logs mlflow
+          exit 1
+
       - name: Seed Kratos identities and the worked examples
         # A fresh volume (every CI run) has directory rows from
         # infra/postgres/seed-organisation.sql/seed-canary.sql/seed-finance.sql
@@ -73,15 +94,36 @@ jobs:
         # example-seed scripts talk only to the already-healthy API, and
         # need the identities seeded first since they sign in for real.
         # All three are idempotent (RUNBOOK.md, same section, and each
-        # script's own docstring).
+        # script's own docstring). seed-health-example.py also imports
+        # worker/run_pipeline.py (to register the pipeline steps), whose
+        # import chain needs temporalio and boto3 on top of the HTTP and
+        # Postgres clients; the pins match worker/requirements.txt.
         run: |
-          pip install --quiet httpx==0.27.2 "psycopg[binary]==3.2.1"
+          pip install --quiet httpx==0.27.2 "psycopg[binary]==3.2.1" \
+            temporalio==1.7.0 boto3==1.35.24
           python3 infra/kratos/seed-identities.py
           python3 scripts/seed/seed-health-example.py
           python3 scripts/seed/seed-finance-example.py
 
       - name: Run the verification suite
-        run: docker compose exec -T munitas-api python /verify/run_all.py
+        # A skipped check is not a pass (verify/common.py), and a green run
+        # can still contain skips: the host worker, a GPU, real R2 keys and
+        # a sandbox are not available on a runner, so the checks that need
+        # them report [SKIP]. Counted and printed in the job summary so a
+        # green run cannot be read as "everything ran".
+        run: |
+          set +e
+          docker compose exec -T munitas-api python /verify/run_all.py 2>&1 | tee suite.log
+          code=${PIPESTATUS[0]}
+          skipped=$(grep -c '\[SKIP\]' suite.log)
+          {
+            echo "### Verification suite"
+            echo "- Exit code: $code"
+            echo "- Skipped checks (not passes): $skipped"
+            grep '\[SKIP\]' suite.log | sed 's/^ *//; s/^/  - /'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Skipped checks (not passes): $skipped"
+          exit $code
 
       - name: Show service logs on failure
         if: failure()
