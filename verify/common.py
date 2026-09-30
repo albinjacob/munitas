@@ -10,6 +10,7 @@ that cannot run a check says SKIP with the reason rather than staying silent.
 from __future__ import annotations
 
 import io
+import json
 import os
 import sys
 import uuid
@@ -22,6 +23,8 @@ from psycopg.rows import dict_row
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from ports_config import PORTS  # noqa: E402
+
+from markers import COUNTS_MARKER  # noqa: E402
 
 # VERIFY_API is set explicitly, to the container-internal port, in
 # docker-compose.yml's munitas-api service -- a script run inside that
@@ -85,6 +88,12 @@ def summary(name: str) -> int:
     print(f"\n{name}: {passed} passed, {failed} failed, {skipped} skipped")
     if skipped:
         print("  Skipped checks are not passes. See the reasons above.")
+    # The same counts as one exact line, for run_all.py to read. A script's exit
+    # code cannot say "everything here was skipped", because skipping is not a
+    # failure; this can, and it is not scraped out of the sentence above, which
+    # someone will reword.
+    print(f"{COUNTS_MARKER} " + json.dumps({"passed": passed, "failed": failed, "skipped": skipped},
+                                           separators=(",", ":")))
     return 1 if failed else 0
 
 

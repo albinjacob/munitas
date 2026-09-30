@@ -195,9 +195,19 @@ cleanup below.
 `verify/history/index.html` in a browser. The top table is one row per check,
 carrying its latest result, the date it last failed, how often it has failed,
 and its median and slowest times. The lower table is every individual result,
-filtered by free text, by pass or fail, and by a date range. Both sort on any
-column. Nothing is served: it is a file on disk that each run rewrites, so it
-works offline and needs nothing running.
+filtered by free text, by pass, fail or skipped, and by a date range. Both sort
+on any column. Nothing is served: it is a file on disk that each run rewrites,
+so it works offline and needs nothing running.
+
+**Skipped checks are not passes, and are shown that way.** A check skips when it
+cannot run here, for example one that needs real Cloudflare R2 keys on a machine
+that has none. A script that passed some checks and skipped others shows as a
+pass with its skip count beside it (`pass · 2 skipped`). A script that passed
+nothing shows as `SKIP`, in amber, and the filter's "Skipped only" option finds
+them. A script that exits cleanly without reporting its counts also shows as
+`SKIP`, because nothing is known to have passed. A skip never changes the exit
+code: only a failure does. Runs recorded before skips were counted carry no
+counts and show a plain pass.
 
 **Why cleanup is not gated on a clean run.** A one-day floor leaves a failing
 run's data in place until tomorrow, which is when you would want to look at it,

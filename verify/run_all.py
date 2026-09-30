@@ -18,9 +18,13 @@ import json
 import platform
 import subprocess
 import sys
+import threading
 import time
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
+
+from markers import COUNTS_MARKER
 
 RESULTS_MARKER = "##MUNITAS-VERIFY-RESULTS##"
 
@@ -68,6 +72,71 @@ SCRIPTS = [
 here = Path(__file__).parent
 results = []
 
+
+def run_script(script: str) -> tuple[int, dict | None]:
+    """Run one script with its output streamed as it arrives, and return its exit
+    code and the counts it reported.
+
+    The counts come from the exact line common.summary() prints, which is kept
+    off the console: it is for this program, not for a reader. None means the
+    script printed no such line (or an unreadable one), which is reported as
+    such rather than guessed at.
+
+    A script that hangs must fail, not stall the whole suite: it is killed at
+    the limit and recorded as failed, and the rest still run.
+    """
+    proc = subprocess.Popen([sys.executable, "-u", str(here / script)], cwd=here,
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            text=True, encoding="utf-8", errors="replace", bufsize=1)
+    timed_out = threading.Event()
+
+    def stop() -> None:
+        timed_out.set()
+        proc.kill()
+
+    timer = threading.Timer(SCRIPT_TIMEOUT_SECONDS, stop)
+    timer.start()
+    counts = None
+    try:
+        for line in proc.stdout:
+            if line.startswith(COUNTS_MARKER):
+                try:
+                    parsed = json.loads(line[len(COUNTS_MARKER):])
+                    if all(isinstance(parsed.get(k), int) for k in ("passed", "failed", "skipped")):
+                        counts = {k: parsed[k] for k in ("passed", "failed", "skipped")}
+                except (json.JSONDecodeError, AttributeError):
+                    pass
+                continue
+            sys.stdout.write(line)
+            sys.stdout.flush()
+        proc.wait()
+    finally:
+        timer.cancel()
+    if timed_out.is_set():
+        print(f"\n  [FAIL] stopped after {SCRIPT_TIMEOUT_SECONDS} s: longer than any "
+              "script should take, so it was treated as hung")
+        return 124, counts
+    return proc.returncode, counts
+
+
+def classify(code: int, counts: dict | None) -> str:
+    """fail, skip or pass. A script that exited cleanly but passed nothing has
+    proved nothing, whether every check was skipped or none ran at all, so it is
+    a skip. One that passed something and skipped the rest is a pass, with the
+    skips shown beside it rather than hidden in it.
+
+    A clean exit with no counts is also a skip. Every script ends by calling
+    summary(), which reports them, so one that did not went out by another
+    route (U57's skip path once returned a bare 0) and nothing is known to have
+    passed. Calling that a pass is the overclaim this classification exists to
+    prevent."""
+    if code != 0:
+        return "fail"
+    if counts is None or counts["passed"] == 0:
+        return "skip"
+    return "pass"
+
+
 run_started = datetime.now(timezone.utc)
 run_clock = time.monotonic()
 
@@ -76,27 +145,35 @@ for label, script in SCRIPTS:
     print(label)
     print("=" * 66)
     started = time.monotonic()
-    # A script that hangs must fail, not stall the whole suite: it is stopped
-    # at the limit and recorded as failed, and the rest still run.
-    try:
-        code = subprocess.call([sys.executable, str(here / script)], cwd=here,
-                               timeout=SCRIPT_TIMEOUT_SECONDS)
-    except subprocess.TimeoutExpired:
-        print(f"\n  [FAIL] stopped after {SCRIPT_TIMEOUT_SECONDS} s: longer than any "
-              "script should take, so it was treated as hung")
-        code = 124
+    code, counts = run_script(script)
     # monotonic, not wall clock: a clock adjustment mid-run must not be able to
     # produce a negative duration in the history.
-    results.append((label, script, code, round(time.monotonic() - started, 2)))
+    results.append((label, script, code, round(time.monotonic() - started, 2), counts))
 
 run_seconds = round(time.monotonic() - run_clock, 2)
 
 print("\n" + "=" * 66)
 print("Per script")
 print("=" * 66)
-for label, script, code, seconds in results:
-    print(f"  {'PASS' if code == 0 else 'FAIL'}  {seconds:7.2f}s  {label}")
-print(f"\n  Total {run_seconds:.2f}s across {len(results)} scripts")
+statuses = [classify(code, counts) for _, _, code, _, counts in results]
+for (label, script, code, seconds, counts), status in zip(results, statuses):
+    note = ""
+    if status == "skip" and counts is None:
+        note = "   (no counts reported, so nothing is known to have passed)"
+    elif status == "skip":
+        note = (f"   (nothing passed: {counts['skipped']} skipped)" if counts["skipped"]
+                else "   (no checks ran)")
+    elif status == "pass" and counts["skipped"]:
+        # Only a pass can reach here with counts in hand: a failure that never
+        # got as far as reporting them (a crash, a timeout) has none.
+        note = f"   ({counts['skipped']} skipped, not counted as passes)"
+    print(f"  {status.upper()}  {seconds:7.2f}s  {label}{note}")
+tally = Counter(statuses)
+print(f"\n  Total {run_seconds:.2f}s across {len(results)} scripts: "
+      f"{tally['pass']} passed, {tally['skip']} skipped entirely, {tally['fail']} failed")
+skipped_checks = sum(counts["skipped"] for _, _, _, _, counts in results if counts)
+if skipped_checks:
+    print(f"  {skipped_checks} individual checks were skipped across the suite; none is counted as a pass")
 
 print("\nV5 (policy) runs separately and needs no services:")
 print("  docker compose run --rm --entrypoint /opa opa test /policy -v")
@@ -160,12 +237,18 @@ run = {
             "check": label.split(None, 1)[0],
             "label": label.split(None, 1)[1].strip(),
             "script": script,
-            "status": "pass" if code == 0 else "fail",
+            # pass, fail or skip. A skip is not a failure, so it does not change
+            # this program's exit code below.
+            "status": status,
+            # What the script reported, or null where it reported nothing.
+            "passed": counts["passed"] if counts else None,
+            "failed": counts["failed"] if counts else None,
+            "skipped": counts["skipped"] if counts else None,
             "seconds": seconds,
         }
-        for label, script, code, seconds in results
+        for (label, script, code, seconds, counts), status in zip(results, statuses)
     ],
 }
 print(f"{RESULTS_MARKER} {json.dumps(run, separators=(',', ':'))}")
 
-sys.exit(1 if any(code for _, _, code, _ in results) else 0)
+sys.exit(1 if any(code for _, _, code, _, _ in results) else 0)

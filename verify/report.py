@@ -73,6 +73,10 @@ def flatten(runs: list[dict]) -> list[dict]:
                     "label": result.get("label", ""),
                     "script": result.get("script", ""),
                     "status": result.get("status", ""),
+                    # Absent on runs recorded before skips were counted, and
+                    # null where a script reported no counts: both stay None
+                    # rather than becoming a made-up zero.
+                    "skipped": result.get("skipped"),
                     "seconds": result.get("seconds", 0),
                 }
             )
@@ -96,6 +100,7 @@ def summarise(rows: list[dict]) -> list[dict]:
                 "label": entries[-1]["label"],
                 "script": entries[-1]["script"],
                 "latest": entries[-1]["status"],
+                "latest_skipped": entries[-1]["skipped"],
                 "latest_at": entries[-1]["at"],
                 "runs": len(entries),
                 "fails": len(failures),
@@ -131,12 +136,14 @@ PAGE_TEMPLATE = """<!doctype html>
     --bg: #ffffff; --fg: #14171a; --muted: #5b6570; --line: #e2e6ea;
     --panel: #f6f8fa; --pass: #1a7f47; --pass-bg: #e6f4ec;
     --fail: #b3261e; --fail-bg: #fbeae9; --accent: #2b5fd9;
+    --skip: #8a5a00; --skip-bg: #fdf0d5;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #14171a; --fg: #e8ecef; --muted: #98a2ad; --line: #2b3238;
       --panel: #1c2126; --pass: #4ec27f; --pass-bg: #16301f;
       --fail: #f2837c; --fail-bg: #331a19; --accent: #7aa2f7;
+      --skip: #e0b34f; --skip-bg: #3a2f14;
     }
   }
   * { box-sizing: border-box; }
@@ -172,6 +179,7 @@ PAGE_TEMPLATE = """<!doctype html>
   .pill { display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: 12px; font-weight: 600; }
   .pill.pass { color: var(--pass); background: var(--pass-bg); }
   .pill.fail { color: var(--fail); background: var(--fail-bg); }
+  .pill.skip { color: var(--skip); background: var(--skip-bg); }
   .num { text-align: right; font-variant-numeric: tabular-nums; }
   .never { color: var(--muted); }
   .empty { padding: 24px; text-align: center; color: var(--muted); }
@@ -209,6 +217,7 @@ PAGE_TEMPLATE = """<!doctype html>
     <option value="">Any result</option>
     <option value="fail">Failures only</option>
     <option value="pass">Passes only</option>
+    <option value="skip">Skipped only</option>
   </select>
   <label class="f">From <input id="from" type="date"></label>
   <label class="f">To <input id="to" type="date"></label>
@@ -244,17 +253,26 @@ const local = iso => {
 };
 const dayOf = iso => { const d = new Date(iso); return isNaN(d) ? "" : `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const pill = s => `<span class="pill ${s}">${s === "pass" ? "pass" : "fail"}</span>`;
+// A pass that skipped some checks says so beside the word, so it cannot be read
+// as everything having run. "skipped" is null on runs recorded before skips
+// were counted, which shows nothing rather than an invented zero.
+const pill = (s, skipped) => {
+  const cls = s === "pass" || s === "skip" ? s : "fail";
+  const extra = s === "pass" && skipped ? ` &middot; ${skipped} skipped` : "";
+  return `<span class="pill ${cls}">${cls}${extra}</span>`;
+};
 
 function cards() {
   const runs = DATA.runs;
   const last = runs[runs.length - 1];
   const failing = DATA.summary.filter(s => s.latest === "fail").length;
   const neverFailed = DATA.summary.filter(s => !s.last_failed_at).length;
+  const skipping = DATA.summary.filter(s => s.latest === "skip").length;
   const items = [
     ["Runs recorded", runs.length],
     ["Checks tracked", DATA.summary.length],
     ["Failing now", failing],
+    ["Skipped entirely now", skipping],
     ["Never failed", neverFailed],
     ["Last run", last ? local(last.started_at) : "none"],
     ["Last run took", last ? `${last.seconds}s` : "-"],
@@ -295,7 +313,7 @@ function drawSummary() {
   body.innerHTML = summaryRows.map(s => `<tr>
     <td>${esc(s.check)}</td>
     <td class="wide">${esc(s.label)}</td>
-    <td>${pill(s.latest)}</td>
+    <td>${pill(s.latest, s.latest_skipped)}</td>
     <td>${s.last_failed_at ? esc(local(s.last_failed_at)) : '<span class="never">never</span>'}</td>
     <td class="num">${s.runs}</td>
     <td class="num">${s.fails}</td>
@@ -328,7 +346,7 @@ function drawDetail() {
     <td>${esc(local(r.at))}</td>
     <td>${esc(r.check)}</td>
     <td class="wide">${esc(r.label)}</td>
-    <td>${pill(r.status)}</td>
+    <td>${pill(r.status, r.skipped)}</td>
     <td class="num">${r.seconds}</td>
     <td>${esc(r.script)}</td>
   </tr>`).join("");

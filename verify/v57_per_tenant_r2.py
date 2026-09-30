@@ -97,7 +97,9 @@ def main() -> int:
     if not (config.R2_ACCOUNT_ID and config.R2_ACCESS_KEY_ID
             and config.R2_SECRET_ACCESS_KEY and config.R2_API_TOKEN):
         skip("U57: every check", "R2 is not configured on this install")
-        return 0
+        # Through summary(), not a bare 0: it is what reports the counts, and
+        # without them run_all.py cannot tell this script skipped everything.
+        return summary("U57")
 
     # This script imports app.r2 directly rather than going through a
     # request to the running API, so the pool main.py's lifespan hook
