@@ -236,6 +236,16 @@ middle of a run loses no work and duplicates none. `run_all.py` cannot do this
 itself, because it runs inside a container and has no worker process to kill,
 so it reports this check as skipped by name. This procedure is that check.
 
+A faster companion, `verify/v6c_retry_policy.py`, runs in CI and takes about
+half a minute on a laptop. It runs the real pipeline workflow against an
+in-process Temporal test server, with fake steps, one of which stops
+heartbeating the way a killed worker does. It proves the workflow's retry and
+heartbeat settings: a lost step is noticed within minutes, retried with the
+same idempotency key, every other step runs once, and a step that never
+recovers fails the run after a bounded number of attempts. It does not prove
+that the real steps are safe to repeat, which is what the procedure below is
+for.
+
 **What it costs:** a real de-identification of a few recordings, so the GPU is
 busy for several minutes, and the run writes real dataset versions into the
 tenant the worker is configured for (`canary` unless `MUNITAS_TENANT` says

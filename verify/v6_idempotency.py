@@ -87,7 +87,8 @@ def main() -> int:
                   "unique" in str(exc).lower(), type(exc).__name__)
 
     skip("Temporal resumes a killed worker and converges on one output",
-         "not automated: run verify/v6_durable_retry.py by hand, see its docstring")
+         "a real kill is by hand: verify/v6_durable_retry.py (the workflow's retry "
+         "settings are checked by verify/v6c_retry_policy.py)")
 
     return summary("V6")
 

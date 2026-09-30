@@ -112,6 +112,15 @@ jobs:
             opentelemetry-api==1.44.0 opentelemetry-sdk==1.44.0 \
             opentelemetry-exporter-otlp-proto-grpc==1.44.0
 
+      - name: Check the pipeline workflow's retry behaviour
+        # Runs the real DeidentificationPipeline against Temporal's in-process
+        # test server with fake activities, one of which goes silent like a
+        # killed worker. Needs no running stack and takes about half a minute;
+        # the test server binary is downloaded on first use. This is not the
+        # by-hand kill test (RUNBOOK.md), it checks the workflow's retry and
+        # heartbeat settings, not that the real steps are safe to repeat.
+        run: python3 verify/v6c_retry_policy.py
+
       - name: Seed Kratos identities and the worked examples
         # A fresh volume (every CI run) has directory rows from
         # infra/postgres/seed-organisation.sql/seed-canary.sql/seed-finance.sql
