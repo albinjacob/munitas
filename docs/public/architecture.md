@@ -5,7 +5,7 @@ rather than just describing it.
 
 Companion reading: [the governance model](design/governance-model.md) for
 who is accountable for what, and the
-[walkthroughs](walkthroughs/feature-walkthrough.html) for these guarantees
+[walkthroughs](https://albinjacob.github.io/munitas/walkthroughs/feature-walkthrough.html) for these guarantees
 in action, screen by screen.
 
 ---
@@ -18,7 +18,7 @@ before doing anything else. Sandboxed agent runs sit on their own isolated
 network, with no direct route to the internet or to storage, and still have
 every tool call checked against that same policy engine.
 
-[Diagram: services and network boundaries →](diagrams/system-architecture.html)
+[Diagram: services and network boundaries →](https://albinjacob.github.io/munitas/diagrams/system-architecture.html)
 
 | Service | Role |
 | --- | --- |
@@ -126,8 +126,8 @@ in the stack requires a commercial licence to run or extend.
 
 - [The governance model](design/governance-model.md): who owns the data,
   who decides who may read it, and how that decision is made trustworthy.
-- [API reference](reference/api-reference.html): every route the control
+- [API reference](https://albinjacob.github.io/munitas/reference/api-reference.html): every route the control
   plane exposes, generated directly from the API's own route definitions.
-- [Walkthroughs](walkthroughs/feature-walkthrough.html): real screenshots
+- [Walkthroughs](https://albinjacob.github.io/munitas/walkthroughs/feature-walkthrough.html): real screenshots
   of these guarantees end to end, for someone who has never seen the
   platform before.

@@ -7,7 +7,7 @@ decision is made by a named, accountable person, never by the platform
 itself. This document describes that model and the schema and policy that
 make it enforceable rather than merely documented.
 
-Companion reading: the [walkthroughs](../walkthroughs/feature-walkthrough.html)
+Companion reading: the [walkthroughs](https://albinjacob.github.io/munitas/walkthroughs/feature-walkthrough.html)
 for these rules in action, screen by screen.
 
 ---

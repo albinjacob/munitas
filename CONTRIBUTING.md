@@ -9,7 +9,7 @@ deliberately light; expect it to grow as the project does.
   you want to change and why. This saves you from building something that
   doesn't fit the direction, and saves a reviewer from untangling a large,
   unexpected diff.
-- Read the [walkthroughs](docs/public/walkthroughs/feature-walkthrough.html) before
+- Read the [walkthroughs](https://albinjacob.github.io/munitas/walkthroughs/feature-walkthrough.html) before
   touching code you haven't worked in before, for what the platform
   actually does before diving into how. Read
   [docs/public/architecture.md](docs/public/architecture.md) for the

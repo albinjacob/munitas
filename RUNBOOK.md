@@ -3,7 +3,7 @@
 Operational procedures for an administrator or a support agent: not how the
 platform works, only what to run and when. For how it works, see
 [README.md](README.md) and the
-[walkthroughs](docs/public/walkthroughs/feature-walkthrough.html). For what has
+[walkthroughs](https://albinjacob.github.io/munitas/walkthroughs/feature-walkthrough.html). For what has
 been verified, read the scripts in [verify/](verify/).
 
 This file is the living reference for admin- and support-facing operations.

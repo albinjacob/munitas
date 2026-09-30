@@ -71,13 +71,13 @@ For the services and how they fit together, see
 [docs/public/architecture.md](docs/public/architecture.md). For who's
 accountable for what and why, see
 [docs/public/design/governance-model.md](docs/public/design/governance-model.md). For every route the
-control plane exposes, see the [API Reference](docs/public/reference/api-reference.html),
+control plane exposes, see the [API Reference](https://albinjacob.github.io/munitas/reference/api-reference.html),
 generated straight from the API's own route definitions, not hand-written,
 and checked automatically so the two can never drift apart.
 
 ## See it in action
 
-[Walkthrough: what the platform does &rarr;](docs/public/walkthroughs/feature-walkthrough.html)
+[Walkthrough: what the platform does &rarr;](https://albinjacob.github.io/munitas/walkthroughs/feature-walkthrough.html)
 is real screenshots of a real flow, start to finish: a recording brought
 in, a researcher asking for access, a custodian granting it, a pipeline
 running and stopping at a gate a human has to clear. Four more walkthroughs
