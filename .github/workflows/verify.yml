@@ -90,12 +90,16 @@ jobs:
         # packages are what the agent package imports (agent/graph.py,
         # agent/tracing.py) and are declared in no requirements file, so
         # their versions are the ones the project's own .venv runs. Only
-        # what worker.main needs to import and serve its queues is
-        # installed: the speech and detection models are not, since nothing
-        # in this suite runs a real de-identification.
+        # what worker.main needs to import and serve its queues, plus
+        # huggingface_hub (imported inside hf_ingest_activities.py's fetch,
+        # so an import test cannot see it; found by scanning every import in
+        # worker/ and agent/) is installed. The speech and detection stack
+        # (faster_whisper, gliner, spacy, presidio, torch, soundfile, numpy,
+        # mlflow) is not: nothing in this suite runs a real
+        # de-identification, U61 stops its run at once.
         run: |
           pip install --quiet httpx==0.27.2 "psycopg[binary]==3.2.1" \
-            temporalio==1.7.0 boto3==1.35.24 docker==7.1.0 \
+            temporalio==1.7.0 boto3==1.35.24 docker==7.1.0 "huggingface_hub>=0.34" \
             langgraph==0.2.39 langgraph-checkpoint-postgres==2.0.25 \
             opentelemetry-api==1.44.0 opentelemetry-sdk==1.44.0 \
             opentelemetry-exporter-otlp-proto-grpc==1.44.0
