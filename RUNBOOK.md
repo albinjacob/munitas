@@ -226,6 +226,89 @@ Both this and `start-dev.ps1` reach Docker through WSL2, using the shared
 helpers in `wsl-docker.ps1`. Pass `-WslDistro` to either if the distro is not
 named `Ubuntu-20.04`.
 
+### Proving that a killed worker resumes, by hand
+
+**Script:** `verify/v6_durable_retry.py`
+
+**When to use it:** after changing the worker, the pipeline workflow or how
+activities retry, and whenever you want direct evidence that a crash in the
+middle of a run loses no work and duplicates none. `run_all.py` cannot do this
+itself, because it runs inside a container and has no worker process to kill,
+so it reports this check as skipped by name. This procedure is that check.
+
+**What it costs:** a real de-identification of a few recordings, so the GPU is
+busy for several minutes, and the run writes real dataset versions into the
+tenant the worker is configured for (`canary` unless `MUNITAS_TENANT` says
+otherwise). Use a fresh workflow id each time.
+
+**Before you start:** the stack and the worker are up (`.\start-dev.ps1`), and
+the Temporal UI answers at the address `start-dev.ps1` printed.
+
+1. **Start a run** in one terminal. It stays open and reports when the run
+   ends. `MUNITAS_DATA` must be set in any terminal you open yourself:
+   `start-dev.ps1` only passes it to the windows it opens.
+
+   ```powershell
+   $env:MUNITAS_DATA = "<your data folder>"
+   $wf = "kill-test-$(Get-Date -Format yyyyMMddHHmmss)"
+   .\.venv\Scripts\python.exe -m worker.run_pipeline --limit 4 --triggered-by canary-engineer --workflow-id $wf
+   ```
+
+2. **Wait until transcription is running.** Open the workflow in the Temporal
+   UI (the run prints its address) and look for a pending activity named
+   `transcribe`. Killing earlier or later than this proves nothing, because
+   the interruption has to land inside a step.
+
+3. **Kill the worker, and only the worker.** Leave Temporal and the containers
+   running. In a second terminal:
+
+   ```powershell
+   $w = Get-CimInstance Win32_Process -Filter "name='python.exe'" |
+       Where-Object { $_.CommandLine -match 'worker\.main' -and $_.ExecutablePath -like '*\.venv\*' } |
+       Select-Object -First 1
+   taskkill /PID $w.ProcessId /T /F
+   ```
+
+   `/T` also ends the launcher's child process, which is part of the same
+   worker. The workflow must still show as running afterwards.
+
+4. **Start the worker again**, the way `start-dev.ps1` does:
+
+   ```powershell
+   $env:MUNITAS_DATA = "<your data folder>"
+   .\.venv\Scripts\python.exe -m worker.main
+   ```
+
+   Nothing else is needed. Temporal notices the lost step only after its
+   heartbeat timeout expires, so expect a couple of minutes before it is
+   retried, then the run carries on from there. The first terminal reports
+   `COMPLETED` when it is done.
+
+5. **Check the result** with the workflow id from step 1:
+
+   ```powershell
+   .\.venv\Scripts\python.exe verify\v6_durable_retry.py $wf
+   ```
+
+**What a pass means.** Every line is `PASS`, and specifically:
+
+- the workflow completed although its worker died;
+- the history shows a step that ran a second time, with the reason its first
+  attempt was lost (for a killed worker this reads `activity Heartbeat
+  timeout`);
+- each step of the run produced exactly one dataset version, so the retry
+  resumed the work rather than repeating it. Only this run's own steps are
+  counted, so other runs in the database do not affect the result.
+
+**What a failure means.** `every activity ran once` means the worker was not
+actually interrupted during a step, so the run proves nothing: repeat from step
+1 and kill it while `transcribe` is pending. Any `exactly one dataset version`
+failure is the real thing this check exists to catch.
+
+**Checking that the check can fail.** If you change the script, run it once
+against a workflow that was never interrupted (repeat step 1 with `--limit 1`
+and skip steps 2 to 4). Only the interruption line may fail.
+
 ---
 
 ## Clearing one unsealed dataset's leftover data
