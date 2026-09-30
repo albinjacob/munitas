@@ -25,7 +25,8 @@ What it cannot show is that the real steps are safe to repeat (their checkpoint
 files, their database writes); that is the by-hand script's job.
 
 Needs the packages worker.main needs, and downloads Temporal's test server
-binary the first time it runs (a few megabytes, cached afterwards).
+binary the first time it runs, from temporal.download into the temp folder
+(about 60 MB on Windows, cached afterwards).
 
     .venv\\Scripts\\python.exe verify\\v6c_retry_policy.py
 """
