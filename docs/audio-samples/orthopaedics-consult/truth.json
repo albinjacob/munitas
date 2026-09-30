@@ -1,0 +1,54 @@
+{
+  "spans": [
+    {
+      "entity": "PERSON_PATIENT",
+      "start": 0,
+      "end": 5,
+      "text": "Rahul"
+    },
+    {
+      "entity": "PERSON_PATIENT",
+      "start": 1463,
+      "end": 1474,
+      "text": "Rahul Verma"
+    },
+    {
+      "entity": "DATE_OF_BIRTH",
+      "start": 1490,
+      "end": 1519,
+      "text": "third of November, ninety two"
+    },
+    {
+      "entity": "ADDRESS",
+      "start": 1555,
+      "end": 1582,
+      "text": "forty two, Karve Road, Pune"
+    },
+    {
+      "entity": "PHONE_NUMBER",
+      "start": 1615,
+      "end": 1625,
+      "text": "9123456789"
+    },
+    {
+      "entity": "MEDICAL_RECORD_NUMBER",
+      "start": 1738,
+      "end": 1743,
+      "text": "33912"
+    },
+    {
+      "entity": "PERSON_CLINICIAN",
+      "start": 2578,
+      "end": 2588,
+      "text": "Dr. Kapoor"
+    },
+    {
+      "entity": "PERSON_PATIENT",
+      "start": 2612,
+      "end": 2617,
+      "text": "Rahul"
+    }
+  ],
+  "reference_transcript": "Rahul, come on in. I hear you had a fall yesterday? Yeah, I was cycling and skidded on some gravel near my building. Landed right on my hand. Show me where it hurts. Right here, on the outside of my wrist. It's been swelling since last night. On a scale of one to ten, how bad is the pain right now? Maybe a seven. It was worse last night, closer to a nine. Can you try wiggling your fingers for me? A little. It hurts to move them too much though. Any numbness or tingling in your fingers? A bit of tingling in my thumb and index finger, actually. Okay, that's worth noting. Any previous fractures on this arm, or anywhere else? No, this is my first one. Good. I've got your X-ray up from downstairs. You've got a fracture in the distal radius, that's the larger bone right at the wrist. The good news is it's non-displaced, meaning the bone hasn't shifted out of alignment. So no surgery? No surgery needed for this one. We'll put you in a cast for about six weeks. The tingling you mentioned is likely just swelling pressing on a nerve, but I want to keep an eye on it. That's a relief, honestly. I was dreading the idea of an operation. Understandable. I'm going to apply a below-elbow cast today, right here in the room. It'll feel tight at first, that's normal, but call us immediately if your fingers turn blue, go numb completely, or the pain gets significantly worse. Okay, I'll watch for that. Before I finalize your file, let me confirm a few details. Rahul Verma, date of birth third of November, ninety two? That's right. And you're still at forty two, Karve Road, Pune? Yes, still there. This number, 9123456789, still the one to reach you on? Yes, that's my number. Perfect. Let me pull up your file. Medical record number 33912? Yes, that's correct. I'm prescribing Ibuprofen, four hundred milligrams, every eight hours with food for the swelling and pain, and Paracetamol in between if you need extra relief. Don't exceed the combined daily limit written on the sheet I'll hand you. Ibuprofen with food, every eight hours, and Paracetamol as needed. Got it. I'm also referring you to physiotherapy, though that starts only after the cast comes off. For now, keep the arm elevated above your heart as much as you can for the next two to three days, that'll help with the swelling. Elevated, got it. I want to see you back in two weeks to check the cast and take a follow-up X-ray. But if you get numbness that doesn't go away, real difficulty breathing, or the cast feels unbearably tight, don't wait for the appointment, come straight to emergency. Understood, Dr. Kapoor. Thank you. Take care, Rahul. We'll get that cast on you now.",
+  "hazard": false
+}

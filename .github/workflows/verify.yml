@@ -1,0 +1,85 @@
+name: verify
+
+# Runs the real verification suite (verify/run_all.py) against the actual
+# Docker Compose stack, the same way run-verification.ps1 does it locally:
+# inside the munitas-api container, where it can reach Postgres, Temporal,
+# OPA, and sign S3 requests against SeaweedFS. GitHub's ubuntu-latest runners
+# have Docker natively, so none of the WSL2 indirection this repo's local
+# dev scripts need on Windows applies here.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  backend-verify:
+    runs-on: ubuntu-latest
+    env:
+      # Required by docker-compose.yml, and a shell variable beats the
+      # Windows-style example in .env.example, which Linux cannot use.
+      MUNITAS_DATA: ${{ runner.temp }}/munitas-data
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy env defaults
+        run: cp .env.example .env && mkdir -p "$MUNITAS_DATA"
+
+      - name: Bring up the backend stack
+        run: docker compose up -d postgres seaweedfs temporal opa kratos-migrate kratos munitas-api
+
+      - name: Wait for munitas-api to be healthy
+        # docker-compose.yml only defines a healthcheck for postgres, not for
+        # munitas-api itself, so `docker compose ps --format '{{.Health}}'`
+        # would never report anything and this loop would just time out.
+        # Polling the API's own GET /health directly is what actually proves
+        # readiness.
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8000/health > /dev/null; then
+              echo "munitas-api is healthy"
+              exit 0
+            fi
+            echo "waiting for munitas-api ($i/60)..."
+            sleep 5
+          done
+          echo "munitas-api never became healthy"
+          docker compose logs munitas-api
+          exit 1
+
+      - name: Run the verification suite
+        run: docker compose exec -T munitas-api python /verify/run_all.py
+
+      - name: Show service logs on failure
+        if: failure()
+        run: docker compose logs
+
+  web-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type-check and build
+        run: npm run build
+
+      # Playwright's real suites (tests/console.spec.ts, tests/real-auth.spec.ts,
+      # etc.) need the dev server running in one of two auth modes against a
+      # live Kratos + API, per web/README.md. Wiring that into CI is real work
+      # (seeding identities, choosing a mode per suite) and is deliberately
+      # not attempted here yet -- this job only proves the console still
+      # builds and lints cleanly.

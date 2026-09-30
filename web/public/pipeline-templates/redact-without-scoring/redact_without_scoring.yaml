@@ -1,0 +1,79 @@
+# Redact without scoring: a de-identification run for a recording that has
+# no answer key -- real production audio, not test/synthetic data.
+#
+# The built-in "Deidentify" pipeline refuses to start against a version
+# missing an answer key (it needs one to score recall/leaks against). This
+# DAG runs the identical redaction steps -- same adopt_version/transcribe/
+# detect/handoff/redact activities, same models, same code, nothing
+# reimplemented -- and then writes a gate decision directly instead of
+# deriving one from a score, since there is nothing to score against.
+#
+# Nothing here names a tenant, a dataset, or a specific recording. Register
+# it once (Pipelines -> Register a pipeline, in the console) and run it
+# against any sealed recordings-contract version that has no answer key.
+#
+# Two lines are opinions, not facts, and are the ones worth reading before
+# you register this as-is:
+#   - `to_class`, below, matches the built-in pipeline's own default target
+#     class. Change it if your organisation routes redacted-but-unscored
+#     output somewhere else.
+#   - `recommendation` is fixed at "fail", the only two values the schema
+#     allows are "pass" and "fail" (platform/schema.sql's
+#     gate_decision_recommendation_check) -- there is no third "review"
+#     state at the database level. "pass" would claim a measurement that
+#     never happened, so this defaults to the conservative answer instead.
+#     `state` stays "pending" either way -- a human decides regardless of
+#     this value, see recommendation_reason for why it says what it says.
+#     Do not change this to "pass" without adding real scoring first.
+name: redact-without-scoring
+steps:
+  # Reads the already-sealed recording this run was started against.
+  # Needs no `inputs:` -- source_version_id/source_prefix are the run's
+  # own starting point, handed to every builtin step automatically.
+  - name: adopt
+    kind: builtin
+    block: adopt_version
+
+  - name: transcribe
+    kind: builtin
+    block: transcribe
+    depends_on: [adopt]
+    inputs:
+      records_key: "${steps.adopt.records_key}"
+      input_version: "${steps.adopt.version_id}"
+
+  - name: detect
+    kind: builtin
+    block: detect
+    depends_on: [transcribe]
+    inputs:
+      records_key: "${steps.transcribe.records_key}"
+      input_version: "${steps.transcribe.version_id}"
+
+  # Packages review tasks for a human. Independent of redact below --
+  # both read detect's output, neither depends on the other -- so they
+  # run in parallel rather than one artificially waiting on the other.
+  - name: handoff
+    kind: builtin
+    block: handoff
+    depends_on: [detect]
+    inputs:
+      records_key: "${steps.detect.records_key}"
+      input_version: "${steps.detect.version_id}"
+
+  - name: redact
+    kind: builtin
+    block: redact
+    depends_on: [detect]
+    inputs:
+      records_key: "${steps.detect.records_key}"
+      audio_index_key: "${steps.adopt.records_key}"
+      input_version: "${steps.detect.version_id}"
+
+  - name: gate
+    kind: gate
+    depends_on: [redact]
+    to_class: OPEN_FOR_ANNOTATION
+    inputs:
+      recommendation: fail
+      recommendation_reason: "not scored: no ground truth on this recording, and automatic scoring without one isn't built yet. Redaction ran with the same models as the built-in pipeline, but nothing here checked whether it actually worked -- needs full human review before any promotion"

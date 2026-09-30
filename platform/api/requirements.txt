@@ -1,0 +1,18 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+psycopg[binary,pool]==3.2.1
+httpx==0.27.2
+pydantic==2.9.2
+cryptography==43.0.1
+# Required by FastAPI to parse multipart form data, which is how files arrive.
+python-multipart==0.0.12
+# Used only by the verification scripts, which run inside this container so
+# they reach the services over the internal network with real S3 signing.
+boto3==1.35.24
+# Starts the HuggingFace ingestion workflow. The worker (a separate process)
+# does the actual downloading; this is only used to start a run and let the
+# console poll its progress, the same shape the pipeline already uses from
+# `worker/run_pipeline.py`.
+temporalio==1.7.0
+# Parses an operator-uploaded pipeline's DAG config.
+PyYAML==6.0.2

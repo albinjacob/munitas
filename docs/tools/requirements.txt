@@ -1,0 +1,8 @@
+# The documentation generators in this folder run in the project's .venv:
+#
+#     .venv\Scripts\python.exe -m pip install -r docs/tools/requirements.txt
+#
+# generate_api_reference.py and generate_services_page.py need nothing beyond
+# the standard library and what .venv already holds for the worker.
+
+Pillow>=10    # build_people_walkthrough.py re-encodes screenshots as JPEG.

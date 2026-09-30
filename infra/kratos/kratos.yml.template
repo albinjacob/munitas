@@ -1,0 +1,112 @@
+# Ory Kratos config for the first slice of real authentication.
+#
+# `dsn` is deliberately absent here: docker-compose.yml sets it via the DSN
+# environment variable, the same way every other service in this stack keeps
+# its connection string out of a file mounted read-only into the container,
+# rather than duplicating platform/munitas's password in two places.
+#
+# Registration is off on purpose. A person becomes real by being registered
+# in `directory` first (the same "identity comes from the registry, never
+# from the thing being decided" rule this whole platform already follows),
+# then gets a login connected to that row by infra/kratos/seed-first-
+# identity.py. Self-service sign-up would let anyone create a session with
+# no directory row behind it at all.
+version: v1.3.1
+
+serve:
+  public:
+    base_url: http://localhost:{{KRATOS_PUBLIC}}/
+    cors:
+      enabled: true
+      allowed_origins:
+        - http://localhost:{{CONSOLE_DEV}}
+      allowed_methods: [GET, POST, PUT, PATCH, DELETE]
+      allow_credentials: true
+  admin:
+    base_url: http://kratos:4434/
+
+selfservice:
+  default_browser_return_url: http://localhost:{{CONSOLE_DEV}}/
+  allowed_return_urls:
+    - http://localhost:{{CONSOLE_DEV}}/
+
+  methods:
+    password:
+      enabled: true
+    link:
+      enabled: false
+    code:
+      enabled: false
+
+  flows:
+    login:
+      ui_url: http://localhost:{{CONSOLE_DEV}}/auth/login
+      lifespan: 10m
+
+    registration:
+      enabled: false
+
+    settings:
+      ui_url: http://localhost:{{CONSOLE_DEV}}/auth/settings
+      privileged_session_max_age: 15m
+
+    recovery:
+      enabled: false
+
+    verification:
+      enabled: false
+
+    logout:
+      after:
+        default_browser_return_url: http://localhost:{{CONSOLE_DEV}}/
+
+    error:
+      ui_url: http://localhost:{{CONSOLE_DEV}}/auth/error
+
+log:
+  level: info
+  format: text
+  leak_sensitive_values: false
+
+# Dev-only values, the same "not for production" posture as
+# MUNITAS_MASTER_KEY's own default elsewhere in this stack. A real
+# deployment generates these and keeps them out of the repository.
+secrets:
+  cookie:
+    - dev-kratos-cookie-secret-not-for-production
+  cipher:
+    # Exactly 32 bytes; Kratos's XChaCha20-Poly1305 cipher rejects any other
+    # length outright rather than truncating or padding it.
+    - dev-kratos-cipher-secret-32bytes
+
+ciphers:
+  algorithm: xchacha20-poly1305
+
+hashers:
+  algorithm: bcrypt
+  bcrypt:
+    # Cost 8 is deliberately low: this is a local, single-machine MVP where
+    # interactive login speed matters more than resisting an offline attack
+    # against a database nobody but this host can reach. Raise it (12+) the
+    # same session TLS and real secrets get addressed for a real deployment.
+    cost: 8
+
+identity:
+  default_schema_id: default
+  schemas:
+    - id: default
+      url: file:///etc/config/kratos/identity.schema.json
+
+# No real mail transport exists in this stack. Recovery and verification are
+# both disabled above specifically so courier is never invoked; this value
+# only has to be well-formed, not reachable.
+courier:
+  smtp:
+    connection_uri: smtps://test:test@localhost:1234/?skip_ssl_verify=true
+
+session:
+  cookie:
+    domain: localhost
+    path: /
+    same_site: Lax
+  lifespan: 24h

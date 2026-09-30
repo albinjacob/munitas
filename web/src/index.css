@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+/*
+ * One exception to "nothing else belongs here": what focus looks like.
+ *
+ * This is not a colour meaning (that's ClassBadge.tsx's job, and stays
+ * there) -- it is the browser's own default focus outline, which every
+ * input/select/textarea/button gets whether or not any component asks for
+ * it, and which nothing in this file otherwise touches. Left alone, it
+ * renders as the OS's own colour (confirmed live: an orange/amber ring on
+ * this machine), fighting the indigo accent every primary action in this
+ * console now uses. Setting it once, globally, is the only way to fix that
+ * without adding the same three focus utility classes to every form
+ * control in every feature file.
+ *
+ * A single-colour outline is not enough on its own: measured live on the
+ * "Bring a dataset in" button, the ring (indigo-500) sat directly against
+ * the button's own fill (indigo-600), two shades of the same hue with too
+ * little contrast between them right at the edge that is supposed to stand
+ * out. A flat outline colour that reads fine on the page's light
+ * background fails the moment the focused element is itself a filled,
+ * saturated button, which in this console (every primary and destructive
+ * action) is often. The fix is the standard two-ring technique: a thin
+ * white buffer flush against the element, then the indigo ring outside
+ * that, so there is always a hard, high-contrast edge on both sides of the
+ * ring regardless of what colour sits behind it. `box-shadow`, not another
+ * `outline`, because CSS has no way to draw two outline colours on one
+ * element; checked first that nothing interactive in this project already
+ * sets its own `box-shadow` that this would silently override (only two
+ * non-interactive containers do, `ConfirmDialog.tsx` and `toast.tsx`, and
+ * neither is a focusable control).
+ *
+ * Ring colour is indigo-800, not indigo-500: the primary button's own fill
+ * moved to indigo-500 (paler base, indigo-800 hover, chosen for a bigger,
+ * clearer hover jump than indigo-600/700 gave, and verified against real
+ * WCAG numbers before applying it everywhere) as of this change, which
+ * would have put the ring back to exactly the problem this comment
+ * describes -- a ring the same shade as the button it sits on, invisible
+ * at rest. indigo-800 is already the button's own hover colour, so this
+ * keeps one accent-emphasis colour for both interactions instead of adding
+ * a third.
+ */
+:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px white,
+    0 0 0 4px var(--color-indigo-800, #3730a3);
+}
+
+/*
+ * A second exception, the same shape as the one above: native radio buttons
+ * and checkboxes render in the OS's own colour by default (blue on this
+ * machine), regardless of what any component asks for -- confirmed live,
+ * every other interactive control in this console (buttons, the focus ring,
+ * links) uses the indigo accent, and these three inputs were the one place
+ * still showing a plain, unstyled browser default beside it. `accent-color`
+ * is the one CSS property built for exactly this, and setting it once here
+ * covers every current checkbox/radio and any future one without adding a
+ * utility class at each call site.
+ */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--color-indigo-500, #6366f1);
+}
+
+/*
+ * A third exception: placeholder text read too much like a real, already-
+ * typed value. Tailwind's own preflight sets a placeholder's colour to the
+ * input's real text colour at 50% opacity -- measured live on "Search by
+ * name", that came out as a plain medium grey next to near-black real text,
+ * a small enough gap that an example like "encounters" or "triage-agent"
+ * (realistic-looking search terms, not obviously placeholder-shaped text
+ * like "Search...") could be mistaken for an active filter at a glance,
+ * which is exactly the ambiguity a placeholder exists to avoid. Italic is
+ * the one typographic signal that reads as "hint," not "value," regardless
+ * of colour contrast, so it holds even in a quick glance or a screenshot;
+ * the colour is also set explicitly here rather than left to the 50%
+ * opacity rule, since that rule still darkens along with whatever a
+ * component's own text colour is, and would not reliably read as muted
+ * everywhere it applies.
+ */
+::placeholder {
+  color: var(--color-slate-400, #94a3b8);
+  font-style: italic;
+  opacity: 1;
+}
+

@@ -1,0 +1,45 @@
+{
+  "//": "Every Kratos login this stack has. One entry per human directory row created by infra/postgres/seed-*.sql. To add a tenant: add a group here with the same directory_ids that tenant's seed-*.sql inserts, then re-run seed-identities.py -- no Python edit needed. Workloads are never listed here; their identity is the runtime that holds them, not a login (see infra/kratos/seed-identities.py's own docstring).",
+  "tenants": [
+    {
+      "tenant": "health",
+      "source": "infra/postgres/seed-organisation.sql",
+      "identities": [
+        { "directory_id": "cust-hartley", "email": "hartley@health.example", "name": "Hartley" },
+        { "directory_id": "cust-okonjo", "email": "okonjo@health.example", "name": "Okonjo" },
+        { "directory_id": "dpo-nakamura", "email": "nakamura@health.example", "name": "Nakamura" },
+        { "directory_id": "rev-imani", "email": "imani@health.example", "name": "Imani" },
+        { "directory_id": "sam-researcher", "email": "sam@health.example", "name": "Sam" },
+        { "directory_id": "eng-devi", "email": "devi@health.example", "name": "Devi" },
+        { "directory_id": "ops-priya", "email": "priya@health.example", "name": "Priya" },
+        { "directory_id": "cust-mensah", "email": "mensah@health.example", "name": "Mensah" },
+        { "directory_id": "cust-lindqvist", "email": "lindqvist@health.example", "name": "Lindqvist" },
+        { "directory_id": "arch-turner", "email": "turner@health.example", "name": "Turner" }
+      ]
+    },
+    {
+      "tenant": "canary",
+      "source": "infra/postgres/seed-canary.sql",
+      "identities": [
+        { "directory_id": "canary-custodian", "email": "custodian@canary.example", "name": "Canary custodian" },
+        { "directory_id": "canary-elsewhere", "email": "elsewhere@canary.example", "name": "Canary custodian (elsewhere)" },
+        { "directory_id": "canary-engineer", "email": "engineer@canary.example", "name": "Canary engineer" },
+        { "directory_id": "canary-researcher", "email": "researcher@canary.example", "name": "Canary researcher" },
+        { "directory_id": "canary-dpo", "email": "dpo@canary.example", "name": "Canary oversight" },
+        { "directory_id": "canary-reviewer", "email": "reviewer@canary.example", "name": "Canary reviewer" },
+        { "directory_id": "canary-architect", "email": "architect@canary.example", "name": "Canary architect" }
+      ]
+    },
+    {
+      "tenant": "finance",
+      "source": "infra/postgres/seed-finance.sql",
+      "identities": [
+        { "directory_id": "cust-marcus", "email": "marcus@finance.example", "name": "Marcus" },
+        { "directory_id": "cust-naomi", "email": "naomi@finance.example", "name": "Naomi" },
+        { "directory_id": "eng-lena", "email": "lena@finance.example", "name": "Lena" },
+        { "directory_id": "ana-omar", "email": "omar@finance.example", "name": "Omar" },
+        { "directory_id": "arch-sofia", "email": "sofia@finance.example", "name": "Sofia" }
+      ]
+    }
+  ]
+}

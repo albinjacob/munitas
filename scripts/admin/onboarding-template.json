@@ -1,0 +1,38 @@
+{
+  "storage": {
+    "_comment": "Optional. How many storage volumes this organisation's bucket opens with on its first write. A volume is a 1 GB file the storage appends many objects into, never shared between organisations, so this is paid per organisation rather than per byte. Leave it out unless this one is expected to be large: omitted means use the install default, MUNITAS_STORAGE_VOLUMES_PER_TENANT. Raising it here costs volumes from a fixed pool; raising the default costs them for everybody.",
+    "initial_storage_volumes": 1
+  },
+  "departments": [
+    {
+      "key": "cardiology",
+      "name": "Cardiology",
+      "custodian": "hartley"
+    }
+  ],
+  "people": [
+    {
+      "key": "hartley",
+      "label": "Hartley",
+      "roles": [
+        "data_custodian"
+      ]
+    },
+    {
+      "key": "sam",
+      "label": "Sam",
+      "roles": [
+        "notebook_explore"
+      ]
+    }
+  ],
+  "workloads": [
+    {
+      "key": "pipeline",
+      "label": "Pipeline action",
+      "roles": [
+        "pipeline_action"
+      ]
+    }
+  ]
+}

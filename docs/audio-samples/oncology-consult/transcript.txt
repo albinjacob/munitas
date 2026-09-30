@@ -1,0 +1,25 @@
+DOCTOR: Good afternoon, Priya. Come in, have a seat.
+PATIENT: Good afternoon, Doctor.
+DOCTOR: Priya Nair, date of birth twenty second of July, eighty one?
+PATIENT: Yes, that's me.
+DOCTOR: Still at fourteen, Church Street, Kochi?
+PATIENT: Yes, same address.
+DOCTOR: And this number, eight nine seven six five, four three two one nine, still the best way to reach you?
+PATIENT: Yes, that's correct.
+DOCTOR: How have you been feeling since the last round of chemotherapy?
+PATIENT: Quite tired, Doctor, and I've lost some weight. Is that normal at this stage, Dr. Menon? I've been a little worried.
+DOCTOR: Yes, fatigue and some weight loss are common with this regimen, especially after the third cycle. Any fever, unusual bruising, or bleeding?
+PATIENT: No fever. I did notice a bit of bruising on my arm, but nothing severe.
+DOCTOR: Alright, we'll keep an eye on that with your next blood count. Let's go over your latest scan results. The mammogram and the follow up M R I both show the tumor in your left breast has reduced significantly, from three point two centimeters down to about one centimeter, since we started treatment.
+PATIENT: Oh, that's such a relief to hear.
+DOCTOR: It is good news. Your lymph nodes also look clear on this latest imaging, which is very encouraging. I'd like to continue with two more cycles of the current chemotherapy regimen before we reassess for surgery.
+PATIENT: Okay. Whatever you think is best.
+DOCTOR: Let me confirm your file. Medical record number seven seven zero four four?
+PATIENT: Yes, that's right.
+DOCTOR: I'm going to continue you on Tamoxifen, twenty milligrams daily, and we'll add a bone density supplement given the treatment's effect on bone health.
+PATIENT: Tamoxifen daily, and the supplement. Understood.
+DOCTOR: I also want to schedule your next P E T scan for three weeks from today, and we'll do bloodwork the week before that.
+PATIENT: Okay, I'll make sure to come in.
+DOCTOR: If you notice any new lumps, persistent fever, or shortness of breath in the meantime, please call the clinic immediately, don't wait for your next appointment.
+PATIENT: I will, Doctor. Thank you, Dr. Menon.
+DOCTOR: Take care, Priya. I'll see you at your next visit.

@@ -1,0 +1,1183 @@
+<title>Munitas: Feature Walkthrough</title>
+<style>
+  :root {
+    --ink: #1c2333;
+    --ink-soft: #4b5266;
+    --ink-faint: #6b7182;
+    --paper: #eae7de;
+    --paper-raised: #f6f4ec;
+    --paper-line: #d8d4c6;
+    --accent: #7a2e2e;
+    --accent-soft: #a8524f;
+    --brass: #8a6d3b;
+    --moss: #3f6b4a;
+    --ochre: #9c6b15;
+    --code-bg: #e3e0d3;
+    --shadow: 0 1px 2px rgba(28,35,51,0.06), 0 4px 14px rgba(28,35,51,0.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #eae6da;
+      --ink-soft: #c3bfae;
+      --ink-faint: #9a9787;
+      --paper: #14161c;
+      --paper-raised: #1c1f28;
+      --paper-line: #33374290;
+      --accent: #d47d78;
+      --accent-soft: #b95c56;
+      --brass: #d1ac5f;
+      --moss: #7fb08e;
+      --ochre: #d9a441;
+      --code-bg: #22252e;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 6px 20px rgba(0,0,0,0.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ink: #eae6da; --ink-soft: #c3bfae; --ink-faint: #9a9787;
+    --paper: #14161c; --paper-raised: #1c1f28; --paper-line: #33374290;
+    --accent: #d47d78; --accent-soft: #b95c56; --brass: #d1ac5f;
+    --moss: #7fb08e; --ochre: #d9a441; --code-bg: #22252e;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 6px 20px rgba(0,0,0,0.35);
+  }
+  :root[data-theme="light"] {
+    --ink: #1c2333; --ink-soft: #4b5266; --ink-faint: #6b7182;
+    --paper: #eae7de; --paper-raised: #f6f4ec; --paper-line: #d8d4c6;
+    --accent: #7a2e2e; --accent-soft: #a8524f; --brass: #8a6d3b;
+    --moss: #3f6b4a; --ochre: #9c6b15; --code-bg: #e3e0d3;
+    --shadow: 0 1px 2px rgba(28,35,51,0.06), 0 4px 14px rgba(28,35,51,0.05);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.62;
+  }
+  .serif {
+    font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, Georgia, "Times New Roman", serif;
+  }
+  code, .mono, .tabular {
+    font-family: ui-monospace, "Cascadia Code", "Segoe UI Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  code {
+    background: var(--code-bg);
+    padding: 0.1em 0.4em;
+    border-radius: 3px;
+    font-size: 0.88em;
+  }
+  h1, h2, h3, h4 { font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif; text-wrap: balance; font-weight: 600; color: var(--ink); }
+  a { color: var(--accent); }
+  ::selection { background: var(--accent); color: var(--paper-raised); }
+
+  /* ---------- layout shell ---------- */
+  .shell {
+    display: grid;
+    grid-template-columns: 260px minmax(0,1fr);
+    max-width: 1280px;
+    margin: 0 auto;
+  }
+  @media (max-width: 900px) {
+    .shell { grid-template-columns: 1fr; }
+    nav.rail { display: none; }
+  }
+
+  nav.rail {
+    position: sticky;
+    top: 0;
+    align-self: start;
+    height: 100vh;
+    overflow-y: auto;
+    padding: 2.75rem 1.25rem 2rem 1.75rem;
+    border-right: 1px solid var(--paper-line);
+  }
+  nav.rail .mark {
+    display: block;
+    font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    margin-bottom: 0.15rem;
+  }
+  nav.rail .mark small {
+    display: block;
+    font-family: -apple-system, sans-serif;
+    font-weight: 500;
+    font-size: 0.62rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--brass);
+    margin-top: 0.35rem;
+  }
+  nav.rail ol {
+    list-style: none;
+    margin: 2rem 0 0;
+    padding: 0;
+    border-top: 1px solid var(--paper-line);
+    padding-top: 1.25rem;
+  }
+  nav.rail li { margin: 0; }
+  nav.rail a {
+    display: flex;
+    gap: 0.6em;
+    align-items: baseline;
+    text-decoration: none;
+    color: var(--ink-soft);
+    font-size: 0.86rem;
+    padding: 0.42rem 0;
+    border-bottom: 1px solid transparent;
+  }
+  nav.rail a:hover { color: var(--accent); }
+  nav.rail a .num {
+    font-family: ui-monospace, monospace;
+    font-size: 0.72rem;
+    color: var(--brass);
+    flex: 0 0 1.6em;
+  }
+
+  main { padding: 2.75rem clamp(1.25rem, 4vw, 3.5rem) 6rem; min-width: 0; }
+  .measure { max-width: 68ch; }
+  section { padding-top: 3.2rem; margin-top: 0.4rem; border-top: 1px solid var(--paper-line); }
+  section:first-of-type { border-top: none; }
+  section > .eyebrow {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-family: ui-monospace, monospace;
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    color: var(--brass);
+    text-transform: uppercase;
+    margin-bottom: 0.6rem;
+  }
+  section > .eyebrow::after { content: ""; flex: 1; height: 1px; background: var(--paper-line); }
+  section h2 { font-size: clamp(1.5rem, 2.6vw, 1.95rem); margin: 0 0 0.9rem; }
+  section h3 { font-size: 1.18rem; margin: 2rem 0 0.6rem; }
+  p { margin: 0 0 1.05rem; color: var(--ink-soft); }
+  strong { color: var(--ink); }
+
+  /* ---------- masthead ---------- */
+  header.masthead {
+    padding: 3.4rem clamp(1.25rem, 4vw, 3.5rem) 2.8rem;
+    border-bottom: 1px solid var(--paper-line);
+    grid-column: 1 / -1;
+  }
+  header.masthead .kicker {
+    font-family: ui-monospace, monospace;
+    font-size: 0.78rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--brass);
+    margin: 0 0 0.9rem;
+  }
+  header.masthead h1 {
+    font-size: clamp(2.1rem, 5vw, 3.1rem);
+    line-height: 1.08;
+    margin: 0 0 1rem;
+    max-width: 16ch;
+  }
+  header.masthead h1 em { font-style: italic; color: var(--accent); }
+  header.masthead .lede {
+    max-width: 62ch;
+    font-size: 1.12rem;
+    color: var(--ink-soft);
+    margin-bottom: 1.6rem;
+  }
+  .seal-row { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+  .seal {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4em;
+    font-family: ui-monospace, monospace;
+    font-size: 0.74rem;
+    letter-spacing: 0.03em;
+    padding: 0.32rem 0.7rem;
+    border: 1px solid var(--paper-line);
+    border-radius: 999px;
+    color: var(--ink-soft);
+    background: var(--paper-raised);
+  }
+  .seal .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--moss); flex: none; }
+
+  /* ---------- cards / grids ---------- */
+  .grid { display: grid; gap: 1rem; }
+  .grid-2 { grid-template-columns: repeat(2, 1fr); }
+  .grid-3 { grid-template-columns: repeat(3, 1fr); }
+  @media (max-width: 720px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--paper-raised);
+    border: 1px solid var(--paper-line);
+    border-radius: 6px;
+    padding: 1.25rem 1.35rem;
+    box-shadow: var(--shadow);
+  }
+  .card h4 { margin: 0 0 0.4rem; font-size: 1rem; }
+  .card p:last-child { margin-bottom: 0; }
+  .card .tag {
+    display: inline-block;
+    font-family: ui-monospace, monospace;
+    font-size: 0.7rem;
+    color: var(--brass);
+    margin-bottom: 0.5rem;
+    letter-spacing: 0.04em;
+  }
+
+  /* ---------- tables ---------- */
+  .tablewrap { overflow-x: auto; margin: 0 0 1.4rem; border: 1px solid var(--paper-line); border-radius: 6px; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+  th, td { text-align: left; padding: 0.6rem 0.85rem; border-bottom: 1px solid var(--paper-line); vertical-align: top; }
+  thead th {
+    background: var(--paper-raised);
+    font-family: ui-monospace, monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--brass);
+    font-weight: 600;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: color-mix(in srgb, var(--paper-raised) 60%, transparent); }
+
+  /* ---------- persona / flow accordion ---------- */
+  details.persona {
+    background: var(--paper-raised);
+    border: 1px solid var(--paper-line);
+    border-radius: 6px;
+    margin-bottom: 0.85rem;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  details.persona summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 1.05rem 1.3rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    justify-content: space-between;
+  }
+  details.persona summary::-webkit-details-marker { display: none; }
+  details.persona summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .persona-id { display: flex; align-items: baseline; gap: 0.7rem; }
+  .persona-id .name { font-family: "Iowan Old Style", Palatino, Georgia, serif; font-size: 1.08rem; font-weight: 700; }
+  .persona-id .owns { font-family: ui-monospace, monospace; font-size: 0.76rem; color: var(--brass); }
+  td.muted { color: var(--ink-faint); }
+  .persona-id .role { font-size: 0.86rem; color: var(--ink-faint); }
+  .chevron { transition: transform 0.18s ease; color: var(--ink-faint); flex: none; }
+  details[open] .chevron { transform: rotate(90deg); }
+  .persona-body { padding: 0 1.3rem 1.3rem; border-top: 1px solid var(--paper-line); }
+  .persona-body .flow { margin: 1rem 0; padding: 0; list-style: none; }
+  .persona-body .flow li {
+    position: relative;
+    padding: 0 0 0.9rem 1.85rem;
+    font-size: 0.94rem;
+    color: var(--ink-soft);
+  }
+  .persona-body .flow li::before {
+    content: attr(data-n);
+    position: absolute; left: 0; top: -0.1rem;
+    font-family: ui-monospace, monospace;
+    font-size: 0.72rem;
+    color: var(--paper);
+    background: var(--brass);
+    width: 1.3rem; height: 1.3rem;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .persona-body .flow li::after {
+    content: "";
+    position: absolute; left: 0.65rem; top: 1.3rem; bottom: -0.1rem;
+    width: 1px; background: var(--paper-line);
+  }
+  .persona-body .flow li:last-child::after { display: none; }
+  .without {
+    margin-top: 0.9rem;
+    padding: 0.85rem 1rem;
+    border-left: 3px solid var(--accent);
+    background: color-mix(in srgb, var(--accent) 7%, transparent);
+    font-size: 0.9rem;
+  }
+  .without strong { color: var(--accent); }
+
+  /* ---------- diagram ---------- */
+  .diagram-wrap { overflow-x: auto; margin: 1.4rem 0; }
+  .diagram-wrap svg { display: block; min-width: 640px; }
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 1.1rem 1.6rem;
+    margin: 0.9rem 0 1.6rem;
+    padding: 0.9rem 1.1rem;
+    border: 1px solid var(--paper-line);
+    border-radius: 6px;
+    background: var(--paper-raised);
+    font-size: 0.82rem;
+  }
+  .legend .item { display: flex; align-items: center; gap: 0.5em; }
+  .legend .swatch { width: 12px; height: 12px; border-radius: 2px; flex: none; }
+  .legend .line { width: 20px; height: 2px; flex: none; }
+
+  /* ---------- tools table ---------- */
+  .toolgrid .tablewrap:not(:last-child) { margin-bottom: 1.6rem; }
+
+  footer {
+    padding: 3rem clamp(1.25rem, 4vw, 3.5rem) 4rem;
+    border-top: 1px solid var(--paper-line);
+    color: var(--ink-faint);
+    font-size: 0.85rem;
+  }
+
+  ul.plain { padding-left: 1.2rem; margin: 0 0 1.1rem; color: var(--ink-soft); }
+  ul.plain li { margin-bottom: 0.4rem; }
+</style>
+
+<header class="masthead">
+  <p class="kicker">Feature walkthrough</p>
+  <h1>Munitas<br>A data platform that can <em>prove</em> what happened to your data.</h1>
+  <p class="lede">
+    Munitas is an open-source platform that runs on a single machine. It keeps
+    a permanent record of every dataset, every pipeline step that touched it, and
+    every AI agent that read it. Each claim on this page is checked by an automated
+    script that runs against the live system, so nothing here rests on a promise.
+    Two example organisations, health and finance, run throughout this page and
+    the guided walkthroughs in section 13, for illustration.
+  </p>
+  <div class="seal-row">
+    <span class="seal"><span class="dot"></span> Every capability below is checked by a script that runs against the live system</span>
+    <span class="seal"><span class="dot"></span> Permissive open-source licences throughout</span>
+    <span class="seal"><span class="dot"></span> Real sign-in for every human role, and two automated ones</span>
+  </div>
+</header>
+
+<div class="shell">
+<nav class="rail">
+  <a class="mark" href="#top">Munitas<small>Feature walkthrough</small></a>
+  <ol>
+    <li><a href="#capabilities"><span class="num">01</span> What it does</a></li>
+    <li><a href="#scope"><span class="num">02</span> Scope</a></li>
+    <li><a href="#architecture"><span class="num">03</span> Architecture</a></li>
+    <li><a href="#concepts"><span class="num">04</span> Core concepts</a></li>
+    <li><a href="#implemented"><span class="num">05</span> What's implemented</a></li>
+    <li><a href="#metrics"><span class="num">06</span> How it is measured</a></li>
+    <li><a href="#value"><span class="num">07</span> Value to your organisation</a></li>
+    <li><a href="#roi"><span class="num">08</span> Cost and return</a></li>
+    <li><a href="#personas"><span class="num">09</span> Who uses it</a></li>
+    <li><a href="#flows"><span class="num">10</span> What each role does</a></li>
+    <li><a href="#stack"><span class="num">11</span> Components, and why</a></li>
+    <li><a href="#cloud"><span class="num">12</span> Moving to a cloud</a></li>
+    <li><a href="#guides"><span class="num">13</span> Guided walkthroughs</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<section id="capabilities">
+  <p class="eyebrow">01 &middot; What it does</p>
+  <h2 class="measure">It governs AI agents with the same rules it applies to data</h2>
+  <div class="measure">
+    <p>
+      Most data platforms carefully track datasets and stop there. The AI agents
+      that read those datasets are treated as ordinary software: deployed, changed,
+      and rerun with no permanent record of which version did what.
+    </p>
+    <p>
+      Munitas closes that gap. An agent is registered and given sealed,
+      numbered versions, exactly like a dataset. When it runs, it gets an identity
+      assigned by the system it runs inside, not by anything the AI model itself
+      can read or write. That means a malicious instruction hidden in a document
+      cannot change what the agent is permitted to do.
+    </p>
+    <p>
+      One worked example agent ships with the platform. It ranks the queue of
+      transcripts waiting for a human to check, so reviewers start with the
+      riskiest rather than the first in the list. Section 10 explains the job in
+      full, including how it has to ask a custodian for access before it can read
+      that queue at all.
+    </p>
+    <p>Specifically, the platform can:</p>
+    <ul class="plain">
+      <li>Lock a dataset version so nobody can alter it afterwards. The database itself blocks the change, so a bug in the application cannot bypass it.</li>
+      <li>Make data available to a wider audience without copying or moving any files. Changing who may read a version only changes which access credential unlocks it.</li>
+      <li>Run a seven-step pipeline that strips personal information out of audio recordings, then put the result in front of a named reviewer, with every identifier it measured as still left behind, before anything is released more widely.</li>
+      <li>Pause an agent partway through a run and hold it there until a person approves it. The pause survives a restart, so approval can come days later.</li>
+      <li>Record every decision to allow or refuse access, along with the reason, so the history can be read back later.</li>
+      <li>Delete a person's records permanently without rewriting any locked dataset, by destroying the encryption key that record depends on.</li>
+      <li>Require a real sign-in through Ory Kratos before anyone can act, rather than letting the console take someone's word for who they are.</li>
+      <li>Store each organisation's data in its own isolated bucket, and on Cloudflare R2 its own short-lived credential, so a leaked credential reaches one customer rather than all of them.</li>
+      <li>Let a sandboxed agent read the real dataset it was scoped to, through a copy it fetches itself over an isolated network, capped in size before a single byte moves.</li>
+      <li>Change who holds which role only through two people: one asks and says why, another decides, and the role lapses rather than lasting because nobody looked. The administrator who runs the platform is not one of the people who may decide.</li>
+      <li>Show what storage each organisation is using, on which backend, and free what is no longer needed, rehearsing exactly what would be removed before removing it.</li>
+      <li>Write one line of log per event carrying identifiers and never contents, with anything resembling a secret redacted before it is written.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="scope">
+  <p class="eyebrow">02 &middot; Scope</p>
+  <h2 class="measure">A complete system on one machine, not a scaled-down prototype of one</h2>
+  <p class="measure">
+    Every guarantee on this page is enforced by the platform running today, not
+    described in a specification for later. Production-scale infrastructure was
+    left out deliberately: none of it changes whether those guarantees hold.
+  </p>
+  <div class="card">
+    <span class="tag">BUILT</span>
+    <p>Registering, versioning and locking datasets. One built-in seven-step pipeline that removes personal information from speech recordings. Widening who may read a dataset. Requesting and approving access. Keeping separate customers' data apart, and closing an account without deleting its history, or deleting it permanently and completely. Registering, versioning, deploying and running AI agents, including a human approval step and, for sandboxed agents, a scoped copy of the real dataset they were granted. Permanent deletion of a person's records. A full audit trail. Importing datasets from HuggingFace in the background, using each person's own account, with export rules read from the dataset's licence. Real sign-in through Ory Kratos for every human role. A choice of storage backend per organisation, SeaweedFS or Cloudflare R2, each isolated per customer.</p>
+  </div>
+  <p class="measure">
+    The goal is the one a title document serves for a property: proof of what is
+    held, by whom, and on what terms. This platform holds that proof for a
+    dataset, and for an AI agent and everything it did.
+  </p>
+</section>
+
+<section id="architecture">
+  <p class="eyebrow">03 &middot; Architecture</p>
+  <h2 class="measure">Every request passes the policy engine, and there is no way around it</h2>
+  <p class="measure">
+    The web console and the background worker both go through the API. Only the
+    API talks directly to the database, the file storage and the policy engine, so
+    there is a single place where access rules are applied. The agent runtime sits
+    on a network of its own that has no route to the internet. That isolation is a
+    property of how the network is configured, not a rule the code is trusted to
+    follow. Every read the agent attempts is still checked by the policy engine,
+    on the same terms as a person's.
+  </p>
+
+  <div class="diagram-wrap">
+    <svg viewBox="0 0 1180 690" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace, monospace" role="img" aria-label="Architecture diagram showing host processes, the control network, the data network and the isolated agent network.">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--ink-soft)"></path>
+        </marker>
+        <marker id="arrow-agent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"></path>
+        </marker>
+      </defs>
+
+      <g fill="none" stroke-width="1.3">
+        <rect x="40" y="40" width="460" height="150" rx="6" fill="var(--brass)" fill-opacity="0.10" stroke="var(--brass)"></rect>
+        <rect x="40" y="250" width="700" height="150" rx="6" fill="var(--ink-soft)" fill-opacity="0.10" stroke="var(--ink-soft)"></rect>
+        <rect x="40" y="460" width="460" height="150" rx="6" fill="var(--moss)" fill-opacity="0.10" stroke="var(--moss)"></rect>
+        <rect x="760" y="250" width="380" height="170" rx="6" fill="var(--accent)" fill-opacity="0.08" stroke="var(--accent)" stroke-dasharray="5 3"></rect>
+      </g>
+
+      <g font-size="11" letter-spacing="0.06em" fill="var(--ink-faint)">
+        <text x="60" y="66">HOST PROCESSES, NOT CONTAINERISED</text>
+        <text x="60" y="276">CONTROL NETWORK</text>
+        <text x="60" y="486">DATA NETWORK</text>
+        <text x="780" y="276">AGENT NETWORK, ISOLATED</text>
+      </g>
+
+      <g fill="var(--paper-raised)" stroke="var(--ink-soft)" stroke-width="1.2">
+        <rect x="70" y="75" width="150" height="80" rx="4"></rect>
+        <rect x="310" y="75" width="150" height="80" rx="4"></rect>
+        <rect x="70" y="285" width="150" height="80" rx="4"></rect>
+        <rect x="310" y="285" width="150" height="80" rx="4"></rect>
+        <rect x="550" y="285" width="150" height="80" rx="4"></rect>
+        <rect x="70" y="495" width="150" height="80" rx="4"></rect>
+        <rect x="310" y="495" width="150" height="80" rx="4"></rect>
+        <rect x="810" y="290" width="280" height="80" rx="4"></rect>
+      </g>
+
+      <g font-size="12" text-anchor="middle" fill="var(--ink)">
+        <text x="145" y="107">Console</text>
+        <text x="385" y="107">Worker</text>
+        <text x="145" y="317">API</text>
+        <text x="385" y="317">Policy engine</text>
+        <text x="625" y="317">Job engine</text>
+        <text x="145" y="527">Database</text>
+        <text x="385" y="527">File storage</text>
+        <text x="950" y="322">Agent runtime</text>
+      </g>
+
+      <g font-size="10" text-anchor="middle" fill="var(--ink-faint)">
+        <text x="145" y="125">what people use, real sign-in required</text>
+        <text x="145" y="140">port 5173</text>
+        <text x="385" y="125">runs the long jobs</text>
+        <text x="385" y="140">uses the graphics card</text>
+        <text x="145" y="335">the only way in</text>
+        <text x="145" y="350">port 8000</text>
+        <text x="385" y="335">decides every request</text>
+        <text x="385" y="350">port 8181</text>
+        <text x="625" y="335">keeps jobs running</text>
+        <text x="625" y="350">and resumable</text>
+        <text x="145" y="545">records and history</text>
+        <text x="145" y="560">port 5432</text>
+        <text x="385" y="545">the data files, one bucket per organisation</text>
+        <text x="385" y="560">port 8333, or Cloudflare R2</text>
+        <text x="950" y="340">runs the AI agent</text>
+        <text x="950" y="355">checked on every action</text>
+        <text x="950" y="400" fill="var(--accent)">no route to the internet</text>
+      </g>
+
+      <g stroke="var(--ink-soft)" stroke-width="1.5" fill="none" marker-end="url(#arrow)">
+        <path d="M145,155 L145,285"></path>
+        <path d="M385,155 L385,215 L180,215 L180,285"></path>
+        <path d="M460,115 L625,115 L625,285"></path>
+        <path d="M220,325 L310,325"></path>
+        <path d="M110,365 L110,495"></path>
+        <path d="M190,365 L190,425 L385,425 L385,495"></path>
+      </g>
+
+      <g stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="5 4" fill="none" marker-end="url(#arrow-agent)">
+        <path d="M810,330 L810,445 L430,445 L430,365"></path>
+        <path d="M900,370 L900,650 L145,650 L145,575"></path>
+      </g>
+
+      <g font-size="10" fill="var(--ink-faint)">
+        <text x="154" y="232">what people do</text>
+        <text x="282" y="208" text-anchor="middle">what jobs produced</text>
+        <text x="636" y="205">starts and resumes jobs</text>
+        <text x="265" y="316" text-anchor="middle">every request</text>
+        <text x="119" y="443">reads and writes</text>
+        <text x="288" y="418" text-anchor="middle">stores files</text>
+      </g>
+      <g font-size="10" fill="var(--accent)">
+        <text x="620" y="438" text-anchor="middle">permission checked on every single action</text>
+        <text x="522" y="643" text-anchor="middle">saves its paused state, so an approval days later can resume it</text>
+      </g>
+    </svg>
+  </div>
+
+  <div class="legend">
+    <strong style="flex-basis:100%; font-size:0.8rem; letter-spacing:0.06em; text-transform:uppercase; color:var(--brass);">Legend</strong>
+    <div class="item"><span class="line" style="background:var(--ink-soft);"></span> ordinary call between components</div>
+    <div class="item"><span class="line" style="background-image:repeating-linear-gradient(90deg,var(--accent) 0 6px,transparent 6px 10px);"></span> traffic from the isolated agent network</div>
+    <div class="item"><span class="swatch" style="background:var(--brass);"></span> runs directly on the machine</div>
+    <div class="item"><span class="swatch" style="background:var(--ink-soft);"></span> control network</div>
+    <div class="item"><span class="swatch" style="background:var(--moss);"></span> data network</div>
+    <div class="item"><span class="swatch" style="background:var(--accent);"></span> agent network, no internet access</div>
+  </div>
+  <p class="measure" style="font-size:0.88rem; color:var(--ink-faint);">
+    This diagram is simplified. Tracing (Jaeger and OpenTelemetry), MLflow, Label
+    Studio, the Temporal web interface and Ory Kratos (which sits in front of the
+    console and issues the session every request carries) are left out here.
+    Ollama, which runs the agent's AI model on the machine's own graphics card,
+    is also left out because it holds no data and enforces no rules.
+  </p>
+</section>
+
+<section id="concepts">
+  <p class="eyebrow">04 &middot; Core concepts</p>
+  <h2 class="measure">Four ideas that the rest of the system is built on</h2>
+  <div class="grid grid-2">
+    <div class="card">
+      <h4>Widening access never moves the data</h4>
+      <p>Every dataset version sits at one of five sensitivity levels, from <code>RAW</code> (most restricted) up to <code>PUBLISHED</code>. Moving a version up to a less restricted level changes only which access credential opens it. The files themselves are never copied or rewritten, which was confirmed by checking that their storage keys and checksums are identical before and after.</p>
+    </div>
+    <div class="card">
+      <h4>Sensitivity and origin are two separate questions</h4>
+      <p>Sensitivity decides who inside the organisation may read a dataset. Its origin decides whether it may leave the organisation at all. A public benchmark and a clinical dataset with names removed can be equally safe to read internally, while only one of them may legally be published. Treating these as one setting either blocks harmless downloads or releases regulated data as soon as it looks safe enough to read.</p>
+    </div>
+    <div class="card">
+      <h4>An agent's identity is assigned, never self-declared</h4>
+      <p>An agent's identity is held by the program running it and is never part of the data the AI model can see or modify. Every time the agent tries to use a tool, its permissions are rechecked against that assigned identity. This is what protects against prompt injection, where an attacker hides instructions inside a document the agent reads. Such an instruction can change what the model asks for, but it cannot change who the system believes the agent is.</p>
+    </div>
+    <div class="card">
+      <h4>Deleting a person's data without rewriting history</h4>
+      <p>Each record is encrypted with its own key. To delete a record permanently, the platform destroys that key rather than editing any locked dataset. The record becomes unreadable everywhere it ever appeared, while the dataset versions and audit trail stay exactly as they were. A short marker is kept to record that the deletion happened, so the fact of the erasure is not itself erased.</p>
+    </div>
+  </div>
+</section>
+
+<section id="implemented">
+  <p class="eyebrow">05 &middot; Proven, not promised</p>
+  <h2 class="measure">Every claim on this page is checked by an automated script against the live system</h2>
+  <p class="measure">
+    Nothing above is a design intention or a roadmap item stated as though it
+    already works. Each capability is exercised by its own script, run against
+    the real platform rather than a mock of it, covering everything from
+    locked dataset versions and cross-customer isolation to agent sandboxing,
+    prompt-injection resistance, and permanent, verifiable deletion. When a
+    claim changes, the script that proves it changes with it.
+  </p>
+</section>
+
+<section id="metrics">
+  <p class="eyebrow">06 &middot; How it is measured</p>
+  <h2 class="measure">Two things are measured, for two different reasons</h2>
+  <p class="measure">
+    The pipeline that removes personal information is measured on accuracy, because
+    the risk is that it misses something. An agent is measured on consumption,
+    because an agent that gets stuck in a loop does not crash. It carries on
+    working, producing reasonable-looking output and spending money. Both sets of
+    numbers control a decision the system then makes on its own.
+  </p>
+
+  <h3>Removing personal information: accuracy</h3>
+  <p class="measure">
+    These figures come from comparing the pipeline's output against a known answer
+    key. Two of them set the recommendation the reviewer is shown when deciding
+    whether a result may be released to a wider audience. The rest are recorded to
+    explain a poor score.
+  </p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Measure</th><th>What it tells you</th><th>Used for</th></tr></thead>
+      <tbody>
+        <tr><td>Recall after transcription</td><td>Of the identifiers that were still readable in the transcript, the share the pipeline removed. This is the fairest measure of the pipeline's own work, because it excludes names the speech recognition had already garbled beyond recognition.</td><td class="tabular">Below 0.98 and the recommendation is fail</td></tr>
+        <tr><td>Names left fully readable</td><td>Identifying text that survived completely intact, such as a full name or an email address still in plain sight.</td><td class="tabular">Above 0 and the recommendation is fail</td></tr>
+        <tr><td>Recall against everything spoken</td><td>The same share, but measured against every identifier actually said aloud, including ones the speech recognition destroyed by accident. Always the lower of the two figures.</td><td>Recorded only</td></tr>
+        <tr><td>Partial fragments left behind</td><td>Identifiers that were damaged but might still be pieced back together, such as a surname with two letters changed.</td><td>Recorded only</td></tr>
+        <tr><td>Share destroyed by transcription</td><td>How many identifiers the speech recognition had already mangled before the pipeline saw them.</td><td>Explains a score</td></tr>
+        <tr><td>Transcript accuracy</td><td>How closely the transcript matches what was actually said. This separates a pipeline that failed to redact from one that was given a bad transcript to work with.</td><td>Explains a score</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="measure" style="font-size:0.9rem;">
+    These numbers are stored on the decision record itself, not only in the
+    experiment tracker, so the reason a dataset was released stays available even
+    if the older run history is cleared out. The bar is set deliberately high, and
+    a run that falls short is stopped and shown to a reviewer as a fail
+    recommendation rather than released automatically.
+  </p>
+  <p class="measure" style="font-size:0.9rem;">
+    The recommendation is advice, and the pipeline acts on none of it. It stops
+    there and a person decides, because a threshold can only measure what the
+    answer key already knows about, and the reviewer is looking at the identifiers
+    that survived rather than at a number standing in for them. A pass is not a
+    release either: an unreviewed result stays where it is until somebody signs
+    for it.
+  </p>
+
+  <h3>Agent runs: consumption limits</h3>
+  <p class="measure">
+    Every run is given three ceilings. The program running the agent enforces them,
+    rather than asking the AI model to respect them. Crossing any one stops the run
+    immediately and records which limit was hit.
+  </p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Limit</th><th>Default</th><th>Why it exists</th></tr></thead>
+      <tbody>
+        <tr><td>Tool calls per run</td><td class="tabular">25</td><td>Caps how many times one run can reach for data or take an action</td></tr>
+        <tr><td>Tokens per run</td><td class="tabular">100,000</td><td>Caps the total amount of text the model may process, which is what a stuck run consumes fastest</td></tr>
+        <tr><td>Seconds per run</td><td class="tabular">300</td><td>Caps elapsed time, so a run that is waiting on something rather than looping is also stopped</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="measure" style="font-size:0.9rem;">
+    Alongside these limits, each run keeps a running count of its tool calls and a
+    full record of every access decision those calls produced. The count adds up
+    across a pause and resume rather than restarting, so approving a paused run
+    cannot hide what the first half already spent. An automated test confirms that
+    a task written to loop forever stops at the tool-call limit.
+  </p>
+</section>
+
+<section id="value">
+  <p class="eyebrow">07 &middot; Value for an AI development organisation</p>
+  <h2 class="measure">The hard part is not storing the data. It is accounting for it afterwards.</h2>
+  <div class="grid grid-3">
+    <div class="card">
+      <h4>An auditor gets an answer, not an assurance</h4>
+      <p>"What did this model read, under whose authority, and who approved it" becomes a database query. Every decision to allow or refuse access was recorded at the time, together with the reason, so nobody has to reconstruct events from memory and old chat threads.</p>
+    </div>
+    <div class="card">
+      <h4>An incident can be scoped in minutes</h4>
+      <p>Any suspicious output can be traced back in a single query to the exact code, software image and input data that produced it. Each agent run permanently records the version that actually ran, so deploying a newer version afterwards does not obscure what happened.</p>
+    </div>
+    <div class="card">
+      <h4>A prompt-injection attempt ends as a refusal</h4>
+      <p>Because an agent's identity is held outside the model, the most a hidden instruction can achieve is to be refused and logged. There is no higher level of access for it to reach, because the permission check never reads anything the model produced.</p>
+    </div>
+    <div class="card">
+      <h4>Serious agent actions cannot skip human review</h4>
+      <p>The review step is built into how the agent runs, not written down as a rule staff are expected to follow. The run stops before the significant step and can only continue once a second person approves it, and that person must belong to the same customer and must not be whoever started the run.</p>
+    </div>
+    <div class="card">
+      <h4>Publication rules keep working as data changes</h4>
+      <p>Whether a dataset may leave the organisation is worked out from where it came from and what its licence permits, traced through everything that has been done to it. It does not depend on a person remembering to set a field correctly.</p>
+    </div>
+    <div class="card">
+      <h4>A leaked storage credential does not become a breach of every customer</h4>
+      <p>Storage credentials are scoped to one organisation's bucket and expire quickly, rather than being one static key shared across every customer. Losing one credential exposes the blast radius it was scoped to, not the whole platform.</p>
+    </div>
+    <div class="card">
+      <h4>No licence cost, and no vendor to leave</h4>
+      <p>Every component is under a permissive open-source licence, so there are no seat fees and no contract renewals. Keeping the guarantees described here does not depend on staying with any particular supplier.</p>
+    </div>
+  </div>
+</section>
+
+<section id="roi">
+  <p class="eyebrow">08 &middot; Cost and return</p>
+  <h2 class="measure">What it costs to run, and which recurring work it removes</h2>
+  <p class="measure">
+    Two things drive the return: what the platform costs to run, and which
+    expensive manual work it removes entirely. Both are laid out below, worth
+    checking directly against your own organisation's numbers.
+  </p>
+  <div class="grid grid-2">
+    <div class="card">
+      <h4>Software licences: nothing</h4>
+      <p>Every component is under a permissive open-source licence, so there are no per-seat charges, no per-machine governance fees and no renewals to negotiate. Replacing any one component, such as the file storage or the workflow engine, costs the effort of the integration and nothing else.</p>
+    </div>
+    <div class="card">
+      <h4>Running an agent: hardware, not usage fees</h4>
+      <p>The agent's AI model runs on the machine's own graphics card instead of a paid external service. The cost of a run is therefore the cost of hardware you already own, rather than a bill that grows with every request. The per-run limits in section 6 cap how much of that hardware any single run can occupy.</p>
+    </div>
+    <div class="card">
+      <h4>Removes: reconstructing an audit trail</h4>
+      <p>Answering "what did this agent read, and who approved it" is a query against records written at the time. The alternative is several people spending days piecing the answer together from logs, chat history and recollection, which also produces a less reliable answer.</p>
+    </div>
+    <div class="card">
+      <h4>Removes: tracing a bad output by hand</h4>
+      <p>A suspicious result can be traced to the exact code and input data behind it in one query. Doing the same without recorded lineage means manually working out which run, which code revision and which data were involved, typically hours of work under time pressure.</p>
+    </div>
+    <div class="card">
+      <h4>Removes: arguing about whether a release was safe</h4>
+      <p>The figures from section 6 and every identifier that survived are attached to the decision record, along with who accepted them and why. The judgement still belongs to a person, but it is made once, on evidence everyone can see afterwards, rather than re-argued from memory in a meeting.</p>
+    </div>
+    <div class="card">
+      <h4>Caps: the cost of an agent that gets stuck</h4>
+      <p>A run that loops instead of finishing is stopped at 25 tool calls, 100,000 tokens or 300 seconds, whichever comes first. The worst case is therefore a known, small amount, rather than however long it takes someone to notice.</p>
+    </div>
+  </div>
+</section>
+
+<section id="personas">
+  <p class="eyebrow">09 &middot; Who uses it</p>
+  <h2 class="measure">Seven kinds of role, shown through one example organisation</h2>
+  <p class="measure">
+    Every organisation on Munitas is staffed by people in these same kinds of
+    role: someone who brings data in, someone accountable for each department's
+    data, someone who asks to read it, an administrator who runs the platform
+    itself, and so on. The table below shows one worked example, the cast from
+    the health organisation used throughout this page: Hartley and Okonjo each
+    custodian a different department (Cardiology and Radiology), Devi brings
+    data in, Sam asks to read it, Priya administers the platform, Nakamura
+    oversees data protection, and Imani reviews what the de-identification
+    pipeline could not confirm on its own. The finance organisation, covered in
+    its own walkthrough, is staffed by a different cast in these same roles.
+    Each role has a real, signed-in identity you can act as directly. "Reads by
+    default" means the most sensitive data that role can open without anyone
+    approving a specific request.
+  </p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Who</th><th>Role</th><th>Owns</th><th>Reads by default</th></tr></thead>
+      <tbody>
+        <tr><td>Devi</td><td>Data engineer</td><td class="muted">no department</td><td class="tabular">Published only</td></tr>
+        <tr><td>Hartley</td><td>Data custodian</td><td>Cardiology</td><td class="tabular">Published only</td></tr>
+        <tr><td>Okonjo</td><td>Data custodian</td><td>Radiology</td><td class="tabular">Published only</td></tr>
+        <tr><td>Sam</td><td>Researcher</td><td class="muted">no department</td><td class="tabular">Published only</td></tr>
+        <tr><td>Priya</td><td>Platform administrator</td><td class="muted">no department</td><td class="tabular">Published only</td></tr>
+        <tr><td>Nakamura</td><td>Data protection officer</td><td class="muted">no department</td><td class="tabular">Published only</td></tr>
+        <tr><td>Imani</td><td>De-identification reviewer</td><td class="muted">no department</td><td class="tabular">Published only</td></tr>
+        <tr><td>De-identification pipeline</td><td>Automated</td><td class="muted">not applicable</td><td class="tabular">Everything, including raw</td></tr>
+        <tr><td>Triage agent</td><td>Automated: AI agent</td><td class="muted">not applicable</td><td class="tabular">Published only</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="measure" style="font-size:0.9rem;">
+    There are two custodians because each owns a different department, and that
+    is the point rather than an accident of the example. Hartley can approve
+    access to Cardiology's data and cannot approve access to Radiology's, and
+    Okonjo the reverse. Ownership is what decides who may say yes, so a request
+    goes to the person accountable for that particular data rather than to
+    whoever happens to be senior or available.
+  </p>
+  <p class="measure" style="font-size:0.9rem;">
+    Every person has the same default, including the administrator. Anything more
+    sensitive requires a specific request that somebody else approves. Only the
+    de-identification pipeline reads raw data, because removing personal
+    information from raw recordings is the entire job it exists to do.
+  </p>
+  <p class="measure" style="font-size:0.9rem;">
+    Two roles are deliberately barred from approving access requests. The data
+    protection officer is excluded because approving access means deciding how data
+    gets used, and GDPR Article 38(6) requires that the officer's independent
+    oversight is not compromised in that way. The platform administrator is
+    excluded because the account that operates the system should not also be able
+    to grant itself access to what the system protects.
+  </p>
+  <p class="measure" style="font-size:0.9rem;">
+    Imani decides a different question from the custodians, and only that one.
+    A custodian decides who may read a dataset. Imani decides whether what the
+    pipeline produced is de-identified well enough to be released more widely at
+    all, which nobody else in the table may decide. She reads the identifiers that
+    survived redaction, because that is the material the judgement is made on, and
+    she reads no dataset any other member of staff could not.
+  </p>
+</section>
+
+<section id="flows">
+  <p class="eyebrow">10 &middot; What each role does</p>
+  <h2 class="measure">What each role does, step by step</h2>
+  <p class="measure">
+    Every step below starts with signing in for real through Ory Kratos. Nothing
+    can be approved, revoked or decided without that real, signed-in identity
+    behind it. Each entry ends with what typically happens in an organisation
+    that has no system like this, which is the clearest way to see what the step
+    is for.
+  </p>
+
+  <details class="persona" open>
+    <summary>
+      <div class="persona-id"><span class="name">Devi</span><span class="role">Data engineer</span></div>
+      <svg class="chevron" width="16" height="16" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </summary>
+    <div class="persona-body">
+      <ol class="flow">
+        <li data-n="1">Registers a new dataset, naming the department that owns it and where the data came from. The registration is refused if the department does not exist or the origin is left unstated.</li>
+        <li data-n="2">Loads the data in, either by uploading files or by importing from HuggingFace. The import runs in the background, so the screen responds immediately no matter how large the source is.</li>
+        <li data-n="3">Locks the version once loading has finished. The system refuses to lock it while an import is still running, so a version can never be sealed halfway through arriving.</li>
+        <li data-n="4">Uploads recordings for de-identification and seals them as recordings rather than as anonymous files. The platform reads each one and tells her its length and sample rate, so a truncated file is refused as she adds it instead of surfacing later. If the set is incomplete, sealing is refused with every problem listed at once and nothing is sealed.</li>
+        <li data-n="5">Starts the de-identification herself, from the screen she just sealed on, instead of asking whoever has a terminal on the machine that does the work. She is refused, in writing and before anything starts, if the version holds ordinary files rather than recordings, if a recording arrived without the answer key the scoring needs, or if nothing is running to do the work. A refused start leaves nothing behind to clean up.</li>
+        <li data-n="6">Follows the run on its own page while it happens, step by step, rather than waiting without knowing whether it is working or stuck. At the end she is told it is waiting on a reviewer, and that she cannot be that reviewer, because she is the one who started it.</li>
+        <li data-n="7">Does not read the sensitive data the pipeline later produces from it. Running the loading process does not grant access to the results.</li>
+        <li data-n="8">Starts the triage agent against the review queue the pipeline left behind. She opens the agent, picks that dataset version, and says what the run is for.</li>
+        <li data-n="9">Is told before she starts that the agent cannot read that data, which custodian would be asked, and that the request will be filed in her name. Nothing is asked of anybody until she confirms.</li>
+        <li data-n="10">Sees the run listed as waiting for data access rather than as running. It has not begun, the screen does not pretend otherwise, and it moves only when the custodian decides.</li>
+      </ol>
+      <div class="without"><strong>Without this:</strong> data arrives via a script somebody ran once, its origin is recorded in a wiki page if at all, and nobody can later establish whether a dataset was finalised before or after the last file landed.</div>
+    </div>
+  </details>
+
+  <details class="persona">
+    <summary>
+      <div class="persona-id"><span class="name">Hartley</span><span class="owns">Cardiology</span><span class="role">Data custodian</span></div>
+      <svg class="chevron" width="16" height="16" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </summary>
+    <div class="persona-body">
+      <ol class="flow">
+        <li data-n="1">Checks claims about how sensitive a dataset is. If whoever registered it said the data is less sensitive than the cautious default, a custodian has to agree before that claim takes effect.</li>
+        <li data-n="2">Reviews access requests for Cardiology's datasets. Each request names a specific dataset version, what it will be used for, and why that use needs this data.</li>
+        <li data-n="3">Is refused if she tries to approve a request for Radiology's data, because Okonjo owns that department and she does not. Ownership is what grants the authority.</li>
+        <li data-n="4">Approves or refuses. She cannot approve her own request, or one somebody filed on her behalf. Both the policy engine and the database enforce this independently.</li>
+        <li data-n="5">Sees a written reason with every refusal, naming which rule caused it, rather than only an error code.</li>
+        <li data-n="6">Sees requests made for an agent in the same queue as requests made for a person, showing which agent will read the data and which engineer asked for it. Approving one starts the waiting run; refusing it closes that run with her reason attached, so nothing is left waiting on a decision that has already been made.</li>
+      </ol>
+      <div class="without"><strong>Without this:</strong> access is granted in a chat message, with no lasting record of who asked, what for, or what they actually received. Whoever answers first becomes the approver, regardless of whether the data was theirs to give, and the rule against approving your own request exists only on paper.</div>
+    </div>
+  </details>
+
+  <details class="persona">
+    <summary>
+      <div class="persona-id"><span class="name">Sam</span><span class="role">Researcher</span></div>
+      <svg class="chevron" width="16" height="16" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </summary>
+    <div class="persona-body">
+      <ol class="flow">
+        <li data-n="1">Requests access to one specific dataset version, stating what the work is for and why it needs that data. Blanket requests for a whole department are not possible.</li>
+        <li data-n="2">Waits for the custodian of the department that owns the data, who is the only person able to approve it.</li>
+        <li data-n="3">Asks the system for access once approved. It checks whether the role already allows this, and if not, whether an approved and still-valid grant covers it.</li>
+        <li data-n="4">Receives a credential limited to that dataset alone, and only after the decision has been written to the audit record.</li>
+      </ol>
+      <div class="without"><strong>Without this:</strong> finding out who can currently read a dataset means asking everyone who might hold a key, and access granted for a short project quietly continues working long after the project ends.</div>
+    </div>
+  </details>
+
+  <details class="persona">
+    <summary>
+      <div class="persona-id"><span class="name">Priya</span><span class="role">Platform administrator</span></div>
+      <svg class="chevron" width="16" height="16" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </summary>
+    <div class="persona-body">
+      <ol class="flow">
+        <li data-n="1">Keeps the platform running: starting services, monitoring jobs and traces, and freeing up storage. She does that last one from a screen rather than from a shell: what each organisation is using, on which storage backend, what can be freed, and a rehearsal of exactly what a clean-up would remove before anything is removed.</li>
+        <li data-n="2">Closes a customer account when the relationship ends. From that point nothing new can be written, but everything already recorded stays readable, so the audit history outlives the contract. If a customer relationship needs to end completely rather than just close, a separate, deliberately alarming permanent-deletion path exists for that, and refuses to run against an active customer without an explicit override.</li>
+        <li data-n="3">Holds the most powerful account in the system, and deliberately has no standing access to the data it protects and no ability to approve access requests for anyone, including herself.</li>
+        <li data-n="4">Cannot change who holds which role, either. Anybody may ask to hold one and somebody else decides it, so the account that runs the system is not also the account that decides who may read what. The role that administers roles cannot be obtained from the running system at all: a second administrator is made the way the first one was, deliberately and from outside.</li>
+      </ol>
+      <div class="without"><strong>Without this:</strong> whoever can restart the services can usually also read everything those services protect. The account most worth attacking becomes the one with the fewest restrictions on it.</div>
+    </div>
+  </details>
+
+  <details class="persona">
+    <summary>
+      <div class="persona-id"><span class="name">Nakamura</span><span class="role">Data protection officer</span></div>
+      <svg class="chevron" width="16" height="16" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </summary>
+    <div class="persona-body">
+      <ol class="flow">
+        <li data-n="1">Reads every access decision the platform has recorded, both grants and refusals, across every department and customer she is responsible for overseeing.</li>
+        <li data-n="2">Reads no more of the underlying data than any other member of staff. Being able to review decisions is kept separate from being able to see what those decisions were about.</li>
+        <li data-n="3">Cannot approve access requests. This keeps her oversight independent of the decisions she is meant to be reviewing.</li>
+      </ol>
+      <div class="without"><strong>Without this:</strong> oversight depends on asking engineers to extract logs whenever a question comes up, and the person reviewing access decisions may well be one of the people making them.</div>
+    </div>
+  </details>
+
+  <details class="persona">
+    <summary>
+      <div class="persona-id"><span class="name">Imani</span><span class="role">De-identification reviewer</span></div>
+      <svg class="chevron" width="16" height="16" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </summary>
+    <div class="persona-body">
+      <ol class="flow">
+        <li data-n="1">Opens a queue of finished pipeline runs waiting on a decision. Each one shows what the run scored, what the check recommends, and why it recommends it.</li>
+        <li data-n="2">Reads the identifiers that survived redaction, one row each: which record and which character positions it sat at, what kind of identifier it was, how much of it was removed, and how it failed. This is the material the judgement is made on, so it is shown rather than summarised into a score.</li>
+        <li data-n="3">Promotes the result, or holds it back. Either way she writes a reason, and neither is possible without one.</li>
+        <li data-n="4">Cannot decide a run she started herself. The database refuses it, not only the interface.</li>
+        <li data-n="5">Is the only role that may make this call. A custodian owns the data and would be judging their own department's output; an administrator operates the system and holds no standing access to what it protects; and the data protection officer is the one later asked whether the release was sound, which is not a question you can answer about your own signature.</li>
+        <li data-n="6">Is under no deadline, and neither is the queue. Nothing expires, escalates or promotes itself while a decision is outstanding, which is also why nothing yet chases her when one has been waiting too long.</li>
+      </ol>
+      <div class="without"><strong>Without this:</strong> either a threshold releases data on its own, so a number stands in for a judgement about identifiers nobody looked at, or the release is agreed informally and there is no record of who accepted the risk, on what evidence, or when.</div>
+    </div>
+  </details>
+
+  <details class="persona">
+    <summary>
+      <div class="persona-id"><span class="name">De-identification pipeline</span><span class="role">Automated</span></div>
+      <svg class="chevron" width="16" height="16" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </summary>
+    <div class="persona-body">
+      <ol class="flow">
+        <li data-n="1">Works through seven steps to strip personal information out of audio recordings: transcribe, identify speakers, detect identifiers, hand off for human correction, replace the identifiers, measure what was missed, and write down what it found for a reviewer to decide on.</li>
+        <li data-n="2">Saves its progress after each record, so a step that fails partway through resumes rather than starting the whole job again.</li>
+        <li data-n="3">Is the only account that reads raw, unredacted data, because removing personal information from raw recordings is exactly what it exists to do.</li>
+        <li data-n="4">Records whether each run was started by a person or by a schedule, so there is never any doubt about what set it off.</li>
+        <li data-n="5">Releases nothing, whatever it scored. Its last step records what it found and the pipeline ends there, waiting on a reviewer, whether the score passed the bar or not.</li>
+        <li data-n="6">Gives every step of a run the same identifier, so a run that grows into more than one workflow is still one traceable execution rather than several unrelated ones.</li>
+      </ol>
+      <div class="without"><strong>Without this:</strong> the job that strips personal data either cannot reach the raw recordings it needs, or is given the same broad access as everything else. There is no way to say that a process is trusted to redact data without also trusting it with everything. And the process that decides whether its own output is safe to release is the same one that produced it.</div>
+    </div>
+  </details>
+
+  <details class="persona">
+    <summary>
+      <div class="persona-id"><span class="name">Triage agent</span><span class="role">Automated: AI agent</span></div>
+      <svg class="chevron" width="16" height="16" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </summary>
+    <div class="persona-body">
+      <p style="margin-top:1rem;">
+        <strong>The job it does.</strong> When the pipeline has finished detecting
+        personal information in a batch of recordings, it leaves a queue of
+        transcripts for a person to check, because a missed identifier is a leak
+        and only a human confirmation closes that risk. The queue is normally
+        far longer than reviewers can work through in a day. This agent reads
+        each waiting transcript and ranks it high, normal or low with a one-line
+        reason, so the riskiest are checked first instead of whatever happens to
+        be at the top of the list.
+      </p>
+      <p>
+        A transcript in that queue looks like this, with the identifiers still in
+        place because that is exactly what a reviewer is there to confirm:
+      </p>
+      <blockquote style="margin:0 0 1rem; padding:0.6rem 0.9rem; border-left:3px solid var(--paper-line); font-size:0.9rem; color:var(--ink-soft);">
+        clinician: Right. Let me pull up the notes. Eoghan Bell, born 12 February 1965, is that correct?
+      </blockquote>
+      <p>
+        It produces a judgement and nothing else. It cannot release data, change
+        anyone's permissions, or read a dataset on its own authority.
+      </p>
+      <ol class="flow">
+        <li data-n="1">Is deployed as one specific locked version, identified by the exact code it contains. Deploying a newer version while a run is in progress does not change which version that run is using.</li>
+        <li data-n="2">Cannot read the review queue by default. The queue holds unredacted transcripts, so it is held at the most restricted level, and this agent is trusted only with published data.</li>
+        <li data-n="3">Gets access the same way a person would. Starting a run against data it cannot read files a request naming the agent as the reader and the person who started the run as the one who asked. The custodian who owns that data approves it, and that approval is what sets the run going.</li>
+        <li data-n="4">Runs under an identity held by the surrounding program, not by the AI model. An instruction hidden in a transcript cannot change the identity its permissions are checked against.</li>
+        <li data-n="5">Raises any document that appears to address it to high priority, rather than doing what it says. Text aimed at the reader is itself a reason for a person to look at that document.</li>
+        <li data-n="6">Stops before its final step and reports that it is waiting for sign-off, rather than reporting success it has not earned. A different person accepts the findings, and the paused state is stored so that can happen days later.</li>
+        <li data-n="7">If it runs sandboxed rather than natively, and its version declares it needs a copy of the data, fetches that copy itself over an isolated network only after the same access decision above has been granted, capped at a fixed size before a single byte moves.</li>
+      </ol>
+      <div class="without"><strong>Without this:</strong> which version of the agent ran, what it read, and who let it continue past the decisive step are all answerable only by trusting whoever built it. An attempt to manipulate the agent through a planted instruction meets no independent check, because every check depends on output the model itself produced.</div>
+    </div>
+  </details>
+</section>
+
+<section id="stack">
+  <p class="eyebrow">11 &middot; Components, and why</p>
+  <h2 class="measure">What each component does, and why it was chosen over the alternatives</h2>
+  <p class="measure">
+    Everything here is under a permissive open-source licence, meaning it can be
+    used commercially without obligation. That was a hard requirement, and it ruled
+    out several otherwise strong options.
+  </p>
+
+  <div class="toolgrid">
+    <h3>Storage, control and policy</h3>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Component</th><th>What it does here</th><th>Why this one</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">SeaweedFS</td><td>Stores the actual data files, the default storage backend</td><td>It supports credentials limited to one folder, or to one organisation's own bucket, which is how a sensitivity level becomes a physical restriction rather than a rule the application is trusted to apply. Every organisation's ordinary ingest and agent-upload writes go through that organisation's own standing identity, never a shared admin key. It also speaks the same interface as Amazon S3, so moving to a cloud provider later needs no code changes.</td></tr>
+          <tr><td class="mono">Cloudflare R2</td><td>A second, optional storage backend, chosen per organisation</td><td>Zero egress fees, which matters because a sandboxed agent's own copy of its data is egress-heavy. Each organisation on R2 gets its own bucket and its own short-lived, bucket-scoped credential, the same shape SeaweedFS's own per-organisation identity takes.</td></tr>
+          <tr><td class="mono">PostgreSQL with pgvector</td><td>Stores all records, history and audit entries, plus similarity search</td><td>It can enforce rules the application cannot bypass, which is what makes locked datasets genuinely locked. The pgvector extension adds similarity search, avoiding a second database purely for that.</td></tr>
+          <tr><td class="mono">Temporal</td><td>Runs long jobs: the pipeline, imports and agent runs</td><td>It records the state of a job durably, so retries, timeouts and resuming after a crash are provable behaviour, not a description of intent. This is what lets an agent pause for days awaiting approval.</td></tr>
+          <tr><td class="mono">Open Policy Agent</td><td>Decides every access, approval and publication question</td><td>Keeping the rules in one testable place means access policy can be unit-tested like code. It returns a reason with every decision, which is what makes the audit trail meaningful rather than a list of yes and no.</td></tr>
+          <tr><td class="mono">Ory Kratos</td><td>Handles real sign-in for every human role</td><td>Chosen over Keycloak for its lower memory ceiling on a single machine. An identity always comes from a session Kratos issued, never from a name the caller supplies.</td></tr>
+          <tr><td class="mono">FastAPI</td><td>The single interface everything else goes through</td><td>It validates incoming data against a declared shape automatically, so malformed requests are rejected before reaching any logic. Keeping this layer thin was deliberate: rules belong in the policy engine and the database, not scattered here.</td></tr>
+          <tr><td class="mono">cryptography (Python)</td><td>Encrypts individual records and stored credentials</td><td>It is the standard, well-reviewed Python library for this, and using a per-record key is what allows permanent deletion without altering any locked dataset.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Removing personal information from recordings</h3>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Component</th><th>What it does here</th><th>Why this one</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">faster-whisper</td><td>Turns audio into text</td><td>It reports the exact timing of every word, which is required to mute the right moment in the audio and not just the text. It also accepts a list of expected names to improve accuracy on them.</td></tr>
+          <tr><td class="mono">pyannote.audio</td><td>Works out who is speaking when</td><td>Knowing which speaker said what gives the transcript a turn structure, which improves both detection and readability of the result.</td></tr>
+          <tr><td class="mono">Presidio, spaCy and GLiNER</td><td>Three separate detectors that find personal information</td><td>They fail in different ways. Presidio matches known patterns such as phone numbers, spaCy recognises names it was trained on, and GLiNER catches categories nobody trained it for. Combining all three finds substantially more than any one alone, which matters because a single miss is a leak.</td></tr>
+          <tr><td class="mono">Piper</td><td>Generates replacement speech</td><td>Silencing a name leaves an obvious gap and changes the length of the recording. Generating substitute speech of matching duration keeps the audio usable for training.</td></tr>
+          <tr><td class="mono">Label Studio</td><td>Lets a person correct what the detectors found</td><td>It can be pre-filled with the detectors' output, so reviewers correct existing marks rather than starting from an empty transcript, which is far faster and more consistent.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Agents, models and monitoring</h3>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Component</th><th>What it does here</th><th>Why this one</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">LangGraph</td><td>Defines the agent's steps and where it pauses</td><td>The agent's possible paths are written out explicitly rather than left to the model to decide, so the approval pause is a property of the structure. The model cannot skip it. It also saves the paused state so a run can be resumed later.</td></tr>
+          <tr><td class="mono">Ollama</td><td>Runs the AI model</td><td>The model runs on the machine's own graphics card, so no data or prompt is ever sent to an external service. For regulated data this is often the difference between a system being permissible and not.</td></tr>
+          <tr><td class="mono">OpenTelemetry and Jaeger</td><td>Records and displays what happened during a run</td><td>OpenTelemetry is a vendor-neutral standard, so the monitoring backend can be swapped without changing the application. Each trace is tagged with the sensitivity of the data involved, making it visible if sensitive data reaches a place it should not.</td></tr>
+          <tr><td class="mono">MLflow</td><td>Stores measurement results from pipeline runs</td><td>It is the established open tool for tracking runs and their scores, and it gives the release decision in section 6 a permanent record to point back to. It has no sign-in of its own here, so what it is given is deliberately limited: the position of each identifier that leaked, never the identifier itself.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Design patterns used</h3>
+    <ul class="plain">
+      <li><strong>Rules as testable code, not as instructions to the model.</strong> Access decisions are evaluated by the policy engine against an assigned identity. The AI model is never asked to respect a rule, because anything it is asked can also be argued out of it.</li>
+      <li><strong>Human approval built into the structure.</strong> The pause before a significant action is part of how the agent is defined, so it cannot be skipped by the model deciding it is unnecessary.</li>
+      <li><strong>Durable execution.</strong> A paused agent run is stored, not held in memory, so an approval that arrives days later resumes the run without repeating the work already done.</li>
+      <li><strong>Versioning code by its content, the same way data is versioned.</strong> An agent version is identified by the exact source it was built from, which is the approach MLflow and LangSmith take for tracking models and prompts.</li>
+      <li><strong>Several detectors instead of one.</strong> Three detection methods that fail differently are combined, because relying on a single model means inheriting every category it happens to be weak at.</li>
+      <li><strong>Layered defence against prompt injection.</strong> The agent's identity is held outside the model, permissions are rechecked on every single action, and every attempt is recorded. An injected instruction therefore has nothing to escalate into and no way to hide the attempt.</li>
+      <li><strong>Identity comes from a session, never from a request body.</strong> Every endpoint that approves, rejects or revokes something reads who is asking from a session Kratos issued, never from a field the caller filled in.</li>
+      <li><strong>Credential minting isolated per storage backend, and never handed to untrusted code.</strong> Each storage backend has its own module that knows how to mint a short-lived, scoped credential; a sandboxed agent never receives one directly; it can only trigger a copy the trusted worker fetches on its behalf.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="cloud">
+  <p class="eyebrow">12 &middot; Moving to a cloud</p>
+  <h2 class="measure">How this would map onto Amazon, Microsoft, Google or Oracle</h2>
+  <p class="measure">
+    Nothing here is tied to running on one machine. Each component was chosen so
+    that a managed cloud service can take its place, and in most cases the
+    replacement speaks the same interface, so the application code does not change.
+    The table below is a starting point for that conversation, not a migration plan.
+  </p>
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr><th>What it does</th><th>Today</th><th>Amazon (AWS)</th><th>Microsoft (Azure)</th><th>Google (GCP)</th><th>Oracle (OCI)</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Stores data files</td><td>SeaweedFS, or Cloudflare R2</td>
+          <td>S3</td><td>Blob Storage</td><td>Cloud Storage</td><td>Object Storage</td>
+        </tr>
+        <tr>
+          <td>Records, history and audit</td><td>PostgreSQL</td>
+          <td>Aurora PostgreSQL</td><td>Database for PostgreSQL</td><td>Cloud SQL or AlloyDB</td><td>Database with PostgreSQL</td>
+        </tr>
+        <tr>
+          <td>Similarity search</td><td>pgvector</td>
+          <td>pgvector on Aurora, or OpenSearch</td><td>pgvector, or AI Search</td><td>Vertex AI Vector Search</td><td>Database 23ai vector search</td>
+        </tr>
+        <tr>
+          <td>Long-running jobs</td><td>Temporal</td>
+          <td>Step Functions, or Temporal Cloud</td><td>Durable Functions</td><td>Workflows</td><td>Resource Manager, or Temporal Cloud</td>
+        </tr>
+        <tr>
+          <td>Access rules</td><td>Open Policy Agent</td>
+          <td>Verified Permissions</td><td>Run Open Policy Agent yourself</td><td>Run Open Policy Agent yourself</td><td>Run Open Policy Agent yourself</td>
+        </tr>
+        <tr>
+          <td>Authentication</td><td>Ory Kratos</td>
+          <td>Cognito</td><td>Entra ID, or Azure AD B2C</td><td>Identity Platform</td><td>IAM Identity Domains</td>
+        </tr>
+        <tr>
+          <td>Encryption keys</td><td>Local key file</td>
+          <td>KMS</td><td>Key Vault</td><td>Cloud KMS</td><td>Vault</td>
+        </tr>
+        <tr>
+          <td>Running the AI model</td><td>Ollama</td>
+          <td>Bedrock, or SageMaker</td><td>Azure OpenAI, or AI Foundry</td><td>Vertex AI</td><td>Generative AI Service</td>
+        </tr>
+        <tr>
+          <td>Speech to text</td><td>faster-whisper</td>
+          <td>Transcribe</td><td>AI Speech</td><td>Speech-to-Text</td><td>Speech</td>
+        </tr>
+        <tr>
+          <td>Monitoring and traces</td><td>Jaeger</td>
+          <td>X-Ray</td><td>Application Insights</td><td>Cloud Trace</td><td>Application Performance Monitoring</td>
+        </tr>
+        <tr>
+          <td>Running the containers</td><td>Docker Compose</td>
+          <td>ECS or EKS</td><td>Container Apps or AKS</td><td>Cloud Run or GKE</td><td>Container Instances or OKE</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>What to keep in mind before doing it</h3>
+  <ul class="plain">
+    <li><strong>Some swaps are almost free, others are a rewrite.</strong> Storage and the database change by configuration alone, because the interfaces match. Replacing Temporal or the policy engine with a cloud-specific equivalent means rewriting how jobs and rules are expressed, which is real work.</li>
+    <li><strong>Keeping PostgreSQL matters more than it looks.</strong> Several guarantees, including locked datasets and refusing writes to a closed account, are enforced by the database itself. A managed PostgreSQL service preserves them. Moving to a different kind of database would mean rebuilding those protections in application code, where they are easier to bypass.</li>
+    <li><strong>Using a hosted AI model changes what you can process.</strong> Running the model locally means no data leaves the organisation. Sending prompts to a hosted model may be fine for some data and prohibited for other data, and that decision usually belongs to legal and compliance rather than engineering.</li>
+    <li><strong>Cloud access controls do not replace this system's.</strong> Cloud identity services decide who may reach a service. They do not record why a particular person was granted a particular dataset for a particular purpose, which is the question this platform exists to answer.</li>
+    <li><strong>Staying portable is an option.</strong> Every component here also runs on a cloud provider's plain virtual machines or container service. That keeps the system movable between providers, at the cost of operating it yourself instead of consuming a managed service.</li>
+  </ul>
+</section>
+
+<section id="guides">
+  <p class="eyebrow">13 &middot; Guided walkthroughs</p>
+  <h2 class="measure">Real screens, from real live runs</h2>
+  <p class="measure">
+    Everything above describes the platform in the abstract. Each guide below is a real,
+    unedited screenshot from an actual session, step by step, following one story from
+    sign-in to a finished, governed run.
+  </p>
+  <div class="grid grid-3">
+    <div class="card">
+      <span class="tag">HEALTHCARE &middot; EXAMPLE ORGANISATION</span>
+      <h4>A patient consultation, de-identified and released</h4>
+      <p>A cardiology recording moves through registration, a real de-identification pipeline, a
+      human reviewer's gate decision, a researcher's access request, and an AI agent that has to
+      ask for access the same way a person would. 31 steps.</p>
+      <p><a href="healthcare-walkthrough.html">Open the healthcare walkthrough &rarr;</a></p>
+    </div>
+    <div class="card">
+      <span class="tag">FINANCE &middot; FINANCE ORGANISATION</span>
+      <h4>Card transactions, scored for fraud</h4>
+      <p>A fraud operations team registers a transaction batch, seals it, and lets a scoring
+      agent work the raw data under a request its own department's custodian decides on, with a
+      second custodian's queue kept completely separate. 13 steps.</p>
+      <p><a href="finance-walkthrough.html">Open the finance walkthrough &rarr;</a></p>
+    </div>
+    <div class="card">
+      <span class="tag">CUSTOM PIPELINE &middot; EXAMPLE ORGANISATION</span>
+      <h4>A pipeline the platform never shipped</h4>
+      <p>Devi, a data engineer in Cardiology, registers her own pipeline checking that a
+      cardiology note carries the fields Cardiology needs for its own quality reporting. It is
+      held to the same rules as any other dataset: sealed, requested, granted by Cardiology's
+      own custodian, and released only after the same gate decision every pipeline ends in.</p>
+      <p><a href="custom-pipeline-walkthrough.html">Open the custom pipeline walkthrough &rarr;</a></p>
+    </div>
+    <div class="card">
+      <span class="tag">PEOPLE &middot; EXAMPLE ORGANISATION</span>
+      <h4>Who holds which role</h4>
+      <p>A researcher asks to hold a role and cannot decide their own ask. The platform
+      administrator, who runs the system, is refused when she tries to grant it. A custodian
+      grants it instead, and it arrives marked as never reviewed. 9 steps.</p>
+      <p><a href="people-administration-walkthrough.html">Open the role administration walkthrough &rarr;</a></p>
+    </div>
+  </div>
+  <p class="measure" style="margin-top:2.25rem">
+    Running it on your own machine: every local address and who to sign in
+    as are generated for you, not published here, since they name real
+    local ports and seeded login details. Start the stack, then run
+    <code>docs/tools/generate_services_page.py</code> (or just start
+    <code>start-dev.ps1</code>, which does it for you) and open the two
+    pages it writes under <code>docs/internal/dev/</code>.
+  </p>
+</section>
+
+</main>
+</div>
+
+<footer>
+  Every claim on this page can be traced to a verification script in the <code>verify/</code> folder or to the database definition in <code>platform/schema.sql</code>. This page itself lives at <code>docs/public/walkthroughs/feature-walkthrough.html</code>.
+</footer>

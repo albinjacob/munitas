@@ -1,0 +1,317 @@
+{
+  "boundary_prober": {
+    "agent_id": "ca4ce2af-fd36-4f77-887c-27205d6d63db",
+    "run_id": "f98fb54f-eb0b-499b-9b73-02983b3e2441",
+    "own_dataset_version_id": "552adf4a-6beb-486e-8470-760f6e564640",
+    "other_dataset_version_id": "804119c4-11aa-455a-a68d-1a06eb927216",
+    "run": {
+      "id": "f98fb54f-eb0b-499b-9b73-02983b3e2441",
+      "tenant_id": "canary",
+      "agent_id": "ca4ce2af-fd36-4f77-887c-27205d6d63db",
+      "agent_version_id": "c765d76c-1b84-4191-9831-8679211fbf40",
+      "status": "succeeded",
+      "purpose": "boundary probe",
+      "requested_by": "canary-engineer",
+      "tool_calls": 0,
+      "halted_reason": null,
+      "error": null,
+      "started_at": "2026-08-07 20:50:08.741466+00:00",
+      "ended_at": "2026-08-07 20:50:23.610217+00:00",
+      "approved_by": null,
+      "approved_at": null,
+      "lease_request_id": null,
+      "findings": [
+        {
+          "marker": "boundary-prober",
+          "own_result": "granted",
+          "own_status": 200,
+          "other_result": "refused (correct)",
+          "other_status": 403,
+          "own_dataset_version_id": "552adf4a-6beb-486e-8470-760f6e564640",
+          "other_dataset_version_id": "804119c4-11aa-455a-a68d-1a06eb927216"
+        }
+      ],
+      "dataset_version_id": "552adf4a-6beb-486e-8470-760f6e564640",
+      "execution_mode": "sandboxed",
+      "agent_version": 1,
+      "code_hash": "sha256:e30816b17a0a8038039a8515225c6f40a033ceea79ac5614b6d7c12aba1b27c4",
+      "agent_name": "boundary-prober-dfcdf990",
+      "requested_by_label": "Canary engineer",
+      "decisions": [
+        {
+          "id": 1722,
+          "at": "2026-08-07 20:50:21.801845+00:00",
+          "dataset_version_id": "552adf4a-6beb-486e-8470-760f6e564640",
+          "requested_class": "GA",
+          "allowed": true,
+          "reasons": [
+            "granted by role"
+          ],
+          "phase": "policy"
+        },
+        {
+          "id": 1723,
+          "at": "2026-08-07 20:50:22.028811+00:00",
+          "dataset_version_id": "552adf4a-6beb-486e-8470-760f6e564640",
+          "requested_class": "GA",
+          "allowed": true,
+          "reasons": [
+            "granted Read:munitas/canary/1fb61237-7a12-4463-a748-d0564a810e7f/v1/*"
+          ],
+          "phase": "grant"
+        },
+        {
+          "id": 1724,
+          "at": "2026-08-07 20:50:22.094460+00:00",
+          "dataset_version_id": "804119c4-11aa-455a-a68d-1a06eb927216",
+          "requested_class": "GA",
+          "allowed": false,
+          "reasons": [
+            "dataset version is outside the scope this run was launched for"
+          ],
+          "phase": "policy"
+        }
+      ]
+    }
+  },
+  "slow_poke": {
+    "agent_id": "703c0d38-23c6-412b-a74f-4be00df43a75",
+    "run_id": "3347cecb-2016-4046-8510-34b67e6320f7",
+    "dataset_version_id": "552adf4a-6beb-486e-8470-760f6e564640",
+    "timeout_seconds": 8,
+    "run": {
+      "id": "3347cecb-2016-4046-8510-34b67e6320f7",
+      "tenant_id": "canary",
+      "agent_id": "703c0d38-23c6-412b-a74f-4be00df43a75",
+      "agent_version_id": "5a17d774-7461-444e-ab66-df3f4350c02f",
+      "status": "failed",
+      "purpose": "budget ceiling check",
+      "requested_by": "canary-engineer",
+      "tool_calls": 0,
+      "halted_reason": null,
+      "error": "the run exceeded its 8s wall-clock ceiling and was killed",
+      "started_at": "2026-08-07 20:50:30.280872+00:00",
+      "ended_at": "2026-08-07 20:50:43.449157+00:00",
+      "approved_by": null,
+      "approved_at": null,
+      "lease_request_id": null,
+      "findings": [],
+      "dataset_version_id": "552adf4a-6beb-486e-8470-760f6e564640",
+      "execution_mode": "sandboxed",
+      "agent_version": 1,
+      "code_hash": "sha256:1edb60ebf86ae95530f6a78fee536091edf3e9a46fcd563ba4e0e190e6195cba",
+      "agent_name": "slow-poke-2474e238",
+      "requested_by_label": "Canary engineer",
+      "decisions": []
+    }
+  },
+  "live_triage_canary": {
+    "agent_id": "958d2a36-b15d-4caa-86bc-f41ec15d4221",
+    "run_id": "2a117795-f815-4425-911f-f6a7852bbc49",
+    "dataset_version_id": "9726d7da-897c-4f6c-9478-6aca48095cfb",
+    "dataset_id": "8bbee40d-6e28-466a-9c23-16239544ab97",
+    "object_key": "canary/8bbee40d-6e28-466a-9c23-16239544ab97/v1/label-studio-tasks.json",
+    "preflight": {
+      "dataset_version_id": "9726d7da-897c-4f6c-9478-6aca48095cfb",
+      "availability_class": "RAW",
+      "allowed": false,
+      "reasons": [
+        "no role reaches class RAW"
+      ],
+      "needs_access_request": true,
+      "approver_label": "Canary custodian",
+      "department_name": "Verification",
+      "dataset_name": "test-agents-queue-8b347a3e"
+    },
+    "run_after_access_approval": {
+      "id": "2a117795-f815-4425-911f-f6a7852bbc49",
+      "tenant_id": "canary",
+      "agent_id": "958d2a36-b15d-4caa-86bc-f41ec15d4221",
+      "agent_version_id": "e63c3e1b-4dfa-468c-b288-172cee6ca494",
+      "status": "awaiting_approval",
+      "purpose": "test agent: live triage over a real, freshly seeded review queue",
+      "requested_by": "canary-engineer",
+      "tool_calls": 2,
+      "halted_reason": null,
+      "error": null,
+      "started_at": "2026-08-07 20:50:56.173167+00:00",
+      "ended_at": null,
+      "approved_by": null,
+      "approved_at": null,
+      "lease_request_id": "39c18645-deb8-4478-997c-63fab4e71c72",
+      "findings": [
+        {
+          "reason": "routine review",
+          "document": "enc-0001",
+          "priority": "normal",
+          "ranked_by": "rules"
+        },
+        {
+          "reason": "routine review",
+          "document": "enc-0002",
+          "priority": "normal",
+          "ranked_by": "rules"
+        },
+        {
+          "reason": "contains text addressed to the agent",
+          "document": "enc-0003",
+          "priority": "high",
+          "ranked_by": "rules"
+        },
+        {
+          "reason": "routine review",
+          "document": "enc-0004",
+          "priority": "normal",
+          "ranked_by": "rules"
+        }
+      ],
+      "dataset_version_id": "9726d7da-897c-4f6c-9478-6aca48095cfb",
+      "execution_mode": "native",
+      "agent_version": 1,
+      "code_hash": "declared:test-agents-953eb3fa",
+      "agent_name": "live-triage-canary-0241b9e5",
+      "requested_by_label": "Canary engineer",
+      "decisions": [
+        {
+          "id": 1725,
+          "at": "2026-08-07 20:51:00.201354+00:00",
+          "dataset_version_id": "9726d7da-897c-4f6c-9478-6aca48095cfb",
+          "requested_class": "RAW",
+          "allowed": true,
+          "reasons": [
+            "granted by lease 8750b86a-67b7-4b1b-a930-29f34fac35a6"
+          ],
+          "phase": "policy"
+        },
+        {
+          "id": 1726,
+          "at": "2026-08-07 20:51:00.278800+00:00",
+          "dataset_version_id": "9726d7da-897c-4f6c-9478-6aca48095cfb",
+          "requested_class": "RAW",
+          "allowed": true,
+          "reasons": [
+            "granted Read:munitas/canary/8bbee40d-6e28-466a-9c23-16239544ab97/v1/*"
+          ],
+          "phase": "grant"
+        },
+        {
+          "id": 1727,
+          "at": "2026-08-07 20:51:02.459474+00:00",
+          "dataset_version_id": "9726d7da-897c-4f6c-9478-6aca48095cfb",
+          "requested_class": "RAW",
+          "allowed": true,
+          "reasons": [
+            "granted by lease 8750b86a-67b7-4b1b-a930-29f34fac35a6"
+          ],
+          "phase": "policy"
+        },
+        {
+          "id": 1728,
+          "at": "2026-08-07 20:51:02.506735+00:00",
+          "dataset_version_id": "9726d7da-897c-4f6c-9478-6aca48095cfb",
+          "requested_class": "RAW",
+          "allowed": true,
+          "reasons": [
+            "granted Read:munitas/canary/8bbee40d-6e28-466a-9c23-16239544ab97/v1/*"
+          ],
+          "phase": "grant"
+        }
+      ]
+    },
+    "run_after_signoff_approval": {
+      "id": "2a117795-f815-4425-911f-f6a7852bbc49",
+      "tenant_id": "canary",
+      "agent_id": "958d2a36-b15d-4caa-86bc-f41ec15d4221",
+      "agent_version_id": "e63c3e1b-4dfa-468c-b288-172cee6ca494",
+      "status": "succeeded",
+      "purpose": "test agent: live triage over a real, freshly seeded review queue",
+      "requested_by": "canary-engineer",
+      "tool_calls": 2,
+      "halted_reason": null,
+      "error": null,
+      "started_at": "2026-08-07 20:50:56.173167+00:00",
+      "ended_at": "2026-08-07 20:51:07.256293+00:00",
+      "approved_by": "canary-custodian",
+      "approved_at": "2026-08-07 20:51:06.547105+00:00",
+      "lease_request_id": "39c18645-deb8-4478-997c-63fab4e71c72",
+      "findings": [
+        {
+          "reason": "routine review",
+          "document": "enc-0001",
+          "priority": "normal",
+          "ranked_by": "rules"
+        },
+        {
+          "reason": "routine review",
+          "document": "enc-0002",
+          "priority": "normal",
+          "ranked_by": "rules"
+        },
+        {
+          "reason": "contains text addressed to the agent",
+          "document": "enc-0003",
+          "priority": "high",
+          "ranked_by": "rules"
+        },
+        {
+          "reason": "routine review",
+          "document": "enc-0004",
+          "priority": "normal",
+          "ranked_by": "rules"
+        }
+      ],
+      "dataset_version_id": "9726d7da-897c-4f6c-9478-6aca48095cfb",
+      "execution_mode": "native",
+      "agent_version": 1,
+      "code_hash": "declared:test-agents-953eb3fa",
+      "agent_name": "live-triage-canary-0241b9e5",
+      "requested_by_label": "Canary engineer",
+      "decisions": [
+        {
+          "id": 1725,
+          "at": "2026-08-07 20:51:00.201354+00:00",
+          "dataset_version_id": "9726d7da-897c-4f6c-9478-6aca48095cfb",
+          "requested_class": "RAW",
+          "allowed": true,
+          "reasons": [
+            "granted by lease 8750b86a-67b7-4b1b-a930-29f34fac35a6"
+          ],
+          "phase": "policy"
+        },
+        {
+          "id": 1726,
+          "at": "2026-08-07 20:51:00.278800+00:00",
+          "dataset_version_id": "9726d7da-897c-4f6c-9478-6aca48095cfb",
+          "requested_class": "RAW",
+          "allowed": true,
+          "reasons": [
+            "granted Read:munitas/canary/8bbee40d-6e28-466a-9c23-16239544ab97/v1/*"
+          ],
+          "phase": "grant"
+        },
+        {
+          "id": 1727,
+          "at": "2026-08-07 20:51:02.459474+00:00",
+          "dataset_version_id": "9726d7da-897c-4f6c-9478-6aca48095cfb",
+          "requested_class": "RAW",
+          "allowed": true,
+          "reasons": [
+            "granted by lease 8750b86a-67b7-4b1b-a930-29f34fac35a6"
+          ],
+          "phase": "policy"
+        },
+        {
+          "id": 1728,
+          "at": "2026-08-07 20:51:02.506735+00:00",
+          "dataset_version_id": "9726d7da-897c-4f6c-9478-6aca48095cfb",
+          "requested_class": "RAW",
+          "allowed": true,
+          "reasons": [
+            "granted Read:munitas/canary/8bbee40d-6e28-466a-9c23-16239544ab97/v1/*"
+          ],
+          "phase": "grant"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,14 @@
+# Host-side, not containerised. The renderer runs natively so it can use the
+# GPU later in slice 3 without CUDA-in-Docker friction.
+#
+# Install against the interpreter you will actually run, not whatever `pip`
+# resolves to. On this machine `pip` belongs to Python 3.13 while `python` is
+# 3.14, so `python -m pip install -r gen/requirements.txt` is the correct form
+# and plain `pip install` silently installs into the wrong interpreter.
+
+piper-tts==1.6.0    # MIT. Speech synthesis.
+numpy>=1.26         # Audio concatenation and silence padding.
+
+# Text generation and the ground-truth answer key need neither of these. If
+# Piper is unavailable, gen/synth.py and verify/v_corpus.py still work and the
+# text-scored half of V14 is unaffected.

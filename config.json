@@ -1,0 +1,23 @@
+{
+  "_comment": "Single source of truth for every host-side port this stack publishes. Edit a value here to resolve a conflict with something else already using that port on your machine, then re-run start-dev.ps1 (it regenerates the .env block docker-compose.yml reads before starting containers). Container-internal ports are not listed here on purpose: they're private to the Docker network and never conflict with anything on your host, so changing them buys nothing.",
+
+  "postgres": 5432,
+  "seaweedfs_s3": 8333,
+  "seaweedfs_filer": 8888,
+  "seaweedfs_master": 9333,
+  "temporal": 7233,
+  "temporal_ui": 8080,
+  "opa": 8181,
+  "mlflow": 5000,
+  "jaeger_ui": 16686,
+  "jaeger_otlp_grpc": 4317,
+  "jaeger_otlp_http": 4318,
+  "otel_collector_http": 4319,
+  "label_studio": 8081,
+  "munitas_api_http": 8000,
+  "munitas_api_https": 8443,
+  "kratos_public": 4433,
+  "kratos_admin": 4434,
+  "console_dev": 5173,
+  "console_preview": 3000
+}

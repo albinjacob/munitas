@@ -1,0 +1,25 @@
+# The quickstart worker (worker/lite_worker.py), run as its own Docker Compose
+# service (docker-compose.yml's `worker-lite`) rather than on the host. Needs
+# only what the GPU-free governance story touches: registering pipeline runs,
+# the count_records starter pipeline, an operator DAG's gate step, and an
+# operator DAG's sandboxed script step. No GPU, no ML stack, no CUDA image.
+#
+# Deliberately the same shape as worker/requirements-sandbox.txt (the WSL2
+# sandbox worker's own slim dependency set), plus boto3: this worker also
+# reads and writes dataset versions through platform_client.py, which the
+# WSL2 sandbox worker never does (worker/sandbox_worker.py's own docstring
+# explains why: it takes _db from worker/db.py instead). Pins match
+# worker/requirements.txt so behaviour is identical to the host worker's,
+# not a second, drifting copy.
+
+temporalio==1.7.0        # MIT. Durable workflow client and worker.
+httpx==0.27.2            # BSD. Talking to the control plane.
+boto3==1.35.24           # Apache 2.0. S3 against SeaweedFS (platform_client.py).
+docker==7.1.0            # Apache 2.0. Launches and supervises a DAG's own
+                         # sandboxed script-step containers. Also pulls in
+                         # requests and urllib3, both imported directly by
+                         # worker/sandbox_run.py; neither is pinned here or
+                         # in worker/requirements.txt because both worker's
+                         # dependency lists leave them to the docker
+                         # package's own resolution, unchanged from there.
+psycopg[binary]==3.2.1   # LGPL 3. Direct Postgres access (worker/db.py).

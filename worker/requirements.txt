@@ -1,0 +1,50 @@
+# The worker runs natively on the host, not in a container, so it reaches the
+# RTX 2070 SUPER without CUDA-in-Docker friction. It talks to the Compose
+# services over localhost.
+#
+# Install with `python -m pip`, not `pip`: on this machine those are different
+# interpreters and plain `pip` installs into the wrong one.
+
+temporalio==1.7.0        # MIT. Durable workflow client and worker.
+httpx==0.27.2            # BSD. Talking to the control plane.
+boto3==1.35.24           # Apache 2.0. S3 against SeaweedFS.
+# Apache 2.0. Launches and supervises the throwaway containers a sandboxed
+# agent run executes in (sandbox_run.py): containers.run()/.wait()/.kill()
+# give race-free start/timeout/kill handling, which a raw `docker` CLI
+# subprocess call would have to reimplement by hand.
+docker==7.1.0
+# Was already present transitively (gliner/spacy pull it in for model
+# weights); pinned explicitly now that hf_ingest_activities.py calls it
+# directly for resumable, bounded-concurrency HuggingFace downloads.
+huggingface_hub>=0.34    # Apache 2.0.
+# Used directly by ensure_actions()/ensure_tenant() in run_pipeline.py and by
+# hf_ingest_activities.py, both writing straight to Postgres because the
+# control plane has no endpoint for that write yet.
+psycopg[binary]==3.2.1   # LGPL 3. Direct Postgres access.
+# Why this and not MemorySaver: agent/graph.py's build_graph() docstring.
+langgraph-checkpoint-postgres==2.0.25  # MIT. Postgres-backed LangGraph checkpointer.
+# The client, not the server. The server runs in Compose, and full mlflow drags
+# in pyarrow, which has no Python 3.13 wheel at this pin and fails to build.
+# The worker only ever logs runs and score cards, so the client is all it needs.
+mlflow-skinny==2.16.2    # Apache 2.0. Score cards and run tracking.
+
+# 1.0.3 pins av<12, which has no Python 3.13 wheel and fails to build. 1.2.x
+# takes av 18, which does.
+faster-whisper==1.2.1    # MIT. ASR with word-level timings.
+presidio-analyzer==2.2.355  # MIT. Rule and pattern detection.
+# spaCy 3.8.2 is the first release with Python 3.13 wheels. 3.7.x tries to build
+# thinc from source and fails, which is what pinning an older version buys you.
+spacy==3.8.14            # MIT. Statistical NER, and Presidio's NLP engine.
+# 0.2.13 calls huggingface_hub's _from_pretrained with arguments that hub 1.x
+# removed, so it fails at model load rather than at install. 0.2.28 is current.
+gliner==0.2.28           # Apache 2.0. Zero-shot span detection.
+
+numpy>=1.26
+soundfile==0.12.1        # BSD. Reading and writing wav for redaction.
+
+# The spaCy model is not a pip dependency and must be fetched separately:
+#   python -m spacy download en_core_web_lg
+#
+# GLiNER and Whisper weights download on first use into the Hugging Face cache.
+# Set HF_HOME to a folder under MUNITAS_DATA (for example MUNITAS_DATA/hf-cache)
+# to keep them off the system drive.

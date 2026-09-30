@@ -1,0 +1,60 @@
+{
+  "spans": [
+    {
+      "entity": "PERSON_PATIENT",
+      "start": 9,
+      "end": 14,
+      "text": "Arjun"
+    },
+    {
+      "entity": "PERSON_PATIENT",
+      "start": 63,
+      "end": 74,
+      "text": "Arjun Reddy"
+    },
+    {
+      "entity": "DATE_OF_BIRTH",
+      "start": 90,
+      "end": 123,
+      "text": "fourteenth of March, seventy four"
+    },
+    {
+      "entity": "ADDRESS",
+      "start": 158,
+      "end": 190,
+      "text": "twelve, Lakshmi Nagar, Bangalore"
+    },
+    {
+      "entity": "PHONE_NUMBER",
+      "start": 220,
+      "end": 230,
+      "text": "9876543210"
+    },
+    {
+      "entity": "PERSON_CLINICIAN",
+      "start": 2755,
+      "end": 2762,
+      "text": "Dr. Das"
+    },
+    {
+      "entity": "MEDICAL_RECORD_NUMBER",
+      "start": 3201,
+      "end": 3206,
+      "text": "48213"
+    },
+    {
+      "entity": "PERSON_CLINICIAN",
+      "start": 3931,
+      "end": 3938,
+      "text": "Dr. Das"
+    },
+    {
+      "entity": "PERSON_PATIENT",
+      "start": 3951,
+      "end": 3956,
+      "text": "Arjun"
+    }
+  ],
+  "reference_transcript": "Morning, Arjun. Come on in, take a seat. Good morning, Doctor. Arjun Reddy, date of birth fourteenth of March, seventy four? Yes, that's right. Address still twelve, Lakshmi Nagar, Bangalore? Yes, same. And this number, 9876543210, still current? Yes, correct. Any existing medical conditions I should know about, or medications you take regularly? No regular medicines, Doctor, and no major medical conditions that I know of. Good. So, what brings you in today? Well, for the last two days, I've been getting this pain in my chest. It comes and goes, mostly when I'm climbing stairs or walking fast. Okay. When you say pain, is it sharp, like a stabbing feeling, or more of a heavy, pressing sensation? Heaviness, definitely. Feels like a weight sitting right on my chest. Sometimes it even radiates up to my left shoulder. Does it only happen when you're exerting yourself, or have you felt it while resting, too? Mostly with exertion. But, actually, this morning it happened while I was just getting ready. Just brushing my teeth. How long does an episode usually last? Two, maybe three minutes. If I sit down and rest, it goes away on its own. Any sweating with it? Breathlessness? Nausea? Yeah, some sweating. And I definitely get winded, especially climbing up to our flat. We're on the third floor with no lift, so it's a bit of a trek. Right. Do you happen to know what your blood pressure's been running? We have a monitor at home, actually. I checked this morning and it was one fifty eight over ninety six. That's definitely elevated. Is that typical for you, or is this new? It's been up and down for about a year now, to be honest. I kind of ignored it. Sometimes it's totally normal, like one thirty over eighty four, so I didn't think much of it. So you've never been prescribed anything for your BP specifically? No. My brother takes tablets for his BP, but I never got around to getting mine properly checked out. What about family history? Any heart disease on either side, parents, siblings? My father had a heart attack at sixty two. Passed away ten years ago. I'm sorry to hear that. Do you smoke or drink? I used to smoke, but I quit five years ago. I'll have a drink occasionally, maybe once every two weeks. Alright. Given the chest heaviness with exertion, and the fact that it happened at rest this morning, combined with your BP and family history, I want to be cautious. We're going to run an ECG right now, and I'll order a lipid profile, blood sugar, and a troponin test. Okay, sure. Alright, the ECG looks clean for now, no acute changes, which is reassuring. But because of that episode this morning while brushing your teeth, we still need to be thorough with the blood work. Is it... do you think it's something serious, Dr. Das? I'm a bit worried. It could be linked to your blood pressure, or it might be early signs of reduced blood flow to the heart, what we call angina. Because it happened at rest, I don't want to take any chances. I'm going to start you on a low-dose aspirin today, alongside a medication to bring that blood pressure down. Okay, Doctor. Whatever you think is best. Let me just confirm your file before I write this up. Medical record number 48213? Yes, that's right. I'm prescribing Amlodipine, five milligrams, once a day in the morning for your BP. And a daily low-dose Aspirin, which you should take after food. Don't skip these, alright? Amlodipine in the morning, Aspirin after food. Got it. Lifestyle-wise, cut back on salt, avoid deep fried foods, and take it easy on those stairs for now, no rushing up them. Once your test results are in, we'll talk about getting you on a daily walking routine. Will do, Doctor. I want to see you back here in three days with those reports. But listen to me carefully, if that chest pain becomes severe or doesn't go away after a few minutes of rest, go straight to the emergency room. Don't wait around. Understood. Thank you, Dr. Das. Take care, Arjun. See you in a few days.",
+  "hazard": false
+}

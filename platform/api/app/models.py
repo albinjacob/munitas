@@ -1,0 +1,244 @@
+"""Request and response shapes.
+
+Validation lives here rather than in prose. A purpose that may not be empty is a
+constraint the schema enforces, the policy enforces, and this enforces, because
+the same rule stated in three places that can each reject is not duplication, it
+is depth.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Literal
+from uuid import UUID
+
+from pydantic import BaseModel, Field, model_validator
+
+CLASSES = Literal["RAW", "UNDER_REVIEW", "OPEN_FOR_ANNOTATION", "OPEN_FOR_TRAINING", "PUBLISHED"]
+
+
+class Field_(BaseModel):
+    name: str
+    type: str
+    format: str | None = None
+    sensitivity: Literal["none", "quasi", "direct", "phi"] = "none"
+    added_by: str
+
+
+class SchemaContractIn(BaseModel):
+    tenant_id: str
+    name: str
+    fields: list[Field_]
+    primary_key: list[str] = Field(min_length=1)
+
+
+class DatasetIn(BaseModel):
+    tenant_id: str
+    name: str
+
+
+class DatasetVersionIn(BaseModel):
+    tenant_id: str
+    dataset_id: str
+    schema_id: str
+    visibility_class: CLASSES
+    object_manifest: list[dict] = Field(default_factory=list)
+    record_count: int = 0
+    produced_by_run: str | None = None
+    # Literal default, not tenant-resolved: every existing fixture and
+    # pipeline caller of this lower-level endpoint keeps working
+    # unmodified, while a caller that wants a specific backend (verify's
+    # own U57 checks, a future console flow) can still name one explicitly.
+    storage_backend: Literal["seaweedfs", "r2"] = "seaweedfs"
+
+
+class ActionRunIn(BaseModel):
+    tenant_id: str
+    action_id: str
+    code_hash: str
+    image_digest: str
+    operator: str
+    idempotency_key: str
+    input_versions: list[str] = Field(default_factory=list)
+    params: dict = Field(default_factory=dict)
+    trigger_kind: Literal["manual", "scheduled"] = "manual"
+    # A registered human for a manual run, null for a scheduled one. Validated
+    # against the directory in the endpoint, not trusted here: this field says
+    # what was claimed, not what is true.
+    triggered_by: str | None = None
+    schedule_id: str | None = None
+    # Which pipeline run this step belongs to, so the steps of one run can be
+    # found together afterwards. Optional: plenty of runs are started outside a
+    # pipeline, and those genuinely belong to none.
+    pipeline_run_id: str | None = None
+
+
+class GateDecisionIn(BaseModel):
+    # Required, and not defaulted. A decision to widen access to clinical data
+    # with no reason recorded is exactly what the gate screen exists to stop.
+    reason: str = Field(min_length=1)
+    grant_roles: list[str] = Field(default_factory=list)
+
+
+class PipelineRunIn(BaseModel):
+    tenant_id: str
+    dataset: str
+    workflow_id: str
+    trigger_kind: str = "manual"
+    triggered_by: str | None = None
+    schedule_id: str | None = None
+    # Which dataset version(s) this run was actually started against, set
+    # once and never updated (see pipeline_run.input_versions's comment in
+    # schema.sql). Empty for a corpus run, which reads no existing version.
+    input_versions: list[str] = []
+    # The registered pipeline_action workload this run's task_credential.py
+    # token should be minted for. Optional: a caller that never presents a
+    # token back to /credentials (nothing today but this endpoint's one real
+    # caller does) has no reason to name one, and gets no token back.
+    principal: str | None = None
+
+
+class CredentialRequest(BaseModel):
+    principal: str
+    principal_kind: Literal["human", "workload"]
+    roles: list[str] = Field(min_length=1)
+    tenant_id: str
+    dataset_version_id: str
+    purpose: str = ""
+    agent_run_id: UUID | None = None
+    # Proof of possession for an agent_runtime principal naming a real run:
+    # a signed task_credential.py token, verified by signature and expiry in
+    # main.py's run-scope block, not compared against a stored value. The
+    # name stayed `run_secret` rather than being renamed to `task_credential`
+    # to avoid touching agent/identity.py and worker/sandbox_run.py's
+    # existing MUNITAS_RUN_SECRET plumbing for a change that is internal to
+    # what the string contains, not what carries it.
+    run_secret: str | None = None
+    # The same proof-of-possession token, for any other Type A workload
+    # (currently `pipeline_action`; see task_credential.py). Kept as its own
+    # field rather than overloading `run_secret`, since `agent_run_id` above
+    # is agent-specific and a pipeline task has no equivalent id to pair it
+    # with -- the token itself carries which action_run it is.
+    task_credential: str | None = None
+
+
+class WriteCredentialRequest(BaseModel):
+    """A registered pipeline_action workload asking to write into the next
+    version-location for a dataset it names.
+
+    `roles` stays required, the same shape as CredentialRequest, but is only
+    ever the unregistered-caller fallback that endpoint already documents --
+    the endpoint below requires a *registered* pipeline_action workload
+    before any of this is even read, so that fallback never actually fires
+    here. Narrower than CredentialRequest otherwise: no dataset_version_id
+    (the version being written does not exist yet, that is the point), no
+    agent_run_id or run_secret, since only pipeline_action -- a Type A
+    workload with a task_credential.py token -- can ever hold write access at
+    all. `dataset_id` names which dataset's next version; the prefix itself
+    is computed server-side from it, never taken from the caller.
+    """
+
+    principal: str
+    principal_kind: Literal["human", "workload"]
+    roles: list[str] = Field(min_length=1)
+    tenant_id: str
+    dataset_id: str
+    purpose: str = ""
+    task_credential: str
+
+
+class LeaseRequestIn(BaseModel):
+    tenant_id: str
+    principal: str
+    dataset_version_id: str
+    purpose: str = Field(min_length=1)
+    justification: str = Field(min_length=1)
+    # A standing request carries no TTL, and a bounded one always does; the
+    # validator below keeps the two from drifting apart before either reaches
+    # the database, where the same shape is enforced as a constraint.
+    standing: bool = False
+    ttl_hours: int | None = Field(default=None, ge=1, le=720)
+
+    @model_validator(mode="after")
+    def _ttl_matches_standing(self) -> "LeaseRequestIn":
+        if self.standing and self.ttl_hours is not None:
+            raise ValueError("a standing request carries no ttl_hours")
+        if not self.standing and self.ttl_hours is None:
+            raise ValueError("ttl_hours is required unless the request is standing")
+        return self
+
+
+class LeaseRejection(BaseModel):
+    # Required. A refusal without a reason tells the person who asked nothing
+    # about whether to ask again, ask differently, or stop asking.
+    reason: str = Field(min_length=1)
+
+
+class LeaseApprovalIn(BaseModel):
+    # "strict" (the only shape this platform had) covers the one purpose it
+    # names, and asks again the moment that purpose changes. "simple" is the
+    # custodian's own choice to trust this principal with this dataset
+    # version for any purpose while the lease lasts -- never the platform's
+    # default, and refused outright against RAW data regardless of what the
+    # custodian wants, the same guardrail the database itself enforces.
+    pattern: Literal["strict", "simple"] = "strict"
+
+
+class PromotionIn(BaseModel):
+    to_class: CLASSES
+    decided_by: str
+    decided_by_kind: Literal["human", "workload"]
+    # Score card ids in MLflow. Required, and not free text: a promotion without
+    # evidence is an assertion, and the promotion gate must point at a
+    # measurement.
+    gate_evidence: dict = Field(min_length=1)
+    grant_roles: list[str] = Field(default_factory=list)
+
+
+class RecordSealIn(BaseModel):
+    tenant_id: str
+    record_id: str
+    plaintext: str
+
+
+class RecordDestroyIn(BaseModel):
+    tenant_id: str
+    reason: str = Field(min_length=1)
+    requested_by: str = Field(min_length=1)
+
+
+class EndPipelineRun(BaseModel):
+    """How a pipeline run ended, as its own workflow reports it."""
+
+    status: Literal["succeeded", "failed", "cancelled", "unknown"]
+    error: str | None = Field(default=None, max_length=2000)
+
+
+class AccessPreviewIn(BaseModel):
+    dataset_ids: list[UUID] = Field(default_factory=list)
+    version_ids: list[UUID] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _something_to_preview(self) -> "AccessPreviewIn":
+        if not self.dataset_ids and not self.version_ids:
+            raise ValueError("name at least one dataset or version")
+        return self
+
+
+class VersionAccess(BaseModel):
+    mark: Literal["removed", "role", "lease", "pending", "ended", "ask", "no_approver"]
+    purpose: str | None = None
+    until: datetime | None = None
+    ended: Literal["expired", "revoked"] | None = None
+    ended_at: datetime | None = None
+    decider_label: str | None = None
+
+
+class DatasetAccess(BaseModel):
+    readable: int
+    total: int
+
+
+class AccessPreview(BaseModel):
+    versions: dict[str, VersionAccess]
+    datasets: dict[str, DatasetAccess]

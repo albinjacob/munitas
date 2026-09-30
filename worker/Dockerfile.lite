@@ -1,0 +1,35 @@
+# The GPU-free worker (worker/lite_worker.py). See that file's own
+# docstring for what runs here and why it needs neither a GPU nor the
+# host/WSL2 split worker/main.py and worker/sandbox_worker.py need on
+# Windows -- this container reaches its own Docker socket directly, over a
+# bind mount, on any OS.
+
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY requirements-lite.txt .
+RUN pip install --no-cache-dir -r requirements-lite.txt
+
+# The whole package, not a hand-picked subset of its files: worker/ also
+# holds modules this image never imports (agent_run_workflow.py,
+# hf_ingest_activities.py, and the rest of the real GPU pipeline's own
+# files), and leaving them out would risk breaking an import path nobody
+# tested rather than saving anything that matters -- none of it gets
+# imported unless something actually references it, and lite_worker.py
+# doesn't.
+COPY . ./worker
+
+# Runs as root, unlike platform/api/Dockerfile's own unprivileged
+# convention -- deliberately, not by oversight. This container reaches the
+# host's Docker socket to launch a DAG's sandboxed script-step containers,
+# and on native Linux that socket is normally owned by a `docker` group
+# whose GID varies by host and cannot be guessed at build time; getting it
+# wrong would fail silently for exactly the audience (someone trying this
+# platform for the first time) least equipped to debug a permission error
+# on a socket they don't know exists. The unprivileged unix user this
+# container never runs untrusted code as: that is still true here, the
+# code this container itself executes is this repository's own, and every
+# operator script it launches still runs in its own throwaway container
+# (worker/sandbox_run.py), not in this one.
+CMD ["python", "-m", "worker.lite_worker"]

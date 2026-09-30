@@ -1,0 +1,35 @@
+# OpenTelemetry collector. Traces carry the visibility class of the data the
+# span touched, which is what makes V11 checkable in Jaeger.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 2s
+  # Every span must declare the class of data it touched. A span without one is
+  # marked so it shows up rather than passing silently.
+  attributes/default_class:
+    actions:
+      - key: munitas.visibility_class
+        value: UNDECLARED
+        action: insert
+
+exporters:
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [attributes/default_class, batch]
+      exporters: [otlp/jaeger, debug]

@@ -1,0 +1,19 @@
+# cardiac-note-qc: checks that a cardiology note carries the structured
+# fields Cardiology needs for its own quality registry reporting (things
+# like ejection fraction, procedure type, and complications) before the
+# note goes anywhere else. The platform has no built-in pipeline for this
+# because it is specific to Cardiology's own reporting obligations, not a
+# general de-identification task.
+name: cardiac-note-qc
+steps:
+  - name: check_notes
+    kind: script
+    script: steps/check_notes.py
+
+  - name: decide
+    kind: gate
+    depends_on: [check_notes]
+    to_class: OPEN_FOR_ANNOTATION
+    inputs:
+      recommendation: "${steps.check_notes.recommendation}"
+      recommendation_reason: "${steps.check_notes.reason}"

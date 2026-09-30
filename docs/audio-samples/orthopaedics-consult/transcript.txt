@@ -1,0 +1,33 @@
+DOCTOR: Rahul, come on in. I hear you had a fall yesterday?
+PATIENT: Yeah, I was cycling and skidded on some gravel near my building. Landed right on my hand.
+DOCTOR: Show me where it hurts.
+PATIENT: Right here, on the outside of my wrist. It's been swelling since last night.
+DOCTOR: On a scale of one to ten, how bad is the pain right now?
+PATIENT: Maybe a seven. It was worse last night, closer to a nine.
+DOCTOR: Can you try wiggling your fingers for me?
+PATIENT: A little. It hurts to move them too much though.
+DOCTOR: Any numbness or tingling in your fingers?
+PATIENT: A bit of tingling in my thumb and index finger, actually.
+DOCTOR: Okay, that's worth noting. Any previous fractures on this arm, or anywhere else?
+PATIENT: No, this is my first one.
+DOCTOR: Good. I've got your X-ray up from downstairs. You've got a fracture in the distal radius, that's the larger bone right at the wrist. The good news is it's non-displaced, meaning the bone hasn't shifted out of alignment.
+PATIENT: So no surgery?
+DOCTOR: No surgery needed for this one. We'll put you in a cast for about six weeks. The tingling you mentioned is likely just swelling pressing on a nerve, but I want to keep an eye on it.
+PATIENT: That's a relief, honestly. I was dreading the idea of an operation.
+DOCTOR: Understandable. I'm going to apply a below-elbow cast today, right here in the room. It'll feel tight at first, that's normal, but call us immediately if your fingers turn blue, go numb completely, or the pain gets significantly worse.
+PATIENT: Okay, I'll watch for that.
+DOCTOR: Before I finalize your file, let me confirm a few details. Rahul Verma, date of birth third of November, ninety two?
+PATIENT: That's right.
+DOCTOR: And you're still at forty two, Karve Road, Pune?
+PATIENT: Yes, still there.
+DOCTOR: This number, nine one two three four, five six seven eight nine, still the one to reach you on?
+PATIENT: Yes, that's my number.
+DOCTOR: Perfect. Let me pull up your file. Medical record number three three nine one two?
+PATIENT: Yes, that's correct.
+DOCTOR: I'm prescribing Ibuprofen, four hundred milligrams, every eight hours with food for the swelling and pain, and Paracetamol in between if you need extra relief. Don't exceed the combined daily limit written on the sheet I'll hand you.
+PATIENT: Ibuprofen with food, every eight hours, and Paracetamol as needed. Got it.
+DOCTOR: I'm also referring you to physiotherapy, though that starts only after the cast comes off. For now, keep the arm elevated above your heart as much as you can for the next two to three days, that'll help with the swelling.
+PATIENT: Elevated, got it.
+DOCTOR: I want to see you back in two weeks to check the cast and take a follow-up X-ray. But if you get numbness that doesn't go away, real difficulty breathing, or the cast feels unbearably tight, don't wait for the appointment, come straight to emergency.
+PATIENT: Understood, Dr. Kapoor. Thank you.
+DOCTOR: Take care, Rahul. We'll get that cast on you now.

@@ -1,0 +1,21 @@
+# The sandboxed-agent worker (worker/sandbox_worker.py) runs inside the WSL2
+# distro, next to the Docker socket, and needs only what that one path touches:
+# no GPU, no ML stack, no agent.graph, no LangGraph. This is the deliberately
+# slim counterpart to worker/requirements.txt (the full host worker).
+#
+# The distro's system Python is 3.8.10, too old for these pins; provision a
+# modern Python venv with uv and install into it:
+#
+#   curl -LsSf https://astral.sh/uv/install.sh | sh
+#   uv venv --python 3.12 ~/.munitas/sandbox-venv
+#   uv pip install --python ~/.munitas/sandbox-venv/bin/python \
+#       -r worker/requirements-sandbox.txt
+#
+# Pins match worker/requirements.txt so the sandboxed path behaves identically
+# whether it ever ran in the host worker or here.
+
+temporalio==1.7.0        # MIT. Durable workflow client and worker.
+docker==7.1.0            # Apache 2.0. Launches and supervises the throwaway
+                         # containers a sandboxed run executes in.
+httpx==0.27.2            # BSD. Fetching uploaded code and dataset credentials.
+psycopg[binary]==3.2.1   # LGPL 3. Recording the run's outcome to Postgres.

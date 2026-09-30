@@ -1,0 +1,463 @@
+# Munitas: local MVP stack.
+#
+# Layout follows the plan: hot, latency-sensitive state on C: (NVMe) through
+# named volumes, bulk object data on P: (HDD) through a bind mount.
+#
+# Three networks. agentnet is marked internal, which is what makes the
+# deny-by-default egress claim testable without Cilium.
+
+name: munitas
+
+x-restart: &restart
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    <<: *restart
+    environment:
+      POSTGRES_USER: ${PG_USER:-munitas}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-munitas}
+      POSTGRES_DB: platform
+      POSTGRES_MULTIPLE_DATABASES: temporal,temporal_visibility,labelstudio,mlflow,kratos
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/init-databases.sh:/docker-entrypoint-initdb.d/00-init-databases.sh:ro
+      - ./platform/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      # After the schema, because it inserts into tables the schema creates.
+      # Only runs on an empty data directory; an existing volume needs it
+      # applied by hand, and the file says how.
+      - ./infra/postgres/seed-organisation.sql:/docker-entrypoint-initdb.d/02-seed-organisation.sql:ro
+      # The tenant every verification run writes into. Seeded here so a fresh
+      # machine has it: without it the scripts have nowhere of their own to go
+      # and end up back beside the demonstration organisation, which is the
+      # problem the split exists to fix.
+      - ./infra/postgres/seed-canary.sql:/docker-entrypoint-initdb.d/03-seed-canary.sql:ro
+      # A second worked example in a different industry (a card-payments
+      # company, not a hospital), so the platform doesn't read as
+      # healthcare-specific out of the box. See that file's own header.
+      - ./infra/postgres/seed-finance.sql:/docker-entrypoint-initdb.d/04-seed-finance.sql:ro
+    ports:
+      - "${PORT_POSTGRES:-5432}:5432"
+    networks: [control, data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-munitas} -d platform"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+
+  # Object storage. Volume data lives on P: because it is large and sequential.
+  seaweedfs:
+    image: chrislusf/seaweedfs:3.71
+    <<: *restart
+    # No -s3.config. With the identity document held in the filer namespace at
+    # /etc/iam/identity.json instead of a read-only file, the control plane can
+    # add a prefix grant at promotion time and SeaweedFS picks it up without a
+    # restart. A static file would make every grant a redeploy.
+    # -volume.max is a real constraint on per-tenant storage isolation, not a
+    # tuning detail. Every tenant bucket becomes its own SeaweedFS collection,
+    # and a collection draws volumes from this single fixed pool, so the cap is
+    # an upper bound on how many tenants can hold data at once. At the old
+    # value of 20 the pool was exhausted by two collections plus the shared
+    # bucket, and the failure surfaces as an S3 InternalError on write rather
+    # than as anything naming volumes, which reads like a broken credential.
+    #
+    # volumePreallocate=false matters just as much here: preallocation reserves
+    # volumeSizeLimitMB (1GB) of real disk per volume the moment it is created,
+    # so raising the cap while preallocating would reserve 100GB up front on a
+    # development machine. Off, a volume grows into its limit instead.
+    command: >
+      server -dir=/data -master.volumeSizeLimitMB=1024
+      -master.volumePreallocate=false
+      -volume.max=100 -filer -s3
+      -ip=seaweedfs
+    volumes:
+      - ${MUNITAS_DATA:?set MUNITAS_DATA in .env, see .env.example}/seaweed:/data
+      # How many storage volumes are created per batch when a tenant first
+      # writes. The default is seven per tenant, which is a ceiling of about
+      # fourteen tenants against -volume.max above, and the failure when the
+      # pool runs out names neither volumes nor the pool. The file explains
+      # the storage engine's own key names, which do not explain themselves.
+      - ./infra/seaweedfs/master.toml:/etc/seaweedfs/master.toml:ro
+    ports:
+      - "${PORT_SEAWEEDFS_S3:-8333}:8333"       # S3
+      - "${PORT_SEAWEEDFS_FILER:-8888}:8888"    # filer
+      - "${PORT_SEAWEEDFS_MASTER:-9333}:9333"   # master
+    networks: [data]
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  temporal:
+    image: temporalio/auto-setup:1.25.2
+    <<: *restart
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: ${PG_USER:-munitas}
+      POSTGRES_PWD: ${PG_PASSWORD:-munitas}
+      POSTGRES_SEEDS: postgres
+      # Listen on every network this container is attached to. Left to
+      # itself the server binds to whichever one address it finds first at
+      # start-up, which changes between restarts, and a client on the other
+      # network is then refused. The broadcast address is only used between
+      # this single node's own services.
+      BIND_ON_IP: 0.0.0.0
+      TEMPORAL_BROADCAST_ADDRESS: 127.0.0.1
+      # No DYNAMIC_CONFIG_FILE_PATH. The auto-setup image ships no file at the
+      # commonly quoted path, and pointing at a missing one makes the server
+      # exit at startup rather than fall back to defaults.
+    ports:
+      - "${PORT_TEMPORAL:-7233}:7233"
+    networks: [control, data]
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  temporal-ui:
+    image: temporalio/ui:2.32.0
+    <<: *restart
+    depends_on: [temporal]
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CORS_ORIGINS: http://localhost:${PORT_TEMPORAL_UI:-8080}
+    ports:
+      - "${PORT_TEMPORAL_UI:-8080}:8080"
+    networks: [control]
+
+  # Policy decisions. Bundle is mounted read-only; the API calls /v1/data.
+  opa:
+    image: openpolicyagent/opa:0.68.0
+    <<: *restart
+    command:
+      - "run"
+      - "--server"
+      - "--addr=0.0.0.0:8181"
+      - "--log-level=info"
+      - "/policy"
+    volumes:
+      - ./platform/policy:/policy:ro
+    ports:
+      - "${PORT_OPA:-8181}:8181"
+    networks: [control]
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+  mlflow:
+    # Not needed to see the governance model work end to end -- only
+    # started under the 'full' profile (`docker compose --profile full up`).
+    profiles: ["full"]
+    image: ghcr.io/mlflow/mlflow:v2.16.2
+    <<: *restart
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >
+      sh -c "pip install --no-cache-dir psycopg2-binary boto3 >/dev/null &&
+             mlflow server --host 0.0.0.0 --port 5000
+             --backend-store-uri postgresql://${PG_USER:-munitas}:${PG_PASSWORD:-munitas}@postgres:5432/mlflow
+             --default-artifact-root s3://munitas-mlflow/"
+    environment:
+      MLFLOW_S3_ENDPOINT_URL: http://seaweedfs:8333
+      AWS_ACCESS_KEY_ID: ${S3_ADMIN_KEY:-munitas-admin}
+      AWS_SECRET_ACCESS_KEY: ${S3_ADMIN_SECRET:-munitas-admin-secret}
+    ports:
+      - "${PORT_MLFLOW:-5000}:5000"
+    networks: [control, data]
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  jaeger:
+    # Tracing, not core governance behavior -- 'full' profile only, same as
+    # mlflow above.
+    profiles: ["full"]
+    image: jaegertracing/all-in-one:1.62.0
+    <<: *restart
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "${PORT_JAEGER_UI:-16686}:16686"          # UI
+      - "${PORT_JAEGER_OTLP_GRPC:-4317}:4317"     # OTLP gRPC
+      - "${PORT_JAEGER_OTLP_HTTP:-4318}:4318"     # OTLP HTTP
+    networks: [control, data, agentnet]
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  otel-collector:
+    # Feeds jaeger, so it follows jaeger into the 'full' profile.
+    profiles: ["full"]
+    image: otel/opentelemetry-collector-contrib:0.110.0
+    <<: *restart
+    command: ["--config=/etc/otel/config.yaml"]
+    volumes:
+      - ./infra/otel/config.yaml:/etc/otel/config.yaml:ro
+    depends_on: [jaeger]
+    ports:
+      - "${PORT_OTEL_COLLECTOR_HTTP:-4319}:4318"
+    networks: [control, data, agentnet]
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  label-studio:
+    # Human annotation UI, not needed to see registration/access/gate
+    # decisions work -- 'full' profile only.
+    profiles: ["full"]
+    image: heartexlabs/label-studio:1.13.1
+    <<: *restart
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DJANGO_DB: default
+      POSTGRE_NAME: labelstudio
+      POSTGRE_USER: ${PG_USER:-munitas}
+      POSTGRE_PASSWORD: ${PG_PASSWORD:-munitas}
+      POSTGRE_HOST: postgres
+      POSTGRE_PORT: 5432
+      LABEL_STUDIO_DISABLE_SIGNUP_WITHOUT_LINK: "false"
+      LABEL_STUDIO_HOST: http://localhost:${PORT_LABEL_STUDIO:-8081}
+    volumes:
+      - labelstudio:/label-studio/data
+    ports:
+      - "${PORT_LABEL_STUDIO:-8081}:8080"
+    networks: [control, data]
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+
+  munitas-api:
+    # Context is ./platform so the crypto package ships alongside the API.
+    build:
+      context: ./platform
+      dockerfile: api/Dockerfile
+    <<: *restart
+    depends_on:
+      postgres:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_started
+      temporal:
+        condition: service_started
+    environment:
+      PG_DSN: postgresql://${PG_USER:-munitas}:${PG_PASSWORD:-munitas}@postgres:5432/platform
+      MUNITAS_OPA_URL: http://opa:8181
+      S3_ENDPOINT: http://seaweedfs:8333
+      MUNITAS_FILER_URL: http://seaweedfs:8888
+      # Fixed at this container's own internal port, on purpose, never at
+      # ${PORT_MUNITAS_API_HTTP}: a verify/ script run via `docker compose
+      # exec -T munitas-api ...` is already inside this container, so it
+      # always means this container's own port 8000, regardless of which
+      # host port config.json publishes it under. verify/common.py's own
+      # fallback (used only when this is unset, i.e. a script run directly
+      # from the host) is the one that follows the configurable host port.
+      MUNITAS_VERIFY_API: http://localhost:8000
+      # The browser's own origin, which this container has no other way to
+      # know: config.json is not mounted or built into this image, so this
+      # is the one place that bridges the console's real host-published
+      # port into platform/api/app/config.py's CORS allow-list.
+      CONSOLE_ORIGINS: http://localhost:${PORT_CONSOLE_PREVIEW:-3000},http://localhost:${PORT_CONSOLE_DEV:-5173}
+      # Display only, and never used to reach anything: the host path
+      # SeaweedFS keeps its volume files in, so the housekeeping screen
+      # can say where an organisation's files actually are rather than
+      # only which bucket names them.
+      MUNITAS_STORAGE_PATH: ${MUNITAS_DATA:?set MUNITAS_DATA in .env, see .env.example}/seaweed
+      MUNITAS_MASTER_KEY: ${MUNITAS_MASTER_KEY:-dev-master-key-not-for-production}
+      # The storage keys of the platform's own identities, read by
+      # platform/api/app/config.py and compiled into the permissions document.
+      # The same names the host scripts and the worker read, so .env sets each
+      # once. Blank falls back to the development default.
+      S3_ADMIN_KEY: ${S3_ADMIN_KEY:-}
+      S3_ADMIN_SECRET: ${S3_ADMIN_SECRET:-}
+      S3_PIPELINE_KEY: ${S3_PIPELINE_KEY:-}
+      S3_PIPELINE_SECRET: ${S3_PIPELINE_SECRET:-}
+      TEMPORAL_ADDRESS: temporal:7233
+      MUNITAS_KRATOS_PUBLIC_URL: http://kratos:4433
+      # Checked by GET /agents/{id}/versions/{id}/code (agent_upload.py)
+      # only. Must match the worker's own MUNITAS_WORKER_TOKEN, set once,
+      # here and on the host where the worker runs, from the same env var
+      # name, so there is one value to keep in sync rather than two.
+      MUNITAS_WORKER_TOKEN: ${MUNITAS_WORKER_TOKEN:-dev-worker-token-not-for-production}
+      # Cloudflare R2, the optional second storage backend. Empty on an
+      # install that never configures it, which is a supported state: the
+      # API starts, and only a seal against 'r2' is refused. Defaulted to
+      # empty here so Compose does not warn about unset variables on the
+      # many machines that will never set them.
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+      R2_API_TOKEN: ${R2_API_TOKEN:-}
+      R2_BUCKET: ${R2_BUCKET:-}
+    volumes:
+      # Verification scripts run in here so they sign S3 requests properly and
+      # see the same network the platform does.
+      - ./verify:/verify:ro
+      # verify/common.py's own sys.path.insert reaches for
+      # Path(__file__).resolve().parent.parent to import ports_config --
+      # /verify's parent is container root, so these two land exactly where
+      # that expects them, with no code difference between a host run and a
+      # `docker compose exec` run.
+      - ./config.json:/config.json:ro
+      - ./ports_config.py:/ports_config.py:ro
+      # The committed API reference, so U67 can compare it against what this
+      # service actually serves. Read-only, and that is the whole point: the
+      # check reads a file the repository owns, and the control plane has no
+      # business writing documentation. Generating that file is a separate,
+      # disposable job (see platform/api/generate_openapi.py), never this
+      # long-running service reaching back into the source tree.
+      - ./docs:/docs:ro
+      # Present only once infra/tls/generate-local-cert.sh has run; an
+      # empty/missing host folder mounts as an empty directory, so
+      # docker-entrypoint.sh finds no certificate and this container
+      # behaves exactly as it did before 8443 existed. See RUNBOOK.md,
+      # "Local HTTPS between the worker and the API".
+      - ./infra/tls/out:/tls:ro
+    ports:
+      - "${PORT_MUNITAS_API_HTTP:-8000}:8000"
+      - "${PORT_MUNITAS_API_HTTPS:-8443}:8443"
+    # agentnet is added here, alongside jaeger and otel-collector (below),
+    # for the same reason: a sandboxed agent run's own container is attached
+    # only to agentnet (internal, no gateway to the internet) and needs a
+    # route to POST /credentials without gaining one. This is the only
+    # endpoint this API exposes to that network; every other request the
+    # API receives still arrives over control/data as before.
+    networks: [control, data, agentnet]
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  # The GPU-free worker (worker/lite_worker.py). Runs count_records and
+  # operator DAG pipelines end to end -- registration, access requests,
+  # gate decisions, the whole governance mechanism -- with no GPU and no
+  # host/WSL2 split, on any OS Docker runs on. See that file's own
+  # docstring for exactly what does and doesn't run here, and why.
+  #
+  # Requires MUNITAS_HOST_WORK_DIR in .env: the *host's* absolute path to
+  # a scratch directory (an empty one is fine; it's created if missing).
+  # Not a container-internal path -- this container reaches the host's own
+  # Docker socket to launch a DAG's sandboxed script-step containers as
+  # its siblings, and the daemon that creates those siblings resolves
+  # every bind-mount path against the host filesystem, never against this
+  # container's own. Source and target below are the same path on purpose,
+  # so this process's own file writes land exactly where the daemon will
+  # later look for them. See worker/lite_worker.py's docstring for the
+  # full explanation if this is being debugged rather than read cold.
+  #
+  # Its own profile, not the default set: an install following the
+  # existing Windows + WSL2 path already has a worker (worker/main.py, on
+  # the host, next to the GPU) and has never needed to set
+  # MUNITAS_HOST_WORK_DIR. Putting this in the default profile would make
+  # `docker compose up` fail for every one of them over a variable this
+  # service invents. `docker compose --profile quickstart up` opts in.
+  worker-lite:
+    profiles: ["quickstart"]
+    build:
+      context: ./worker
+      dockerfile: Dockerfile.lite
+    <<: *restart
+    depends_on:
+      postgres:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_started
+      temporal:
+        condition: service_started
+      munitas-api:
+        condition: service_started
+    environment:
+      MUNITAS_API: http://munitas-api:8000
+      MUNITAS_SANDBOX_API: http://munitas-api:8000
+      TEMPORAL_ADDRESS: temporal:7233
+      MUNITAS_PG_DSN: postgresql://${PG_USER:-munitas}:${PG_PASSWORD:-munitas}@postgres:5432/platform
+      S3_ENDPOINT: http://seaweedfs:8333
+      MUNITAS_WORK: ${MUNITAS_HOST_WORK_DIR:-}
+      # Compose prefixes network names with the project name (`name:
+      # munitas` at the top of this file); worker/config.py's own
+      # defaults for AGENTNET/DATA_NETWORK already assume that prefix, so
+      # nothing needs overriding here on an install that hasn't renamed
+      # the project.
+      MUNITAS_WORKER_TOKEN: ${MUNITAS_WORKER_TOKEN:-dev-worker-token-not-for-production}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${MUNITAS_HOST_WORK_DIR}:${MUNITAS_HOST_WORK_DIR}
+    networks: [control, data]
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  # Real login. A session Kratos issues is verified server-side and resolved
+  # to a real directory row, and every decision a person makes in the
+  # console (approving access, deploying an agent, signing off a run)
+  # requires one.
+  #
+  # Ory Kratos over Keycloak: the stack already runs a dozen services on one
+  # development machine, and Keycloak is a JVM service with real boot-time
+  # and memory cost next to Kratos's single lightweight binary.
+  kratos-migrate:
+    image: oryd/kratos:v1.3.1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DSN: postgresql://${PG_USER:-munitas}:${PG_PASSWORD:-munitas}@postgres:5432/kratos?sslmode=disable
+    volumes:
+      - ./infra/kratos:/etc/config/kratos:ro
+    command: -c /etc/config/kratos/kratos.yml migrate sql -e --yes
+    networks: [control, data]
+    restart: "no"
+
+  kratos:
+    image: oryd/kratos:v1.3.1
+    <<: *restart
+    depends_on:
+      kratos-migrate:
+        condition: service_completed_successfully
+    environment:
+      DSN: postgresql://${PG_USER:-munitas}:${PG_PASSWORD:-munitas}@postgres:5432/kratos?sslmode=disable
+    volumes:
+      - ./infra/kratos:/etc/config/kratos:ro
+    # --dev skips the HTTPS-only cookie requirement, matching every other
+    # service in this stack, which is plain HTTP because it never leaves one
+    # machine. Not a setting to carry into a real deployment unexamined, the
+    # same caveat this project already states for hf_ingest_activities.py's
+    # plain-HTTP internal calls.
+    command: serve -c /etc/config/kratos/kratos.yml --dev
+    ports:
+      - "${PORT_KRATOS_PUBLIC:-4433}:4433"   # public API: self-service login/registration flows
+      - "${PORT_KRATOS_ADMIN:-4434}:4434"    # admin API: dev-only, the seed script runs from the host
+    networks: [control, data]
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+volumes:
+  pgdata:
+  labelstudio:
+
+networks:
+  control:
+  data:
+  # No gateway. A container attached only to this network cannot reach the
+  # internet, which is what V7 asserts.
+  agentnet:
+    internal: true
