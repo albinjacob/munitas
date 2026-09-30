@@ -2,7 +2,7 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-import ports from "../config.json";
+import ports from "../config.json" with { type: "json" };
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],

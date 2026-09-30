@@ -31,6 +31,14 @@ jobs:
           cp .env.example .env
           mkdir -p "$RUNNER_TEMP/munitas-data"
 
+      - name: Render kratos.yml and .env's ports block
+        # infra/kratos/kratos.yml is gitignored (generated, not committed,
+        # see scripts/render_ports_env.py's own docstring), and Kratos reads
+        # it directly with no ${VAR} expansion of its own. Without this,
+        # kratos-migrate fails immediately: "open
+        # /etc/config/kratos/kratos.yml: no such file or directory".
+        run: python3 scripts/render_ports_env.py
+
       - name: Bring up the backend stack
         run: docker compose up -d postgres seaweedfs temporal opa kratos-migrate kratos munitas-api
 
