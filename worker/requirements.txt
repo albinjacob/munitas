@@ -21,8 +21,18 @@ huggingface_hub>=0.34    # Apache 2.0.
 # hf_ingest_activities.py, both writing straight to Postgres because the
 # control plane has no endpoint for that write yet.
 psycopg[binary]==3.2.1   # LGPL 3. Direct Postgres access.
+# agent/graph.py imports langgraph directly. Pinned to the version the project's
+# own .venv runs; the checkpointer below does not pull it in. The same pins
+# appear in .github/workflows/verify.yml's "Install Python dependencies" step,
+# so change both together.
+langgraph==0.2.39        # MIT. The agent's graph runtime.
 # Why this and not MemorySaver: agent/graph.py's build_graph() docstring.
 langgraph-checkpoint-postgres==2.0.25  # MIT. Postgres-backed LangGraph checkpointer.
+# agent/tracing.py exports spans over OTLP/gRPC to the collector. Same version
+# as the project's .venv, and the same pins as verify.yml.
+opentelemetry-api==1.44.0                         # Apache 2.0.
+opentelemetry-sdk==1.44.0                         # Apache 2.0.
+opentelemetry-exporter-otlp-proto-grpc==1.44.0    # Apache 2.0.
 # The client, not the server. The server runs in Compose, and full mlflow drags
 # in pyarrow, which has no Python 3.13 wheel at this pin and fails to build.
 # The worker only ever logs runs and score cards, so the client is all it needs.

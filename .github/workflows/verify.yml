@@ -88,8 +88,8 @@ jobs:
         # worker/run_pipeline.py) and by the worker started below. Pins
         # match worker/requirements.txt; langgraph and the opentelemetry
         # packages are what the agent package imports (agent/graph.py,
-        # agent/tracing.py) and are declared in no requirements file, so
-        # their versions are the ones the project's own .venv runs. Only
+        # agent/tracing.py); their pins are declared in
+        # worker/requirements.txt too, so change both together. Only
         # what worker.main needs to import and serve its queues, plus
         # huggingface_hub (imported inside hf_ingest_activities.py's fetch,
         # so an import test cannot see it; found by scanning every import in
