@@ -16,15 +16,20 @@ on:
 jobs:
   backend-verify:
     runs-on: ubuntu-latest
-    env:
-      # Required by docker-compose.yml, and a shell variable beats the
-      # Windows-style example in .env.example, which Linux cannot use.
-      MUNITAS_DATA: ${{ runner.temp }}/munitas-data
     steps:
       - uses: actions/checkout@v4
 
       - name: Copy env defaults
-        run: cp .env.example .env && mkdir -p "$MUNITAS_DATA"
+        # Required by docker-compose.yml, and a shell variable beats the
+        # Windows-style example in .env.example, which Linux cannot use.
+        # $RUNNER_TEMP (a real environment variable once a runner is
+        # assigned) rather than the ${{ runner.temp }} expression: that
+        # expression's context isn't available yet when a job-level env:
+        # block is evaluated, only from within a step.
+        run: |
+          echo "MUNITAS_DATA=$RUNNER_TEMP/munitas-data" >> "$GITHUB_ENV"
+          cp .env.example .env
+          mkdir -p "$RUNNER_TEMP/munitas-data"
 
       - name: Bring up the backend stack
         run: docker compose up -d postgres seaweedfs temporal opa kratos-migrate kratos munitas-api
