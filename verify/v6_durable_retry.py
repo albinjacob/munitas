@@ -35,6 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import psycopg  # noqa: E402
 from psycopg.rows import dict_row  # noqa: E402
 from temporalio.client import Client  # noqa: E402
+from temporalio.service import RPCError, RPCStatusCode  # noqa: E402
 
 from worker import config  # noqa: E402
 from ports_config import PORTS  # noqa: E402
@@ -58,7 +59,17 @@ async def main() -> int:
     workflow_id = sys.argv[1]
     client = await Client.connect(config.TEMPORAL)
     handle = client.get_workflow_handle(workflow_id)
-    description = await handle.describe()
+    try:
+        description = await handle.describe()
+    except RPCError as exc:
+        # Bad input, not a failed check, so 2 like the usage error above and
+        # not 1. Only "not found" is handled: any other error from Temporal
+        # (unreachable, refused) still surfaces as itself.
+        if exc.status != RPCStatusCode.NOT_FOUND:
+            raise
+        print(f"Temporal has no workflow with id {workflow_id!r}.")
+        print("Use the id run_pipeline.py printed when it started the run.")
+        return 2
 
     print("\nV6: durable retry across a worker restart")
     print("-" * 41)
