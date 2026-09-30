@@ -61,6 +61,25 @@ jobs:
           docker compose logs munitas-api
           exit 1
 
+      - name: Seed Kratos identities and the worked examples
+        # A fresh volume (every CI run) has directory rows from
+        # infra/postgres/seed-organisation.sql/seed-canary.sql/seed-finance.sql
+        # (auto-run by Postgres on an empty data directory) but no matching
+        # real Kratos account for any of them yet, and real login is the
+        # console's only identity mechanism -- see RUNBOOK.md's "Connecting
+        # real logins to directory rows". Without this, most of the suite
+        # fails at the first Kratos login with HTTP 400. seed-identities.py
+        # talks to Postgres directly and to Kratos's admin API; the two
+        # example-seed scripts talk only to the already-healthy API, and
+        # need the identities seeded first since they sign in for real.
+        # All three are idempotent (RUNBOOK.md, same section, and each
+        # script's own docstring).
+        run: |
+          pip install --quiet httpx==0.27.2 "psycopg[binary]==3.2.1"
+          python3 infra/kratos/seed-identities.py
+          python3 scripts/seed/seed-health-example.py
+          python3 scripts/seed/seed-finance-example.py
+
       - name: Run the verification suite
         run: docker compose exec -T munitas-api python /verify/run_all.py
 
