@@ -82,6 +82,24 @@ jobs:
           docker compose logs mlflow
           exit 1
 
+      - name: Install Python dependencies
+        # What a developer's own .venv already holds and a fresh runner does
+        # not. Needed by the seed scripts (seed-health-example.py imports
+        # worker/run_pipeline.py) and by the worker started below. Pins
+        # match worker/requirements.txt; langgraph and the opentelemetry
+        # packages are what the agent package imports (agent/graph.py,
+        # agent/tracing.py) and are declared in no requirements file, so
+        # their versions are the ones the project's own .venv runs. Only
+        # what worker.main needs to import and serve its queues is
+        # installed: the speech and detection models are not, since nothing
+        # in this suite runs a real de-identification.
+        run: |
+          pip install --quiet httpx==0.27.2 "psycopg[binary]==3.2.1" \
+            temporalio==1.7.0 boto3==1.35.24 docker==7.1.0 \
+            langgraph==0.2.39 langgraph-checkpoint-postgres==2.0.25 \
+            opentelemetry-api==1.44.0 opentelemetry-sdk==1.44.0 \
+            opentelemetry-exporter-otlp-proto-grpc==1.44.0
+
       - name: Seed Kratos identities and the worked examples
         # A fresh volume (every CI run) has directory rows from
         # infra/postgres/seed-organisation.sql/seed-canary.sql/seed-finance.sql
@@ -94,16 +112,37 @@ jobs:
         # example-seed scripts talk only to the already-healthy API, and
         # need the identities seeded first since they sign in for real.
         # All three are idempotent (RUNBOOK.md, same section, and each
-        # script's own docstring). seed-health-example.py also imports
-        # worker/run_pipeline.py (to register the pipeline steps), whose
-        # import chain needs temporalio and boto3 on top of the HTTP and
-        # Postgres clients; the pins match worker/requirements.txt.
+        # script's own docstring). Packages come from the step above.
         run: |
-          pip install --quiet httpx==0.27.2 "psycopg[binary]==3.2.1" \
-            temporalio==1.7.0 boto3==1.35.24
           python3 infra/kratos/seed-identities.py
           python3 scripts/seed/seed-health-example.py
           python3 scripts/seed/seed-finance-example.py
+
+      - name: Start the worker and wait for it
+        # The suite's HuggingFace, agent-run and pipeline checks need a
+        # Temporal worker polling; without one U43 fails, U61 is refused
+        # with HTTP 503, and nine other checks skip after a long timeout.
+        # Locally start-dev.ps1 starts the same module. MUNITAS_DATA (set in
+        # the first step) gives it its work folder. The wait is bounded, and
+        # a worker that dies at start-up fails the job with its own log.
+        run: |
+          nohup python3 -m worker.main > worker.log 2>&1 &
+          echo $! > worker.pid
+          for i in $(seq 1 30); do
+            if grep -q "worker ready on task queues" worker.log; then
+              echo "worker is ready"
+              exit 0
+            fi
+            if ! kill -0 "$(cat worker.pid)" 2>/dev/null; then
+              echo "worker exited during start-up"
+              cat worker.log
+              exit 1
+            fi
+            sleep 2
+          done
+          echo "worker never reported ready"
+          cat worker.log
+          exit 1
 
       - name: Run the verification suite
         # A skipped check is not a pass (verify/common.py), and a green run
@@ -127,7 +166,10 @@ jobs:
 
       - name: Show service logs on failure
         if: failure()
-        run: docker compose logs
+        run: |
+          echo "=== worker ==="
+          cat worker.log 2>/dev/null || echo "no worker log"
+          docker compose logs
 
   web-build:
     runs-on: ubuntu-latest
