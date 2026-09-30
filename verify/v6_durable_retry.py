@@ -71,20 +71,33 @@ async def main() -> int:
     check("the workflow completed rather than failed",
           description.status.name == "COMPLETED", description.status.name)
 
-    # A restart shows up as activity task timeouts or failures. Their absence
+    # A restart shows up as an activity that ran again: Temporal retries an
+    # interrupted activity itself and records no failed or timed-out event for
+    # one that later succeeds, only a higher attempt number on the started
+    # event, carrying the reason the earlier attempt was lost. No such attempt
     # means the worker was never actually killed, so a pass would be hollow.
-    interruptions = 0
+    #
+    # Matched by which attributes an event carries, not by str(event_type):
+    # in this SDK version that is the enum's integer, so no name ever matches.
+    scheduled: dict[int, str] = {}
+    retried: list[str] = []
     completions = 0
     async for event in handle.fetch_history_events():
-        text = str(event.event_type)
-        if "ACTIVITY_TASK_TIMED_OUT" in text or "ACTIVITY_TASK_FAILED" in text:
-            interruptions += 1
-        if "ACTIVITY_TASK_COMPLETED" in text:
+        if event.HasField("activity_task_scheduled_event_attributes"):
+            attrs = event.activity_task_scheduled_event_attributes
+            scheduled[event.event_id] = attrs.activity_type.name
+        if event.HasField("activity_task_started_event_attributes"):
+            started = event.activity_task_started_event_attributes
+            if started.attempt > 1:
+                why = started.last_failure.message if started.HasField("last_failure") else "no reason recorded"
+                retried.append(f"{scheduled.get(started.scheduled_event_id, '?')} "
+                               f"attempt {started.attempt} ({why})")
+        if event.HasField("activity_task_completed_event_attributes"):
             completions += 1
 
     check("the history shows an interruption, so a restart really happened",
-          interruptions > 0,
-          f"{interruptions} activity failures or timeouts recorded")
+          len(retried) > 0,
+          "; ".join(retried) if retried else "every activity ran once")
     print(f"  activities completed: {completions}")
 
     with psycopg.connect(PG_DSN, row_factory=dict_row, autocommit=True) as conn:
