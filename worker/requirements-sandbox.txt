@@ -18,4 +18,4 @@ temporalio==1.7.0        # MIT. Durable workflow client and worker.
 docker==7.1.0            # Apache 2.0. Launches and supervises the throwaway
                          # containers a sandboxed run executes in.
 httpx==0.27.2            # BSD. Fetching uploaded code and dataset credentials.
-psycopg[binary]==3.2.1   # LGPL 3. Recording the run's outcome to Postgres.
+psycopg[binary]==3.3.4   # LGPL 3. Recording the run's outcome to Postgres.

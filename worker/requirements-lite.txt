@@ -22,4 +22,4 @@ docker==7.1.0            # Apache 2.0. Launches and supervises a DAG's own
                          # in worker/requirements.txt because both worker's
                          # dependency lists leave them to the docker
                          # package's own resolution, unchanged from there.
-psycopg[binary]==3.2.1   # LGPL 3. Direct Postgres access (worker/db.py).
+psycopg[binary]==3.3.4   # LGPL 3. Direct Postgres access (worker/db.py).

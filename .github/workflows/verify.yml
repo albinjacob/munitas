@@ -19,6 +19,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check that pinned versions agree across files
+        # The requirements files and this workflow repeat some pins, and each
+        # says its pins match the others. This is what makes that true: it
+        # needs nothing installed and fails in seconds, before any container
+        # is started.
+        run: python3 scripts/check_pins_agree.py
+
       - name: Copy env defaults
         # Required by docker-compose.yml, and a shell variable beats the
         # Windows-style example in .env.example, which Linux cannot use.
@@ -89,7 +96,8 @@ jobs:
         # match worker/requirements.txt; langgraph and the opentelemetry
         # packages are what the agent package imports (agent/graph.py,
         # agent/tracing.py); their pins are declared in
-        # worker/requirements.txt too, so change both together. Only
+        # worker/requirements.txt too; scripts/check_pins_agree.py, the
+        # first step above, fails if they differ. Only
         # what worker.main needs to import and serve its queues, plus
         # huggingface_hub (imported inside hf_ingest_activities.py's fetch,
         # so an import test cannot see it; found by scanning every import in
@@ -98,7 +106,7 @@ jobs:
         # mlflow) is not: nothing in this suite runs a real
         # de-identification, U61 stops its run at once.
         run: |
-          pip install --quiet httpx==0.27.2 "psycopg[binary]==3.2.1" \
+          pip install --quiet httpx==0.27.2 "psycopg[binary]==3.3.4" \
             temporalio==1.7.0 boto3==1.35.24 docker==7.1.0 "huggingface_hub>=0.34" \
             langgraph==0.2.39 langgraph-checkpoint-postgres==2.0.25 \
             opentelemetry-api==1.44.0 opentelemetry-sdk==1.44.0 \
