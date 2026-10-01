@@ -166,6 +166,9 @@ def main() -> int:
           refs.get("v1") == ("tag", snapshot.snapshot_id), str(refs))
     check("the main branch is this snapshot too",
           refs.get("main") == ("branch", snapshot.snapshot_id), str(refs))
+    tag_ref = table.metadata.refs["v1"]
+    check("the tag has no expiry, so no snapshot-expiry job can ever remove its snapshot",
+          tag_ref.max_ref_age_ms is None, f"max_ref_age_ms={tag_ref.max_ref_age_ms}")
 
     heading("U90: the register's pointer is written once")
     with db() as conn:

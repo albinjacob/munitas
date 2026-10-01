@@ -386,7 +386,8 @@ def fixture_tabular_contract(tenant_id: str = CANARY) -> str:
 def fixture_tabular_version(tenant_id: str = CANARY, rows: list[dict] | None = None,
                             klass: str = "RAW", dataset_name: str | None = None,
                             produced_by_run: str | None = None,
-                            schema_id: str | None = None, with_records_key: bool = True) -> dict:
+                            schema_id: str | None = None, with_records_key: bool = True,
+                            dataset_id: str | None = None) -> dict:
     """A dataset and one sealed version whose records are really in storage.
 
     The records object is written the way a producer writes it: at the prefix
@@ -398,9 +399,11 @@ def fixture_tabular_version(tenant_id: str = CANARY, rows: list[dict] | None = N
     rows = rows if rows is not None else tabular_rows()
     schema_id = schema_id or fixture_tabular_contract(tenant_id)
     name = dataset_name or f"iceberg-{uuid.uuid4().hex[:8]}"
-    r = api("POST", "/datasets", json={"tenant_id": tenant_id, "name": name})
-    r.raise_for_status()
-    dataset_id = r.json()["id"]
+    if dataset_id is None:
+        r = api("POST", "/datasets", json={"tenant_id": tenant_id, "name": name})
+        r.raise_for_status()
+        dataset_id = r.json()["id"]
+    # else: a further version of a dataset that already exists, named `dataset_name`.
 
     where = api("GET", f"/datasets/{dataset_id}/next-version", params={"tenant_id": tenant_id})
     where.raise_for_status()
