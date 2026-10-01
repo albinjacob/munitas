@@ -112,14 +112,48 @@ jobs:
             opentelemetry-api==1.44.0 opentelemetry-sdk==1.44.0 \
             opentelemetry-exporter-otlp-proto-grpc==1.44.0
 
+      - name: Work out where Temporal's test server is kept, and under what cache key
+        id: temporal
+        # The retry-behaviour test below needs Temporal's test server, a 60 MB
+        # binary the SDK downloads from temporal.download. Keeping it in the
+        # Actions cache means a run after the first does not depend on that host
+        # being reachable. The key carries the pinned temporalio version, read
+        # from the requirements file rather than written out again here, so an
+        # upgrade changes the key and fetches the matching server by itself.
+        run: |
+          version=$(grep -oP '^temporalio==\K[0-9][0-9.]*' worker/requirements.txt)
+          test -n "$version" || { echo "no temporalio pin found in worker/requirements.txt"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "dir=$RUNNER_TEMP/temporal-test-server" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Temporal's test server from the cache
+        id: test-server-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.temporal.outputs.dir }}
+          key: temporal-test-server-${{ runner.os }}-${{ steps.temporal.outputs.version }}
+
       - name: Check the pipeline workflow's retry behaviour
         # Runs the real DeidentificationPipeline against Temporal's in-process
         # test server with fake activities, one of which goes silent like a
-        # killed worker. Needs no running stack and takes about half a minute;
-        # the test server binary is downloaded on first use. This is not the
-        # by-hand kill test (RUNBOOK.md), it checks the workflow's retry and
-        # heartbeat settings, not that the real steps are safe to repeat.
+        # killed worker. Needs no running stack and takes about half a minute.
+        # This is not the by-hand kill test (RUNBOOK.md), it checks the
+        # workflow's retry and heartbeat settings, not that the real steps are
+        # safe to repeat. Exit 3 means the test server could not be started:
+        # nothing was tested, and that is not a failure of the workflow.
+        env:
+          MUNITAS_TEST_SERVER_DIR: ${{ steps.temporal.outputs.dir }}
         run: python3 verify/v6c_retry_policy.py
+
+      - name: Save Temporal's test server to the cache
+        # Only after the test passed, so a partly downloaded file from a failed
+        # run is never cached, and only on a miss: a cache entry cannot be
+        # overwritten, so saving over a hit would only fail.
+        if: steps.test-server-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ steps.temporal.outputs.dir }}
+          key: temporal-test-server-${{ runner.os }}-${{ steps.temporal.outputs.version }}
 
       - name: Seed Kratos identities and the worked examples
         # A fresh volume (every CI run) has directory rows from

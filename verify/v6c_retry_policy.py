@@ -26,7 +26,12 @@ files, their database writes); that is the by-hand script's job.
 
 Needs the packages worker.main needs, and downloads Temporal's test server
 binary the first time it runs, from temporal.download into the temp folder
-(about 60 MB on Windows, cached afterwards).
+(about 60 MB on Windows, cached afterwards). Set MUNITAS_TEST_SERVER_DIR to a
+folder of your choosing to keep the binary there instead, which is how CI keeps
+it between runs; the folder is created if it does not exist.
+
+Exit codes: 0 every check passed, 1 a check failed, 3 the test server could not
+be started (nothing was tested, and that is not a failure of the workflow).
 
     .venv\\Scripts\\python.exe verify\\v6c_retry_policy.py
 """
@@ -34,6 +39,7 @@ binary the first time it runs, from temporal.download into the temp folder
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 import uuid
 from datetime import timedelta
@@ -218,12 +224,34 @@ async def run_on(env: WorkflowEnvironment, calls: Calls, fail_from_attempt: int 
                 pass
 
 
+class TestServerUnavailable(Exception):
+    """Temporal's test server could not be obtained or started. Kept apart from a
+    failed check on purpose: a download that fails on a bad day says nothing about
+    the workflow, and reporting it as a regression would send someone looking for
+    a retry bug that is not there."""
+
+
+def test_server_options() -> dict:
+    folder = os.environ.get("MUNITAS_TEST_SERVER_DIR")
+    if not folder:
+        return {}
+    # The SDK does not create it: a missing folder fails with "path not found".
+    os.makedirs(folder, exist_ok=True)
+    return {"download_dest_dir": folder}
+
+
 async def run_scenario(calls: Calls, fail_from_attempt: int | None):
     """One scenario on its own test server. Two scenarios on one server is not safe:
     the first one's clock driver is cancelled with a step possibly still in flight,
     and the server's time-skipping then misbehaves for the next workflow, which
     stopped advancing from its very first step."""
-    async with await WorkflowEnvironment.start_time_skipping() as env:
+    try:
+        env = await WorkflowEnvironment.start_time_skipping(**test_server_options())
+    except Exception as exc:
+        # Starting is the only place a download or a launch can fail; anything
+        # after this point is the workflow's behaviour and stays a check.
+        raise TestServerUnavailable(str(exc)) from exc
+    async with env:
         return await run_on(env, calls, fail_from_attempt)
 
 
@@ -294,4 +322,13 @@ async def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(asyncio.run(main()))
+    try:
+        code = asyncio.run(main())
+    except TestServerUnavailable as exc:
+        print("\nV6c could not run: Temporal's time-skipping test server could not be started.")
+        print(f"  Cause: {exc}")
+        print("  The workflow's retry settings were NOT tested. This is a problem getting or")
+        print("  starting the test server (its download from temporal.download, or the folder")
+        print("  it is saved to), not a failure of the workflow, so it exits 3, not 1.")
+        code = 3
+    sys.exit(code)
