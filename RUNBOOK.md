@@ -662,6 +662,65 @@ within 10 seconds. The history of every print is in
 
 ---
 
+## Reading governed tables from DuckDB or PyIceberg
+
+Every sealed version whose rows have a schema contract is also written as an
+Iceberg table, and a catalog at `/iceberg` on the API lists and opens only what
+the person asking may read. A person needs a token for their own tools, nothing
+else.
+
+1. Ask for a token in a session of your own (the console session, or any
+   Kratos session). The purpose is the sentence your leases are approved for:
+
+   ```bash
+   curl -s -X POST http://localhost:8000/iceberg/tokens      -H "Authorization: Bearer <session>" -H "Content-Type: application/json"      -d '{"purpose":"readmission study","hours":8}'
+   ```
+
+   The token is shown once. `GET /iceberg/tokens` lists yours without showing
+   them, and `POST /iceberg/tokens/<id>/revoke` ends one.
+
+2. Connect. The warehouse is the organisation's name, for example `canary`:
+
+   ```sql
+   INSTALL iceberg; LOAD iceberg;
+   ATTACH 'canary' AS lake (TYPE ICEBERG, ENDPOINT 'http://localhost:8000/iceberg', TOKEN '<token>');
+   SELECT count(*) FROM lake."<dataset name>".v1;
+   ```
+
+   ```python
+   from pyiceberg.catalog.rest import RestCatalog
+   cat = RestCatalog("munitas", uri="http://localhost:8000/iceberg", token="<token>", warehouse="canary")
+   cat.load_table(("<dataset name>", "v1")).scan().to_arrow()
+   ```
+
+Each version is a table named `v<N>`. A table the person may not read is not
+listed, and opening it is refused with the reason. Opening a raw table needs an
+approved lease; the storage key the catalog hands out lives as long as that
+lease does, and stops working when it is revoked or runs out.
+
+Two settings matter when a client runs on another machine. The catalog tells
+the client where storage is from `MUNITAS_PUBLIC_S3_ENDPOINT` (default
+`http://localhost:8333`), so set it to an address the client can reach. Newer
+S3 clients send uploads that SeaweedFS stores wrongly unless
+`AWS_REQUEST_CHECKSUM_CALCULATION=when_required` and
+`AWS_RESPONSE_CHECKSUM_VALIDATION=when_required` are set; the API container
+has both already.
+
+Checks. U90 and U91 run with the rest of the suite. U92 uses the real tools,
+so it runs on the host:
+
+```bash
+.venv\Scripts\python.exe -m pip install duckdb "pyiceberg[pyarrow]"
+.venv\Scripts\python.exe verify\v92_iceberg_real_clients.py
+```
+
+A database created before the Iceberg tables existed gets them with
+`.venv\Scripts\python.exe scripts\admin\apply-schema.py`, which is safe to
+run again. Projection can be turned off with `MUNITAS_ICEBERG_PROJECTION=off`; a
+version that cannot be projected is still sealed, and the reason is logged.
+
+---
+
 ## Local HTTPS between the worker and the API
 
 **When to use it:** the worker (`worker/main.py`) needs to reach the API
