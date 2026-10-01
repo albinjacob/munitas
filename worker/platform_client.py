@@ -313,6 +313,7 @@ def seal_version(
     dataset_id: str, schema_id: str, visibility_class: str,
     manifest: list[dict], record_count: int, run_id: str,
     tenant_id: str | None = None, storage_backend: str = "seaweedfs",
+    records_key: str | None = None,
 ) -> dict:
     """Seal a version, under the tenant this run belongs to.
 
@@ -335,6 +336,9 @@ def seal_version(
         # version written anywhere else used to record the wrong backend and a
         # credential minted from it would look in the wrong place entirely.
         "storage_backend": storage_backend,
+        # Which object holds this version's rows, so the platform can also
+        # write them as an Iceberg table. None for a version with no rows.
+        "records_key": records_key,
     })
 
 

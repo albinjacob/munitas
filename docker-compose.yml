@@ -290,6 +290,19 @@ services:
       S3_PIPELINE_SECRET: ${S3_PIPELINE_SECRET:-}
       TEMPORAL_ADDRESS: temporal:7233
       MUNITAS_KRATOS_PUBLIC_URL: http://kratos:4433
+      # Iceberg (platform/api/app/iceberg.py). Newer S3 clients, pyarrow's
+      # among them, send an upload with its checksum in a trailer by default,
+      # and SeaweedFS stores the transfer framing as part of the object
+      # (found by writing a table to it: the metadata file began with
+      # "3A4\r\n{" and could not be parsed). These two settings make the
+      # client send a plain upload, which SeaweedFS stores correctly.
+      AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+      AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+      # The address a person's own tool uses to reach storage; the catalog
+      # puts it in the table configuration it returns. The API itself reaches
+      # storage at S3_ENDPOINT, which only exists inside this network.
+      MUNITAS_PUBLIC_S3_ENDPOINT: http://localhost:${PORT_SEAWEEDFS_S3:-8333}
+      MUNITAS_ICEBERG_PROJECTION: ${MUNITAS_ICEBERG_PROJECTION:-on}
       # Checked by GET /agents/{id}/versions/{id}/code (agent_upload.py)
       # only. Must match the worker's own MUNITAS_WORKER_TOKEN, set once,
       # here and on the host where the worker runs, from the same env var
@@ -342,7 +355,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512m
+          # 1g, up from 512m: writing a version as an Iceberg table loads
+          # pyarrow, which needs room beside the API itself.
+          memory: 1g
 
   # The GPU-free worker (worker/lite_worker.py). Runs count_records and
   # operator DAG pipelines end to end -- registration, access requests,

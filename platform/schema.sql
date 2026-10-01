@@ -1994,3 +1994,66 @@ drop trigger if exists access_lease_no_simple_for_raw on access_lease;
 create trigger access_lease_no_simple_for_raw
   before insert or update on access_lease
   for each row execute function refuse_simple_pattern_for_raw();
+
+-- ------------------------------------------------------------ iceberg --
+--
+-- A sealed tabular version, also written as an Iceberg table, so a standard
+-- tool can read it (platform/api/app/iceberg.py). The version row stays the
+-- authority: this row says where the table is and what it held when it was
+-- written, and a verification script compares the two.
+--
+-- Written once, with the version. The table's files live under the version's
+-- own storage prefix and are part of its object manifest, so the grant that
+-- covers the version covers the table, and the content hash covers the files.
+-- Nothing is written under a sealed prefix afterwards, which is why a tag or
+-- a branch is never moved after sealing.
+--
+-- One table per version, not one per dataset with a snapshot per version: a
+-- credential is granted for one version's prefix, and a table spanning
+-- versions would put other versions' files inside the table a reader opens.
+create table if not exists iceberg_table_ref (
+  dataset_version_id uuid primary key
+                     references dataset_version(id) on delete cascade,
+  tenant_id          text not null references tenant(id),
+  dataset_id         uuid not null references dataset(id),
+  namespace          text not null,          -- the dataset's name
+  table_name         text not null,          -- 'v' and the version number
+  location           text not null,          -- s3://bucket/prefix/iceberg
+  metadata_location  text not null,          -- the table's current metadata file
+  snapshot_id        bigint not null,
+  format_version     int not null,
+  record_count       bigint not null,
+  records_sha256     text not null,          -- of the records object the rows came from
+  projected_at       timestamptz not null default now(),
+  unique (tenant_id, namespace, table_name)
+);
+
+create or replace function refuse_iceberg_table_ref_update() returns trigger as $$
+begin
+  raise exception 'iceberg_table_ref rows are written once, with the version they describe'
+    using errcode = 'check_violation';
+end;
+$$ language plpgsql;
+
+drop trigger if exists iceberg_table_ref_write_once on iceberg_table_ref;
+create trigger iceberg_table_ref_write_once
+  before update on iceberg_table_ref
+  for each row execute function refuse_iceberg_table_ref_update();
+
+-- What a person's own tool presents to the Iceberg catalog. Only a hash of the
+-- token is stored, so reading this table cannot reveal a usable token. A token
+-- names a person and a purpose and nothing else: every table it opens is still
+-- decided on its own, by the same policy and leases as any other read.
+create table if not exists catalog_token (
+  id           uuid primary key,
+  token_hash   text not null unique,       -- sha256, hex
+  principal    text not null references directory(id),
+  tenant_id    text not null references tenant(id),
+  purpose      text not null,
+  created_at   timestamptz not null default now(),
+  expires_at   timestamptz not null,
+  revoked_at   timestamptz,
+  last_used_at timestamptz
+);
+
+create index if not exists catalog_token_principal_idx on catalog_token (principal);

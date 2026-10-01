@@ -348,6 +348,100 @@ def fixture_department(tenant_id: str, dataset_id: str,
     return row["custodian"]
 
 
+# --------------------------------------------------------------- tabular --
+#
+# A version made of rows, not files: the shape the Iceberg projection writes as a
+# table. One field of every kind a contract can name, so a check that passes here
+# has seen a string, a float, an integer, a boolean, a list and a dictionary.
+
+TABULAR_FIELDS = [
+    {"name": "record_id", "type": "string", "sensitivity": "none", "added_by": "verify"},
+    {"name": "transcript", "type": "string", "sensitivity": "phi", "added_by": "verify"},
+    {"name": "score", "type": "float", "sensitivity": "none", "added_by": "verify"},
+    {"name": "count", "type": "int", "sensitivity": "none", "added_by": "verify"},
+    {"name": "ok", "type": "bool", "sensitivity": "none", "added_by": "verify"},
+    {"name": "tags", "type": "list", "sensitivity": "quasi", "added_by": "verify"},
+    {"name": "detail", "type": "dict", "sensitivity": "none", "added_by": "verify"},
+]
+
+
+def tabular_rows(n: int = 3) -> list[dict]:
+    return [
+        {"record_id": f"rec-{i}", "transcript": f"synthetic transcript number {i}",
+         "score": 0.5 + i, "count": i * 2, "ok": i % 2 == 0,
+         "tags": ["a", f"b{i}"], "detail": {"i": i, "nested": {"k": "v"}}}
+        for i in range(n)
+    ]
+
+
+def fixture_tabular_contract(tenant_id: str = CANARY) -> str:
+    r = api("POST", "/schema-contracts", json={
+        "tenant_id": tenant_id, "name": "iceberg_probe",
+        "fields": TABULAR_FIELDS, "primary_key": ["record_id"],
+    })
+    r.raise_for_status()
+    return r.json()["id"]
+
+
+def fixture_tabular_version(tenant_id: str = CANARY, rows: list[dict] | None = None,
+                            klass: str = "RAW", dataset_name: str | None = None,
+                            produced_by_run: str | None = None,
+                            schema_id: str | None = None, with_records_key: bool = True) -> dict:
+    """A dataset and one sealed version whose records are really in storage.
+
+    The records object is written the way a producer writes it: at the prefix
+    the platform reserved, before sealing, and the seal names it. Returns the
+    seal response plus the rows, the dataset, the bucket and the records key.
+    """
+    import hashlib as _hashlib
+
+    rows = rows if rows is not None else tabular_rows()
+    schema_id = schema_id or fixture_tabular_contract(tenant_id)
+    name = dataset_name or f"iceberg-{uuid.uuid4().hex[:8]}"
+    r = api("POST", "/datasets", json={"tenant_id": tenant_id, "name": name})
+    r.raise_for_status()
+    dataset_id = r.json()["id"]
+
+    where = api("GET", f"/datasets/{dataset_id}/next-version", params={"tenant_id": tenant_id})
+    where.raise_for_status()
+    prefix = where.json()["storage_prefix"]
+    bucket = bucket_for(tenant_id)
+    body = json.dumps(rows).encode("utf-8")
+    key = f"{prefix}/records.json"
+    s3_client(*ADMIN).put_object(Bucket=bucket, Key=key, Body=body)
+
+    payload = {
+        "tenant_id": tenant_id, "dataset_id": dataset_id, "schema_id": schema_id,
+        "visibility_class": klass,
+        "object_manifest": [{"key": key, "bytes": len(body),
+                             "sha256": _hashlib.sha256(body).hexdigest()}],
+        "record_count": len(rows),
+    }
+    if produced_by_run:
+        payload["produced_by_run"] = produced_by_run
+    if with_records_key:
+        payload["records_key"] = key
+    sealed = api("POST", "/dataset-versions", json=payload)
+    sealed.raise_for_status()
+    out = sealed.json()
+    out.update({"dataset_id": dataset_id, "dataset_name": name, "bucket": bucket,
+                "records_key": key, "rows": rows, "prefix": prefix,
+                "records_sha256": _hashlib.sha256(body).hexdigest(), "schema_id": schema_id})
+    return out
+
+
+def read_table(metadata_location: str):
+    """The Iceberg table at this metadata file, read with the platform's own
+    super-key. A reader's view of it is a different check (the catalog's)."""
+    from pyiceberg.table import StaticTable
+
+    return StaticTable.from_metadata(metadata_location, properties={
+        "s3.endpoint": S3_ENDPOINT, "s3.access-key-id": ADMIN[0],
+        "s3.secret-access-key": ADMIN[1], "s3.region": "us-east-1",
+        "s3.path-style-access": "true",
+    })
+
+
 def require_api() -> None:
     try:
         r = api("GET", "/health")

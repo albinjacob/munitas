@@ -16,7 +16,7 @@ import hashlib
 import json
 import uuid
 
-from . import db
+from . import db, iceberg
 
 
 def register_contract(tenant_id: str, name: str, fields: list[dict],
@@ -96,6 +96,7 @@ def seal(
     object_manifest: list[dict],
     record_count: int = 0,
     produced_by_run: str | None = None,
+    records_key: str | None = None,
 ) -> dict:
     """Create a sealed version.
 
@@ -110,22 +111,41 @@ def seal(
     """
     reserved = next_version(tenant_id, dataset_id)
     prefix = reserved["storage_prefix"]
+
+    # See main.create_version: a tabular version is written as an Iceberg table
+    # before the row exists, and its files join the manifest the hash covers.
+    version_id = str(uuid.uuid4())
+    manifest = list(object_manifest)
+    projection = None
+    if records_key:
+        dataset = db.one("select name from dataset where id = %s", (dataset_id,))
+        if dataset:
+            projection = iceberg.try_project(
+                tenant_id=tenant_id, backend=storage_backend, dataset_id=dataset_id,
+                dataset_name=dataset["name"], version_id=version_id,
+                version=reserved["version"], prefix=prefix, schema_id=schema_id,
+                records_key=records_key, produced_by_run=produced_by_run)
+            if projection:
+                manifest += projection.objects
     digest = content_hash(
-        {"manifest": object_manifest, "count": record_count, "prefix": prefix}
+        {"manifest": manifest, "count": record_count, "prefix": prefix}
     )
 
     row = db.execute(
         """insert into dataset_version
              (id, tenant_id, dataset_id, version, visibility_class,
               storage_prefix, storage_backend, object_manifest, schema_id,
-              produced_by_run, record_count, content_hash, sealed)
-           values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, true)
+              produced_by_run, record_count, content_hash, iceberg_snapshot_id, sealed)
+           values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, true)
            returning id""",
-        (str(uuid.uuid4()), tenant_id, dataset_id, reserved["version"],
-         visibility_class, prefix, storage_backend, json.dumps(object_manifest),
-         schema_id, produced_by_run, record_count, digest),
+        (version_id, tenant_id, dataset_id, reserved["version"],
+         visibility_class, prefix, storage_backend, json.dumps(manifest),
+         schema_id, produced_by_run, record_count, digest,
+         projection.snapshot_id if projection else None),
     )
     version_id = str(row["id"])
+    if projection:
+        iceberg.record(version_id, tenant_id, dataset_id, projection)
 
     if produced_by_run:
         db.execute(

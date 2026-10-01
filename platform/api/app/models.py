@@ -50,6 +50,12 @@ class DatasetVersionIn(BaseModel):
     # unmodified, while a caller that wants a specific backend (verify's
     # own U57 checks, a future console flow) can still name one explicitly.
     storage_backend: Literal["seaweedfs", "r2"] = "seaweedfs"
+    # Which object in `object_manifest` holds this version's records, as a JSON
+    # list of rows shaped by `schema_id`'s contract. When it is given, the
+    # platform also writes the version as an Iceberg table (iceberg.py), so a
+    # standard tool can read it. Optional, because a version made of files has
+    # no rows to put in a table, and every existing caller leaves it out.
+    records_key: str | None = None
 
 
 class ActionRunIn(BaseModel):

@@ -16,3 +16,11 @@ boto3==1.35.24
 temporalio==1.7.0
 # Parses an operator-uploaded pipeline's DAG config.
 PyYAML==6.0.2
+# Writes a sealed tabular version as an Iceberg table (iceberg.py). Imported only when
+# a version is projected, so the API still starts without it. pyarrow comes with the extra.
+pyiceberg[pyarrow]==0.12.0
+# Both pinned to what the projection was tried against. pyarrow would otherwise float
+# with pyiceberg's range, and PyIceberg's in-memory catalog (the writer's) is built on
+# SQLAlchemy without declaring it in the extra we install.
+pyarrow==25.0.1
+sqlalchemy==2.1.1

@@ -28,8 +28,8 @@ from psycopg import errors as pg_errors
 from crypto import DestroyedKeyError, EnvelopeCrypto
 
 from . import (access_preview, activation, agent_upload, agents, auth, config,
-              dag_pipelines, db, external_accounts, grants, housekeeping, ingest,
-              logs, models, opa, people, pipeline, r2, read_models, seaweed,
+              dag_pipelines, db, external_accounts, grants, housekeeping, iceberg,
+              ingest, logs, models, opa, people, pipeline, r2, read_models, seaweed,
               storage, task_credential, temporal_client, versions)
 
 log = logs.get_logger("main")
@@ -429,23 +429,46 @@ def create_version(body: models.DatasetVersionIn) -> dict:
     )
     version = latest["v"] + 1
     prefix = f"{body.tenant_id}/{body.dataset_id}/v{version}"
+
+    # A tabular version is also written as an Iceberg table, under its own
+    # prefix, BEFORE the row exists: nothing may be written under a sealed
+    # prefix afterwards, and the table's files belong in the manifest the
+    # content hash is taken over. A version that cannot be written as a table
+    # is sealed all the same (iceberg.try_project says why in the log).
+    version_id = _uuid()
+    manifest = list(body.object_manifest)
+    projection = None
+    if body.records_key:
+        dataset = db.one("select name from dataset where id = %s", (body.dataset_id,))
+        if dataset:
+            projection = iceberg.try_project(
+                tenant_id=body.tenant_id, backend=body.storage_backend,
+                dataset_id=body.dataset_id, dataset_name=dataset["name"],
+                version_id=version_id, version=version, prefix=prefix,
+                schema_id=body.schema_id, records_key=body.records_key,
+                produced_by_run=body.produced_by_run)
+            if projection:
+                manifest += projection.objects
     content_hash = _hash(
-        {"manifest": body.object_manifest, "count": body.record_count, "prefix": prefix}
+        {"manifest": manifest, "count": body.record_count, "prefix": prefix}
     )
 
     row = db.execute(
         """insert into dataset_version
              (id, tenant_id, dataset_id, version, visibility_class,
               storage_prefix, storage_backend, object_manifest, schema_id,
-              produced_by_run, record_count, content_hash, sealed)
-           values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, true)
+              produced_by_run, record_count, content_hash, iceberg_snapshot_id, sealed)
+           values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, true)
            returning id""",
-        (_uuid(), body.tenant_id, body.dataset_id, version,
+        (version_id, body.tenant_id, body.dataset_id, version,
          body.visibility_class, prefix, body.storage_backend,
-         json.dumps(body.object_manifest), body.schema_id, body.produced_by_run,
-         body.record_count, content_hash),
+         json.dumps(manifest), body.schema_id, body.produced_by_run,
+         body.record_count, content_hash,
+         projection.snapshot_id if projection else None),
     )
     version_id = str(row["id"])
+    if projection:
+        iceberg.record(version_id, body.tenant_id, body.dataset_id, projection)
 
     if body.produced_by_run:
         db.execute(

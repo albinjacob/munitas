@@ -225,6 +225,7 @@ def ingest(params: dict) -> dict:
     version = cp.seal_version(
         dataset_id, schema_id, "RAW", manifest, len(rows), run_id,
         _tenant(params), params["backend"],
+        records_key=_key(params["prefix"], "records.json"),
     )
     activity.logger.info("ingested %d records into %s", len(rows), version["id"])
     return {"version_id": version["id"], "prefix": version["storage_prefix"],
@@ -443,7 +444,8 @@ def transcribe(params: dict) -> dict:
                                 out_rows, params["bucket"]))
 
     version = cp.seal_version(dataset_id, schema_id, "RAW", manifest, len(out_rows), run_id,
-                              _tenant(params), params["backend"])
+                              _tenant(params), params["backend"],
+                              records_key=_key(params["prefix"], "transcribed.json"))
     checkpoint.clear()
     activity.logger.info(
         "transcribed %d records in %.1fs (%d resumed from checkpoint)",
@@ -518,7 +520,8 @@ def detect(params: dict) -> dict:
     manifest = [cp.put_json(write_client, _key(params["prefix"], "detected.json"), out_rows,
                      params["bucket"])]
     version = cp.seal_version(dataset_id, schema_id, "RAW", manifest, len(out_rows), run_id,
-                              _tenant(params), params["backend"])
+                              _tenant(params), params["backend"],
+                              records_key=_key(params["prefix"], "detected.json"))
 
     return {"version_id": version["id"],
             "records_key": _key(params["prefix"], "detected.json"),
@@ -682,6 +685,7 @@ def redact(params: dict) -> dict:
     version = cp.seal_version(
         dataset_id, schema_id, "UNDER_REVIEW", manifest, len(out_rows), run_id,
         _tenant(params), params["backend"],
+        records_key=_key(params["prefix"], "redacted.json"),
     )
     return {"version_id": version["id"],
             "records_key": _key(params["prefix"], "redacted.json"),

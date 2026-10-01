@@ -141,3 +141,16 @@ CONSOLE_ORIGINS = [
 # How long a minted credential lasts. Short, because the whole argument for
 # leases is that access expires on its own rather than by someone remembering.
 CREDENTIAL_TTL_MINUTES = int(os.environ.get("CREDENTIAL_TTL_MINUTES", "60"))
+
+# Iceberg projection and catalog (iceberg.py, iceberg_catalog.py).
+#
+# "off" skips the projection entirely, so a deployment that has not given the
+# API enough memory for pyarrow can still seal versions as before.
+ICEBERG_PROJECTION = os.environ.get("MUNITAS_ICEBERG_PROJECTION", "on").lower() != "off"
+# The storage address a person's own tool can reach. The API reaches storage as
+# S3_ENDPOINT (an address inside the Compose network), which means nothing to a
+# laptop, and the catalog hands out the address in the table's configuration.
+PUBLIC_S3_ENDPOINT = os.environ.get("MUNITAS_PUBLIC_S3_ENDPOINT", "http://localhost:8333")
+# How long a catalog token may live, at most. A token carries a person's
+# purpose and nothing else; each table it opens is still decided on its own.
+CATALOG_TOKEN_MAX_HOURS = int(os.environ.get("MUNITAS_CATALOG_TOKEN_MAX_HOURS", "12"))

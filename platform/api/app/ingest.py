@@ -470,6 +470,7 @@ def seal_audio(dataset_id: str,
         # evidence about a record, not a record of its own, and the pipeline
         # sizes its own timeouts from this.
         record_count=len(records),
+        records_key=f"{prefix}/records.json",
     )
     return {**version, "records": len(records), "sealed_by": identity["id"]}
 
