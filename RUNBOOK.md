@@ -256,6 +256,14 @@ recovers fails the run after a bounded number of attempts. It does not prove
 that the real steps are safe to repeat, which is what the procedure below is
 for.
 
+The first run downloads Temporal's test server, a binary of about 60 MB, from
+`temporal.download`. Set `MUNITAS_TEST_SERVER_DIR` to a folder to keep it
+somewhere of your choosing; CI does this and keeps the file in GitHub's cache,
+keyed on the pinned `temporalio` version, so later runs do not depend on that
+host. If the server cannot be obtained, the script says so and exits 3, which
+means nothing was tested and the workflow is not at fault. Exit 1 means a check
+failed.
+
 **What it costs:** a real de-identification of a few recordings, so the GPU is
 busy for several minutes, and the run writes real dataset versions into the
 tenant the worker is configured for (`canary` unless `MUNITAS_TENANT` says
