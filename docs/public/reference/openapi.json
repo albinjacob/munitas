@@ -252,6 +252,29 @@
         "title": "Body_upload_version_pipelines__pipeline_id__versions_upload_post",
         "type": "object"
       },
+      "CatalogTokenIn": {
+        "description": "What a person says when they ask for a token for their own tools.\n\nThe purpose is the same sentence a lease is approved for. A table opened\nwith this token is decided on it, exactly as a credential request is, so a\ntoken whose purpose is not the purpose of the person's lease opens nothing\nthat lease covers.",
+        "properties": {
+          "hours": {
+            "default": 8,
+            "exclusiveMinimum": 0.0,
+            "maximum": 72.0,
+            "title": "Hours",
+            "type": "number"
+          },
+          "purpose": {
+            "maxLength": 200,
+            "minLength": 3,
+            "title": "Purpose",
+            "type": "string"
+          }
+        },
+        "required": [
+          "purpose"
+        ],
+        "title": "CatalogTokenIn",
+        "type": "object"
+      },
       "ConfirmClassification": {
         "properties": {
           "confirmed_by": {
@@ -423,6 +446,17 @@
             "default": 0,
             "title": "Record Count",
             "type": "integer"
+          },
+          "records_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Records Key"
           },
           "schema_id": {
             "title": "Schema Id",
@@ -4443,6 +4477,671 @@
         "summary": "Storage Report",
         "tags": [
           "housekeeping"
+        ]
+      }
+    },
+    "/iceberg/tokens": {
+      "get": {
+        "description": "The signed-in person's own tokens. Never the token itself.",
+        "operationId": "list_tokens_iceberg_tokens_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response List Tokens Iceberg Tokens Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Tokens",
+        "tags": [
+          "iceberg"
+        ]
+      },
+      "post": {
+        "description": "Give the signed-in person a token for their own tools.\n\nReturned once and never stored: only its hash is kept, so there is no way\nto read it back later, and a lost token is replaced, not recovered.",
+        "operationId": "issue_token_iceberg_tokens_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CatalogTokenIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Issue Token Iceberg Tokens Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Issue Token",
+        "tags": [
+          "iceberg"
+        ]
+      }
+    },
+    "/iceberg/tokens/{token_id}/revoke": {
+      "post": {
+        "description": "End one of the signed-in person's own tokens now.",
+        "operationId": "revoke_token_iceberg_tokens__token_id__revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token_id",
+            "required": true,
+            "schema": {
+              "title": "Token Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Revoke Token Iceberg Tokens  Token Id  Revoke Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Token",
+        "tags": [
+          "iceberg"
+        ]
+      }
+    },
+    "/iceberg/v1/config": {
+      "get": {
+        "description": "The warehouse is the organisation: whatever name a client asks for, the\ntoken's own organisation is what it gets.",
+        "operationId": "catalog_config_iceberg_v1_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Catalog Config Iceberg V1 Config Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Catalog Config",
+        "tags": [
+          "iceberg"
+        ]
+      }
+    },
+    "/iceberg/v1/oauth/tokens": {
+      "post": {
+        "description": "Not offered: send the token from POST /iceberg/tokens directly. Answered\nin the shape OAuth clients expect, so the failure is legible.",
+        "operationId": "oauth_tokens_iceberg_v1_oauth_tokens_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Oauth Tokens",
+        "tags": [
+          "iceberg"
+        ]
+      }
+    },
+    "/iceberg/v1/{prefix}/namespaces": {
+      "get": {
+        "operationId": "list_namespaces_iceberg_v1__prefix__namespaces_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "prefix",
+            "required": true,
+            "schema": {
+              "title": "Prefix",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response List Namespaces Iceberg V1  Prefix  Namespaces Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Namespaces",
+        "tags": [
+          "iceberg"
+        ]
+      }
+    },
+    "/iceberg/v1/{prefix}/namespaces/{namespace}": {
+      "get": {
+        "operationId": "get_namespace_iceberg_v1__prefix__namespaces__namespace__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "prefix",
+            "required": true,
+            "schema": {
+              "title": "Prefix",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Namespace",
+        "tags": [
+          "iceberg"
+        ]
+      },
+      "head": {
+        "operationId": "get_namespace_iceberg_v1__prefix__namespaces__namespace__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "prefix",
+            "required": true,
+            "schema": {
+              "title": "Prefix",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Namespace",
+        "tags": [
+          "iceberg"
+        ]
+      }
+    },
+    "/iceberg/v1/{prefix}/namespaces/{namespace}/tables": {
+      "get": {
+        "operationId": "list_tables_iceberg_v1__prefix__namespaces__namespace__tables_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "prefix",
+            "required": true,
+            "schema": {
+              "title": "Prefix",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response List Tables Iceberg V1  Prefix  Namespaces  Namespace  Tables Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Tables",
+        "tags": [
+          "iceberg"
+        ]
+      }
+    },
+    "/iceberg/v1/{prefix}/namespaces/{namespace}/tables/{table}": {
+      "get": {
+        "description": "Open one table: decide, record the decision, then hand over the key.\n\nThe decision, the audit rows and the key all come from request_credential,\nthe function behind POST /credentials, so a table opened here is recorded\nexactly as the same version read any other way would be.",
+        "operationId": "load_table_iceberg_v1__prefix__namespaces__namespace__tables__table__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "prefix",
+            "required": true,
+            "schema": {
+              "title": "Prefix",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "table",
+            "required": true,
+            "schema": {
+              "title": "Table",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Load Table",
+        "tags": [
+          "iceberg"
+        ]
+      },
+      "head": {
+        "description": "Open one table: decide, record the decision, then hand over the key.\n\nThe decision, the audit rows and the key all come from request_credential,\nthe function behind POST /credentials, so a table opened here is recorded\nexactly as the same version read any other way would be.",
+        "operationId": "load_table_iceberg_v1__prefix__namespaces__namespace__tables__table__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "prefix",
+            "required": true,
+            "schema": {
+              "title": "Prefix",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "table",
+            "required": true,
+            "schema": {
+              "title": "Table",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Load Table",
+        "tags": [
+          "iceberg"
+        ]
+      }
+    },
+    "/iceberg/v1/{prefix}/namespaces/{namespace}/views": {
+      "get": {
+        "description": "There are no views. Answered, not refused, because some clients ask.",
+        "operationId": "list_views_iceberg_v1__prefix__namespaces__namespace__views_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "prefix",
+            "required": true,
+            "schema": {
+              "title": "Prefix",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response List Views Iceberg V1  Prefix  Namespaces  Namespace  Views Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Views",
+        "tags": [
+          "iceberg"
+        ]
+      }
+    },
+    "/iceberg/v1/{rest}": {
+      "delete": {
+        "operationId": "iceberg_refuse_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rest",
+            "required": true,
+            "schema": {
+              "title": "Rest",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": " Refuse Writes",
+        "tags": [
+          "iceberg"
+        ]
+      },
+      "patch": {
+        "operationId": "iceberg_refuse_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rest",
+            "required": true,
+            "schema": {
+              "title": "Rest",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": " Refuse Writes",
+        "tags": [
+          "iceberg"
+        ]
+      },
+      "post": {
+        "operationId": "iceberg_refuse_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rest",
+            "required": true,
+            "schema": {
+              "title": "Rest",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": " Refuse Writes",
+        "tags": [
+          "iceberg"
+        ]
+      },
+      "put": {
+        "operationId": "iceberg_refuse_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rest",
+            "required": true,
+            "schema": {
+              "title": "Rest",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": " Refuse Writes",
+        "tags": [
+          "iceberg"
         ]
       }
     },

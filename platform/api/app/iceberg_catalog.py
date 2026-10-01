@@ -43,6 +43,7 @@ import json
 import secrets
 from datetime import datetime, timedelta, timezone
 
+import psycopg.errors
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, Response
 
@@ -172,7 +173,13 @@ def catalog_principal(request: Request) -> dict:
     # An ended appointment stops here, the same as it does for a session.
     if not person or person.get("ended_at"):
         raise refusal
-    db.execute("update catalog_token set last_used_at = now() where id = %s", (row["id"],))
+    # A retired organisation's records stay readable but nothing more may be
+    # written to it, and that includes this timestamp. Reading must not depend
+    # on being able to record that it happened.
+    try:
+        db.execute("update catalog_token set last_used_at = now() where id = %s", (row["id"],))
+    except psycopg.errors.ReadOnlySqlTransaction:
+        pass
     return {**person, "purpose": row["purpose"], "token_id": str(row["id"])}
 
 
@@ -343,6 +350,13 @@ def oauth_tokens() -> JSONResponse:
                              "not an OAuth exchange"})
 
 
-@router.api_route("/iceberg/v1/{rest:path}", methods=["POST", "PUT", "PATCH", "DELETE"])
-def refuse_writes(rest: str, principal: dict = Depends(catalog_principal)):
+def _refuse_writes(rest: str, principal: dict = Depends(catalog_principal)):
     raise CatalogError(403, "ForbiddenException", READ_ONLY)
+
+
+# One route per method, each with its own operation id. A single route serving
+# all four would take its id from a set, whose order differs between processes,
+# so the published API reference would change from one start to the next.
+for _method in ("post", "put", "patch", "delete"):
+    router.add_api_route("/iceberg/v1/{rest:path}", _refuse_writes, methods=[_method.upper()],
+                         operation_id=f"iceberg_refuse_{_method}")

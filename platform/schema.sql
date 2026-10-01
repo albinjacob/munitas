@@ -2063,3 +2063,17 @@ create table if not exists catalog_token (
 );
 
 create index if not exists catalog_token_principal_idx on catalog_token (principal);
+
+-- A retired organisation may not gain a new token or a new table reference,
+-- the same as every other table that carries its tenant_id.
+do $$
+declare t text;
+begin
+  foreach t in array array['iceberg_table_ref','catalog_token'] loop
+    execute format('drop trigger if exists %I on %I', 'refuse_retired_' || t, t);
+    execute format(
+      'create trigger %I before insert or update on %I
+         for each row execute function refuse_write_to_retired_tenant()',
+      'refuse_retired_' || t, t);
+  end loop;
+end $$;
