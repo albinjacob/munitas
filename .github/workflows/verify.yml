@@ -12,10 +12,18 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      runner:
+        description: "Runner image to run on, to try a newer one before ubuntu-latest moves to it, for example ubuntu-26.04. Leave as it is for the usual ubuntu-latest."
+        required: false
+        default: ubuntu-latest
+        type: string
 
 jobs:
   backend-verify:
-    runs-on: ubuntu-latest
+    # inputs.runner is only ever set by a manual run; a push or a pull request
+    # has none and gets ubuntu-latest, as before.
+    runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -227,7 +235,7 @@ jobs:
           docker compose logs
 
   web-build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
     defaults:
       run:
         working-directory: web
