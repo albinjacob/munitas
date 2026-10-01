@@ -220,6 +220,18 @@ class EndPipelineRun(BaseModel):
     error: str | None = Field(default=None, max_length=2000)
 
 
+class CatalogTokenIn(BaseModel):
+    """What a person says when they ask for a token for their own tools.
+
+    The purpose is the same sentence a lease is approved for. A table opened
+    with this token is decided on it, exactly as a credential request is, so a
+    token whose purpose is not the purpose of the person's lease opens nothing
+    that lease covers.
+    """
+    purpose: str = Field(min_length=3, max_length=200)
+    hours: float = Field(default=8, gt=0, le=72)
+
+
 class AccessPreviewIn(BaseModel):
     dataset_ids: list[UUID] = Field(default_factory=list)
     version_ids: list[UUID] = Field(default_factory=list)

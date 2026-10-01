@@ -142,6 +142,34 @@ def current_session(request: Request) -> dict:
     }
 
 
+def identity_for(person_id: str) -> dict | None:
+    """The same identity current_session builds, for a person already known by
+    id, when no session is involved (a catalog token names its holder).
+
+    Roles are the live union current_session reads, so a role granted a minute
+    ago applies and one revoked a minute ago does not. An ended appointment is
+    returned as-is, with `ended_at` set, and the caller refuses it: this only
+    answers who the person is, never whether they may act.
+    """
+    person = db.one(
+        """select d.id, d.tenant_id, d.label, d.kind, d.ended_at,
+                  array(
+                      select distinct role from (
+                          select unnest(d.roles) as role
+                          union
+                          select role from role_grant
+                           where principal = d.id
+                             and not revoked
+                             and expires_at > now()
+                      ) effective
+                  ) as roles
+             from directory d
+            where d.id = %s""",
+        (person_id,),
+    )
+    return person
+
+
 @router.get("/auth/whoami")
 def whoami(identity: dict = Depends(current_session)) -> dict:
     """Prove the mechanism: a real session resolves to a real directory row.

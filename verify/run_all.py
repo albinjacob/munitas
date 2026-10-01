@@ -68,6 +68,7 @@ SCRIPTS = [
     ("U78 people see what they can read, and the preview agrees with the check", "v78_access_preview.py"),
     ("U85 writing as pipeline_action needs the same proof reading does", "v82_write_credential_compiler.py"),
     ("U90 a sealed tabular version is also an Iceberg table that agrees with the register", "v90_iceberg_projection.py"),
+    ("U91 the Iceberg catalog shows and opens only what a person may read, and ends with their lease", "v91_iceberg_catalog.py"),
 ]
 
 here = Path(__file__).parent

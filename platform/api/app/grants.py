@@ -714,8 +714,8 @@ def activation_status() -> dict:
     one only a person can fix. `alert` is whether an administrator needs to
     know: printing has failed for longer than ALERT_AFTER_SECONDS, or failed in
     a way retrying cannot fix. `unserved` counts what is waiting on a print
-    that has not happened yet: allowed decisions and parked runs newer than the
-    last successful print.
+    that has not happened yet: allowed decisions, parked runs and ended leases newer
+    than the last successful print.
     """
     from datetime import datetime, timedelta, timezone
 
@@ -741,6 +741,19 @@ def activation_status() -> dict:
                   count(*) filter (where %s::timestamptz is null
                                       or awaiting_activation_since >= %s) as unserved
              from agent_run where status = 'awaiting_activation'""", (since, since))
+    # A lease that has ended (revoked, or its time passed) since the last print
+    # still has its key in the live document. Nothing would print for it: a
+    # request prints for itself, and this loop prints for failures. So it is
+    # counted here, and the next tick drops the key. Without this a revoked or
+    # expired lease's key worked until some unrelated request printed.
+    ended = db.one(
+        """select count(distinct l.id) as n
+             from access_lease l
+             join storage_identity si on si.lease_id = l.id and si.ended_at is null
+            where (l.revoked and (%s::timestamptz is null or l.revoked_at >= %s))
+               or (not l.revoked and l.expires_at is not null and l.expires_at <= now()
+                   and (%s::timestamptz is null or l.expires_at >= %s))""",
+        (since, since, since, since))["n"]
     retry_due = None
     if latest and latest["retryable"]:
         retry_due = latest["finished_at"] + timedelta(seconds=retry_delay_seconds(len(failures)))
@@ -756,6 +769,7 @@ def activation_status() -> dict:
         "retry_due_at": retry_due,
         "alert": alert,
         "pending_decisions": pending,
+        "ended_leases": ended,
         "parked_runs": parked["n"],
-        "unserved": pending + parked["unserved"],
+        "unserved": pending + parked["unserved"] + ended,
     }

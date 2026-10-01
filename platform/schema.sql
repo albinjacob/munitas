@@ -1790,10 +1790,16 @@ create table if not exists storage_permission_print (
   succeeded    boolean,            -- null while the print is running
   retryable    boolean,            -- set on failure: false means retrying cannot fix it
   trigger      text not null check (trigger in
-                 ('request', 'provision', 'promotion', 'start-up', 'activator', 'manual')),
+                 ('request', 'provision', 'promotion', 'start-up', 'activator', 'manual', 'revocation')),
   identities   int,
   reason       text
 );
+-- A lease that is revoked prints at once, so its key stops working then and not at the
+-- next unrelated print. Applied to an existing table too, because the list above is
+-- only read when the table is first created.
+alter table storage_permission_print drop constraint if exists storage_permission_print_trigger_check;
+alter table storage_permission_print add constraint storage_permission_print_trigger_check
+  check (trigger in ('request', 'provision', 'promotion', 'start-up', 'activator', 'manual', 'revocation'));
 create index if not exists storage_permission_print_success_idx
   on storage_permission_print (started_at desc) where succeeded;
 

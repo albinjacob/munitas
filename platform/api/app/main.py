@@ -29,8 +29,9 @@ from crypto import DestroyedKeyError, EnvelopeCrypto
 
 from . import (access_preview, activation, agent_upload, agents, auth, config,
               dag_pipelines, db, external_accounts, grants, housekeeping, iceberg,
-              ingest, logs, models, opa, people, pipeline, r2, read_models, seaweed,
-              storage, task_credential, temporal_client, versions)
+              iceberg_catalog, ingest, logs, models, opa, people, pipeline, r2,
+              read_models, seaweed, storage, task_credential, temporal_client,
+              versions)
 
 log = logs.get_logger("main")
 
@@ -117,6 +118,9 @@ app.include_router(dag_pipelines.router)
 app.include_router(auth.router)
 app.include_router(pipeline.router)
 app.include_router(access_preview.router)
+app.include_router(iceberg_catalog.router)
+# The catalog answers in the shape Iceberg clients read, not FastAPI's default.
+app.add_exception_handler(iceberg_catalog.CatalogError, iceberg_catalog.handle_error)
 
 
 @app.exception_handler(pg_errors.ReadOnlySqlTransaction)
@@ -826,6 +830,16 @@ def revoke_lease(lease_id: str, identity: dict = Depends(auth.current_session)) 
     )
     if not row:
         raise HTTPException(404, "no such lease")
+    # Print now, as an approval does, so the lease's key stops working now and not
+    # at whatever print comes next. If the print fails the revocation still stands
+    # (it is in the register and the policy refuses the lease at once); the
+    # activator counts the ended lease and retries until the key is gone.
+    try:
+        grants.reconcile(trigger="revocation")
+    except Exception as exc:
+        log.error("storage permissions could not be printed after a revocation; "
+                  "the activator will keep trying",
+                  extra={"lease_id": lease_id, "error_type": type(exc).__name__})
     return {"id": lease_id, "revoked": True}
 
 
