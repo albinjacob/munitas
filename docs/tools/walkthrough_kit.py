@@ -88,8 +88,8 @@ SERIES = [
     {"slug": "legal-export", "org": "harbour", "title": "Hand over a closed clinic's records for a legal case",
      "summary": "A court demands a patient's records from the clinic that is closing. One platform administrator "
                 "asks for them, a different one approves, and the custodian named by the legal hold confirms what "
-                "is included. The platform builds a signed, encrypted package that the recipient opens with a "
-                "passphrase.",
+                "is included and names the patient, so that only that patient's rows leave. The platform builds a "
+                "signed, encrypted package that the recipient opens with a passphrase.",
      "you_see": "Three people each doing one step, a refusal, a passphrase shown once, a download link, and the "
                 "recipient checking the package on their own computer"},
 ]
@@ -178,6 +178,8 @@ WORDS = {
     "legal_export": ("Export for a legal matter", "Producing some of an organisation&rsquo;s kept records for a court, a "
                                                   "regulator or a law firm that has demanded them. It needs a legal hold "
                                                   "in force and three different people."),
+    "filter": ("Filter", "Keeping only the rows of a table that match values the custodian names, such as one "
+                         "patient&rsquo;s id, so that other people&rsquo;s rows do not leave with them."),
     "manifest": ("Manifest", "The list of every file in a package, each with its size and a fingerprint of its "
                              "contents. The platform signs it, so that changing a file or the list can be noticed."),
     "passphrase": ("Passphrase", "A long secret that opens an encrypted file. It travels separately from the file, "

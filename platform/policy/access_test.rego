@@ -1263,3 +1263,34 @@ test_the_passphrase_goes_to_the_custodian_once if {
 		"export": {"status": "ready", "passphrase_revealed": false},
 	}
 }
+
+test_a_filtered_dataset_needs_the_custodian_to_name_the_values if {
+	access.may_confirm_export with input as {
+		"actor": {"id": "dpo-adeyemi", "roles": ["dpo"]},
+		"hold": {"custodian_id": "dpo-adeyemi"},
+		"export": {"status": "approved", "filter_datasets": ["d1"]},
+		"confirm": {"valued_datasets": ["d1"]},
+	}
+	not access.may_confirm_export with input as {
+		"actor": {"id": "dpo-adeyemi", "roles": ["dpo"]},
+		"hold": {"custodian_id": "dpo-adeyemi"},
+		"export": {"status": "approved", "filter_datasets": ["d1", "d2"]},
+		"confirm": {"valued_datasets": ["d1"]},
+	}
+	r := access.export_confirmation_decision with input as {
+		"actor": {"id": "dpo-adeyemi", "roles": ["dpo"]},
+		"hold": {"custodian_id": "dpo-adeyemi"},
+		"export": {"status": "approved", "filter_datasets": ["d1", "d2"]},
+		"confirm": {"valued_datasets": ["d1"]},
+	}
+	r.reasons == ["the custodian names the values to match for every filtered dataset, and none were given for: d2"]
+}
+
+test_an_export_without_filters_needs_no_values if {
+	access.may_confirm_export with input as {
+		"actor": {"id": "dpo-adeyemi", "roles": ["dpo"]},
+		"hold": {"custodian_id": "dpo-adeyemi"},
+		"export": {"status": "approved"},
+		"confirm": {"valued_datasets": []},
+	}
+}

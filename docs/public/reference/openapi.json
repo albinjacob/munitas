@@ -518,24 +518,6 @@
         "title": "DatasetVersionIn",
         "type": "object"
       },
-      "DecideIn": {
-        "properties": {
-          "approve": {
-            "title": "Approve",
-            "type": "boolean"
-          },
-          "note": {
-            "default": "",
-            "title": "Note",
-            "type": "string"
-          }
-        },
-        "required": [
-          "approve"
-        ],
-        "title": "DecideIn",
-        "type": "object"
-      },
       "Decision": {
         "properties": {
           "outcome": {
@@ -783,6 +765,14 @@
             "title": "Demanded On",
             "type": "string"
           },
+          "filters": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/FilterIn"
+            },
+            "title": "Filters",
+            "type": "array"
+          },
           "hold_id": {
             "title": "Hold Id",
             "type": "string"
@@ -891,6 +881,24 @@
           "added_by"
         ],
         "title": "Field_",
+        "type": "object"
+      },
+      "FilterIn": {
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "dataset_id": {
+            "title": "Dataset Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dataset_id",
+          "column"
+        ],
+        "title": "FilterIn",
         "type": "object"
       },
       "GateDecisionIn": {
@@ -1169,6 +1177,25 @@
           "workflow_id"
         ],
         "title": "PipelineRunIn",
+        "type": "object"
+      },
+      "PreviewIn": {
+        "properties": {
+          "values": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "values"
+        ],
+        "title": "PreviewIn",
         "type": "object"
       },
       "PromotionIn": {
@@ -1831,6 +1858,53 @@
           "task_credential"
         ],
         "title": "WriteCredentialRequest",
+        "type": "object"
+      },
+      "app__legal_export__DecideIn": {
+        "properties": {
+          "approve": {
+            "title": "Approve",
+            "type": "boolean"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "values": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "default": {},
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "approve"
+        ],
+        "title": "DecideIn",
+        "type": "object"
+      },
+      "app__lifecycle__DecideIn": {
+        "properties": {
+          "approve": {
+            "title": "Approve",
+            "type": "boolean"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "approve"
+        ],
+        "title": "DecideIn",
         "type": "object"
       }
     }
@@ -6666,7 +6740,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/DecideIn"
+                "$ref": "#/components/schemas/app__legal_export__DecideIn"
               }
             }
           },
@@ -6719,7 +6793,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/DecideIn"
+                "$ref": "#/components/schemas/app__legal_export__DecideIn"
               }
             }
           },
@@ -6749,6 +6823,60 @@
           }
         },
         "summary": "Confirm",
+        "tags": [
+          "legal-export"
+        ]
+      }
+    },
+    "/legal-exports/{export_id}/filter-preview": {
+      "post": {
+        "description": "For the custodian, before confirming: how many rows each filter would match, and which values matched none. Counts\nonly. The rows are never returned, and the values are not stored by asking.",
+        "operationId": "filter_preview_legal_exports__export_id__filter_preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "title": "Export Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Filter Preview Legal Exports  Export Id  Filter Preview Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Filter Preview",
         "tags": [
           "legal-export"
         ]
@@ -7106,7 +7234,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/DecideIn"
+                "$ref": "#/components/schemas/app__lifecycle__DecideIn"
               }
             }
           },

@@ -121,7 +121,7 @@ def main() -> int:
     passphrase = args.passphrase or getpass.getpass("Passphrase: ")
     report = open_package(args.package, passphrase, args.out, args.public_key)
     if report["ok"]:
-        print(f"OK: {report['files']} files for matter {report['matter_number']} "
+        print(f"OK: {report['files']} file{'s' if report['files'] != 1 else ''} for matter {report['matter_number']} "
               f"(demand {report['demand_reference']}, produced {report['produced_at']}). Signature verified.")
         if report["note"]:
             print("Note:", report["note"])

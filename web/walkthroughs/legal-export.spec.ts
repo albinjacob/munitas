@@ -104,13 +104,13 @@ test("capture: records are produced for a legal matter, then opened by the recip
   await card.getByTestId("export-authority").fill("High Court, King's Bench Division");
   await card.getByTestId("export-reference").fill("KB-2026-004411");
   await card.getByTestId("export-demanded-on").fill("2026-10-05");
-  await card.getByTestId("export-text").fill("Disclosure of the claimant's records and the log of who read them.");
+  await card.getByTestId("export-text").fill("Disclosure of the appointment records of the claimant, Ms Alder, and the log of who read them.");
   await card.getByTestId("export-recipient").fill("Ruth Aldous");
   await card.getByTestId("export-recipient-org").fill("Aldous and Brennan LLP");
   await card.getByTestId("export-recipient-email").fill("ruth.aldous@aldousbrennan.example");
-  await expect(card.getByTestId("export-datasets")).toContainText("appointment-reminders");
-  await card.getByTestId("export-datasets").getByText("appointment-reminders").click();
-  await card.getByTestId("export-datasets").getByText("discharge-letters").click();
+  await expect(card.getByTestId("export-datasets")).toContainText("appointments");
+  await card.getByTestId("export-datasets").getByText("appointments").click();
+  await card.getByTestId("export-filter-appointments").selectOption("patient_id");
   await card.getByTestId("export-form").evaluate((e) => e.scrollIntoView({ block: "start" }));
   await shot(page, "priya-fills-in-the-demand");
 
@@ -141,10 +141,16 @@ test("capture: records are produced for a legal matter, then opened by the recip
   await loginAs(page, RECORDS_OFFICER);
   const custodianCard = page.locator('[data-testid="custodian-exports"] [data-export="KB-2026-004411"]');
   await expect(custodianCard).toContainText("Waiting for the custodian to confirm the scope");
-  await expect(custodianCard).toContainText("appointment-reminders");
-  await custodianCard.getByTestId("confirm-note").fill("Both of the datasets named in the demand, and nothing more.");
+  await expect(custodianCard).toContainText("appointments");
   await page.getByTestId("custodian-exports").evaluate((e) => e.scrollIntoView({ block: "start" }));
   await shot(page, "adeyemi-is-asked-to-confirm-the-scope");
+
+  await custodianCard.getByTestId("filter-values-appointments").fill("P-4471");
+  await custodianCard.getByTestId("check-filter").click();
+  await expect(custodianCard.getByTestId("filter-preview")).toContainText("2 of 10 rows match");
+  await custodianCard.getByTestId("confirm-note").fill("Ms Alder's patient id, and nothing more.");
+  await page.getByTestId("custodian-exports").evaluate((e) => e.scrollIntoView({ block: "start" }));
+  await shot(page, "adeyemi-names-the-claimant");
 
   await custodianCard.getByTestId("confirm-scope").click();
   await expect(custodianCard.getByTestId("read-passphrase")).toBeVisible({ timeout: 90_000 });
@@ -183,8 +189,8 @@ test("capture: records are produced for a legal matter, then opened by the recip
   writeFileSync(packagePath, Buffer.from(await download.arrayBuffer()));
   const opened = join(work, "opened");
   const printed = execFileSync(PYTHON, [TOOL, packagePath, "--out", opened, "--public-key", key.public_key, "--passphrase", passphrase], { encoding: "utf8" });
-  const aFile = readdirSync(join(opened, "data", "appointment-reminders", "v1")).sort()[0];
-  const contents = readFileSync(join(opened, "data", "appointment-reminders", "v1", aFile), "utf8");
+  const aFile = "v1.filtered.csv";
+  const contents = readFileSync(join(opened, "data", "appointments", "v1", aFile), "utf8");
   const size = statSync(packagePath).size;
   writeFileSync(join(SHOTS, "terminal.json"), JSON.stringify({
     blocks: [
@@ -196,7 +202,7 @@ test("capture: records are produced for a legal matter, then opened by the recip
         command: "python open_legal_package.py KB-2026-004411.mlep --out opened --public-key <the platform's public key> --passphrase <the passphrase>",
         output: printed },
       { kind: "shown", what: "What the folder opened now holds", output: tree(opened) + "\n" },
-      { kind: "shown", what: `What the file opened/data/appointment-reminders/v1/${aFile} reads`, output: contents },
+      { kind: "shown", what: `What the file opened/data/appointments/v1/${aFile} holds`, output: contents },
     ],
   }, null, 2));
 });

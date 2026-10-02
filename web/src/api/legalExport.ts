@@ -24,6 +24,10 @@ export interface LegalExport {
   demand_text: string;
   dataset_ids: string[];
   include_audit: boolean;
+  /** The tables that are filtered to the rows for named people, and by which column. The people are never shown here. */
+  filters: { dataset_id: string; column: string }[];
+  /** After production: for each filtered dataset, how many rows matched, out of how many. Counts only. */
+  filter_results: Record<string, { column: string; values_given: number; rows_matched: number; rows_total: number; values_unmatched: number }> | null;
   recipient_name: string;
   recipient_organisation: string;
   recipient_email: string;
@@ -58,6 +62,19 @@ export interface ScopeDataset {
   name: string;
   versions: number;
   bytes: number;
+  /** True when every sealed version is stored as a table, which is what a filter needs. */
+  tabular: boolean;
+  /** The plain columns that can identify a row, common to every version. Null when it is not a table. */
+  columns: string[] | null;
+}
+
+export interface FilterPreview {
+  dataset_id: string;
+  column: string;
+  values_given: number;
+  rows_matched: number;
+  rows_total: number;
+  unmatched_values: string[];
 }
 
 export interface NewExport {
@@ -71,6 +88,7 @@ export interface NewExport {
   recipient_name: string;
   recipient_organisation: string;
   recipient_email: string;
+  filters: { dataset_id: string; column: string }[];
 }
 
 export interface ManifestFile {
@@ -132,8 +150,17 @@ export function useApproveExport(id: string) {
 export function useConfirmExport(id: string) {
   const refresh = useRefresh();
   return useMutation({
-    mutationFn: (body: { approve: boolean; note: string }) => api.post<LegalExport>(`/legal-exports/${id}/confirm`, body),
+    mutationFn: (body: { approve: boolean; note: string; values?: Record<string, string[]> }) =>
+      api.post<LegalExport>(`/legal-exports/${id}/confirm`, body),
     onSuccess: refresh,
+  });
+}
+
+/** Counts only: how many rows each filter would match, and which values matched none. Never the rows. */
+export function useFilterPreview(id: string) {
+  return useMutation({
+    mutationFn: (values: Record<string, string[]>) =>
+      api.post<{ results: FilterPreview[] }>(`/legal-exports/${id}/filter-preview`, { values }),
   });
 }
 

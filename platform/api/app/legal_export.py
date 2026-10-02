@@ -31,6 +31,21 @@ WHAT A PACKAGE HOLDS
     erased.json                   records and files that no longer exist, and when they went
     data/<dataset>/v<n>/...       the files as stored, byte for byte
 
+FILTERING A TABLE TO THE ROWS FOR NAMED PEOPLE
+
+A demand often asks for one person's records, and a table holds thousands of people's. Handing over the whole table would
+send everybody else's data out with it. So a request may name a table dataset and one column that identifies a person
+(a patient id, say), and the custodian the hold names, who answers for the records, supplies the values: the people the
+demand is about. The package then holds one file per version, a CSV of exactly the rows whose column equals one of the
+values. Nothing else of that dataset is included: not the original files, and not the Iceberg table that holds every
+row. The custodian sees how many rows each filter matches, and which values matched nothing, before confirming, and never
+the rows. The platform administrators never see the values at all.
+
+Matching is exact, as text, and case-sensitive. A person who appears under a spelling variant, or in a free-text column,
+or in another table, is not found by it, and that is the custodian's to check: the count and the unmatched values are
+shown for that reason. The manifest records the column, how many values, how many rows matched out of how many, and the
+fingerprint of the sealed records the rows were taken from.
+
 A file's hash is checked against the hash recorded when its version was sealed. A mismatch stops the production and
 says which file, because a package that quietly contains altered bytes is worse than no package.
 
@@ -85,7 +100,7 @@ _PUBLIC = """e.id, e.tenant_id, e.hold_id, e.status, e.demand_authority, e.deman
        e.approved_by, ap.label as approved_by_label, e.approved_at, e.approval_note,
        e.confirmed_by, cf.label as confirmed_by_label, e.confirmed_at, e.confirm_note,
        e.refused_by, e.refused_at, e.refusal_reason, e.production_started_at, e.produced_at, e.failure,
-       e.package_bytes, e.package_sha256, e.manifest_sha256, e.signature, e.file_count,
+       e.filters, e.filter_results, e.package_bytes, e.package_sha256, e.manifest_sha256, e.signature, e.file_count,
        e.passphrase_revealed_at, e.expires_at, e.expired_at,
        h.matter_number, h.matter_name, h.custodian_id, h.status as hold_status,
        (select count(*) from legal_export_link l where l.export_id = e.id) as links_made"""
@@ -168,6 +183,93 @@ def _visible(session: dict, export: dict) -> None:
         _refuse(["an export is visible to platform administrators and to the custodian of its hold"])
 
 
+# --------------------------------------------------------------- filtering --
+
+SCALAR_TYPES = ("string", "int", "float", "bool")
+
+
+def _scalar_columns(dataset_id: str) -> list[str] | None:
+    """The columns that identify a row by one plain value, common to every sealed version of a table dataset, or None
+    when the dataset is not stored as a table in every version."""
+    versions = db.all_rows(
+        """select dv.id, sc.fields, (select count(*) from iceberg_table_ref r where r.dataset_version_id = dv.id) as tabled
+             from dataset_version dv join schema_contract sc on sc.id = dv.schema_id
+            where dv.dataset_id = %s and dv.sealed""", (dataset_id,))
+    if not versions or any(v["tabled"] == 0 for v in versions):
+        return None
+    common: set[str] | None = None
+    for v in versions:
+        names = {f["name"] for f in v["fields"] if f.get("type") in SCALAR_TYPES}
+        common = names if common is None else common & names
+    return sorted(common or [])
+
+
+def _clean_values(values: list[str]) -> list[str]:
+    return sorted({str(v).strip() for v in values if str(v).strip()})
+
+
+def _table_props() -> dict:
+    return {"s3.endpoint": config.S3_ENDPOINT, "s3.access-key-id": config.STORAGE_ADMIN[0],
+            "s3.secret-access-key": config.STORAGE_ADMIN[1], "s3.region": "us-east-1",
+            "s3.path-style-access": "true"}
+
+
+def _scan_filtered(metadata_location: str, column: str, values: list[str], target: Path | None) -> tuple[int, int, set[str]]:
+    """Read a table in batches and keep the rows whose `column`, as text, is one of `values`. Writes them to `target` as
+    CSV when one is given, with nested columns written as JSON. Returns (rows matched, rows in the table, the values
+    that matched at least one row)."""
+    import pyarrow as pa
+    import pyarrow.compute as pc
+    import pyarrow.csv as pacsv
+    from pyiceberg.table import StaticTable
+
+    table = StaticTable.from_metadata(metadata_location, properties=_table_props())
+    wanted = pa.array(values, type=pa.string())
+    reader = table.scan().to_arrow_batch_reader()
+
+    def flat(batch: "pa.RecordBatch") -> "pa.RecordBatch":
+        arrays, fields = [], []
+        for field, array in zip(batch.schema, batch.columns):
+            if pa.types.is_nested(field.type):
+                array = pa.array([json.dumps(x, default=str) if x is not None else None for x in array.to_pylist()],
+                                 type=pa.string())
+                field = pa.field(field.name, pa.string())
+            arrays.append(array)
+            fields.append(field)
+        return pa.RecordBatch.from_arrays(arrays, schema=pa.schema(fields))
+
+    writer = None
+    matched = total = 0
+    seen: set[str] = set()
+    try:
+        for batch in reader:
+            total += batch.num_rows
+            keep = pc.is_in(pc.cast(batch.column(column), pa.string()), value_set=wanted)
+            hit = batch.filter(keep)
+            if target is not None and writer is None:
+                writer = pacsv.CSVWriter(str(target), flat(batch.slice(0, 0)).schema)
+            if hit.num_rows:
+                matched += hit.num_rows
+                seen.update(pc.unique(pc.cast(hit.column(column), pa.string())).to_pylist())
+                if writer is not None:
+                    writer.write_batch(flat(hit))
+    finally:
+        if writer is not None:
+            writer.close()
+    if target is not None and writer is None:
+        # An empty table still gets its header row, so the file says which columns the filter ran over.
+        names = [f.name for f in reader.schema]
+        target.write_text(",".join(f'"{n}"' for n in names) + "\n", encoding="utf-8")
+    return matched, total, seen
+
+
+def _tables_of(dataset_id: str) -> list[dict]:
+    return db.all_rows(
+        """select dv.id as version_id, dv.version, r.table_name, r.metadata_location, r.record_count, r.records_sha256
+             from dataset_version dv join iceberg_table_ref r on r.dataset_version_id = dv.id
+            where dv.dataset_id = %s and dv.sealed order by dv.version""", (dataset_id,))
+
+
 # ------------------------------------------------------------------ scope --
 
 
@@ -186,7 +288,9 @@ def scope(hold_id: str = Query(...), session: dict = Depends(current_session_whi
             where d.tenant_id = %s order by d.name, dv.version""", (hold["tenant_id"],))
     datasets: dict[str, dict] = {}
     for r in rows:
-        entry = datasets.setdefault(str(r["id"]), {"id": str(r["id"]), "name": r["name"], "versions": 0, "bytes": 0})
+        entry = datasets.setdefault(str(r["id"]), {"id": str(r["id"]), "name": r["name"], "versions": 0, "bytes": 0,
+                                                    "columns": _scalar_columns(str(r["id"]))})
+        entry["tabular"] = entry["columns"] is not None
         entry["versions"] += 1
         entry["bytes"] += sum(int(f.get("bytes", 0)) for f in (r["object_manifest"] or []))
     return {"hold_id": hold_id, "tenant_id": hold["tenant_id"], "datasets": list(datasets.values())}
@@ -199,6 +303,11 @@ def signing_key() -> dict:
 
 
 # ---------------------------------------------------------------- request --
+
+
+class FilterIn(BaseModel):
+    dataset_id: str
+    column: str
 
 
 class ExportIn(BaseModel):
@@ -214,11 +323,18 @@ class ExportIn(BaseModel):
     recipient_name: str
     recipient_organisation: str
     recipient_email: str
+    filters: list[FilterIn] = []
 
 
 class DecideIn(BaseModel):
     approve: bool
     note: str = ""
+    # For a confirmation only: for each filtered dataset, the values the custodian names. Never shown to anybody else.
+    values: dict[str, list[str]] = {}
+
+
+class PreviewIn(BaseModel):
+    values: dict[str, list[str]]
 
 
 @router.post("", status_code=201)
@@ -230,17 +346,33 @@ def request_export(body: ExportIn, session: dict = Depends(current_session)) -> 
     unknown = [d for d in body.dataset_ids if d not in known]
     if unknown:
         _refuse([f"{unknown[0]} is not a dataset of {hold['tenant_id']}"], status=422)
+    seen_filters: set[str] = set()
+    for f in body.filters:
+        if f.dataset_id not in body.dataset_ids:
+            _refuse([f"{f.dataset_id} is filtered but is not one of the datasets named"], status=422)
+        if f.dataset_id in seen_filters:
+            _refuse([f"{f.dataset_id} is filtered twice. A dataset is filtered by one column"], status=422)
+        seen_filters.add(f.dataset_id)
+        columns = _scalar_columns(f.dataset_id)
+        if columns is None:
+            _refuse([f"{f.dataset_id} is not stored as a table in every version, so it cannot be filtered. "
+                     "Name it whole, or leave it out"], status=422)
+        if f.column not in columns:
+            _refuse([f"{f.column!r} is not a plain column in every version of {f.dataset_id}. "
+                     f"The columns that can identify a row are: {', '.join(columns) or 'none'}"], status=422)
     export_id = str(uuid.uuid4())
     db.execute(
         """insert into legal_export (id, tenant_id, hold_id, status, demand_authority, demand_reference, demanded_on,
                   demand_text, dataset_ids, include_audit, data_from, data_to, recipient_name, recipient_organisation,
-                  recipient_email, requested_by)
-           values (%s, %s, %s, 'requested', %s, %s, %s, %s, %s::uuid[], %s, %s, %s, %s, %s, %s, %s) returning id""",
+                  recipient_email, requested_by, filters)
+           values (%s, %s, %s, 'requested', %s, %s, %s, %s, %s::uuid[], %s, %s, %s, %s, %s, %s, %s, %s::jsonb) returning id""",
         (export_id, hold["tenant_id"], body.hold_id, body.demand_authority.strip(), body.demand_reference.strip(),
          body.demanded_on, body.demand_text.strip(), body.dataset_ids, body.include_audit, body.data_from, body.data_to,
-         body.recipient_name.strip(), body.recipient_organisation.strip(), body.recipient_email.strip(), session["id"]))
+         body.recipient_name.strip(), body.recipient_organisation.strip(), body.recipient_email.strip(), session["id"],
+         json.dumps([f.model_dump() for f in body.filters])))
     _event(hold["tenant_id"], session["id"], "export_requested", body.hold_id,
-           {"export_id": export_id, "demand_reference": body.demand_reference, "datasets": len(body.dataset_ids)})
+           {"export_id": export_id, "demand_reference": body.demand_reference, "datasets": len(body.dataset_ids),
+            "filtered": len(body.filters)})
     _audit(hold["tenant_id"], session["id"], "human", session["roles"], body.demand_reference, "requested", True)
     return _clean(_export(export_id))
 
@@ -272,9 +404,15 @@ def manifest(export_id: str, session: dict = Depends(current_session_while_closi
 
 def _decide(export: dict, hold: dict, session: dict, body: DecideIn, *, step: str) -> dict:
     """Approval (a different platform administrator) or confirmation (the hold's custodian), or a refusal of either."""
+    filter_datasets = [f["dataset_id"] for f in (export["filters"] or [])]
+    cleaned = {d: _clean_values(body.values.get(d, [])) for d in filter_datasets}
+    # A decline needs no values: the custodian is saying the scope is wrong, not supplying it.
+    valued = [d for d in filter_datasets if cleaned[d] or not body.approve]
     payload = {"actor": _actor(session),
                "hold": {"custodian_id": hold["custodian_id"], "status": hold["status"]},
-               "export": {"requested_by": export["requested_by"], "status": export["status"]}}
+               "export": {"requested_by": export["requested_by"], "status": export["status"],
+                          "filter_datasets": filter_datasets},
+               "confirm": {"valued_datasets": valued}}
     decision = opa.may_approve_export(payload) if step == "approve" else opa.may_confirm_export(payload)
     if not decision[0]:
         _audit(export["tenant_id"], session["id"], "human", session["roles"], export["demand_reference"],
@@ -292,8 +430,9 @@ def _decide(export: dict, hold: dict, session: dict, body: DecideIn, *, step: st
                               (session["id"], body.note.strip() or None, export["id"]))
         else:
             done = db.execute("update legal_export set status = 'confirmed', confirmed_by = %s, confirmed_at = now(), "
-                              "confirm_note = %s where id = %s and status = 'approved' returning id",
-                              (session["id"], body.note.strip() or None, export["id"]))
+                              "confirm_note = %s, filter_values = %s::jsonb where id = %s and status = 'approved' returning id",
+                              (session["id"], body.note.strip() or None, json.dumps(cleaned) if filter_datasets else None,
+                               export["id"]))
     else:
         done = db.execute("update legal_export set status = 'refused', refused_by = %s, refused_at = now(), "
                           "refusal_reason = %s where id = %s and status = %s returning id",
@@ -325,6 +464,36 @@ def confirm(export_id: str, body: DecideIn, background: BackgroundTasks,
     if result["status"] == "confirmed":
         background.add_task(produce, export_id)
     return result
+
+
+@router.post("/{export_id}/filter-preview")
+def filter_preview(export_id: str, body: PreviewIn, session: dict = Depends(current_session_while_closing)) -> dict:
+    """For the custodian, before confirming: how many rows each filter would match, and which values matched none. Counts
+    only. The rows are never returned, and the values are not stored by asking."""
+    export = _export(export_id)
+    hold = _hold(str(export["hold_id"]))
+    if hold["custodian_id"] != session["id"]:
+        _refuse(["only the custodian the hold names checks what a filter matches"])
+    if export["status"] != "approved":
+        _refuse(["a filter is checked while the export waits for the custodian to confirm it"], status=409)
+    results = []
+    for f in export["filters"] or []:
+        values = _clean_values(body.values.get(f["dataset_id"], []))
+        if not values:
+            results.append({"dataset_id": f["dataset_id"], "column": f["column"], "values_given": 0,
+                            "rows_matched": 0, "rows_total": 0, "unmatched_values": []})
+            continue
+        matched = total = 0
+        seen: set[str] = set()
+        for t in _tables_of(f["dataset_id"]):
+            m, n, hit = _scan_filtered(t["metadata_location"], f["column"], values, None)
+            matched, total = matched + m, total + n
+            seen |= hit
+        results.append({"dataset_id": f["dataset_id"], "column": f["column"], "values_given": len(values),
+                        "rows_matched": matched, "rows_total": total, "unmatched_values": [v for v in values if v not in seen]})
+    _audit(export["tenant_id"], session["id"], "human", session["roles"], export["demand_reference"],
+           "filter checked: " + ", ".join(f"{r['rows_matched']} of {r['rows_total']} rows" for r in results), True)
+    return {"results": results}
 
 
 # ------------------------------------------------------------- production --
@@ -399,11 +568,43 @@ def _build(export: dict) -> None:
         gaps: list[dict] = []
         total = 0
         version_ids: list[str] = []
+        filter_columns = {f["dataset_id"]: f["column"] for f in (export["filters"] or [])}
+        filter_values = (db.one("select filter_values from legal_export where id = %s", (export_id,)) or {}).get("filter_values") or {}
+        filter_results: dict[str, dict] = {}
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED, allowZip64=True) as zf:
             for dataset_id in [str(d) for d in export["dataset_ids"]]:
                 dataset = db.one("select id, name from dataset where id = %s and tenant_id = %s", (dataset_id, tenant))
                 if not dataset:
                     raise RuntimeError(f"dataset {dataset_id} no longer exists")
+                if dataset_id in filter_columns:
+                    column, values = filter_columns[dataset_id], filter_values.get(dataset_id) or []
+                    if not values:
+                        raise RuntimeError(f"no values were named for {dataset['name']}, which is filtered by {column}")
+                    seen_all: set[str] = set()
+                    matched_all = total_all = 0
+                    for t in _tables_of(dataset_id):
+                        version_ids.append(str(t["version_id"]))
+                        part = work / f"filtered-{len(files)}.csv"
+                        matched, rows_total, seen = _scan_filtered(t["metadata_location"], column, values, part)
+                        if rows_total != t["record_count"]:
+                            raise IntegrityError(f"{dataset['name']} v{t['version']}: the table holds {rows_total} rows and the "
+                                                 f"register says {t['record_count']}")
+                        data = part.read_bytes()
+                        path = f"data/{_safe(dataset['name'])}/v{t['version']}/{t['table_name']}.filtered.csv"
+                        zf.writestr(path, data)
+                        files.append({"path": path, "dataset_id": dataset_id, "dataset": dataset["name"],
+                                      "version": t["version"], "version_id": str(t["version_id"]), "bytes": len(data),
+                                      "sha256": hashlib.sha256(data).hexdigest(),
+                                      "source_key": f"table {t['table_name']}, filtered; the sealed original is not included",
+                                      "filtered_by": {"column": column, "values": len(values), "rows_matched": matched,
+                                                      "rows_total": rows_total, "source_records_sha256": t["records_sha256"]}})
+                        matched_all, total_all, seen_all = matched_all + matched, total_all + rows_total, seen_all | seen
+                    if not total_all and not _tables_of(dataset_id):
+                        raise RuntimeError(f"{dataset['name']} is not stored as a table, so it cannot be filtered")
+                    filter_results[dataset_id] = {"column": column, "values_given": len(values), "rows_matched": matched_all,
+                                                  "rows_total": total_all,
+                                                  "values_unmatched": len([v for v in values if v not in seen_all])}
+                    continue
                 for version in db.all_rows(
                         """select id, version, storage_prefix, object_manifest from dataset_version
                             where dataset_id = %s and sealed order by version""", (dataset_id,)):
@@ -481,6 +682,9 @@ def _build(export: dict) -> None:
                 "demand": {"authority": export["demand_authority"], "reference": export["demand_reference"],
                            "demanded_on": export["demanded_on"], "asks_for": export["demand_text"]},
                 "recipient": {"name": export["recipient_name"], "organisation": export["recipient_organisation"]},
+                "filters": [{"dataset": next(f["dataset"] for f in files if f["dataset_id"] == d), "column": c,
+                             "values_named_by_the_custodian": filter_values.get(d, []), **filter_results.get(d, {})}
+                            for d, c in filter_columns.items() if any(f["dataset_id"] == d for f in files)],
                 "steps": [
                     {"step": "asked for", "by": people.get(export["requested_by"]), "at": export["requested_at"]},
                     {"step": "approved", "by": people.get(export["approved_by"]), "at": export["approved_at"],
@@ -525,11 +729,11 @@ def _build(export: dict) -> None:
     db.execute(
         """update legal_export set status = 'ready', produced_at = %s, package_key = %s, package_bytes = %s,
                   package_sha256 = %s, manifest_sha256 = %s, signature = %s, file_count = %s,
-                  passphrase_ciphertext = %s, passphrase_wrapped_key = %s,
+                  passphrase_ciphertext = %s, passphrase_wrapped_key = %s, filter_results = %s::jsonb,
                   expires_at = now() + make_interval(days => %s)
             where id = %s and status = 'producing' returning id""",
         (produced_at, key, size, package_sha, manifest_sha, signature, len(files), sealed.ciphertext,
-         sealed.wrapped_key, config.LEGAL_EXPORT_KEEP_DAYS, export_id))
+         sealed.wrapped_key, json.dumps(filter_results) if filter_results else None, config.LEGAL_EXPORT_KEEP_DAYS, export_id))
     _event(tenant, "the platform", "export_produced", str(export["hold_id"]),
            {"export_id": export_id, "files": len(files), "bytes": size, "manifest_sha256": manifest_sha})
     _audit(tenant, "the platform", "workload", [], export["demand_reference"], f"produced, {len(files)} files", True)

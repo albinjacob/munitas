@@ -1129,6 +1129,13 @@ default may_confirm_export := false
 may_confirm_export if {
 	input.actor.id == input.hold.custodian_id
 	input.export.status == "approved"
+	count(confirm_missing_values) == 0
+}
+
+# A dataset filtered to the rows for named people needs the people named, and the custodian names them.
+confirm_missing_values contains d if {
+	some d in object.get(input.export, "filter_datasets", [])
+	not d in object.get(input.confirm, "valued_datasets", [])
 }
 
 confirm_export_reason contains "only the custodian the hold names confirms what an export holds" if {
@@ -1137,6 +1144,11 @@ confirm_export_reason contains "only the custodian the hold names confirms what 
 
 confirm_export_reason contains "an export is confirmed after a platform administrator has approved it" if {
 	input.export.status != "approved"
+	input.actor.id == input.hold.custodian_id
+}
+
+confirm_export_reason contains sprintf("the custodian names the values to match for every filtered dataset, and none were given for: %v", [concat(", ", sort([d | some d in confirm_missing_values]))]) if {
+	count(confirm_missing_values) > 0
 	input.actor.id == input.hold.custodian_id
 }
 

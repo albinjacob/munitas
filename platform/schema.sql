@@ -2526,3 +2526,11 @@ create rule tenant_deletion_record_no_update as on update to tenant_deletion_rec
          old.files_removed, old.buckets_removed, old.buckets_left, old.audit_kept_until,
          old.audit_rows_kept, old.identities_removed, old.exports)
   do instead nothing;
+
+-- Filtering a table to the rows for named people. The request says which tables are filtered and by which column;
+-- the custodian the hold names supplies the values, because the custodian answers for the records. The values are
+-- personal data, so they are kept here, never shown to a platform administrator, and deleted with the organisation.
+-- `filter_results` holds only counts: how many rows matched, out of how many.
+alter table legal_export add column if not exists filters jsonb not null default '[]'::jsonb;
+alter table legal_export add column if not exists filter_values jsonb;
+alter table legal_export add column if not exists filter_results jsonb;

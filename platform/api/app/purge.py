@@ -209,7 +209,7 @@ def purge_tenant(tenant_id: str, purged_by: str) -> dict:
     # released, and a delivered package is with its recipient.
     exports = db.all_rows(
         """select e.id, e.demand_authority, e.demand_reference, e.demanded_on, e.recipient_organisation, e.status,
-                  e.manifest_sha256, e.file_count, e.produced_at, e.package_key, e.expired_at, h.matter_number
+                  e.manifest_sha256, e.file_count, e.produced_at, e.package_key, e.expired_at, e.filters, h.matter_number
              from legal_export e join legal_hold h on h.id = e.hold_id where e.tenant_id = %s order by e.requested_at""",
         (tenant_id,))
     for e in exports:
@@ -218,7 +218,7 @@ def purge_tenant(tenant_id: str, purged_by: str) -> dict:
     exports_summary = [{"matter_number": e["matter_number"], "demand_authority": e["demand_authority"],
                         "demand_reference": e["demand_reference"], "demanded_on": str(e["demanded_on"]),
                         "recipient_organisation": e["recipient_organisation"], "status": e["status"],
-                        "files": e["file_count"], "manifest_sha256": e["manifest_sha256"],
+                        "files": e["file_count"], "filtered_datasets": len(e["filters"] or []), "manifest_sha256": e["manifest_sha256"],
                         "produced_at": str(e["produced_at"]) if e["produced_at"] else None} for e in exports]
 
     with psycopg.connect(config.PG_DSN, row_factory=dict_row) as conn:

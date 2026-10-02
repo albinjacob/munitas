@@ -33,9 +33,12 @@ STEPS = [
                 "This story starts where the walkthrough about closing down an organisation ends. Harbour Clinic "
                 "is closing down, and a legal hold is in force on it. A legal hold is an order to keep an "
                 "organisation&rsquo;s records and not delete them. It only keeps them. Now the High Court has "
-                "demanded the records of the patient who is making the claim, together with the log of who read "
-                "them. Producing records is a different act from keeping them, so the platform gives it its own "
-                "steps. Three different people each do one step, and none of them reads the records. Priya is a "
+                "demanded the appointment records of the patient who is making the claim, Ms Alder, together "
+                "with the log of who read them. The clinic&rsquo;s appointments are one table of ten rows, "
+                "covering five patients, so handing over the whole table would send four other patients&rsquo; "
+                "records out with it. Producing records is a different act from keeping them, so the platform "
+                "gives it its own steps. Three different people each do one step, and none of them reads the "
+                "records. Priya is a "
                 "platform administrator, a person who runs Munitas itself and who has no say over who may read "
                 "any department&rsquo;s data. " + CLOCK),
         "title": "Priya finds the legal hold in force, and a way to ask for records",
@@ -52,21 +55,23 @@ STEPS = [
     },
     {
         "file": "02-priya-fills-in-the-demand.png", "actor": "priya",
-        "title": "Priya copies the demand into the form",
+        "title": "Priya copies the demand into the form, and chooses to hand over only the claimant&rsquo;s rows",
         "screen": "Legal holds &middot; the request form under the hold",
-        "text": "The form asks for what the court sent, in the court&rsquo;s words: who is demanding the records, "
-                "the reference of the demand, its date, and what it asks for. It also asks who receives the "
-                "package. Then Priya chooses which datasets are included. A dataset is the platform&rsquo;s name "
-                "for a registered, named collection of records. Choosing a dataset includes every sealed version "
-                "of it, and a sealed version is a finished state of a dataset that can never be edited. The "
-                "platform offers nothing narrower than a whole dataset, because deciding what is relevant or "
-                "private is the lawyers&rsquo; work and not the platform&rsquo;s.",
+        "text": "The form asks for what the court sent, in the court&rsquo;s words: who is demanding the "
+                "records, the reference of the demand, its date, and what it asks for. It also asks who "
+                "receives the package. Then Priya chooses which datasets are included. A dataset is the "
+                "platform&rsquo;s name for a registered, named collection of records. Choosing a dataset "
+                "includes every sealed version of it, and a sealed version is a finished state of a dataset "
+                "that can never be edited. A dataset that is a table offers a second choice: hand over the "
+                "whole table, or only the rows for named people, matched on one column. Priya chooses the "
+                "second. Priya does not name the people. The custodian does, in a later step, because the "
+                "custodian answers for the records.",
         "note": "The fields read: demanded by <strong>High Court, King&rsquo;s Bench Division</strong>, "
                 "reference <strong>KB-2026-004411</strong>, recipient <strong>Ruth Aldous</strong> of "
-                "<strong>Aldous and Brennan LLP</strong>. Both datasets are ticked, "
-                "<strong>appointment-reminders</strong> and <strong>discharge-letters</strong>, each with its "
-                "number of versions and size, and so is the audit trail, the list of who was allowed or refused "
-                "what for those datasets.",
+                "<strong>Aldous and Brennan LLP</strong>. Only <strong>appointments</strong> is ticked, marked "
+                "<strong>a table</strong>, and its choice reads <strong>only the rows for named people, matched "
+                "on patient_id</strong>. The line beside it reads <strong>The custodian names the people when "
+                "confirming</strong>. The audit trail is ticked too.",
     },
     {
         "file": "03-the-request-waits.png", "actor": "priya",
@@ -119,38 +124,57 @@ STEPS = [
     },
     {
         "file": "07-adeyemi-is-asked-to-confirm-the-scope.png", "actor": "adeyemi",
-        "act": ("PART THREE", "The custodian confirms the scope, and is given the passphrase",
+        "act": ("PART THREE", "The custodian names the claimant, and is given the passphrase",
                 "Adeyemi is the clinic&rsquo;s data protection officer, and the legal hold names Adeyemi as its "
                 "temporary custodian, the person who answers for the kept records while the hold stands. The "
                 "clinic is in its second stage, so the usual screens are closed to Adeyemi. The one thing still "
                 "open is what concerns the hold."),
-        "title": "Adeyemi is asked whether the scope is right",
+        "title": "Adeyemi is asked to confirm the scope, and to name the people",
         "screen": "Closing notice &middot; shown in place of every other screen",
         "text": "Besides the hold, the notice now shows the export that waits for the custodian. The custodian "
-                "sees the whole demand, who asked and who approved, and the names of the datasets. Only the "
-                "custodian can confirm that what is asked for matches the demand and goes no further, because "
-                "the custodian answers for the records. Neither platform administrator can.",
+                "sees the whole demand, who asked and who approved. Only the custodian can confirm that what is "
+                "asked for matches the demand and goes no further, because the custodian answers for the "
+                "records. Neither platform administrator can. For a table that is filtered there is one more "
+                "thing only the custodian does: name the people the demand is about.",
         "note": "A box titled <strong>Records being produced for a legal matter</strong> holds the card "
-                "<strong>KB-2026-004411: matter HC-2026-0417</strong>. It says <strong>The datasets named: "
-                "appointment-reminders, discharge-letters</strong>. Two buttons are offered: <strong>The scope "
-                "is right</strong> and <strong>It goes further than the demand</strong>. The note field reads "
-                "<strong>Both of the datasets named in the demand, and nothing more</strong>.",
+                "<strong>KB-2026-004411: matter HC-2026-0417</strong>. It says <strong>Filtered: appointments, "
+                "Only the rows for named people, matched on the column patient_id. The custodian names "
+                "them</strong>. A box below asks for <strong>one value of the column patient_id per line</strong> "
+                "and says that <strong>the platform administrators never see these values</strong>.",
     },
     {
-        "file": "08-the-package-is-ready.png", "actor": "adeyemi",
+        "file": "08-adeyemi-names-the-claimant.png", "actor": "adeyemi",
+        "title": "Adeyemi names the claimant, and checks how many rows match",
+        "screen": "Closing notice &middot; Records being produced for a legal matter",
+        "text": "Adeyemi types the claimant&rsquo;s patient id, <code>P-4471</code>, which is the value "
+                "the table uses for Ms Alder. The platform matches a value exactly, as written. Before "
+                "confirming, Adeyemi presses a button to check how many rows match. The answer is a count and "
+                "nothing else: the rows are not shown, and a value that matches no row would be listed by "
+                "name, so that a mistyped id does not quietly produce an empty package.",
+        "note": "The box holds <strong>P-4471</strong>. Under it: <strong>2 of 10 rows match</strong>. The note "
+                "field reads <strong>Ms Alder&rsquo;s patient id, and nothing more</strong>, and the button "
+                "<strong>The scope is right</strong> is usable. Without a value in the box it would stay "
+                "greyed out.",
+    },
+    {
+        "file": "09-the-package-is-ready.png", "actor": "adeyemi",
         "title": "The package is built, and the passphrase is waiting",
         "screen": "Closing notice &middot; Records being produced for a legal matter",
         "text": "Confirming starts a background job. It copies the files of the named datasets, checks each one "
                 "against the fingerprint recorded when it was sealed, and writes them into one package that it "
-                "signs and encrypts. No person opens the package, and no platform administrator can, because "
-                "the secret that opens it, called a passphrase, is held back for the custodian.",
+                "signs and encrypts. For the filtered table it reads the table and keeps only the rows that "
+                "match, and it includes nothing else of that table: not the original records, and not the "
+                "copy of the table that holds every row. No person opens the package, and no platform "
+                "administrator can, because the secret that opens it, called a passphrase, is held back for "
+                "the custodian.",
         "note": "The label reads <strong>Ready</strong>. The card adds <strong>Scope confirmed by Adeyemi</strong>, "
-                "<strong>Package: 5 files, 3 KB, encrypted</strong> and <strong>Kept until October 17, "
+                "the line <strong>2 of 10 rows matched</strong> and no patient id, "
+                "<strong>Package: 1 file, 2 KB, encrypted</strong> and <strong>Kept until October 17, "
                 "2026</strong>, after which the platform deletes the package. A button reads <strong>Show me "
                 "the passphrase, once</strong>.",
     },
     {
-        "file": "09-adeyemi-reads-the-passphrase.png", "actor": "adeyemi",
+        "file": "10-adeyemi-reads-the-passphrase.png", "actor": "adeyemi",
         "title": "Adeyemi reads the passphrase, once",
         "screen": "Closing notice &middot; Records being produced for a legal matter",
         "text": "The passphrase is shown on this screen and nowhere else. The platform does not keep it after "
@@ -162,7 +186,7 @@ STEPS = [
                 "link</strong>. The button has gone.",
     },
     {
-        "file": "10-priya-sees-what-the-package-holds.png", "actor": "priya",
+        "file": "11-priya-sees-what-the-package-holds.png", "actor": "priya",
         "act": ("PART FOUR", "A platform administrator makes the download link",
                 "Delivery is a person&rsquo;s act, because how a court or a law firm wants to receive a package "
                 "is not the platform&rsquo;s decision. The platform makes a package available and records "
@@ -173,13 +197,15 @@ STEPS = [
                 "called the manifest. It names every file and gives its size and a fingerprint of its contents, "
                 "which is a value that changes if even one byte of the file changes. The platform signs the "
                 "manifest, so any later change to a file or to the list can be noticed.",
-        "note": "The status is <strong>Ready</strong>. The table lists five files, three under "
-                "<strong>appointment-reminders/v1</strong> and two under <strong>discharge-letters/v1</strong>, "
-                "each with a size and the start of its <strong>SHA-256 fingerprint</strong>. The button "
-                "<strong>Make a download link</strong> is below the table.",
+        "note": "The status is <strong>Ready</strong>. The card says <strong>Filtered: appointments, Only the "
+                "rows for named people, matched on the column patient_id</strong> and <strong>2 of 10 rows "
+                "matched</strong>, and it shows no patient id. The table lists one file, "
+                "<strong>appointments/v1/v1.filtered.csv</strong>, with its size and the start of its "
+                "<strong>SHA-256 fingerprint</strong>. The button <strong>Make a download link</strong> is "
+                "below the table.",
     },
     {
-        "file": "11-priya-makes-the-link.png", "actor": "priya",
+        "file": "12-priya-makes-the-link.png", "actor": "priya",
         "title": "Priya makes a download link",
         "screen": "Legal holds &middot; Producing records for this matter",
         "text": "The link is shown once. It works three times and for seven days at most, and each use is "
@@ -216,7 +242,7 @@ STEPS = [
                 "platform&rsquo;s key, every file against the size and fingerprint in the manifest, and that no "
                 "file is present that the manifest does not list. Any failure makes the program say so and "
                 "stop.",
-        "note": "The program prints one line, beginning <strong>OK: 5 files for matter HC-2026-0417</strong> "
+        "note": "The program prints one line, beginning <strong>OK: 1 file for matter HC-2026-0417</strong> "
                 "and ending <strong>Signature verified</strong>. A wrong passphrase, a changed byte, a file cut "
                 "short or a key that is not the platform&rsquo;s each make it print a problem instead.",
     },
@@ -224,25 +250,28 @@ STEPS = [
         "terminal": [3], "actor": "ruth",
         "title": "Ruth looks at what the package holds",
         "screen": "Terminal &middot; on the recipient&rsquo;s computer",
-        "text": "Besides the five files, the package holds the manifest and its signature, the chain of custody, "
-                "the audit trail, and a list of records that no longer exist. The chain of custody is the "
-                "record of who asked, who approved and who confirmed, and when. The audit trail is the list "
-                "of who was allowed or refused what for the named datasets, as the demand asked.",
+        "text": "Besides the one data file, the package holds the manifest and its signature, the chain of "
+                "custody, the audit trail, and a list of records that no longer exist. The chain of custody is "
+                "the record of who asked, who approved and who confirmed, and when, and for a filtered table "
+                "it also names the values the custodian supplied. The audit trail is the list of who was "
+                "allowed or refused what for the named dataset, as the demand asked.",
         "note": "The listing shows <strong>audit-trail.csv</strong>, <strong>chain-of-custody.json</strong>, "
                 "<strong>erased.json</strong>, <strong>manifest.json</strong>, <strong>manifest.sig</strong> and "
-                "the five files under <strong>data</strong>.",
+                "one file under <strong>data/appointments/v1</strong>.",
     },
     {
         "terminal": [4], "actor": "ruth",
-        "title": "A file is exactly what was stored",
+        "title": "The table holds only the claimant&rsquo;s rows",
         "screen": "Terminal &middot; on the recipient&rsquo;s computer",
-        "text": "The platform does not convert, redact or reformat anything. It copies each file byte for "
-                "byte, and it stops with an error rather than hand over a file whose bytes no longer match the "
-                "fingerprint recorded when the version was sealed. Deciding what is private or privileged is "
-                "left to the lawyers.",
-        "note": "The letter reads <strong>Dear Ms Alder, this is a reminder of your appointment on 14 November "
-                "at 10:30</strong>, the same words that were uploaded to the clinic&rsquo;s department Patient "
-                "Records.",
+        "text": "The clinic&rsquo;s table has ten rows for five patients. The package holds the two that match "
+                "the patient id the custodian named, with every column kept, and nothing about the other four "
+                "patients. The platform does not decide what is private or privileged beyond that. It copies "
+                "the matching rows exactly, and the manifest records how the file was made: the column, how "
+                "many values were named, how many rows matched out of how many, and the fingerprint of the "
+                "sealed records they were taken from.",
+        "note": "The file has a header line and two rows, <strong>A-0001</strong> and <strong>A-0004</strong>, "
+                "both for <strong>P-4471</strong>, <strong>Ms Alder</strong>. No row of Mr Bellamy, Ms Carrow, "
+                "Mr Dalton or Ms Everett is present.",
     },
 ]
 
@@ -279,14 +308,15 @@ PAGE = Page(
     slug="legal-export", org="harbour",
     title=series_entry("legal-export")["title"],
     eyebrow="Harbour Clinic &middot; Export for a legal matter",
-    lede="A court demands a patient&rsquo;s records from a clinic that is closing down, and a legal hold already "
-         "keeps them. One platform administrator asks for them, a different one approves, and the custodian the "
-         "hold names confirms what is included. The platform builds a package that is signed and encrypted, "
+    lede="A court demands a patient&rsquo;s appointment records from a clinic that is closing down, and a legal hold "
+         "already keeps them. One platform administrator asks for them, a different one approves, and the "
+         "custodian the hold names confirms what is included and names the patient, so that only that "
+         "patient&rsquo;s rows leave. The platform builds a package that is signed and encrypted, "
          "and the custodian alone is given the passphrase. The recipient opens it on their own computer with "
          "a program that checks it.",
     actors=ACTORS, steps=STEPS,
     words=["organisation", "department", "dataset", "sealed", "custodian", "platform_admin", "legal_hold",
-           "temp_custodian", "dpo", "legal_export", "manifest", "passphrase", "fingerprint"],
+           "temp_custodian", "dpo", "legal_export", "filter", "manifest", "passphrase", "fingerprint"],
     has_code=True, evidence=evidence,
     shots_dir=SHOTS,
     capture_note="Captured live against the <code>harbour</code> organisation by "
@@ -294,8 +324,9 @@ PAGE = Page(
                  "<code>docs/tools/build_legal_export_walkthrough.py</code>. The terminal part is the real output "
                  "of the real commands. What the platform refuses is proved separately by "
                  "<code>verify/v102_legal_export_rules.py</code> and <code>verify/v103_legal_export_package.py</code>, "
-                 "which also open a package with the recipient&rsquo;s program, change it in four ways, and show "
-                 "that each change is noticed.",
+                 "and <code>verify/v104_legal_export_filter.py</code>, which also open a package with the "
+                 "recipient&rsquo;s program, change it in four ways, and show that each change is noticed, "
+                 "and that a filtered table holds the named rows and nothing else.",
 )
 
 if __name__ == "__main__":

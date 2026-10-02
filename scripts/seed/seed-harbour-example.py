@@ -15,6 +15,9 @@ Idempotent: it does nothing when the organisation already holds datasets.
 
 from __future__ import annotations
 
+import hashlib
+import json
+import os
 import sys
 
 import httpx
@@ -39,6 +42,62 @@ LETTERS = {
         "discharge-002.txt": "Ms Everett was discharged on 3 October and will return for a check in two weeks.\n",
     },
 }
+
+
+# A table, not a folder of files: one row per visit, so a legal demand about one patient can be answered with that
+# patient's rows alone. The people are invented.
+APPOINTMENTS = [
+    {"appointment_id": "A-0001", "patient_id": "P-4471", "patient_name": "Ms Alder", "appointment_on": "2026-03-04", "reason": "Follow-up consultation"},
+    {"appointment_id": "A-0002", "patient_id": "P-4472", "patient_name": "Mr Bellamy", "appointment_on": "2026-03-04", "reason": "Annual check"},
+    {"appointment_id": "A-0003", "patient_id": "P-4473", "patient_name": "Ms Carrow", "appointment_on": "2026-03-11", "reason": "Blood test"},
+    {"appointment_id": "A-0004", "patient_id": "P-4471", "patient_name": "Ms Alder", "appointment_on": "2026-04-09", "reason": "Procedure review"},
+    {"appointment_id": "A-0005", "patient_id": "P-4474", "patient_name": "Mr Dalton", "appointment_on": "2026-04-09", "reason": "Annual check"},
+    {"appointment_id": "A-0006", "patient_id": "P-4475", "patient_name": "Ms Everett", "appointment_on": "2026-05-20", "reason": "Follow-up consultation"},
+    {"appointment_id": "A-0007", "patient_id": "P-4472", "patient_name": "Mr Bellamy", "appointment_on": "2026-06-02", "reason": "Blood test"},
+    {"appointment_id": "A-0008", "patient_id": "P-4473", "patient_name": "Ms Carrow", "appointment_on": "2026-06-18", "reason": "Annual check"},
+    {"appointment_id": "A-0009", "patient_id": "P-4474", "patient_name": "Mr Dalton", "appointment_on": "2026-07-07", "reason": "Follow-up consultation"},
+    {"appointment_id": "A-0010", "patient_id": "P-4475", "patient_name": "Ms Everett", "appointment_on": "2026-08-25", "reason": "Annual check"},
+]
+
+
+def seed_table(session: dict, department: str) -> None:
+    """Register the appointments table and seal it as rows, so the platform also holds it as a table that can be
+    filtered. The rows are written to the organisation's own bucket at the prefix the platform reserved, as a producer
+    would, and the seal names them."""
+    import boto3
+    from botocore.config import Config
+
+    contract = httpx.post(f"{API}/schema-contracts", timeout=30.0, json={
+        "tenant_id": TENANT, "name": "appointment",
+        "fields": [
+            {"name": "appointment_id", "type": "string", "sensitivity": "none", "added_by": "seed"},
+            {"name": "patient_id", "type": "string", "sensitivity": "direct", "added_by": "seed"},
+            {"name": "patient_name", "type": "string", "sensitivity": "direct", "added_by": "seed"},
+            {"name": "appointment_on", "type": "string", "sensitivity": "quasi", "added_by": "seed"},
+            {"name": "reason", "type": "string", "sensitivity": "phi", "added_by": "seed"},
+        ],
+        "primary_key": ["appointment_id"]})
+    expect(contract, 201, doing="registering the appointment contract")
+    registered = httpx.post(f"{API}/datasets/register", timeout=30.0, json={
+        "tenant_id": TENANT, "name": "appointments", "department_id": department, "registered_by": CUSTODIAN,
+        "provenance": "internal_regulated", "declared_class": "RAW", "source_kind": "upload", "modality": ["tabular"]})
+    expect(registered, 201, doing="registering appointments")
+    dataset_id = registered.json()["id"]
+    where = httpx.get(f"{API}/datasets/{dataset_id}/next-version", params={"tenant_id": TENANT}, headers=session, timeout=30.0)
+    where.raise_for_status()
+    key = f"{where.json()['storage_prefix']}/records.json"
+    body = json.dumps(APPOINTMENTS).encode("utf-8")
+    store = boto3.client("s3", endpoint_url=os.environ.get("S3_ENDPOINT", f"http://localhost:{PORTS['seaweedfs_s3']}"),
+                         aws_access_key_id=os.environ.get("S3_ADMIN_KEY") or "munitas-admin",
+                         aws_secret_access_key=os.environ.get("S3_ADMIN_SECRET") or "munitas-admin-secret",
+                         config=Config(signature_version="s3v4"), region_name="us-east-1")
+    store.put_object(Bucket=f"munitas-{TENANT}", Key=key, Body=body)
+    sealed = httpx.post(f"{API}/dataset-versions", timeout=60.0, json={
+        "tenant_id": TENANT, "dataset_id": dataset_id, "schema_id": contract.json()["id"], "visibility_class": "RAW",
+        "object_manifest": [{"key": key, "bytes": len(body), "sha256": hashlib.sha256(body).hexdigest()}],
+        "record_count": len(APPOINTMENTS), "records_key": key})
+    expect(sealed, 201, doing="sealing appointments")
+    print(f"  appointments: {len(APPOINTMENTS)} rows, sealed as a table")
 
 
 def department_id(session: dict) -> str:
@@ -69,7 +128,15 @@ def history(session: dict) -> None:
     approved = httpx.post(f"{API}/leases/requests/{asked.json()['id']}/approve", timeout=30.0,
                           headers=session, json={"approver": CUSTODIAN})
     expect(approved, 201, doing="Dunmore approving the request")
-    print("  Quinn asked for access to the reminders and was approved")
+    # The platform records every decision it makes, refusals and the like included. Quinn is a person, and people are
+    # not handed a storage credential directly, so the platform answers that it permits the access but issues no
+    # credential, and records that. The answer is the demonstration, so it is not treated as a failure.
+    attempt = httpx.post(f"{API}/credentials", timeout=30.0, json={
+        "principal": ANALYST, "principal_kind": "human", "roles": ["analyst"], "tenant_id": TENANT,
+        "dataset_version_id": first_version, "purpose": "checking that reminder letters were sent"})
+    if attempt.status_code not in (200, 503):
+        raise SystemExit(f"Quinn asking for a credential: expected the platform to answer, got HTTP {attempt.status_code}")
+    print("  Quinn asked for access to the reminders, was approved, and the platform recorded the decision")
 
 
 def main() -> int:
@@ -103,6 +170,7 @@ def main() -> int:
         expect(sealed, 201, doing=f"sealing {name}")
         print(f"  {name}: {len(files)} files, sealed")
 
+    seed_table(session, department)
     history(session)
     return 0
 

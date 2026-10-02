@@ -75,6 +75,7 @@ SCRIPTS = [
     ("U100 a due and unheld organisation is deleted completely, and nothing else can be", "v100_purge.py"),
     ("U102 records are produced for a legal matter only with three different people, and nothing is erased meanwhile", "v102_legal_export_rules.py"),
     ("U103 a legal export is built, signed, delivered and opened, and cannot be altered or opened wrongly", "v103_legal_export_package.py"),
+    ("U104 a table is handed over as the rows for people the custodian names, never whole", "v104_legal_export_filter.py"),
 ]
 
 here = Path(__file__).parent

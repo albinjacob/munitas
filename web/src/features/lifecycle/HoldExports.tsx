@@ -17,6 +17,7 @@ import {
   useApproveExport,
   useConfirmExport,
   useExports,
+  useFilterPreview,
   useMakeLink,
   useManifest,
   useReadPassphrase,
@@ -56,6 +57,8 @@ export function StatusLabel({ status }: { status: LegalExport["status"] }) {
 function ExportDetails({ e }: { e: LegalExport }) {
   const [open, setOpen] = useState(false);
   const manifest = useManifest(e.id, open && Boolean(e.file_count));
+  const scope = useScope(e.hold_id, e.filters.length > 0);
+  const nameOf = (id: string) => scope.data?.datasets.find((d) => d.id === id)?.name ?? "a dataset";
   return (
     <>
       <dl className="mt-2 grid gap-x-6 gap-y-2 md:grid-cols-2">
@@ -69,11 +72,26 @@ function ExportDetails({ e }: { e: LegalExport }) {
         {e.confirmed_by_label && (
           <Line label="Scope confirmed by" value={`${e.confirmed_by_label} on ${when(e.confirmed_at)}${e.confirm_note ? `: ${bare(e.confirm_note)}` : ""}`} />
         )}
+        {e.filters.map((f) => {
+          const r = e.filter_results?.[f.dataset_id];
+          return (
+            <Line
+              key={f.dataset_id}
+              label={`Filtered: ${nameOf(f.dataset_id)}`}
+              value={
+                `Only the rows for named people, matched on the column ${f.column}. The custodian names them.` +
+                (r
+                  ? ` ${r.rows_matched} of ${r.rows_total} rows matched${r.values_unmatched ? `, and ${r.values_unmatched} named value matched no row` : ""}.`
+                  : "")
+              }
+            />
+          );
+        })}
         {e.refusal_reason && <Line label="Refused" value={e.refusal_reason} />}
         {e.failure && <Line label="Why it could not be produced" value={e.failure} />}
         {e.status === "ready" && (
           <>
-            <Line label="Package" value={`${e.file_count} files, ${megabytes(e.package_bytes)}, encrypted`} />
+            <Line label="Package" value={`${e.file_count} ${e.file_count === 1 ? "file" : "files"}, ${megabytes(e.package_bytes)}, encrypted`} />
             <Line label="Kept until" value={when(e.expires_at)} />
           </>
         )}
@@ -248,6 +266,7 @@ function AskForm({ holdId, done }: { holdId: string; done: () => void }) {
   });
   const [chosen, setChosen] = useState<string[]>([]);
   const [audit, setAudit] = useState(true);
+  const [filterBy, setFilterBy] = useState<Record<string, string>>({});
   const set = (k: keyof typeof form) => (e: { target: { value: string } }) => setForm({ ...form, [k]: e.target.value });
   const input = "mt-1 w-full rounded border border-slate-300 px-2 py-1";
   const ready = Object.values(form).every((v) => v.trim()) && chosen.length > 0;
@@ -259,7 +278,10 @@ function AskForm({ holdId, done }: { holdId: string; done: () => void }) {
       onSubmit={(e) => {
         e.preventDefault();
         ask.mutate(
-          { hold_id: holdId, ...form, dataset_ids: chosen, include_audit: audit },
+          {
+            hold_id: holdId, ...form, dataset_ids: chosen, include_audit: audit,
+            filters: chosen.filter((id) => filterBy[id]).map((id) => ({ dataset_id: id, column: filterBy[id] })),
+          },
           { onSuccess: () => { notify("The request is recorded and waits for a second administrator."); done(); } },
         );
       }}
@@ -299,14 +321,33 @@ function AskForm({ holdId, done }: { holdId: string; done: () => void }) {
         ) : (
           <div data-testid="export-datasets" className="mt-1 space-y-1">
             {(scope.data?.datasets ?? []).map((d) => (
-              <label key={d.id} className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={chosen.includes(d.id)}
-                  onChange={(ev) => setChosen(ev.target.checked ? [...chosen, d.id] : chosen.filter((x) => x !== d.id))}
-                />
-                {d.name} <span className="text-xs text-slate-500">{d.versions} version(s), {megabytes(d.bytes)}</span>
-              </label>
+              <div key={d.id}>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={chosen.includes(d.id)}
+                    onChange={(ev) => setChosen(ev.target.checked ? [...chosen, d.id] : chosen.filter((x) => x !== d.id))}
+                  />
+                  {d.name} <span className="text-xs text-slate-500">{d.versions} version(s), {megabytes(d.bytes)}{d.tabular ? ", a table" : ""}</span>
+                </label>
+                {chosen.includes(d.id) && d.tabular && (d.columns?.length ?? 0) > 0 && (
+                  <label className="ml-6 mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                    Hand over
+                    <select
+                      data-testid={`export-filter-${d.name}`}
+                      value={filterBy[d.id] ?? ""}
+                      onChange={(ev) => setFilterBy({ ...filterBy, [d.id]: ev.target.value })}
+                      className="rounded border border-slate-300 px-1 py-0.5"
+                    >
+                      <option value="">the whole table</option>
+                      {(d.columns ?? []).map((c) => (
+                        <option key={c} value={c}>only the rows for named people, matched on {c}</option>
+                      ))}
+                    </select>
+                    {filterBy[d.id] && <span>The custodian names the people when confirming.</span>}
+                  </label>
+                )}
+              </div>
             ))}
           </div>
         )}
@@ -361,7 +402,12 @@ function CustodianCard({ e }: { e: LegalExport }) {
   const [note, setNote] = useState("");
   const confirm = useConfirmExport(e.id);
   const reveal = useReadPassphrase(e.id);
+  const preview = useFilterPreview(e.id);
   const scope = useScope(e.hold_id, e.status === "approved");
+  const [typed, setTyped] = useState<Record<string, string>>({});
+  const valuesOf = (id: string) => (typed[id] ?? "").split(/\r?\n/).map((v) => v.trim()).filter(Boolean);
+  const allValues = () => Object.fromEntries(e.filters.map((f) => [f.dataset_id, valuesOf(f.dataset_id)]));
+  const named = e.filters.every((f) => valuesOf(f.dataset_id).length > 0);
   const [passphrase, setPassphrase] = useState<string | null>(null);
   const names = (scope.data?.datasets ?? []).filter((d) => e.dataset_ids.includes(d.id));
 
@@ -377,6 +423,48 @@ function CustodianCard({ e }: { e: LegalExport }) {
           <p className="mt-2 text-slate-700">
             The datasets named: {names.length ? names.map((d) => d.name).join(", ") : `${e.dataset_ids.length} dataset(s)`}.
           </p>
+          {e.filters.map((f) => (
+            <div key={f.dataset_id} data-testid="filter-values" className="mt-3 rounded border border-slate-200 bg-white p-3">
+              <label className="block">
+                <span className="block font-medium text-slate-800">
+                  {names.find((d) => d.id === f.dataset_id)?.name ?? "A table"}: the rows for the people the demand names
+                </span>
+                <span className="block text-xs text-slate-500">
+                  One value of the column <strong>{f.column}</strong> per line. Only the rows that match are handed over, and
+                  nothing else of this table. The platform administrators never see these values.
+                </span>
+                <textarea
+                  data-testid={`filter-values-${names.find((d) => d.id === f.dataset_id)?.name ?? f.dataset_id}`}
+                  rows={3}
+                  value={typed[f.dataset_id] ?? ""}
+                  onChange={(ev) => setTyped({ ...typed, [f.dataset_id]: ev.target.value })}
+                  className="mt-1 w-full rounded border border-slate-300 px-2 py-1 font-mono text-xs"
+                />
+              </label>
+              {preview.data?.results.filter((r) => r.dataset_id === f.dataset_id).map((r) => (
+                <p key={r.dataset_id} data-testid="filter-preview" className="mt-1 text-xs text-slate-700">
+                  {r.rows_matched} of {r.rows_total} rows match.
+                  {r.unmatched_values.length > 0 && ` No row has: ${r.unmatched_values.join(", ")}.`}
+                </p>
+              ))}
+            </div>
+          ))}
+          {e.filters.length > 0 && (
+            <button
+              type="button"
+              data-testid="check-filter"
+              disabled={!named || preview.isPending}
+              onClick={() => preview.mutate(allValues())}
+              className="mt-2 rounded border border-slate-300 px-3 py-1 text-sm text-slate-800 disabled:text-slate-400"
+            >
+              Check how many rows match
+            </button>
+          )}
+          {preview.error && (
+            <div className="mt-2">
+              <Failure error={preview.error} what="what the filter matches" verb="check" />
+            </div>
+          )}
           <div className="mt-3 flex flex-wrap items-end gap-2">
             <label className="grow">
               <span className="block text-slate-600">A note, which is recorded (required to decline)</span>
@@ -390,8 +478,13 @@ function CustodianCard({ e }: { e: LegalExport }) {
             <button
               type="button"
               data-testid="confirm-scope"
-              disabled={confirm.isPending}
-              onClick={() => confirm.mutate({ approve: true, note }, { onSuccess: () => notify("The scope is confirmed. The package is being prepared.") })}
+              disabled={confirm.isPending || !named}
+              onClick={() =>
+                confirm.mutate(
+                  { approve: true, note, values: allValues() },
+                  { onSuccess: () => notify("The scope is confirmed. The package is being prepared.") },
+                )
+              }
               className="rounded bg-green-700 px-3 py-1.5 text-sm font-medium text-white disabled:bg-slate-300"
             >
               The scope is right
