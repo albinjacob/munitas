@@ -88,9 +88,9 @@
 
   nav.rail {
     position: sticky;
-    top: 0;
+    top: 48px;
     align-self: start;
-    height: 100vh;
+    height: calc(100vh - 48px);
     overflow-y: auto;
     padding: 2.75rem 1.25rem 2rem 1.75rem;
     border-right: 1px solid var(--paper-line);
@@ -332,7 +332,25 @@
 
   ul.plain { padding-left: 1.2rem; margin: 0 0 1.1rem; color: var(--ink-soft); }
   ul.plain li { margin-bottom: 0.4rem; }
+
+  /* ---------- top bar shared with the walkthrough pages ---------- */
+  .topbar { position: sticky; top: 0; z-index: 50; background: var(--paper-raised); border-bottom: 1px solid var(--paper-line); }
+  .topbar-inner { margin: 0; padding: 0 clamp(16px, 2vw, 32px); min-height: 48px; display: flex; align-items: center;
+                  gap: 22px; flex-wrap: wrap; }
+  .topbar .mark { font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif; font-weight: 700;
+                  letter-spacing: 0.02em; color: var(--ink); text-decoration: none; margin-right: 6px; }
+  .topbar a.link { color: var(--ink-soft); text-decoration: none; font-size: 14px; padding: 13px 0 11px;
+                   border-bottom: 2px solid transparent; }
+  .topbar a.link:hover { color: var(--ink); }
+  .topbar a.link[aria-current="page"] { color: var(--ink); border-bottom-color: var(--brass); font-weight: 600; }
+  .walk-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem 2rem; margin: 1.25rem 0 0; }
+  @media (max-width: 720px) { .walk-list { grid-template-columns: 1fr; } }
+  .walk-list h3 { margin: 0 0 0.4rem; font-size: 1.05rem; }
+  .walk-list ul { margin: 0; padding-left: 1.1rem; }
+  .walk-list li { margin: 0.25rem 0; }
 </style>
+<div class="topbar"><div class="topbar-inner"><a class="mark" href="feature-walkthrough.html">Munitas</a><a class="link" href="feature-walkthrough.html" aria-current="page">Feature tour</a><a class="link" href="index.html">All walkthroughs</a></div></div>
+
 
 <header class="masthead">
   <p class="kicker">Feature walkthrough</p>
@@ -1126,69 +1144,31 @@
   <p class="eyebrow">13 &middot; Guided walkthroughs</p>
   <h2 class="measure">Real screens, from real live runs</h2>
   <p class="measure">
-    Everything above describes the platform in the abstract. Each guide below is a real,
-    unedited screenshot from an actual session, step by step, following one story from
-    sign-in to a finished, governed run.
+    Everything above describes the platform in the abstract. Each walkthrough follows one story
+    step by step, with real screens captured from a running Munitas. They are collected on one page,
+    <a href="index.html">All walkthroughs</a>, which also says where to start.
   </p>
-  <h3 class="measure" style="margin-top:1.5rem">Health organisation</h3>
-  <div class="grid grid-3">
-    <div class="card">
-      <span class="tag">HEALTHCARE &middot; EXAMPLE ORGANISATION</span>
-      <h4>A patient consultation, de-identified and released</h4>
-      <p>A cardiology recording moves through registration, a real de-identification pipeline, a
-      human reviewer's gate decision, a researcher's access request, and an AI agent that has to
-      ask for access the same way a person would. 31 steps.</p>
-      <p><a href="healthcare-walkthrough.html">Open the healthcare walkthrough &rarr;</a></p>
+  <!-- walkthrough-list:start -->
+  <div class="walk-list">
+    <div>
+      <h3>Health organisation</h3>
+      <ul>
+      <li><a href="healthcare-walkthrough.html">Remove names from a patient recording and release it</a></li>
+      <li><a href="people-administration-walkthrough.html">Ask for a role, and see who may grant it</a></li>
+      <li><a href="custom-pipeline-walkthrough.html">Run a pipeline that you wrote yourself</a></li>
+      <li><a href="derive-health-walkthrough.html">Make a new dataset from patient admissions</a></li>
+      </ul>
     </div>
-    <div class="card">
-      <span class="tag">CUSTOM PIPELINE &middot; EXAMPLE ORGANISATION</span>
-      <h4>A pipeline the platform never shipped</h4>
-      <p>Devi, a data engineer in Cardiology, registers her own pipeline checking that a
-      cardiology note carries the fields Cardiology needs for its own quality reporting. It is
-      held to the same rules as any other dataset: sealed, requested, granted by Cardiology's
-      own custodian, and released only after the same gate decision every pipeline ends in.</p>
-      <p><a href="custom-pipeline-walkthrough.html">Open the custom pipeline walkthrough &rarr;</a></p>
-    </div>
-    <div class="card">
-      <span class="tag">PEOPLE &middot; EXAMPLE ORGANISATION</span>
-      <h4>Who holds which role</h4>
-      <p>A researcher asks to hold a role and cannot decide their own ask. The platform
-      administrator, who runs the system, is refused when she tries to grant it. A custodian
-      grants it instead, and it arrives marked as never reviewed. 9 steps.</p>
-      <p><a href="people-administration-walkthrough.html">Open the role administration walkthrough &rarr;</a></p>
-    </div>
-    <div class="card">
-      <span class="tag">DERIVED DATASETS &middot; HEALTH ORGANISATION</span>
-      <h4>A new dataset from a query, under the same rules</h4>
-      <p>A researcher is stopped at a restricted table of patient admissions, asks the owning
-      department's custodian for access, and then makes a new dataset from a query. The platform
-      runs the query in an isolated container, keeps the result as restricted as its inputs, and
-      closes it again the moment the custodian withdraws the access. 20 steps, with the Python
-      steps shown as the real code and output.</p>
-      <p><a href="derive-health-walkthrough.html">Open the health derived datasets walkthrough &rarr;</a></p>
+    <div>
+      <h3>Finance organisation</h3>
+      <ul>
+      <li><a href="finance-walkthrough.html">Score card transactions for fraud, with permission</a></li>
+      <li><a href="derive-finance-walkthrough.html">Make a new dataset from card transactions</a></li>
+      </ul>
     </div>
   </div>
-  <h3 class="measure" style="margin-top:2rem">Finance organisation</h3>
-  <div class="grid grid-3">
-    <div class="card">
-      <span class="tag">FINANCE &middot; FINANCE ORGANISATION</span>
-      <h4>Card transactions, scored for fraud</h4>
-      <p>A fraud operations team registers a transaction batch, seals it, and lets a scoring
-      agent work the raw data under a request its own department's custodian decides on, with a
-      second custodian's queue kept completely separate. 13 steps.</p>
-      <p><a href="finance-walkthrough.html">Open the finance walkthrough &rarr;</a></p>
-    </div>
-    <div class="card">
-      <span class="tag">DERIVED DATASETS &middot; FINANCE ORGANISATION</span>
-      <h4>A new dataset from a query, over card transactions</h4>
-      <p>An analyst is stopped at a restricted table of card transactions that name the account
-      holders, asks the Fraud Operations custodian for access, and makes a new dataset of large
-      payments made abroad. The new dataset stays as restricted as the transactions, and closes
-      when the custodian withdraws the access. 20 steps, with the Python steps shown as the real
-      code and output.</p>
-      <p><a href="derive-finance-walkthrough.html">Open the finance derived datasets walkthrough &rarr;</a></p>
-    </div>
-  </div>
+  <p class="measure" style="margin-top:1.25rem"><a href="index.html">Open the walkthrough index &rarr;</a></p>
+  <!-- walkthrough-list:end -->
   <p class="measure" style="margin-top:2.25rem">
     Running it on your own machine: every local address and who to sign in
     as are generated for you, not published here, since they name real

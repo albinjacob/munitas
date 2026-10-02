@@ -32,6 +32,7 @@ import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { EMAIL_BY_DIRECTORY_ID, PASSWORD, bearerFor, loginAs } from "../tests/auth-helpers";
 import { API_BASE } from "../config/ports";
+import { settled } from "./settled";
 
 const SHOTS = join(process.cwd(), "walkthroughs", "shots", "healthcare");
 const AUDIO_SAMPLE = join(
@@ -54,7 +55,9 @@ const ADMIN = "ops-priya";
 // Phrases distinctive enough to pick specific rows out of queues that also
 // hold real, pre-seeded traffic from scripts/seed/seed-health-example.py.
 const REQUEST_PURPOSE = "measure recall of the de-identification model before wider release";
-const RUN_PURPOSE = "rank the incoming radiology batch for review, live walkthrough capture";
+// Unique to this capture. A lease from an earlier capture can still be open for the same words, and then
+// the run would not need to ask again, which is the very thing the second run is there to show.
+const RUN_PURPOSE = `rank the incoming radiology batch for review, live walkthrough capture ${Date.now() % 100000}`;
 const DIGEST_REQUEST_PURPOSE = "quarterly outcomes digest, live walkthrough capture";
 
 /**
@@ -112,7 +115,13 @@ async function anUnderReviewVersion(name: string): Promise<string> {
 
 let step = 0;
 
+// Puts an element at the top of the picture, so the part of a long page that a step is about is whole.
+async function toTop(page: Page, locator: ReturnType<Page["locator"]>): Promise<void> {
+  await locator.evaluate((e) => e.scrollIntoView({ block: "start" }));
+}
+
 async function shot(page: Page, name: string): Promise<void> {
+  await settled(page);
   step += 1;
   const n = String(step).padStart(2, "0");
   await page.screenshot({ path: join(SHOTS, `${n}-${name}.png`) });
@@ -146,8 +155,8 @@ async function shot(page: Page, name: string): Promise<void> {
  *      headless, unfocused browser. Asking the API is simpler and correct
  *      regardless of any of that.
  */
-async function waitForPipelineRun(page: Page, timeoutMs = 600_000): Promise<void> {
-  const match = page.url().match(/\/pipeline-runs\/([0-9a-f-]{36})/);
+async function waitForPipelineRun(page: Page, timeoutMs = 600_000, runUrl?: string): Promise<void> {
+  const match = (runUrl ?? page.url()).match(/\/pipeline-runs\/([0-9a-f-]{36})/);
   if (!match) throw new Error(`not on a pipeline run page: ${page.url()}`);
   const runId = match[1];
 
@@ -224,6 +233,20 @@ test("capture: the healthcare worked example, start to finish", async ({ page })
   mkdirSync(SHOTS, { recursive: true });
   test.setTimeout(900_000);
 
+  // Requests left waiting by an earlier capture, or by one that stopped part-way, would crowd the
+  // custodians' lists in the pictures. Close them first.
+  for (const custodian of [CUSTODIAN_CARDIOLOGY, CUSTODIAN_RADIOLOGY]) {
+    const headers = { ...(await bearerFor(custodian)), "Content-Type": "application/json" };
+    const waiting = await (await fetch(`${API}/lease-requests?state=pending&custodian=${custodian}&limit=500`, { headers })).json();
+    for (const r of waiting.lease_requests ?? []) {
+      if (String(r.purpose).includes("live walkthrough capture") || r.purpose === REQUEST_PURPOSE) {
+        await fetch(`${API}/leases/requests/${r.id}/reject`, {
+          method: "POST", headers, body: JSON.stringify({ reason: "cleared before a fresh capture" }),
+        });
+      }
+    }
+  }
+
   const suffix = `${new Date().toISOString().slice(0, 10)}-${Date.now() % 10000}`;
   const demoName = `consultation-audio-intake-${suffix}`;
   const pipelineName = `consultation-recording-${suffix}`;
@@ -237,10 +260,15 @@ test("capture: the healthcare worked example, start to finish", async ({ page })
   await page.getByTestId("login-submit").click();
   await expect(page.getByTestId("current-persona")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Devi" })).toBeVisible();
+  // The counts load after the heading. A picture taken sooner shows grey placeholders.
+  await expect(page.getByText("Held back", { exact: true })).toBeVisible();
   await shot(page, "devi-home");
 
   // ---- Act two: Devi brings a recording in ------------------------------
   await page.goto("/datasets/register");
+  // The form draws after the person is resolved. A picture taken sooner shows only "Nobody is
+  // signed in" and a loading line.
+  await expect(page.getByTestId("register-name")).toBeVisible();
   await shot(page, "register-blank");
 
   await page.getByTestId("register-name").fill(demoName);
@@ -303,11 +331,16 @@ test("capture: the healthcare worked example, start to finish", async ({ page })
 
   await page.getByRole("link", { name: "Run a pipeline against this version" }).click();
   await expect(page.getByTestId("version-pipeline-start")).toBeVisible();
-  await page.getByTestId("version-pipeline-start").click();
-  await expect(page).toHaveURL(/\/pipeline-runs\/[0-9a-f-]{36}$/, { timeout: 15000 });
+  // A click made while the page is still settling is lost without any message, so retry until the run opens.
+  await expect(async () => {
+    await page.getByTestId("version-pipeline-start").click();
+    await expect(page).toHaveURL(/\/pipeline-runs\/[0-9a-f-]{36}$/, { timeout: 6000 });
+  }).toPass({ timeout: 60_000, intervals: [1000] });
+  // The address of the run, kept now: the page can move on to another address while the run is working.
+  const pipelineRunUrl = page.url();
   await shot(page, "pipeline-started");
 
-  await waitForPipelineRun(page);
+  await waitForPipelineRun(page, 600_000, pipelineRunUrl);
   await shot(page, "pipeline-finished");
 
   await page.getByRole("link", { name: "Open the decision" }).click();
@@ -324,10 +357,11 @@ test("capture: the healthcare worked example, start to finish", async ({ page })
 
   await loginAs(page, REVIEWER);
   await page.goto(gateUrl);
+  await expect(page.getByTestId("gate-reason")).toBeVisible();
   await shot(page, "imani-opens-the-decision");
 
   await page.getByTestId("gate-reason").fill(
-    "Recall could not be measured on this synthetic recording; holding back until a real sample is scored.",
+    "The measurement passes, but this is a synthetic recording. Holding it back until a real sample has been scored.",
   );
   await shot(page, "reason-written-buttons-enabled");
 
@@ -390,10 +424,12 @@ test("capture: the healthcare worked example, start to finish", async ({ page })
   // default -- the field does not exist in the DOM until it is opened.
   await page.getByTestId("agent-version-advanced-toggle").click();
   await page.getByTestId("agent-version-tools").fill("read_dataset_version");
+  await toTop(page, page.getByTestId("upload-agent-version-form"));
   await shot(page, "agent-upload-filled");
 
   await page.getByTestId("upload-agent-version-submit").click();
   await expect(page.getByTestId(`agent-version-${nextVersion}`)).toBeVisible({ timeout: 15000 });
+  await toTop(page, page.getByTestId("agent-versions"));
   await shot(page, "agent-version-sealed");
 
   await page.getByTestId(`deploy-version-${nextVersion}`).click();
@@ -402,10 +438,12 @@ test("capture: the healthcare worked example, start to finish", async ({ page })
   await page.getByTestId("run-purpose").fill(RUN_PURPOSE);
   await page.getByTestId("run-target").selectOption({ label: "radiology-reports v1" });
   await expect(page.getByTestId("access-notice")).toBeVisible();
+  await toTop(page, page.getByRole("heading", { name: "Runs" }));
   await shot(page, "run-warned");
 
   await page.getByTestId("start-run").click();
   await expect(page.getByTestId("agent-runs")).toContainText(RUN_PURPOSE);
+  await toTop(page, page.getByRole("heading", { name: "Runs" }));
   await shot(page, "run-parked-waiting");
 
   await loginAs(page, CUSTODIAN_RADIOLOGY);
@@ -423,15 +461,29 @@ test("capture: the healthcare worked example, start to finish", async ({ page })
   await page.goto("/agents");
   await page.getByRole("link", { name: "radiology-intake-triage" }).click();
   const secondRunPurpose = `${RUN_PURPOSE}, second batch`;
-  await page.getByTestId("run-purpose").fill(secondRunPurpose);
-  await page.getByTestId("run-target").selectOption({ label: "radiology-reports v1" });
-  await page.getByTestId("start-run").click();
-  await expect(page.getByTestId("agent-runs")).toContainText(secondRunPurpose);
+  // Starting a run is retried as a whole until its row is listed: the page finishes loading after the
+  // link is followed, and a field filled or a click made before that is lost without any message.
+  await expect(async () => {
+    await page.goto(page.url());
+    await expect(page.getByTestId("agent-runs")).toBeVisible();
+    if (!(await page.getByTestId("agent-runs").innerText()).includes(secondRunPurpose)) {
+      await page.getByTestId("run-purpose").fill(secondRunPurpose);
+      await page.getByTestId("run-target").selectOption({ label: "radiology-reports v1" });
+      await expect(page.getByTestId("run-purpose")).toHaveValue(secondRunPurpose);
+      await page.getByTestId("start-run").click();
+    }
+    await expect(page.getByTestId("agent-runs")).toContainText(secondRunPurpose, { timeout: 8000 });
+  }).toPass({ timeout: 90_000, intervals: [1000] });
+  await toTop(page, page.getByRole("heading", { name: "Runs" }));
   await shot(page, "second-run-needs-second-grant");
 
   await loginAs(page, CUSTODIAN_RADIOLOGY);
   const secondAgentRow = page.getByTestId("pending-requests").locator("li", { hasText: secondRunPurpose });
-  await expect(secondAgentRow).toBeVisible();
+  // The request is filed a moment after the run is started, so reload until it appears.
+  await expect(async () => {
+    await page.reload();
+    await expect(secondAgentRow).toBeVisible({ timeout: 4000 });
+  }).toPass({ timeout: 60_000 });
   await secondAgentRow.getByRole("button", { name: "Grant access" }).click();
   await expect(secondAgentRow).toHaveCount(0);
 
@@ -441,6 +493,7 @@ test("capture: the healthcare worked example, start to finish", async ({ page })
   await waitForAgentRunToFinish(page, secondRunPurpose);
   await page.getByTestId("agent-runs").scrollIntoViewIfNeeded();
   await page.waitForTimeout(300);
+  await toTop(page, page.getByRole("heading", { name: "Runs" }));
   await shot(page, "run-finished");
 
   // ---- Act six: beyond the built-in pipeline, and who is watching it all -

@@ -31,6 +31,7 @@ import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { bearerFor, loginAs } from "../tests/auth-helpers";
 import { API_BASE } from "../config/ports";
+import { settled } from "./settled";
 
 const API = API_BASE;
 
@@ -74,6 +75,7 @@ const NEW_NAME = `${STORY.prefix}-${new Date().toISOString().slice(5, 16).replac
 let step = 0;
 
 async function shot(page: Page, name: string): Promise<void> {
+  await settled(page);
   step += 1;
   const n = String(step).padStart(2, "0");
   await page.screenshot({ path: join(SHOTS, `${n}-${name}.png`) });

@@ -27,6 +27,7 @@ import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { EMAIL_BY_DIRECTORY_ID, PASSWORD, bearerFor, loginAs } from "../tests/auth-helpers";
 import { API_BASE } from "../config/ports";
+import { settled } from "./settled";
 
 const SHOTS = join(process.cwd(), "walkthroughs", "shots", "finance");
 const API = API_BASE;
@@ -58,7 +59,13 @@ const TRANSACTIONS = [
 
 let step = 0;
 
+// Puts an element at the top of the picture, so the part of a long page that a step is about is whole.
+async function toTop(page: Page, locator: ReturnType<Page["locator"]>): Promise<void> {
+  await locator.evaluate((e) => e.scrollIntoView({ block: "start" }));
+}
+
 async function shot(page: Page, name: string): Promise<void> {
+  await settled(page);
   step += 1;
   const n = String(step).padStart(2, "0");
   await page.screenshot({ path: join(SHOTS, `${n}-${name}.png`) });
@@ -208,6 +215,10 @@ test("capture: the finance worked example, start to finish", async ({ page }) =>
   await page.getByTestId("seal-submit").click();
   await expect(page).toHaveURL(/\/versions\/[0-9a-f-]{36}$/, { timeout: 15000 });
   await expect(page.getByTestId("sealed-class")).toBeVisible({ timeout: 30000 });
+  // The access box and the release history fill in after the page does. A picture taken before they
+  // arrive shows "Checking" and grey placeholders, which proves nothing.
+  await expect(page.getByText("Checking", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Nobody has widened access to this.")).toBeVisible();
   await shot(page, "sealed-v1");
 
   // ---- Act three: a mask, not a move -----------------------------------
@@ -246,6 +257,7 @@ test("capture: the finance worked example, start to finish", async ({ page }) =>
   await page.getByTestId("agent-version-tools").fill("read_dataset_version");
   await page.getByTestId("upload-agent-version-submit").click();
   await expect(page.getByTestId(`agent-version-${nextVersion}`)).toBeVisible({ timeout: 15000 });
+  await toTop(page, page.getByTestId("agent-versions"));
   await shot(page, "agent-version-sealed");
 
   await page.getByTestId(`deploy-version-${nextVersion}`).click();
@@ -256,6 +268,7 @@ test("capture: the finance worked example, start to finish", async ({ page }) =>
     .getByTestId("run-target")
     .selectOption({ label: "card-transaction-log v1" });
   await expect(page.getByTestId("access-notice")).toBeVisible();
+  await toTop(page, page.getByRole("heading", { name: "Runs" }));
   await shot(page, "run-warned");
 
   await page.getByTestId("start-run").click();
@@ -278,7 +291,7 @@ test("capture: the finance worked example, start to finish", async ({ page }) =>
   await page.goto("/agents");
   await page.getByRole("link", { name: "fraud-transaction-scoring" }).click();
   await waitForRunToFinish(page);
-  await page.getByRole("heading", { name: "Runs" }).scrollIntoViewIfNeeded();
+  await toTop(page, page.getByRole("heading", { name: "Runs" }));
   await shot(page, "run-finished");
 
   await loginAs(page, CUSTODIAN_RISK);
