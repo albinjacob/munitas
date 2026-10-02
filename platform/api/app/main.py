@@ -831,6 +831,14 @@ def revoke_lease(lease_id: str, identity: dict = Depends(auth.current_session)) 
     )
     if not row:
         raise HTTPException(404, "no such lease")
+    # What the person made from this version while the lease lasted was made
+    # on its authority, and the lease they were given to read it goes with it.
+    db.execute(
+        """update access_lease set revoked = true, revoked_by = %s, revoked_at = now()
+            where revoked = false and derivation_id in
+                  (select id from derivation where submitted_by = %s and inputs @> %s::jsonb)""",
+        (identity["id"], lease["principal"],
+         json.dumps([{"version_id": str(lease["dataset_version_id"])}])))
     # Print now, as an approval does, so the lease's key stops working now and not
     # at whatever print comes next. If the print fails the revocation still stands
     # (it is in the register and the policy refuses the lease at once); the

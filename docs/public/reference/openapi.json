@@ -538,6 +538,115 @@
         "title": "DeployAgent",
         "type": "object"
       },
+      "DerivationConfirmIn": {
+        "description": "The person's decision on a draft. Sensitivities may be raised and never\nlowered: a field already carries at least the sensitivity of what it was\ncomputed from.",
+        "properties": {
+          "sensitivities": {
+            "additionalProperties": {
+              "enum": [
+                "none",
+                "quasi",
+                "direct",
+                "phi"
+              ],
+              "type": "string"
+            },
+            "title": "Sensitivities",
+            "type": "object"
+          }
+        },
+        "title": "DerivationConfirmIn",
+        "type": "object"
+      },
+      "DerivationDraftIn": {
+        "description": "A request to make a new dataset from a query, before anything is run.",
+        "properties": {
+          "inputs": {
+            "items": {
+              "$ref": "#/components/schemas/DerivationInput"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Inputs",
+            "type": "array"
+          },
+          "primary_key": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Primary Key",
+            "type": "array"
+          },
+          "purpose": {
+            "maxLength": 200,
+            "minLength": 3,
+            "title": "Purpose",
+            "type": "string"
+          },
+          "sql": {
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Sql",
+            "type": "string"
+          },
+          "target_name": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{1,80}$",
+            "title": "Target Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "inputs",
+          "sql",
+          "target_name",
+          "primary_key",
+          "purpose"
+        ],
+        "title": "DerivationDraftIn",
+        "type": "object"
+      },
+      "DerivationInput": {
+        "description": "One dataset a derivation reads. The SQL refers to it by its alias, which\ndefaults to the dataset's name with anything that is not a letter or digit\nturned into an underscore.",
+        "properties": {
+          "alias": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,62}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alias"
+          },
+          "dataset": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Dataset",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "dataset"
+        ],
+        "title": "DerivationInput",
+        "type": "object"
+      },
       "EgressDecisionIn": {
         "properties": {
           "reason": {
@@ -3645,6 +3754,437 @@
         ]
       }
     },
+    "/derivations": {
+      "get": {
+        "operationId": "mine_derivations_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Mine Derivations Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Mine",
+        "tags": [
+          "derivations"
+        ]
+      },
+      "post": {
+        "description": "Answer a query with what it would read and what it would produce. Runs\nnothing and registers nothing.",
+        "operationId": "draft_derivations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DerivationDraftIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Draft Derivations Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Draft",
+        "tags": [
+          "derivations"
+        ]
+      }
+    },
+    "/derivations/{derivation_id}": {
+      "get": {
+        "operationId": "show_derivations__derivation_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "derivation_id",
+            "required": true,
+            "schema": {
+              "title": "Derivation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Show Derivations  Derivation Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Show",
+        "tags": [
+          "derivations"
+        ]
+      }
+    },
+    "/derivations/{derivation_id}/complete": {
+      "post": {
+        "description": "The run sealed a version. Checked here, not taken on trust: the version\nmust be this derivation's dataset and must have come from this run. Then the\nperson who asked is given access to the result for as long as their access\nto the inputs lasts.",
+        "operationId": "complete_derivations__derivation_id__complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "derivation_id",
+            "required": true,
+            "schema": {
+              "title": "Derivation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-worker-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Body",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Complete Derivations  Derivation Id  Complete Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Complete",
+        "tags": [
+          "derivations"
+        ]
+      }
+    },
+    "/derivations/{derivation_id}/confirm": {
+      "post": {
+        "description": "Register the result's shape and dataset, and start the run.",
+        "operationId": "confirm_derivations__derivation_id__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "derivation_id",
+            "required": true,
+            "schema": {
+              "title": "Derivation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DerivationConfirmIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Confirm Derivations  Derivation Id  Confirm Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm",
+        "tags": [
+          "derivations"
+        ]
+      }
+    },
+    "/derivations/{derivation_id}/fail": {
+      "post": {
+        "operationId": "fail_derivations__derivation_id__fail_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "derivation_id",
+            "required": true,
+            "schema": {
+              "title": "Derivation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-worker-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Body",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Fail Derivations  Derivation Id  Fail Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Fail",
+        "tags": [
+          "derivations"
+        ]
+      }
+    },
+    "/derivations/{derivation_id}/job": {
+      "get": {
+        "description": "What a worker needs to run one confirmed derivation.",
+        "operationId": "job_derivations__derivation_id__job_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "derivation_id",
+            "required": true,
+            "schema": {
+              "title": "Derivation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-worker-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Job Derivations  Derivation Id  Job Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Job",
+        "tags": [
+          "derivations"
+        ]
+      }
+    },
+    "/derivations/{derivation_id}/running": {
+      "post": {
+        "operationId": "running_derivations__derivation_id__running_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "derivation_id",
+            "required": true,
+            "schema": {
+              "title": "Derivation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-worker-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Body",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Running Derivations  Derivation Id  Running Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Running",
+        "tags": [
+          "derivations"
+        ]
+      }
+    },
     "/directory": {
       "get": {
         "description": "The people and workloads the organisation registered.\n\nDeliberately not scoped to the caller's own tenant: `IdentityContext`'s\nown identity-resolution seam needs to find a session-resolved person in\nwhichever organisation they actually belong to, before their tenant is\nknown client-side, and every other organisation's roster is what a\ncustodian-chooser needs to render honestly (see the docstring below).\nAuthentication is still required -- only a real session may read it.\n\nThis is the answer to \"who exists\", and it is the platform's answer rather\nthan the console's. Before this endpoint the console carried its own list,\nwhich meant it could offer a custodian the database had never heard of and\nevery approval that person made would be refused by a foreign key.\n\nCustodians carry the department they hold, because a custodian without a\ndepartment can approve nothing and the console should be able to say so.\nThe department must be in the same tenant as the person: a custodian who\nappears in two organisations' department tables was listed twice, once per\ndepartment, which is how a chooser ends up offering the same person as two\ndifferent people.\n\nOnly live tenants by default. Verification runs as its own principals in the\ncanary tenant, and offering those alongside real people would put \"Canary\nengineer\" on the login screen of a customer's console. Pass `purpose=all` to\nsee every tenant, which is what an operator investigating the platform\nitself wants.",
@@ -4676,7 +5216,7 @@
     },
     "/iceberg/v1/{prefix}/namespaces/{namespace}": {
       "get": {
-        "operationId": "get_namespace_iceberg_v1__prefix__namespaces__namespace__get",
+        "operationId": "get_namespace_iceberg_v1__prefix__namespaces__namespace__head",
         "parameters": [
           {
             "in": "path",
@@ -4723,7 +5263,7 @@
         ]
       },
       "head": {
-        "operationId": "get_namespace_iceberg_v1__prefix__namespaces__namespace__get",
+        "operationId": "get_namespace_iceberg_v1__prefix__namespaces__namespace__head",
         "parameters": [
           {
             "in": "path",
@@ -4825,7 +5365,7 @@
     "/iceberg/v1/{prefix}/namespaces/{namespace}/tables/{table}": {
       "get": {
         "description": "Open one table: decide, record the decision, then hand over the key.\n\nThe decision, the audit rows and the key all come from request_credential,\nthe function behind POST /credentials, so a table opened here is recorded\nexactly as the same version read any other way would be.",
-        "operationId": "load_table_iceberg_v1__prefix__namespaces__namespace__tables__table__get",
+        "operationId": "load_table_iceberg_v1__prefix__namespaces__namespace__tables__table__head",
         "parameters": [
           {
             "in": "path",
@@ -4882,7 +5422,7 @@
       },
       "head": {
         "description": "Open one table: decide, record the decision, then hand over the key.\n\nThe decision, the audit rows and the key all come from request_credential,\nthe function behind POST /credentials, so a table opened here is recorded\nexactly as the same version read any other way would be.",
-        "operationId": "load_table_iceberg_v1__prefix__namespaces__namespace__tables__table__get",
+        "operationId": "load_table_iceberg_v1__prefix__namespaces__namespace__tables__table__head",
         "parameters": [
           {
             "in": "path",

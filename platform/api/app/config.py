@@ -111,6 +111,9 @@ KRATOS_PUBLIC_URL = os.environ.get("MUNITAS_KRATOS_PUBLIC_URL", "http://kratos:4
 HF_INGEST_TASK_QUEUE = "munitas-hf-ingest"
 AGENT_RUN_TASK_QUEUE = "munitas-agent-run"
 PIPELINE_TASK_QUEUE = "munitas-pipeline"
+# Derivations run on a queue of their own: the pipeline queue is one activity
+# at a time, because it holds the GPU, and a query must not wait behind it.
+DERIVATION_TASK_QUEUE = "munitas-derivation"
 
 # Shared secret between this API and the host-side worker, checked by
 # GET /agents/{id}/versions/{id}/code (agent_upload.py) only. Deliberately

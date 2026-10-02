@@ -42,6 +42,10 @@ ALLOWED_FIELDS = {
     "outcome", "state", "status", "reason", "error", "error_type",
     "count", "seconds", "volumes_wanted", "volumes_reserved",
     "request_id", "lease_id", "identity",
+    # The id of a derivation (a query that makes a new dataset). An identifier
+    # of the same kind as dataset_id and run_id, so it says which one a line is
+    # about without saying anything about what the query read or produced.
+    "derivation_id",
 }
 
 EXTRA_CALL = re.compile(r"extra=\{(.*?)\}", re.S)

@@ -790,6 +790,94 @@ setting to change.
 
 ---
 
+## Running a query to make a new dataset
+
+A person can make a new dataset from a query over datasets they may already
+read. The platform runs the query for them, in a container with no network and
+no credentials, checks the result against the shape they confirmed, and seals
+it as an ordinary dataset version. They never run the query that produces the
+dataset on their own machine.
+
+**Once, per machine:** build the image the query runs in, in the distro that
+holds Docker. It needs the internet for two package installs and nothing after.
+
+```bash
+wsl -d Ubuntu-20.04 -- bash -lc "cd /mnt/c/AIProjects/ClaudeProjects/Munitas && docker build -t munitas-derive-runner:1 worker/derive"
+```
+
+Both workers must be running, because the query container is started by the
+sandbox worker and the result is sealed by the host worker (`start-dev.ps1`
+starts both). If the image is missing the run says so and is retried.
+
+**The flow**, with a session token for the person (the same one used to mint a
+catalog token):
+
+1. `POST /derivations` with the datasets the query reads, the query, a name for
+   the result, the primary key and a purpose. Nothing runs. The answer is a
+   draft: the version each input resolved to, the columns the query would
+   produce with their types, and the sensitivity each must carry.
+
+   ```json
+   {"inputs": [{"dataset": "admissions", "alias": "a"}],
+    "sql": "SELECT age, diagnosis_code FROM a WHERE age > 65",
+    "target_name": "admissions-over-65", "primary_key": ["age"],
+    "purpose": "readmission study"}
+   ```
+
+   The query refers to each input by its alias (by default the dataset's name
+   with anything but letters and digits turned into an underscore). `version`
+   may be given per input and defaults to the newest sealed one.
+2. `POST /derivations/<id>/confirm`, optionally with `{"sensitivities": {...}}`
+   to raise a field's sensitivity. This registers the dataset and its schema and
+   starts the run. A draft expires after an hour.
+3. `GET /derivations/<id>` until `status` is `succeeded` or `failed`. A failure
+   says why, by kind of error and never by quoting a value.
+
+**What is enforced, and where**
+- Every input must be readable by the person at the moment of the draft and again
+  at the confirm, by the same decision a table open makes.
+- Only a single `SELECT` over the declared inputs runs. The platform checks it,
+  and so does the runner inside the container, which also locks DuckDB to the
+  copied input files so a query cannot read a file, a web address or anything else.
+- A field may not carry less sensitivity than the fields it was computed from.
+  Where a query cannot be traced column by column (a subquery, a `WITH`, a
+  `UNION`) every field takes the highest sensitivity of any input. Lowering is
+  refused. It is not offered yet, because lowering is a claim that needs somebody
+  other than the person who wrote the query.
+- The result is registered at the strictest class of any input, and sealed there.
+  The person is given a lease on it at once, which ends when the earliest lease
+  they hold on an input ends and is revoked with it. Anybody else needs access to
+  it in the usual way.
+- The same query over the same input versions with the same shape returns the
+  result it already made and does not run again.
+
+**Limits (phase one):** inputs are copied into the container, so together they
+may not exceed 1 GB; a result may not exceed 5 million rows or 512 MB; a query is
+stopped after 15 minutes; the container has 512 MB of memory. Only SeaweedFS
+storage is served. The result must have a primary key, with no empty and no
+repeated values. A query that produces no rows seals nothing.
+
+**If a run seems stuck.** The sandbox worker sends a heartbeat every 20 seconds.
+If it dies, or finishes but cannot report (a network error to Temporal), Temporal
+notices after 90 seconds and runs the activity again. That is safe: the run is
+recorded under a fixed key, the upload overwrites the same object, and sealing
+reuses a version that already exists. Check `docker ps` in the distro for a query
+container and the sandbox worker's own log (`MUNITAS_LOG_DIR`,
+`sandbox-worker.log`). The worker removes containers a previous process left
+behind when it starts.
+
+Checks. U94 proves the draft and confirm rules and runs with the suite. U95 runs
+real queries through the real worker and container, so it needs the workers and
+the image, and takes about two minutes. U96 proves the worker starts when a
+leftover container has already exited:
+
+```bash
+wsl -d Ubuntu-20.04 -- bash -lc "cd /mnt/c/AIProjects/ClaudeProjects/Munitas && docker compose exec -T munitas-api python /verify/v95_derivation_run.py"
+.venv\Scripts\python.exe verify\v96_reap_leftover_containers.py
+```
+
+---
+
 ## Local HTTPS between the worker and the API
 
 **When to use it:** the worker (`worker/main.py`) needs to reach the API

@@ -2142,3 +2142,8 @@ create trigger refuse_retired_derivation
   before insert or update on derivation
   for each row execute function refuse_write_to_retired_tenant();
 
+-- A lease the platform gave to the person who made a derivation, so they can read
+-- what they made. It is tied to the derivation, so that revoking the lease they
+-- made it from ends it too (main.py, revoke_lease).
+alter table access_lease add column if not exists derivation_id uuid references derivation(id);
+

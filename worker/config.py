@@ -100,6 +100,11 @@ SANDBOX_TASK_QUEUE = os.environ.get(
 # reason HuggingFace ingestion does above: unrelated work should not wait
 # behind each other.
 HOUSEKEEPING_TASK_QUEUE = "munitas-housekeeping"
+# A confirmed derivation (derivation_workflow.py). Its own queue so a query is never
+# stuck behind the pipeline, which runs one activity at a time for the GPU.
+DERIVATION_TASK_QUEUE = "munitas-derivation"
+# The image a derivation's three containers run from (worker/derive/Dockerfile).
+DERIVE_IMAGE = os.environ.get("MUNITAS_DERIVE_IMAGE", "munitas-derive-runner:1")
 
 # The worker's one direct database connection. Everything else the pipeline
 # produces goes through the control plane API (see `platform_client.py`'s

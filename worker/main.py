@@ -42,6 +42,7 @@ from .agent_run_resume_workflow import AgentRunResumeWorkflow
 from .agent_run_workflow import AgentRunWorkflow
 from .dag_activities import close_step_run, open_step_run
 from .dag_workflow import PipelineDagWorkflow
+from .derivation_workflow import DerivationWorkflow, fail_derivation, seal_derivation
 from .hf_ingest_activities import (cancel_job, fail_job, fetch_one_file,
                                    finalize_job, prepare_fetch)
 from .hf_ingest_workflow import HuggingFaceFetchWorkflow
@@ -141,13 +142,23 @@ async def main() -> None:
             activity_executor=housekeeping_pool,
             max_concurrent_activities=1,
         )
-        log.info("worker ready on task queues %r, %r, %r and %r",
+        derivation_worker = Worker(
+            client,
+            task_queue=config.DERIVATION_TASK_QUEUE,
+            workflows=[DerivationWorkflow],
+            activities=[seal_derivation, fail_derivation],
+            activity_executor=housekeeping_pool,
+            max_concurrent_activities=2,
+        )
+        log.info("worker ready on task queues %r, %r, %r, %r and %r",
                  config.TASK_QUEUE, config.HF_INGEST_TASK_QUEUE,
-                 config.AGENT_RUN_TASK_QUEUE, config.HOUSEKEEPING_TASK_QUEUE)
+                 config.AGENT_RUN_TASK_QUEUE, config.HOUSEKEEPING_TASK_QUEUE,
+                 config.DERIVATION_TASK_QUEUE)
         log.info("DAG script steps route to %r, served by worker.sandbox_worker "
                  "in the distro", config.DAG_SCRIPT_TASK_QUEUE)
         await asyncio.gather(pipeline_worker.run(), hf_worker.run(),
-                              agent_worker.run(), housekeeping_worker.run())
+                              agent_worker.run(), housekeeping_worker.run(),
+                              derivation_worker.run())
 
 
 if __name__ == "__main__":

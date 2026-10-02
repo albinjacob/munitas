@@ -49,7 +49,7 @@ import docker
 import httpx
 import requests
 import urllib3.exceptions
-from docker.errors import NotFound
+from docker.errors import APIError, NotFound
 
 from . import config
 
@@ -295,6 +295,13 @@ def reap_orphaned_containers() -> int:
             container.kill()
         except NotFound:
             pass
+        except APIError as exc:
+            # 409 is Docker saying the container is not running, which is the
+            # ordinary state of a leftover that finished by itself: there is
+            # nothing to kill and it is removed next. Any other error is real.
+            # Treating this one as fatal stopped the whole worker at start-up.
+            if exc.status_code != 409:
+                raise
         try:
             container.remove(force=True)
         except NotFound:

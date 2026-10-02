@@ -35,6 +35,7 @@ TAG_LABELS = {
     "auth": "Auth",
     "people": "People and roles",
     "housekeeping": "Storage housekeeping",
+    "derivations": "Derived datasets (a query over existing ones)",
     "iceberg": "Iceberg catalog (for DuckDB, PyIceberg and other standard tools)",
 }
 TAG_ORDER = list(TAG_LABELS.keys())

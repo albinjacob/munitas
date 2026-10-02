@@ -44,6 +44,7 @@ from temporalio.worker import Worker
 
 from . import config
 from .dag_activities import run_dag_step_sandboxed
+from .derivation_activities import run_derivation_sandboxed
 from .sandbox_run import reap_orphaned_containers
 from .sandbox_run_activities import run_sandboxed_agent
 
@@ -77,7 +78,7 @@ async def main() -> None:
         agent_worker = Worker(
             client,
             task_queue=config.SANDBOX_TASK_QUEUE,
-            activities=[run_sandboxed_agent],
+            activities=[run_sandboxed_agent, run_derivation_sandboxed],
             activity_executor=pool,
             max_concurrent_activities=4,
         )

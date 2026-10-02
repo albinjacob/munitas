@@ -427,6 +427,12 @@ async def confirm(derivation_id: str, body: models.DerivationConfirmIn,
               (identity["tenant_id"], row["target_name"])):
         raise HTTPException(409, {"reasons": [f"a dataset called {row['target_name']!r} already exists"]})
 
+    # Every run is recorded under one action per organisation, which has no
+    # fixed shape because each derivation brings its own.
+    db.execute(
+        """insert into dataset_action (id, tenant_id, name) values (%s, %s, 'derive')
+           on conflict (tenant_id, name) do nothing""",
+        (str(uuid.uuid4()), identity["tenant_id"]))
     contract = versions.register_contract(
         identity["tenant_id"], row["target_name"],
         [{"name": f["name"], "type": f["type"], "format": None,
@@ -459,7 +465,7 @@ async def _start_run(derivation_id: str, tenant_id: str) -> None:
         client = temporal_client.get()
         await client.start_workflow(
             "DerivationWorkflow", {"derivation_id": derivation_id, "tenant_id": tenant_id},
-            id=f"derivation-{derivation_id}", task_queue=config.PIPELINE_TASK_QUEUE)
+            id=f"derivation-{derivation_id}", task_queue=config.DERIVATION_TASK_QUEUE)
     except Exception as exc:  # noqa: BLE001 - recorded on the row and reported
         db.execute("update derivation set status = 'failed', error = %s, ended_at = now() where id = %s",
                    (f"the job runner could not start it: {type(exc).__name__}", derivation_id))
@@ -490,8 +496,11 @@ def job(derivation_id: str) -> dict:
     workload = db.one(
         "select id from directory where tenant_id = %s and kind = 'workload' "
         "and 'pipeline_action' = any(roles) order by id limit 1", (row["tenant_id"],))
+    action = db.one("select id::text as id from dataset_action where tenant_id = %s and name = 'derive'",
+                    (row["tenant_id"],))
     return {
         "id": str(row["id"]), "tenant_id": row["tenant_id"], "submitted_by": row["submitted_by"],
+        "action_id": action["id"] if action else None,
         "sql": row["sql"], "purpose": row["purpose"], "inputs": versions_info,
         "primary_key": list(row["primary_key"]), "fields": row["proposed_fields"],
         "output_class": row["output_class"], "dataset_id": str(row["dataset_id"]),
@@ -547,10 +556,10 @@ def _grant_submitter(row: dict, output_version_id: str) -> None:
     db.execute(
         """insert into access_lease
              (id, tenant_id, principal, requested_by, dataset_version_id, purpose,
-              approved_by, expires_at, pattern)
-           values (%s, %s, %s, %s, %s, %s, %s, %s, 'strict')""",
+              approved_by, expires_at, pattern, derivation_id)
+           values (%s, %s, %s, %s, %s, %s, %s, %s, 'strict', %s)""",
         (str(uuid.uuid4()), row["tenant_id"], row["submitted_by"], row["submitted_by"],
-         output_version_id, row["purpose"], approver["id"], ends))
+         output_version_id, row["purpose"], approver["id"], ends, str(row["id"])))
 
 
 @router.post("/derivations/{derivation_id}/fail", dependencies=[Depends(_worker)])

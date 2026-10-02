@@ -244,7 +244,11 @@ if (-not $NoWorker) {
     # another Munitas checkout's on the same distro.
     $repoInWsl = (ConvertTo-WslPath -WslDistro $WslDistro -WindowsPath $PSScriptRoot).Trim()
     $existingSandboxWorker = $null
-    foreach ($line in @(wsl -d $WslDistro -- bash -lc "pgrep -af 'worker.sandbox_worker' 2>/dev/null")) {
+    # Anchored on the interpreter, so it matches the worker process and not the
+    # wrapper shell whose command line merely contains the same words. Matching
+    # the wrapper made a worker that had died under a live wrapper look like one
+    # that was still running, and it was never started again.
+    foreach ($line in @(wsl -d $WslDistro -- bash -lc "pgrep -af '^[^ ]*python[0-9.]* -m worker\.sandbox_worker' 2>/dev/null")) {
         if ($line -match '^(\d+)\s') {
             $candidateId = $Matches[1]
             $cwd = (wsl -d $WslDistro -- bash -lc "readlink -f /proc/$candidateId/cwd 2>/dev/null" | Select-Object -First 1)
