@@ -12,6 +12,7 @@
         { "directory_id": "sam-researcher", "email": "sam@health.example", "name": "Sam" },
         { "directory_id": "eng-devi", "email": "devi@health.example", "name": "Devi" },
         { "directory_id": "ops-priya", "email": "priya@health.example", "name": "Priya" },
+        { "directory_id": "ops-ravi", "email": "ravi@health.example", "name": "Ravi" },
         { "directory_id": "cust-mensah", "email": "mensah@health.example", "name": "Mensah" },
         { "directory_id": "cust-lindqvist", "email": "lindqvist@health.example", "name": "Lindqvist" },
         { "directory_id": "arch-turner", "email": "turner@health.example", "name": "Turner" }
@@ -28,6 +29,15 @@
         { "directory_id": "canary-dpo", "email": "dpo@canary.example", "name": "Canary oversight" },
         { "directory_id": "canary-reviewer", "email": "reviewer@canary.example", "name": "Canary reviewer" },
         { "directory_id": "canary-architect", "email": "architect@canary.example", "name": "Canary architect" }
+      ]
+    },
+    {
+      "tenant": "harbour",
+      "source": "infra/postgres/seed-harbour.sql",
+      "identities": [
+        { "directory_id": "cust-dunmore", "email": "dunmore@harbour.example", "name": "Dunmore" },
+        { "directory_id": "dpo-adeyemi", "email": "adeyemi@harbour.example", "name": "Adeyemi" },
+        { "directory_id": "ana-quinn", "email": "quinn@harbour.example", "name": "Quinn" }
       ]
     },
     {

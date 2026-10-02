@@ -974,3 +974,160 @@ test_preview_unreadable_agrees_with_allow if {
 	a.current_leases == []
 	not access.allow with input as {"principal": p, "dataset": ds("RAW"), "purpose": "shape exploration"}
 }
+
+# ---------------------------------------------------------------- closing --
+
+full_hold := {
+	"matter_name": "Doe v Harbour Clinic",
+	"matter_number": "HC-2026-0417",
+	"description": "A patient claim about a cardiology procedure in 2024.",
+	"triggering_event": "Letter before claim received on 2026-09-30",
+	"issuing_authority": "Aldous and Brennan LLP, for the claimant",
+	"authority_reference": "AB/2026/17",
+	"attorney_name": "Ruth Aldous",
+	"attorney_email": "ruth.aldous@example.test",
+	"notice_received_on": "2026-10-01",
+	"preserve": "Every record of the claimant and the audit trail of who read it.",
+	"custodian_id": "hold-keeper",
+}
+
+test_own_custodian_may_close_their_organisation if {
+	access.may_retire with input as {
+		"actor": {"id": "cust-hartley", "tenant_id": "health", "roles": ["data_custodian"]},
+		"organisation": "health",
+		"reason": "The contract ends on 31 October",
+	}
+}
+
+test_custodian_of_another_organisation_may_not_close_it if {
+	not access.may_retire with input as {
+		"actor": {"id": "cust-marcus", "tenant_id": "finance", "roles": ["data_custodian"]},
+		"organisation": "health",
+		"reason": "Tidying up",
+	}
+}
+
+test_ordinary_member_may_not_close_their_organisation if {
+	not access.may_retire with input as {
+		"actor": {"id": "sam-researcher", "tenant_id": "health", "roles": ["notebook_explore"]},
+		"organisation": "health",
+		"reason": "I would like it gone",
+	}
+}
+
+test_platform_administrator_may_close_on_instruction if {
+	access.may_retire with input as {
+		"actor": {"id": "ops-priya", "tenant_id": "health", "roles": ["platform_admin"]},
+		"organisation": "finance",
+		"reason": "Written instruction from the customer",
+	}
+}
+
+test_closing_without_a_reason_is_refused if {
+	not access.may_retire with input as {
+		"actor": {"id": "cust-hartley", "tenant_id": "health", "roles": ["data_custodian"]},
+		"organisation": "health",
+		"reason": "  ",
+	}
+}
+
+test_own_custodian_may_cancel if {
+	access.may_cancel_retirement with input as {
+		"actor": {"id": "cust-hartley", "tenant_id": "health", "roles": ["data_custodian"]},
+		"organisation": "health",
+	}
+}
+
+test_ordinary_member_may_not_cancel if {
+	not access.may_cancel_retirement with input as {
+		"actor": {"id": "sam-researcher", "tenant_id": "health", "roles": ["notebook_explore"]},
+		"organisation": "health",
+	}
+}
+
+test_platform_administrator_may_place_a_complete_hold if {
+	access.may_place_hold with input as {
+		"actor": {"id": "ops-priya", "roles": ["platform_admin"]},
+		"hold": full_hold,
+	}
+}
+
+test_custodian_may_not_place_a_hold if {
+	not access.may_place_hold with input as {
+		"actor": {"id": "cust-hartley", "roles": ["data_custodian"]},
+		"hold": full_hold,
+	}
+}
+
+test_hold_without_an_attorney_is_refused if {
+	not access.may_place_hold with input as {
+		"actor": {"id": "ops-priya", "roles": ["platform_admin"]},
+		"hold": object.remove(full_hold, ["attorney_name"]),
+	}
+}
+
+test_hold_refusal_names_what_is_missing if {
+	r := access.place_hold_decision with input as {
+		"actor": {"id": "ops-priya", "roles": ["platform_admin"]},
+		"hold": object.remove(full_hold, ["attorney_name", "preserve"]),
+	}
+	r.reasons == ["the notice is missing: attorney_name, preserve"]
+}
+
+test_a_different_administrator_may_approve if {
+	access.may_decide_hold with input as {
+		"actor": {"id": "ops-ravi", "roles": ["platform_admin"]},
+		"hold": {"placed_by": "ops-priya"},
+	}
+}
+
+test_the_administrator_who_placed_it_may_not_approve if {
+	not access.may_decide_hold with input as {
+		"actor": {"id": "ops-priya", "roles": ["platform_admin"]},
+		"hold": {"placed_by": "ops-priya"},
+	}
+}
+
+test_custodian_may_not_approve_a_hold if {
+	not access.may_decide_hold with input as {
+		"actor": {"id": "cust-hartley", "roles": ["data_custodian"]},
+		"hold": {"placed_by": "ops-priya"},
+	}
+}
+
+test_release_needs_a_reason_and_an_administrator if {
+	access.may_release_hold with input as {
+		"actor": {"id": "ops-ravi", "roles": ["platform_admin"]},
+		"reason": "Matter settled, written confirmation received",
+	}
+	not access.may_release_hold with input as {
+		"actor": {"id": "ops-ravi", "roles": ["platform_admin"]},
+		"reason": "",
+	}
+	not access.may_release_hold with input as {
+		"actor": {"id": "cust-hartley", "roles": ["data_custodian"]},
+		"reason": "Matter settled",
+	}
+}
+
+test_people_see_their_own_organisations_closing_and_no_other if {
+	access.may_see_lifecycle with input as {
+		"scope": "tenant", "tenant_id": "health",
+		"viewer": {"id": "sam-researcher", "tenant_id": "health", "roles": ["notebook_explore"]},
+	}
+	not access.may_see_lifecycle with input as {
+		"scope": "tenant", "tenant_id": "finance",
+		"viewer": {"id": "sam-researcher", "tenant_id": "health", "roles": ["notebook_explore"]},
+	}
+}
+
+test_only_administrators_see_every_organisation if {
+	access.may_see_lifecycle with input as {
+		"scope": "platform",
+		"viewer": {"id": "ops-priya", "tenant_id": "health", "roles": ["platform_admin"]},
+	}
+	not access.may_see_lifecycle with input as {
+		"scope": "platform",
+		"viewer": {"id": "cust-hartley", "tenant_id": "health", "roles": ["data_custodian"]},
+	}
+}

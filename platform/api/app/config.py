@@ -171,3 +171,23 @@ ICEBERG_ROW_GROUP_ROWS = int(os.environ.get("MUNITAS_ICEBERG_ROW_GROUP_ROWS", "0
 # each with the key it held when it started, so many small files spread a
 # long read over many separate key checks.
 ICEBERG_FILE_BYTES = int(os.environ.get("MUNITAS_ICEBERG_FILE_BYTES", "0"))
+
+# Closing an organisation (lifecycle.py, purge.py). Each organisation takes its
+# dates from these when its retirement starts, so changing them never moves a
+# countdown already running.
+#
+# During the first period the organisation's people can still read and may
+# cancel. During the second they can do nothing, and a platform administrator
+# may place a legal hold. When both end and no hold stands, everything inside the
+# organisation is deleted.
+RETIRING_DAYS = int(os.environ.get("MUNITAS_RETIRING_DAYS", "15"))
+CLOSING_DAYS = int(os.environ.get("MUNITAS_CLOSING_DAYS", "15"))
+# How long a proposed legal hold waits for a second administrator before it
+# lapses and stops standing in the way of the purge, and how long an approved one
+# runs before somebody has to look at it again.
+HOLD_APPROVAL_DAYS = int(os.environ.get("MUNITAS_HOLD_APPROVAL_DAYS", "7"))
+HOLD_REVIEW_DAYS = int(os.environ.get("MUNITAS_HOLD_REVIEW_DAYS", "90"))
+# How often the platform looks for organisations whose time is up. 0 turns the
+# timer off (the sweep can still be run by hand), which a verification run uses
+# so a purge only happens when it asks for one.
+LIFECYCLE_SWEEP_SECONDS = int(os.environ.get("MUNITAS_LIFECYCLE_SWEEP_SECONDS", "300"))

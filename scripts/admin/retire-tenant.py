@@ -9,6 +9,14 @@ scripts/admin/reclaim-storage.py --tenant <id> afterward.
 
     python scripts/admin/retire-tenant.py --tenant acme
     python scripts/admin/retire-tenant.py --tenant acme --force
+
+This closes the organisation at once and gives it no dates, so the platform never
+deletes it by itself: it stays readable until somebody runs reclaim-storage.py or
+nuke-tenant.py. That is the right tool for a verification or throwaway organisation.
+A customer organisation is closed through the console (or POST
+/lifecycle/organisation/retire), which gives its people 15 days to read and cancel,
+another 15 with nothing, honours any legal hold, and then deletes everything inside it
+(platform/api/app/lifecycle.py).
 """
 
 from __future__ import annotations

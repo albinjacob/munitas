@@ -849,3 +849,190 @@ attest_decision := {
 	"allow": may_attest_role,
 	"reasons": [r | some r in attest_reason],
 }
+
+# ------------------------------------------------------------------
+# Closing an organisation, and holding its records.
+#
+# Retiring starts a countdown that ends in everything inside the organisation
+# being deleted, so who may start it, who may stop it and who may place a legal
+# hold are decided here and not left to whoever reaches the endpoint.
+#
+# Starting and cancelling a retirement belong to the organisation: its own data
+# custodians, who already decide who may read its data, and to a platform
+# administrator acting on the organisation's written instruction. A reason is
+# recorded when starting, because the record is what an organisation reads back
+# when it asks why it was closed.
+#
+# A legal hold is different. It overrides the organisation's wishes, so no
+# member of the organisation may place one, and no single administrator may
+# either: one administrator records the notice and a different one approves it.
+# The same shape as a lease, where nobody approves their own.
+
+lifecycle_actor_roles := {"platform_admin"}
+
+default may_retire := false
+
+may_retire if {
+	count(trim_space(object.get(input, "reason", ""))) > 0
+	lifecycle_actor_ok
+}
+
+lifecycle_actor_ok if {
+	some role in input.actor.roles
+	lifecycle_actor_roles[role]
+}
+
+lifecycle_actor_ok if {
+	input.actor.tenant_id == input.organisation
+	some role in input.actor.roles
+	approver_roles[role]
+}
+
+retire_reason contains "only a data custodian of the organisation, or a platform administrator, may close it" if {
+	not lifecycle_actor_ok
+}
+
+retire_reason contains "closing an organisation needs a reason, which is recorded with it" if {
+	count(trim_space(object.get(input, "reason", ""))) == 0
+}
+
+retire_decision := {
+	"allow": may_retire,
+	"reasons": [r | some r in retire_reason],
+}
+
+default may_cancel_retirement := false
+
+may_cancel_retirement if lifecycle_actor_ok
+
+cancel_reason contains "only a data custodian of the organisation, or a platform administrator, may cancel its closing" if {
+	not lifecycle_actor_ok
+}
+
+cancel_decision := {
+	"allow": may_cancel_retirement,
+	"reasons": [r | some r in cancel_reason],
+}
+
+# What a legal hold notice has to say, so a hold cannot be placed on a hunch.
+hold_required_fields := {
+	"matter_name", "matter_number", "description", "triggering_event",
+	"issuing_authority", "authority_reference", "attorney_name", "attorney_email",
+	"notice_received_on", "preserve", "custodian_id",
+}
+
+hold_missing contains f if {
+	some f in hold_required_fields
+	count(trim_space(sprintf("%v", [object.get(input.hold, f, "")]))) == 0
+}
+
+default may_place_hold := false
+
+may_place_hold if {
+	some role in input.actor.roles
+	lifecycle_actor_roles[role]
+	count(hold_missing) == 0
+}
+
+place_hold_reason contains "only a platform administrator may place a legal hold" if {
+	every role in input.actor.roles {
+		not lifecycle_actor_roles[role]
+	}
+}
+
+place_hold_reason contains sprintf("the notice is missing: %v", [concat(", ", sort([f | some f in hold_missing]))]) if {
+	count(hold_missing) > 0
+}
+
+place_hold_decision := {
+	"allow": may_place_hold,
+	"reasons": [r | some r in place_hold_reason],
+}
+
+default may_decide_hold := false
+
+may_decide_hold if {
+	input.actor.id != input.hold.placed_by
+	some role in input.actor.roles
+	lifecycle_actor_roles[role]
+}
+
+decide_hold_reason contains "a legal hold is approved by a different platform administrator from the one who placed it" if {
+	input.actor.id == input.hold.placed_by
+}
+
+decide_hold_reason contains "only a platform administrator may decide a legal hold" if {
+	every role in input.actor.roles {
+		not lifecycle_actor_roles[role]
+	}
+}
+
+decide_hold_decision := {
+	"allow": may_decide_hold,
+	"reasons": [r | some r in decide_hold_reason],
+}
+
+default may_release_hold := false
+
+may_release_hold if {
+	count(trim_space(object.get(input, "reason", ""))) > 0
+	some role in input.actor.roles
+	lifecycle_actor_roles[role]
+}
+
+release_hold_reason contains "only a platform administrator may release a legal hold" if {
+	every role in input.actor.roles {
+		not lifecycle_actor_roles[role]
+	}
+}
+
+release_hold_reason contains "releasing a legal hold needs a reason, which is recorded with it" if {
+	count(trim_space(object.get(input, "reason", ""))) == 0
+}
+
+release_hold_decision := {
+	"allow": may_release_hold,
+	"reasons": [r | some r in release_hold_reason],
+}
+
+# Seeing where an organisation is in its closing: its own people see their
+# organisation's, a platform administrator sees every organisation's. What is
+# shown is dates and states, never contents.
+default may_see_lifecycle := false
+
+may_see_lifecycle if {
+	input.scope == "platform"
+	some role in input.viewer.roles
+	lifecycle_actor_roles[role]
+}
+
+may_see_lifecycle if {
+	input.scope == "tenant"
+	input.viewer.tenant_id == input.tenant_id
+}
+
+may_see_lifecycle if {
+	input.scope == "tenant"
+	some role in input.viewer.roles
+	lifecycle_actor_roles[role]
+}
+
+see_lifecycle_reason contains "this view belongs to a platform administrator" if {
+	input.scope == "platform"
+	every role in input.viewer.roles {
+		not lifecycle_actor_roles[role]
+	}
+}
+
+see_lifecycle_reason contains "an organisation's closing is visible to its own people and to platform administrators" if {
+	input.scope == "tenant"
+	input.viewer.tenant_id != input.tenant_id
+	every role in input.viewer.roles {
+		not lifecycle_actor_roles[role]
+	}
+}
+
+see_lifecycle_decision := {
+	"allow": may_see_lifecycle,
+	"reasons": [r | some r in see_lifecycle_reason],
+}

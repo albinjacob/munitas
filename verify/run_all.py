@@ -70,6 +70,9 @@ SCRIPTS = [
     ("U90 a sealed tabular version is also an Iceberg table that agrees with the register", "v90_iceberg_projection.py"),
     ("U91 the Iceberg catalog shows and opens only what a person may read, and ends with their lease", "v91_iceberg_catalog.py"),
     ("U94 a query over existing datasets is drafted and confirmed on terms, never run unchecked", "v94_derivation_draft.py"),
+    ("U98 closing an organisation: who may start it and stop it, and what its people can do meanwhile", "v98_organisation_closing.py"),
+    ("U99 a legal hold needs two different administrators and stops the deletion while it stands", "v99_legal_hold.py"),
+    ("U100 a due and unheld organisation is deleted completely, and nothing else can be", "v100_purge.py"),
 ]
 
 here = Path(__file__).parent

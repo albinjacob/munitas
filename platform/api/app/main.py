@@ -29,7 +29,7 @@ from crypto import DestroyedKeyError, EnvelopeCrypto
 
 from . import (access_preview, activation, agent_upload, agents, auth, config,
               dag_pipelines, db, derivations, external_accounts, grants, housekeeping, iceberg,
-              iceberg_catalog, ingest, logs, models, opa, people, pipeline, r2,
+              iceberg_catalog, ingest, lifecycle, logs, models, opa, people, pipeline, r2,
               read_models, seaweed, storage, task_credential, temporal_client,
               versions)
 
@@ -59,12 +59,14 @@ async def lifespan(app: FastAPI):
                   extra={"reason": str(exc)})
     await temporal_client.connect()
     activator = asyncio.create_task(activation.run_forever())
+    closer = asyncio.create_task(lifecycle.run_forever())
     yield
-    activator.cancel()
-    try:
-        await activator
-    except asyncio.CancelledError:
-        pass
+    for task in (activator, closer):
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
     db.pool.close()
 
 
@@ -120,6 +122,7 @@ app.include_router(pipeline.router)
 app.include_router(access_preview.router)
 app.include_router(iceberg_catalog.router)
 app.include_router(derivations.router)
+app.include_router(lifecycle.router)
 # The catalog answers in the shape Iceberg clients read, not FastAPI's default.
 app.add_exception_handler(iceberg_catalog.CatalogError, iceberg_catalog.handle_error)
 

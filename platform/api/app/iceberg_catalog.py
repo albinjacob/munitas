@@ -174,6 +174,10 @@ def catalog_principal(request: Request) -> dict:
     # An ended appointment stops here, the same as it does for a session.
     if not person or person.get("ended_at"):
         raise refusal
+    # A closing organisation's people can do nothing, and that includes reading
+    # through a token they made earlier.
+    if auth.closed_refusal(person.get("phase"), person["roles"]):
+        raise refusal
     # A retired organisation's records stay readable but nothing more may be
     # written to it, and that includes this timestamp. Reading must not depend
     # on being able to record that it happened.

@@ -149,6 +149,57 @@ def may_free_storage(payload: dict) -> tuple[bool, list[str]]:
     return _ask(_FREE_STORAGE_PATH, payload)
 
 
+_RETIRE_PATH = "/v1/data/munitas/access/retire_decision"
+_CANCEL_PATH = "/v1/data/munitas/access/cancel_decision"
+_PLACE_HOLD_PATH = "/v1/data/munitas/access/place_hold_decision"
+_DECIDE_HOLD_PATH = "/v1/data/munitas/access/decide_hold_decision"
+_RELEASE_HOLD_PATH = "/v1/data/munitas/access/release_hold_decision"
+_SEE_LIFECYCLE_PATH = "/v1/data/munitas/access/see_lifecycle_decision"
+
+
+def may_retire(payload: dict) -> tuple[bool, list[str]]:
+    """May this principal start closing this organisation?
+
+    Starting it begins a countdown that ends in everything inside the organisation
+    being deleted, so it belongs to the organisation's own data custodians and to a
+    platform administrator acting on its written instruction, and it needs a reason.
+    """
+    return _ask(_RETIRE_PATH, payload)
+
+
+def may_cancel_retirement(payload: dict) -> tuple[bool, list[str]]:
+    """May this principal stop an organisation's closing while it can still be stopped?"""
+    return _ask(_CANCEL_PATH, payload)
+
+
+def may_place_hold(payload: dict) -> tuple[bool, list[str]]:
+    """May this principal record a legal hold, and does the notice say enough?
+
+    A hold overrides the organisation's wishes, so no member of the organisation
+    places one. The refusal names every part of the notice that is missing.
+    """
+    return _ask(_PLACE_HOLD_PATH, payload)
+
+
+def may_decide_hold(payload: dict) -> tuple[bool, list[str]]:
+    """May this principal approve or decline a hold somebody else placed?
+
+    A different platform administrator from the one who placed it, the same
+    shape as a lease, where nobody approves their own.
+    """
+    return _ask(_DECIDE_HOLD_PATH, payload)
+
+
+def may_release_hold(payload: dict) -> tuple[bool, list[str]]:
+    """May this principal end a hold that is in force, with a reason on record?"""
+    return _ask(_RELEASE_HOLD_PATH, payload)
+
+
+def may_see_lifecycle(payload: dict) -> tuple[bool, list[str]]:
+    """May this principal see where an organisation is in its closing?"""
+    return _ask(_SEE_LIFECYCLE_PATH, payload)
+
+
 _EXPORT_PATH = "/v1/data/munitas/access/export_decision"
 
 

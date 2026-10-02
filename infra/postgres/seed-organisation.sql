@@ -72,6 +72,9 @@ insert into directory (id, tenant_id, label, kind, roles) values
   ('sam-researcher', 'health', 'Sam',      'human', '{notebook_explore}'),
   ('eng-devi',       'health', 'Devi',     'human', '{pipeline_operator}'),
   ('ops-priya',      'health', 'Priya',    'human', '{platform_admin,hybridops}'),
+  -- A second platform administrator. A legal hold is recorded by one and approved by a
+  -- different one, so the platform needs at least two.
+  ('ops-ravi',       'health', 'Ravi',     'human', '{platform_admin,hybridops}'),
   ('cust-mensah',    'health', 'Mensah',   'human', '{data_custodian}'),
   ('cust-lindqvist', 'health', 'Lindqvist','human', '{data_custodian}'),
   -- A dedicated identity, the same pattern every other role here already

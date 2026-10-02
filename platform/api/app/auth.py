@@ -43,6 +43,21 @@ from . import config, db, task_credential
 router = APIRouter(tags=["auth"])
 
 
+# The phases of an organisation's closing in which its people can do nothing at
+# all (platform/schema.sql, tenant_phase). A platform administrator is the one
+# exception, because the administrator holds no standing access to what the
+# organisation contains and is the only person who can act on a closing one.
+CLOSED_TO_PEOPLE = ("closing", "purge_due", "purged")
+
+
+def closed_refusal(phase: str | None, roles: list[str]) -> str | None:
+    """The sentence that says why this person cannot act, or None when they can."""
+    if phase in CLOSED_TO_PEOPLE and "platform_admin" not in roles:
+        return ("this organisation is closing, so nothing can be done in it any more. "
+                "Only a platform administrator can act on it now")
+    return None
+
+
 def current_session(request: Request) -> dict:
     """The directory row behind this request's session, or a 401.
 
@@ -50,7 +65,21 @@ def current_session(request: Request) -> dict:
     rather than folded into the endpoint below, so the same check can be
     reused on other endpoints as they migrate to requiring it, without
     duplicating the whoami call and the directory lookup at each call site.
+
+    Somebody whose organisation is closing is refused here, at the one place every
+    acting endpoint passes through. The few endpoints that exist for that
+    situation use `current_session_while_closing` instead.
     """
+    return _resolve_session(request, refuse_closing=True)
+
+
+def current_session_while_closing(request: Request) -> dict:
+    """The same session, for the endpoints that answer to a closing organisation:
+    where it is in its closing, and a legal hold's custodian acknowledging it."""
+    return _resolve_session(request, refuse_closing=False)
+
+
+def _resolve_session(request: Request, refuse_closing: bool) -> dict:
     forward = {}
     if cookie := request.headers.get("cookie"):
         forward["Cookie"] = cookie
@@ -89,6 +118,7 @@ def current_session(request: Request) -> dict:
     # (`where not revoked`) exists for exactly this query.
     person = db.one(
         """select d.id, d.tenant_id, d.label, d.kind, d.ended_at,
+                  tenant_phase(d.tenant_id) as phase,
                   array(
                       select distinct role from (
                           select unnest(d.roles) as role
@@ -131,12 +161,18 @@ def current_session(request: Request) -> dict:
             ]},
         )
 
+    if refuse_closing:
+        why = closed_refusal(person["phase"], person["roles"])
+        if why:
+            raise HTTPException(403, {"reasons": [why]})
+
     return {
         "id": person["id"],
         "tenant_id": person["tenant_id"],
         "label": person["label"],
         "kind": person["kind"],
         "roles": person["roles"],
+        "phase": person["phase"],
         "session_id": session["id"],
         "authenticated_at": session["authenticated_at"],
     }
@@ -153,6 +189,7 @@ def identity_for(person_id: str) -> dict | None:
     """
     person = db.one(
         """select d.id, d.tenant_id, d.label, d.kind, d.ended_at,
+                  tenant_phase(d.tenant_id) as phase,
                   array(
                       select distinct role from (
                           select unnest(d.roles) as role
@@ -204,7 +241,7 @@ def organisation_scope(
 
 
 @router.get("/auth/whoami")
-def whoami(identity: dict = Depends(current_session)) -> dict:
+def whoami(identity: dict = Depends(current_session_while_closing)) -> dict:
     """Prove the mechanism: a real session resolves to a real directory row.
 
     Nothing downstream reads this endpoint yet. It exists so the login flow

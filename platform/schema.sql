@@ -411,6 +411,9 @@ alter table action_run
 -- exemption is a subquery rather than a column on this table on purpose: the
 -- answer belongs to the tenant, and copying it here would be a second place
 -- for it to be wrong.
+--
+-- The delete rule is redefined near the end of this file, where the one exemption a
+-- purge needs is added; the function it asks is defined there.
 drop rule if exists dataset_version_no_update on dataset_version;
 create rule dataset_version_no_update as
   on update to dataset_version
@@ -2147,3 +2150,201 @@ create trigger refuse_retired_derivation
 -- made it from ends it too (main.py, revoke_lease).
 alter table access_lease add column if not exists derivation_id uuid references derivation(id);
 
+
+
+-- ============================================================ retirement ==
+--
+-- Closing an organisation takes two stages and ends in a purge, so the people who
+-- asked can change their minds and nothing is destroyed by accident.
+--
+--   retiring   `retiring_until` is ahead. The organisation takes no writes (the
+--              retired-tenant guard above), its people may still read what it
+--              holds, and they may cancel the retirement.
+--   closing    `closing_until` is ahead. Its people can do nothing at all. Only a
+--              platform administrator can act, and only to place or lift a legal
+--              hold.
+--   purge_due  both periods have ended. When no legal hold is pending or active
+--              the platform deletes everything inside the organisation.
+--   purged     done. The organisation row stays as a tombstone, so its name is
+--              never reused, and `tenant_deletion_record` says what went.
+--
+-- The phase is worked out from the dates every time it is asked, so there is no
+-- timer to miss and a restart loses nothing. An organisation retired before these
+-- columns existed has no dates, reads as plain `retired`, and is never purged:
+-- nothing here deletes an organisation nobody gave a deadline.
+alter table tenant add column if not exists retire_requested_by text;
+alter table tenant add column if not exists retire_reason text;
+alter table tenant add column if not exists retired_at timestamptz;
+alter table tenant add column if not exists retiring_until timestamptz;
+alter table tenant add column if not exists closing_until timestamptz;
+alter table tenant add column if not exists purged_at timestamptz;
+
+alter table tenant drop constraint if exists tenant_retirement_dates;
+alter table tenant add constraint tenant_retirement_dates
+  check ((retiring_until is null) = (closing_until is null)
+         and (retiring_until is null or closing_until >= retiring_until));
+
+-- ---------------------------------------------------------- legal holds --
+--
+-- An instruction from outside the platform, in practice a court, a regulator or an
+-- organisation's own lawyers, to keep an organisation's records and not destroy
+-- them. It reaches the platform administrator in writing. One platform
+-- administrator records it (`proposed`); a different one approves it (`active`).
+-- Until it is decided, a proposal also stops the purge, because a purge that could
+-- land between placing a hold and approving it would make the hold worthless.
+--
+-- A hold covers a whole organisation. It is deliberately not guarded by the
+-- retired-tenant rule: holds are placed on organisations that are already closed.
+create table if not exists legal_hold (
+  id                        uuid primary key,
+  tenant_id                 text not null references tenant(id),
+  status                    text not null
+                            check (status in ('proposed','active','declined','lapsed','released')),
+  -- What the notice says.
+  matter_name               text not null check (matter_name <> ''),
+  matter_number             text not null check (matter_number <> ''),
+  description               text not null check (description <> ''),
+  triggering_event          text not null check (triggering_event <> ''),
+  issuing_authority         text not null check (issuing_authority <> ''),
+  authority_reference       text not null check (authority_reference <> ''),
+  attorney_name             text not null check (attorney_name <> ''),
+  attorney_email            text not null check (attorney_email <> ''),
+  notice_received_on        date not null,
+  preserve                  text not null check (preserve <> ''),
+  data_from                 date,
+  data_to                   date,
+  -- The person who answers for the preserved records while the hold stands,
+  -- named from the notice. Must acknowledge it.
+  custodian_id              text not null references directory(id),
+  custodian_acknowledged_at timestamptz,
+  -- Who did what, and when.
+  placed_by                 text not null references directory(id),
+  placed_at                 timestamptz not null default now(),
+  expires_unapproved_at     timestamptz not null,
+  decided_by                text references directory(id),
+  decided_at                timestamptz,
+  decision_note             text,
+  review_due_on             date not null,
+  released_by               text references directory(id),
+  released_at               timestamptz,
+  release_reason            text,
+  -- Two different people, enforced here as well as in policy.
+  constraint legal_hold_two_people check (decided_by is null or decided_by <> placed_by),
+  constraint legal_hold_decided check ((status in ('proposed','lapsed')) or decided_by is not null),
+  constraint legal_hold_released check ((status = 'released') = (released_at is not null)),
+  constraint legal_hold_dates check (data_from is null or data_to is null or data_from <= data_to)
+);
+create index if not exists legal_hold_tenant_idx on legal_hold (tenant_id, status);
+
+-- A record of what happened, one row per step, for an organisation's retirement
+-- and its holds. Never edited. Not tied to the organisation by a foreign key,
+-- so it can be written while the organisation is closed.
+create table if not exists lifecycle_event (
+  id         bigserial primary key,
+  tenant_id  text not null,
+  hold_id    uuid,
+  at         timestamptz not null default now(),
+  actor      text not null,
+  event      text not null,
+  detail     jsonb not null default '{}'::jsonb
+);
+create index if not exists lifecycle_event_tenant_idx on lifecycle_event (tenant_id, at desc);
+
+-- What is left after a purge, and nothing else: which organisation, when it was
+-- asked to close and who asked, which holds applied, and what was removed. It
+-- names no person beyond the one who asked and holds none of the organisation's
+-- records. Not tied to the organisation by a foreign key, and never changed or
+-- removed.
+create table if not exists tenant_deletion_record (
+  tenant_id           text primary key,
+  retire_reason       text,
+  retire_requested_by text,
+  retired_at          timestamptz,
+  closing_ended_at    timestamptz,
+  purged_at           timestamptz not null default now(),
+  purged_by           text not null,
+  holds               jsonb not null default '[]'::jsonb,
+  rows_removed        jsonb not null default '{}'::jsonb,
+  files_removed       int not null default 0,
+  buckets_removed     jsonb not null default '[]'::jsonb,
+  buckets_left        jsonb not null default '[]'::jsonb
+);
+
+drop rule if exists tenant_deletion_record_no_update on tenant_deletion_record;
+create rule tenant_deletion_record_no_update as on update to tenant_deletion_record do instead nothing;
+drop rule if exists tenant_deletion_record_no_delete on tenant_deletion_record;
+create rule tenant_deletion_record_no_delete as on delete to tenant_deletion_record do instead nothing;
+
+-- Where an organisation is in its closing, from its dates. The one definition:
+-- the API, the console and the purge all ask this, so there is no second opinion.
+create or replace function tenant_phase(tid text) returns text as $$
+  select case
+    when t.purged_at is not null then 'purged'
+    when t.purpose <> 'retired' then 'active'
+    when t.retiring_until is null then 'retired'
+    when now() < t.retiring_until then 'retiring'
+    when now() < t.closing_until then 'closing'
+    else 'purge_due'
+  end
+  from tenant t where t.id = tid
+$$ language sql stable;
+
+-- Whether a hold that has not ended stands over the organisation.
+create or replace function tenant_hold_state(tid text) returns text as $$
+  select case
+    when exists (select 1 from legal_hold h where h.tenant_id = tid and h.status = 'active') then 'active'
+    when exists (select 1 from legal_hold h where h.tenant_id = tid and h.status = 'proposed') then 'pending'
+    else 'none'
+  end
+$$ language sql stable;
+
+-- Whether the platform may delete this organisation right now. The database
+-- answers, not the caller, because this is what lets the rules below stand
+-- aside for a purge: a caller that sets the setting below for an organisation
+-- that is not due, or that is held, gets the same refusal as everybody else.
+create or replace function tenant_purge_allowed(tid text) returns boolean as $$
+  select tenant_phase(tid) = 'purge_due' and tenant_hold_state(tid) = 'none'
+$$ language sql stable;
+
+-- True only inside a purge of this organisation: the setting names it, and the
+-- organisation is due and not held. Used by the rewrite rules below.
+create or replace function tenant_is_being_purged(tid text) returns boolean as $$
+  select coalesce(current_setting('munitas.purge_tenant', true), '') = tid
+         and tenant_purge_allowed(tid)
+$$ language sql stable;
+
+-- The immutability rules, with the one exemption a purge needs. A sealed
+-- version is still never changed, and is deleted only for a scratch
+-- organisation or inside a purge that tenant_purge_allowed permits.
+drop rule if exists dataset_version_no_delete on dataset_version;
+create rule dataset_version_no_delete as
+  on delete to dataset_version
+  where old.sealed
+    and not exists (select 1 from tenant t
+                     where t.id = old.tenant_id and t.purpose = 'scratch')
+    and not tenant_is_being_purged(old.tenant_id)
+  do instead nothing;
+
+drop rule if exists agent_version_no_delete on agent_version;
+create rule agent_version_no_delete as
+  on delete to agent_version
+  where old.sealed
+    and not tenant_is_being_purged(old.tenant_id)
+  do instead nothing;
+
+-- Holds and the record of what happened are removed only with their organisation.
+drop rule if exists legal_hold_no_delete on legal_hold;
+create rule legal_hold_no_delete as
+  on delete to legal_hold
+  where not tenant_is_being_purged(old.tenant_id)
+    and not exists (select 1 from tenant t where t.id = old.tenant_id and t.purpose = 'scratch')
+  do instead nothing;
+
+drop rule if exists lifecycle_event_no_update on lifecycle_event;
+create rule lifecycle_event_no_update as on update to lifecycle_event do instead nothing;
+drop rule if exists lifecycle_event_no_delete on lifecycle_event;
+create rule lifecycle_event_no_delete as
+  on delete to lifecycle_event
+  where not tenant_is_being_purged(old.tenant_id)
+    and not exists (select 1 from tenant t where t.id = old.tenant_id and t.purpose = 'scratch')
+  do instead nothing;

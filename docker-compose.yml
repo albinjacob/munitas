@@ -37,6 +37,9 @@ services:
       # company, not a hospital), so the platform doesn't read as
       # healthcare-specific out of the box. See that file's own header.
       - ./infra/postgres/seed-finance.sql:/docker-entrypoint-initdb.d/04-seed-finance.sql:ro
+      # An organisation that is winding down, so closing one can be shown and
+      # tested without closing health or finance.
+      - ./infra/postgres/seed-harbour.sql:/docker-entrypoint-initdb.d/05-seed-harbour.sql:ro
     ports:
       - "${PORT_POSTGRES:-5432}:5432"
     networks: [control, data]
