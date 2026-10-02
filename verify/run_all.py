@@ -69,6 +69,7 @@ SCRIPTS = [
     ("U85 writing as pipeline_action needs the same proof reading does", "v82_write_credential_compiler.py"),
     ("U90 a sealed tabular version is also an Iceberg table that agrees with the register", "v90_iceberg_projection.py"),
     ("U91 the Iceberg catalog shows and opens only what a person may read, and ends with their lease", "v91_iceberg_catalog.py"),
+    ("U94 a query over existing datasets is drafted and confirmed on terms, never run unchecked", "v94_derivation_draft.py"),
 ]
 
 here = Path(__file__).parent

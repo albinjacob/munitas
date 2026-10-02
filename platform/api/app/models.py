@@ -260,3 +260,29 @@ class DatasetAccess(BaseModel):
 class AccessPreview(BaseModel):
     versions: dict[str, VersionAccess]
     datasets: dict[str, DatasetAccess]
+
+
+class DerivationInput(BaseModel):
+    """One dataset a derivation reads. The SQL refers to it by its alias, which
+    defaults to the dataset's name with anything that is not a letter or digit
+    turned into an underscore."""
+    dataset: str = Field(min_length=1, max_length=120)
+    version: int | None = Field(default=None, ge=1)
+    alias: str | None = Field(default=None, pattern=r"^[A-Za-z_][A-Za-z0-9_]{0,62}$")
+
+
+class DerivationDraftIn(BaseModel):
+    """A request to make a new dataset from a query, before anything is run."""
+    inputs: list[DerivationInput] = Field(min_length=1, max_length=8)
+    sql: str = Field(min_length=1, max_length=20000)
+    target_name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{1,80}$")
+    primary_key: list[str] = Field(min_length=1, max_length=8)
+    purpose: str = Field(min_length=3, max_length=200)
+
+
+class DerivationConfirmIn(BaseModel):
+    """The person's decision on a draft. Sensitivities may be raised and never
+    lowered: a field already carries at least the sensitivity of what it was
+    computed from."""
+    sensitivities: dict[str, Literal["none", "quasi", "direct", "phi"]] = Field(default_factory=dict)
+

@@ -2101,3 +2101,44 @@ create table if not exists catalog_key (
   unique (principal, dataset_version_id)
 );
 
+-- A new dataset made from a query over existing ones (derivations.py).
+--
+-- A draft is the platform's answer to a submitted query: which versions it
+-- would read, the shape of what it would produce, and the sensitivity each
+-- field must carry. Nothing is registered until the person confirms. After
+-- that the row follows the run: queued, running, then succeeded or failed.
+-- The SQL is kept as submitted and is never edited, so the sealed version can
+-- name exactly the query it came from.
+create table if not exists derivation (
+  id                uuid primary key,
+  tenant_id         text not null references tenant(id),
+  submitted_by      text not null references directory(id),
+  status            text not null
+                    check (status in ('draft', 'queued', 'running', 'succeeded', 'failed', 'expired')),
+  sql               text not null,
+  target_name       text not null,
+  purpose           text not null,
+  inputs            jsonb not null,
+  primary_key       text[] not null,
+  proposed_fields   jsonb not null,
+  output_class      text not null,
+  -- The same query over the same input versions with the same shape has the
+  -- same key, so asking twice finds the first answer instead of running again.
+  derivation_key    text,
+  dataset_id        uuid references dataset(id),
+  schema_id         uuid references schema_contract(id),
+  action_run_id     uuid references action_run(id),
+  output_version_id uuid references dataset_version(id),
+  error             text,
+  created_at        timestamptz not null default now(),
+  confirmed_at      timestamptz,
+  ended_at          timestamptz
+);
+create index if not exists derivation_submitter_idx on derivation (submitted_by, created_at desc);
+create index if not exists derivation_key_idx on derivation (derivation_key) where derivation_key is not null;
+
+drop trigger if exists refuse_retired_derivation on derivation;
+create trigger refuse_retired_derivation
+  before insert or update on derivation
+  for each row execute function refuse_write_to_retired_tenant();
+

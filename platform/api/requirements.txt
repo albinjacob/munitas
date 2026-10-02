@@ -24,3 +24,6 @@ pyiceberg[pyarrow]==0.12.0
 # SQLAlchemy without declaring it in the extra we install.
 pyarrow==25.0.1
 sqlalchemy==2.1.1
+# Parses and describes a derivation's query over empty tables, with external access off
+# (derivations.py). The sandbox that runs it pins the same version.
+duckdb==1.5.6

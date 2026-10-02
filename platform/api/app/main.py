@@ -28,7 +28,7 @@ from psycopg import errors as pg_errors
 from crypto import DestroyedKeyError, EnvelopeCrypto
 
 from . import (access_preview, activation, agent_upload, agents, auth, config,
-              dag_pipelines, db, external_accounts, grants, housekeeping, iceberg,
+              dag_pipelines, db, derivations, external_accounts, grants, housekeeping, iceberg,
               iceberg_catalog, ingest, logs, models, opa, people, pipeline, r2,
               read_models, seaweed, storage, task_credential, temporal_client,
               versions)
@@ -119,6 +119,7 @@ app.include_router(auth.router)
 app.include_router(pipeline.router)
 app.include_router(access_preview.router)
 app.include_router(iceberg_catalog.router)
+app.include_router(derivations.router)
 # The catalog answers in the shape Iceberg clients read, not FastAPI's default.
 app.add_exception_handler(iceberg_catalog.CatalogError, iceberg_catalog.handle_error)
 
