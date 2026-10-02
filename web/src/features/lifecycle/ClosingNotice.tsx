@@ -15,6 +15,7 @@ import { notify } from "../../components/toast";
 import { useIdentity } from "../../identity/IdentityContext";
 import { PhaseBadge, Standing } from "./Closing";
 import { bare, when } from "./dates";
+import { CustodianExports } from "./HoldExports";
 
 export function ClosingNotice() {
   const { closed, clear } = useIdentity();
@@ -56,6 +57,8 @@ export function ClosingNotice() {
           <Acknowledge key={h.id} holdId={h.id} number={h.matter_number} name={h.matter_name}
             authority={h.issuing_authority} preserve={h.preserve} acknowledgedAt={h.custodian_acknowledged_at} />
         ))}
+
+        <CustodianExports />
 
         <button
           type="button"

@@ -106,6 +106,7 @@ PROTECTED_RULES = [
     # organisation, and this is how a deliberately deleted one goes.
     ("legal_hold", "legal_hold_no_delete"),
     ("lifecycle_event", "lifecycle_event_no_delete"),
+    ("legal_export", "legal_export_no_delete"),
 ]
 
 
@@ -300,6 +301,10 @@ def main() -> int:
             print("Not confirmed. Nothing changed.")
             return 1
 
+        # Packages of legal exports live in a bucket of their own, so their names are read before the rows go.
+        packages = [r["package_key"] for r in conn.execute(
+            "select package_key from legal_export where tenant_id = %s and package_key is not null and expired_at is null",
+            (args.tenant,)).fetchall()]
         try:
             for table, rule in PROTECTED_RULES:
                 conn.execute(f'alter table "{table}" disable rule "{rule}"')
@@ -328,6 +333,15 @@ def main() -> int:
     # files that are already gone. The reverse leftover, a bucket with no
     # tenant, is what verify/v74_storage_agrees.py reports.
     failed = False
+    if packages:
+        store = s3()
+        for key in packages:
+            try:
+                store.delete_object(Bucket=os.environ.get("MUNITAS_LEGAL_EXPORT_BUCKET", "munitas-legal-exports"), Key=key)
+            except Exception as exc:  # noqa: BLE001
+                failed = True
+                print(f"  package {key}: NOT removed ({exc})")
+        print(f"  {len(packages)} legal export package(s) removed")
     for b in buckets:
         if b["backend"] != "seaweedfs":
             continue

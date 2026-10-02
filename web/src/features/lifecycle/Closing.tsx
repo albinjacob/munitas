@@ -23,6 +23,7 @@ import { Empty, Failure, Loading, Section } from "../../components/states";
 import { notify } from "../../components/toast";
 import { useIdentity } from "../../identity/IdentityContext";
 import { when } from "./dates";
+import { CustodianExports } from "./HoldExports";
 
 export function PhaseBadge({ phase }: { phase: ClosingStatus["phase"] }) {
   const copy = PHASE_COPY[phase];
@@ -200,6 +201,8 @@ export function Closing() {
           )}
         </Section>
       )}
+
+      {!isAdmin && <CustodianExports />}
 
       <ConfirmDialog
         open={asking !== null}

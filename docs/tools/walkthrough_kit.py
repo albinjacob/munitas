@@ -85,6 +85,13 @@ SERIES = [
                 "released.",
      "you_see": "A closing with two stages, a refusal, a legal hold that needs two administrators, and a short "
                 "record of what was deleted"},
+    {"slug": "legal-export", "org": "harbour", "title": "Hand over a closed clinic's records for a legal case",
+     "summary": "A court demands a patient's records from the clinic that is closing. One platform administrator "
+                "asks for them, a different one approves, and the custodian named by the legal hold confirms what "
+                "is included. The platform builds a signed, encrypted package that the recipient opens with a "
+                "passphrase.",
+     "you_see": "Three people each doing one step, a refusal, a passphrase shown once, a download link, and the "
+                "recipient checking the package on their own computer"},
 ]
 
 
@@ -168,6 +175,13 @@ WORDS = {
                                        "decides nothing about who may read it."),
     "sweep": ("Sweep", "The check that Munitas makes every few minutes for organisations whose time is up. It deletes "
                        "an organisation only when both periods have ended and no legal hold stands."),
+    "legal_export": ("Export for a legal matter", "Producing some of an organisation&rsquo;s kept records for a court, a "
+                                                  "regulator or a law firm that has demanded them. It needs a legal hold "
+                                                  "in force and three different people."),
+    "manifest": ("Manifest", "The list of every file in a package, each with its size and a fingerprint of its "
+                             "contents. The platform signs it, so that changing a file or the list can be noticed."),
+    "passphrase": ("Passphrase", "A long secret that opens an encrypted file. It travels separately from the file, "
+                                 "so that having the file alone is not enough."),
     "iceberg": ("Iceberg table", "An open way of storing a table that tools such as DuckDB can read directly."),
 }
 

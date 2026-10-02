@@ -24,6 +24,7 @@ import { Empty, Failure, Loading, Section } from "../../components/states";
 import { notify } from "../../components/toast";
 import { useIdentity } from "../../identity/IdentityContext";
 import { bare, when } from "./dates";
+import { HoldExports } from "./HoldExports";
 
 const STATUS_COPY: Record<Hold["status"], { label: string; tone: string }> = {
   proposed: { label: "Waiting for a second administrator", tone: "bg-amber-100 text-amber-900" },
@@ -258,6 +259,7 @@ function HoldCard({ hold, mine }: { hold: Hold; mine: boolean }) {
           )}
         </div>
       )}
+      {hold.status === "active" && <HoldExports holdId={hold.id} />}
       <ConfirmDialog
         open={releasing}
         title={`Release ${hold.matter_number}?`}
