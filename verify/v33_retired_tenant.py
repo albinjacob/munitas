@@ -50,6 +50,12 @@ EXEMPT = {
     "legal_hold",
     "lifecycle_event",
     "tenant_deletion_record",
+    # An export is made for an organisation that is already closed, and an erasure held back by a hold is kept
+    # until the hold ends. Each follows the same rules as a hold: removed only with the organisation.
+    "legal_export",
+    "legal_export_file",
+    "legal_export_link",
+    "deferred_erasure",
 }
 
 

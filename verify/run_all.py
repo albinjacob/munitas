@@ -73,6 +73,8 @@ SCRIPTS = [
     ("U98 closing an organisation: who may start it and stop it, and what its people can do meanwhile", "v98_organisation_closing.py"),
     ("U99 a legal hold needs two different administrators and stops the deletion while it stands", "v99_legal_hold.py"),
     ("U100 a due and unheld organisation is deleted completely, and nothing else can be", "v100_purge.py"),
+    ("U102 records are produced for a legal matter only with three different people, and nothing is erased meanwhile", "v102_legal_export_rules.py"),
+    ("U103 a legal export is built, signed, delivered and opened, and cannot be altered or opened wrongly", "v103_legal_export_package.py"),
 ]
 
 here = Path(__file__).parent

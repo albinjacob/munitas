@@ -29,7 +29,7 @@ from crypto import DestroyedKeyError, EnvelopeCrypto
 
 from . import (access_preview, activation, agent_upload, agents, auth, config,
               dag_pipelines, db, derivations, external_accounts, grants, housekeeping, iceberg,
-              iceberg_catalog, ingest, lifecycle, logs, models, opa, people, pipeline, r2,
+              iceberg_catalog, ingest, legal_export, lifecycle, logs, models, opa, people, pipeline, r2,
               read_models, seaweed, storage, task_credential, temporal_client,
               versions)
 
@@ -123,6 +123,7 @@ app.include_router(access_preview.router)
 app.include_router(iceberg_catalog.router)
 app.include_router(derivations.router)
 app.include_router(lifecycle.router)
+app.include_router(legal_export.router)
 # The catalog answers in the shape Iceberg clients read, not FastAPI's default.
 app.add_exception_handler(iceberg_catalog.CatalogError, iceberg_catalog.handle_error)
 
@@ -1627,7 +1628,27 @@ def destroy_record(record_id: str, body: models.RecordDestroyIn) -> dict:
     held it and stops being readable in all of them at once, and the tombstone
     keeps the fact of the record's existence so that erasure does not break the
     audit trail it was meant to serve.
+
+    Refused while a legal hold is pending or in force over the organisation, because a hold exists to stop
+    exactly this and the destruction cannot be undone. The request is kept, and carried out by the sweep once
+    no hold stands (legal_export.honour_deferred_erasures).
     """
+    owner = db.one("select tenant_id from record_key where record_id = %s", (record_id,))
+    tenant_of = owner["tenant_id"] if owner else body.tenant_id
+    held = db.one("select tenant_hold_state(%s) as state", (tenant_of,))["state"]
+    if held != "none":
+        db.execute(
+            """insert into deferred_erasure (record_id, tenant_id, reason, requested_by)
+               values (%s, %s, %s, %s) on conflict (record_id) do nothing returning record_id""",
+            (record_id, tenant_of, body.reason, body.requested_by))
+        reasons = ["a legal hold stands over this organisation, so no record is erased while it does",
+                   "the request is kept and is carried out when no hold stands"]
+        db.execute(
+            """insert into access_decision (principal, principal_kind, principal_roles, tenant_id, purpose, allowed,
+                      reasons, phase)
+               values (%s, 'human', '{}', %s, 'erasure of a record', false, %s, 'policy')""",
+            (body.requested_by, tenant_of, reasons))
+        raise HTTPException(409, {"reasons": reasons, "deferred": True})
     row = db.execute(
         """update record_key
              set wrapped_key = null, destroyed_at = now()

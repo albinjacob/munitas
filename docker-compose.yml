@@ -283,6 +283,8 @@ services:
       # only which bucket names them.
       MUNITAS_STORAGE_PATH: ${MUNITAS_DATA:?set MUNITAS_DATA in .env, see .env.example}/seaweed
       MUNITAS_MASTER_KEY: ${MUNITAS_MASTER_KEY:-dev-master-key-not-for-production}
+      # Signs the manifest of a legal export so its recipient can verify it. Not for production.
+      MUNITAS_SIGNING_KEY: ${MUNITAS_SIGNING_KEY:-dev-signing-key-not-for-production}
       # The storage keys of the platform's own identities, read by
       # platform/api/app/config.py and compiled into the permissions document.
       # The same names the host scripts and the worker read, so .env sets each
@@ -330,6 +332,8 @@ services:
       # Verification scripts run in here so they sign S3 requests properly and
       # see the same network the platform does.
       - ./verify:/verify:ro
+      # The tool a recipient uses to open a legal export, so a check can use the real one.
+      - ./scripts/client:/client:ro
       # verify/common.py's own sys.path.insert reaches for
       # Path(__file__).resolve().parent.parent to import ports_config --
       # /verify's parent is container root, so these two land exactly where

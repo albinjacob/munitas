@@ -1036,3 +1036,159 @@ see_lifecycle_decision := {
 	"allow": may_see_lifecycle,
 	"reasons": [r | some r in see_lifecycle_reason],
 }
+
+# ------------------------------------------------------------------
+# Producing an organisation's records for a legal matter.
+#
+# A legal hold keeps records. An export lets some of them leave, so it is the most sensitive thing this
+# platform does with a hold, and it has more separation than any other act. Three different people are
+# needed, and none of them reads the contents:
+#
+#   a platform administrator asks, naming the demand and the scope,
+#   a different platform administrator approves,
+#   the hold's temporary custodian, who answers for the records, confirms the scope is what the demand
+#   asks for and no wider.
+#
+# The platform administrator holds no standing access to what an organisation contains (role_floor
+# above). An export does not change that: the package is built by a job, encrypted, and opened by its
+# recipient with a passphrase that only the custodian is given.
+
+export_required_fields := {
+	"demand_authority", "demand_reference", "demanded_on", "demand_text",
+	"recipient_name", "recipient_organisation", "recipient_email",
+}
+
+export_missing contains f if {
+	some f in export_required_fields
+	count(trim_space(sprintf("%v", [object.get(input.export, f, "")]))) == 0
+}
+
+default may_request_export := false
+
+may_request_export if {
+	some role in input.actor.roles
+	lifecycle_actor_roles[role]
+	input.hold.status == "active"
+	count(export_missing) == 0
+	count(object.get(input.export, "dataset_ids", [])) > 0
+}
+
+request_export_reason contains "only a platform administrator may ask for an export" if {
+	every role in input.actor.roles {
+		not lifecycle_actor_roles[role]
+	}
+}
+
+request_export_reason contains "records are produced only while a legal hold is in force" if {
+	input.hold.status != "active"
+}
+
+request_export_reason contains sprintf("the demand or the recipient is missing: %v", [concat(", ", sort([f | some f in export_missing]))]) if {
+	count(export_missing) > 0
+}
+
+request_export_reason contains "an export names at least one dataset" if {
+	count(object.get(input.export, "dataset_ids", [])) == 0
+}
+
+export_request_decision := {
+	"allow": may_request_export,
+	"reasons": [r | some r in request_export_reason],
+}
+
+default may_approve_export := false
+
+may_approve_export if {
+	input.actor.id != input.export.requested_by
+	input.export.status == "requested"
+	some role in input.actor.roles
+	lifecycle_actor_roles[role]
+}
+
+approve_export_reason contains "an export is approved by a different platform administrator from the one who asked for it" if {
+	input.actor.id == input.export.requested_by
+}
+
+approve_export_reason contains "only a platform administrator may approve an export" if {
+	every role in input.actor.roles {
+		not lifecycle_actor_roles[role]
+	}
+}
+
+approve_export_reason contains sprintf("this export is already %v", [input.export.status]) if {
+	input.export.status != "requested"
+}
+
+export_approval_decision := {
+	"allow": may_approve_export,
+	"reasons": [r | some r in approve_export_reason],
+}
+
+default may_confirm_export := false
+
+may_confirm_export if {
+	input.actor.id == input.hold.custodian_id
+	input.export.status == "approved"
+}
+
+confirm_export_reason contains "only the custodian the hold names confirms what an export holds" if {
+	input.actor.id != input.hold.custodian_id
+}
+
+confirm_export_reason contains "an export is confirmed after a platform administrator has approved it" if {
+	input.export.status != "approved"
+	input.actor.id == input.hold.custodian_id
+}
+
+export_confirmation_decision := {
+	"allow": may_confirm_export,
+	"reasons": [r | some r in confirm_export_reason],
+}
+
+default may_link_export := false
+
+may_link_export if {
+	input.export.status == "ready"
+	some role in input.actor.roles
+	lifecycle_actor_roles[role]
+}
+
+link_export_reason contains "only a platform administrator makes a download link" if {
+	every role in input.actor.roles {
+		not lifecycle_actor_roles[role]
+	}
+}
+
+link_export_reason contains "a link is made once the package is ready, and before it expires" if {
+	input.export.status != "ready"
+}
+
+export_link_decision := {
+	"allow": may_link_export,
+	"reasons": [r | some r in link_export_reason],
+}
+
+default may_read_passphrase := false
+
+may_read_passphrase if {
+	input.actor.id == input.hold.custodian_id
+	input.export.status == "ready"
+	not input.export.passphrase_revealed
+}
+
+passphrase_reason contains "only the custodian the hold names is given the passphrase, and only once" if {
+	input.actor.id != input.hold.custodian_id
+}
+
+passphrase_reason contains "the passphrase has been read already, and is not kept after that" if {
+	input.export.passphrase_revealed
+}
+
+passphrase_reason contains "the passphrase is given once the package is ready" if {
+	input.export.status != "ready"
+}
+
+export_passphrase_decision := {
+	"allow": may_read_passphrase,
+	"reasons": [r | some r in passphrase_reason],
+}

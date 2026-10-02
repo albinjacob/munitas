@@ -56,7 +56,7 @@ import httpx
 import psycopg
 from psycopg.rows import dict_row
 
-from . import config, db, grants, logs, seaweed
+from . import config, db, grants, legal_export, logs, seaweed
 
 log = logs.get_logger("purge")
 
@@ -205,6 +205,22 @@ def purge_tenant(tenant_id: str, purged_by: str) -> dict:
 
     identities = _remove_identities(tenant_id)
 
+    # What the record keeps about exports, and the packages themselves: the organisation is going, any hold is
+    # released, and a delivered package is with its recipient.
+    exports = db.all_rows(
+        """select e.id, e.demand_authority, e.demand_reference, e.demanded_on, e.recipient_organisation, e.status,
+                  e.manifest_sha256, e.file_count, e.produced_at, e.package_key, e.expired_at, h.matter_number
+             from legal_export e join legal_hold h on h.id = e.hold_id where e.tenant_id = %s order by e.requested_at""",
+        (tenant_id,))
+    for e in exports:
+        if e["package_key"] and not e["expired_at"]:
+            legal_export.delete_package(e["package_key"])
+    exports_summary = [{"matter_number": e["matter_number"], "demand_authority": e["demand_authority"],
+                        "demand_reference": e["demand_reference"], "demanded_on": str(e["demanded_on"]),
+                        "recipient_organisation": e["recipient_organisation"], "status": e["status"],
+                        "files": e["file_count"], "manifest_sha256": e["manifest_sha256"],
+                        "produced_at": str(e["produced_at"]) if e["produced_at"] else None} for e in exports]
+
     with psycopg.connect(config.PG_DSN, row_factory=dict_row) as conn:
         with conn.transaction():
             # Named for the rewrite rules, and local to this transaction.
@@ -242,13 +258,13 @@ def purge_tenant(tenant_id: str, purged_by: str) -> dict:
                 """insert into tenant_deletion_record (tenant_id, original_tenant_id, retire_reason,
                           retire_requested_by, retired_at, closing_ended_at, purged_by, holds, rows_removed,
                           files_removed, buckets_removed, buckets_left, audit_kept_until, audit_rows_kept,
-                          identities_removed)
+                          identities_removed, exports)
                    values (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s::jsonb, %s::jsonb,
-                           now() + make_interval(years => %s), %s, %s)""",
+                           now() + make_interval(years => %s), %s, %s, %s::jsonb)""",
                 (kept_as, tenant_id, tenant["retire_reason"], tenant["retire_requested_by"], tenant["retired_at"],
                  tenant["closing_until"], purged_by, json.dumps(holds), json.dumps(counts), files,
                  json.dumps(removed_buckets), json.dumps(left_buckets), config.AUDIT_RETENTION_YEARS, audit,
-                 identities))
+                 identities, json.dumps(exports_summary)))
             conn.execute("delete from tenant where id = %s", (tenant_id,))
 
     try:

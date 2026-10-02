@@ -54,7 +54,7 @@ from datetime import date, datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-from . import auth, config, db, logs, opa, purge
+from . import auth, config, db, legal_export, logs, opa, purge
 from .auth import current_session, current_session_while_closing
 
 log = logs.get_logger("lifecycle")
@@ -495,9 +495,10 @@ def sweep(purged_by: str = "the scheduled sweep") -> dict:
             log.exception("purge failed", extra={"tenant_id": tenant_id})
             _event(tenant_id, "the platform", "purge_failed", None, {"reason": str(exc)[:500]})
     audit_removed = purge.expire_audit()
+    exports = legal_export.sweep_exports()
     return {"lapsed": [str(r["id"]) for r in lapsed],
             "purged": [p["tenant_id"] for p in purged], "records": _clean(purged),
-            "audit_removed": _clean(audit_removed)}
+            "audit_removed": _clean(audit_removed), "exports": exports}
 
 
 @router.post("/sweep")

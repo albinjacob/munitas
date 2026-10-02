@@ -198,3 +198,14 @@ AUDIT_RETENTION_YEARS = int(os.environ.get("MUNITAS_AUDIT_RETENTION_YEARS", "7")
 # The identity provider's admin address. A purge removes the sign-in accounts of the people of the
 # organisation it deletes, and nothing else, so a deleted organisation leaves no working login behind.
 KRATOS_ADMIN_URL = os.environ.get("MUNITAS_KRATOS_ADMIN_URL", "http://kratos:4434")
+
+# Legal export (legal_export.py). A package is encrypted and signed, kept in a bucket of its own, and
+# deleted after LEGAL_EXPORT_KEEP_DAYS. The signing key makes a package's manifest verifiable by whoever
+# receives it: kept like the master key, and the public half is served at /legal-exports/signing-key.
+SIGNING_KEY = _required("MUNITAS_SIGNING_KEY")
+LEGAL_EXPORT_BUCKET = os.environ.get("MUNITAS_LEGAL_EXPORT_BUCKET", "munitas-legal-exports")
+LEGAL_EXPORT_KEEP_DAYS = int(os.environ.get("MUNITAS_LEGAL_EXPORT_KEEP_DAYS", "14"))
+LEGAL_EXPORT_LINK_USES = int(os.environ.get("MUNITAS_LEGAL_EXPORT_LINK_USES", "3"))
+LEGAL_EXPORT_LINK_DAYS = int(os.environ.get("MUNITAS_LEGAL_EXPORT_LINK_DAYS", "7"))
+# The most a package may hold. Phase one builds it on local disk, so this is a safety limit and not a design goal.
+LEGAL_EXPORT_MAX_BYTES = int(os.environ.get("MUNITAS_LEGAL_EXPORT_MAX_BYTES", str(2 * 1024 ** 3)))

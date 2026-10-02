@@ -1131,3 +1131,135 @@ test_only_administrators_see_every_organisation if {
 		"viewer": {"id": "cust-hartley", "tenant_id": "health", "roles": ["data_custodian"]},
 	}
 }
+
+# ------------------------------------------------------- legal export --
+
+full_export := {
+	"demand_authority": "High Court, Queen's Bench",
+	"demand_reference": "KB-2026-004411",
+	"demanded_on": "2026-10-05",
+	"demand_text": "Disclosure of the claimant's records and the log of who read them.",
+	"recipient_name": "Ruth Aldous",
+	"recipient_organisation": "Aldous and Brennan LLP",
+	"recipient_email": "ruth.aldous@example.test",
+	"dataset_ids": ["d1"],
+}
+
+test_administrator_may_ask_for_an_export_under_a_hold_in_force if {
+	access.may_request_export with input as {
+		"actor": {"id": "ops-priya", "roles": ["platform_admin"]},
+		"hold": {"status": "active"},
+		"export": full_export,
+	}
+}
+
+test_no_export_without_a_hold_in_force if {
+	not access.may_request_export with input as {
+		"actor": {"id": "ops-priya", "roles": ["platform_admin"]},
+		"hold": {"status": "proposed"},
+		"export": full_export,
+	}
+	not access.may_request_export with input as {
+		"actor": {"id": "ops-priya", "roles": ["platform_admin"]},
+		"hold": {"status": "released"},
+		"export": full_export,
+	}
+}
+
+test_a_custodian_may_not_ask_for_an_export if {
+	not access.may_request_export with input as {
+		"actor": {"id": "cust-hartley", "roles": ["data_custodian"]},
+		"hold": {"status": "active"},
+		"export": full_export,
+	}
+}
+
+test_an_export_without_a_demand_or_dataset_is_refused if {
+	not access.may_request_export with input as {
+		"actor": {"id": "ops-priya", "roles": ["platform_admin"]},
+		"hold": {"status": "active"},
+		"export": object.remove(full_export, ["demand_reference"]),
+	}
+	not access.may_request_export with input as {
+		"actor": {"id": "ops-priya", "roles": ["platform_admin"]},
+		"hold": {"status": "active"},
+		"export": object.union(full_export, {"dataset_ids": []}),
+	}
+}
+
+test_the_refusal_names_what_is_missing if {
+	r := access.export_request_decision with input as {
+		"actor": {"id": "ops-priya", "roles": ["platform_admin"]},
+		"hold": {"status": "active"},
+		"export": object.remove(full_export, ["demand_reference", "recipient_email"]),
+	}
+	r.reasons == ["the demand or the recipient is missing: demand_reference, recipient_email"]
+}
+
+test_a_different_administrator_approves if {
+	access.may_approve_export with input as {
+		"actor": {"id": "ops-ravi", "roles": ["platform_admin"]},
+		"export": {"requested_by": "ops-priya", "status": "requested"},
+	}
+}
+
+test_the_administrator_who_asked_may_not_approve if {
+	not access.may_approve_export with input as {
+		"actor": {"id": "ops-priya", "roles": ["platform_admin"]},
+		"export": {"requested_by": "ops-priya", "status": "requested"},
+	}
+}
+
+test_only_the_hold_custodian_confirms_the_scope if {
+	access.may_confirm_export with input as {
+		"actor": {"id": "dpo-adeyemi", "roles": ["dpo"]},
+		"hold": {"custodian_id": "dpo-adeyemi"},
+		"export": {"status": "approved"},
+	}
+	not access.may_confirm_export with input as {
+		"actor": {"id": "ops-ravi", "roles": ["platform_admin"]},
+		"hold": {"custodian_id": "dpo-adeyemi"},
+		"export": {"status": "approved"},
+	}
+}
+
+test_scope_is_confirmed_only_after_approval if {
+	not access.may_confirm_export with input as {
+		"actor": {"id": "dpo-adeyemi", "roles": ["dpo"]},
+		"hold": {"custodian_id": "dpo-adeyemi"},
+		"export": {"status": "requested"},
+	}
+}
+
+test_a_link_is_made_by_an_administrator_for_a_ready_package if {
+	access.may_link_export with input as {
+		"actor": {"id": "ops-priya", "roles": ["platform_admin"]},
+		"export": {"status": "ready"},
+	}
+	not access.may_link_export with input as {
+		"actor": {"id": "ops-priya", "roles": ["platform_admin"]},
+		"export": {"status": "producing"},
+	}
+	not access.may_link_export with input as {
+		"actor": {"id": "dpo-adeyemi", "roles": ["dpo"]},
+		"export": {"status": "ready"},
+	}
+}
+
+test_the_passphrase_goes_to_the_custodian_once if {
+	access.may_read_passphrase with input as {
+		"actor": {"id": "dpo-adeyemi", "roles": ["dpo"]},
+		"hold": {"custodian_id": "dpo-adeyemi"},
+		"export": {"status": "ready", "passphrase_revealed": false},
+	}
+	not access.may_read_passphrase with input as {
+		"actor": {"id": "dpo-adeyemi", "roles": ["dpo"]},
+		"hold": {"custodian_id": "dpo-adeyemi"},
+		"export": {"status": "ready", "passphrase_revealed": true},
+	}
+	not access.may_read_passphrase with input as {
+		"actor": {"id": "ops-priya", "roles": ["platform_admin"]},
+		"hold": {"custodian_id": "dpo-adeyemi"},
+		"export": {"status": "ready", "passphrase_revealed": false},
+	}
+}

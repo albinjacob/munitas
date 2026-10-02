@@ -16,6 +16,7 @@ seal data end by purging it, which is the behaviour under test.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import uuid
 
@@ -85,17 +86,21 @@ def seal_data(org: Org) -> dict:
     made = api("POST", "/datasets", json={"tenant_id": org.id, "name": "records"})
     made.raise_for_status()
     dataset_id = made.json()["id"]
+    bodies = {"part-0.json": b'{"record_id": "1"}', "part-1.json": b'{"record_id": "2"}'}
     sealed = api("POST", "/dataset-versions", json={
         "tenant_id": org.id, "dataset_id": dataset_id, "schema_id": schema_id,
-        "visibility_class": "RAW", "object_manifest": [{"key": "part-0.json", "bytes": 128}],
+        "visibility_class": "RAW",
+        "object_manifest": [{"key": k, "bytes": len(v), "sha256": hashlib.sha256(v).hexdigest()} for k, v in bodies.items()],
         "record_count": 1,
     })
     sealed.raise_for_status()
-    bucket = bucket_for(org.id)
-    client = s3_client(*ADMIN)
-    client.put_object(Bucket=bucket, Key=f"{org.id}/records/part-0.json", Body=b'{"record_id": "1"}')
-    client.put_object(Bucket=bucket, Key=f"{org.id}/records/part-1.json", Body=b'{"record_id": "2"}')
     version_id = sealed.json()["id"]
+    bucket = bucket_for(org.id)
+    with db() as conn:
+        prefix = conn.execute("select storage_prefix from dataset_version where id = %s", (version_id,)).fetchone()["storage_prefix"]
+    client = s3_client(*ADMIN)
+    for name, body in bodies.items():
+        client.put_object(Bucket=bucket, Key=f"{prefix.rstrip('/')}/{name}", Body=body)
     # The other kinds of record a real organisation accumulates: a sealed agent version (the
     # second table with the immutability rule), a lease on the version, and an audit entry.
     agent_id, agent_version_id = str(uuid.uuid4()), str(uuid.uuid4())
@@ -116,8 +121,8 @@ def seal_data(org: Org) -> dict:
             "insert into access_decision (principal, principal_kind, principal_roles, tenant_id, "
             "dataset_version_id, allowed, reasons) values (%s, 'human', '{analyst}', %s, %s, true, '{}')",
             (org.people["member"], org.id, version_id))
-    return {"dataset_id": dataset_id, "version_id": version_id, "bucket": bucket,
-            "schema_id": schema_id, "agent_version_id": agent_version_id}
+    return {"dataset_id": dataset_id, "version_id": version_id, "bucket": bucket, "prefix": prefix,
+            "schema_id": schema_id, "agent_version_id": agent_version_id, "bodies": bodies}
 
 
 def bucket_exists(bucket: str) -> bool:
@@ -201,3 +206,59 @@ def drop_org(org: Org) -> None:
     forget_deletion_record(org.id)
     for identity in org.identities:
         httpx.delete(f"{KRATOS_ADMIN}/admin/identities/{identity}", timeout=10.0)  # already gone after a purge
+
+
+def seal_altered_version(org: Org, schema_id: str) -> dict:
+    """A second dataset whose stored file does not match the hash recorded when it was sealed, which is what a
+    file altered after sealing looks like. A production that included it would hand over altered bytes."""
+    made = api("POST", "/datasets", json={"tenant_id": org.id, "name": "altered"})
+    made.raise_for_status()
+    dataset_id = made.json()["id"]
+    sealed = api("POST", "/dataset-versions", json={
+        "tenant_id": org.id, "dataset_id": dataset_id, "schema_id": schema_id, "visibility_class": "RAW",
+        "object_manifest": [{"key": "part-0.json", "bytes": 10, "sha256": hashlib.sha256(b"what was sealed").hexdigest()}],
+        "record_count": 1})
+    sealed.raise_for_status()
+    with db() as conn:
+        prefix = conn.execute("select storage_prefix from dataset_version where id = %s", (sealed.json()["id"],)).fetchone()["storage_prefix"]
+    s3_client(*ADMIN).put_object(Bucket=bucket_for(org.id), Key=f"{prefix.rstrip('/')}/part-0.json", Body=b"what is stored now")
+    return {"dataset_id": dataset_id}
+
+
+def hold_in_force(org: Org, admin_a: dict, admin_b: dict, number: str = "HC-2026-0417") -> str:
+    """Place a legal hold on the organisation and approve it with a second administrator. Returns its id."""
+    placed = api("POST", "/lifecycle/holds", headers=admin_a, json=hold_body(org, number))
+    placed.raise_for_status()
+    hold_id = placed.json()["id"]
+    api("POST", f"/lifecycle/holds/{hold_id}/decide", headers=admin_b,
+        json={"approve": True, "note": "verification"}).raise_for_status()
+    org.hold_ids.append(hold_id)
+    return hold_id
+
+
+def export_body(hold_id: str, dataset_ids: list[str], **changes) -> dict:
+    body = {
+        "hold_id": hold_id, "demand_authority": "High Court, King's Bench Division", "demand_reference": "KB-2026-004411",
+        "demanded_on": "2026-10-05", "demand_text": "Disclosure of the claimant's records and the log of who read them.",
+        "dataset_ids": dataset_ids, "include_audit": True,
+        "recipient_name": "Ruth Aldous", "recipient_organisation": "Aldous and Brennan LLP",
+        "recipient_email": "ruth.aldous@example.test",
+    }
+    body.update(changes)
+    return body
+
+
+def finish_org(org: Org, admin_a: dict, admin_b: dict) -> None:
+    """Release any hold, close the organisation down, bring its dates forward and let the sweep delete it, so a
+    check that sealed data ends by leaving nothing behind."""
+    with db() as conn:
+        row = conn.execute("select purpose, purged_at from tenant where id = %s", (org.id,)).fetchone()
+    if not row:
+        return
+    for hold_id in org.hold_ids:
+        api("POST", f"/lifecycle/holds/{hold_id}/release", headers=admin_b, json={"reason": "verification finished"})
+    if row["purpose"] == "production":
+        api("POST", "/lifecycle/organisation/retire", headers=admin_a,
+            json={"tenant_id": org.id, "reason": "verification finished"})
+    move_dates(org.id, retiring_ended=True, closing_ended=True)
+    api("POST", "/lifecycle/sweep", headers=admin_a)

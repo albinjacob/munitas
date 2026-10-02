@@ -2389,3 +2389,140 @@ update tenant
        retiring_until = now(),
        closing_until = now() + interval '1 day'
  where purpose = 'retired' and retiring_until is null and purged_at is null;
+
+
+-- ======================================================= legal export ==
+--
+-- Producing records for a legal matter (platform/api/app/legal_export.py, and the design in
+-- docs/internal/design/legal-export.md). A legal hold keeps an organisation's records. An export is how
+-- some of them leave, once a court, a regulator or the organisation's lawyers has demanded them.
+--
+--   requested   a platform administrator asked, on a hold in force, naming the demand and the scope
+--   approved    a different platform administrator agreed
+--   confirmed   the hold's temporary custodian confirmed the scope is what the demand asks and no wider
+--   producing   a job is copying the files into an encrypted, signed package
+--   ready       the package exists, and the custodian can be given its passphrase once
+--   expired     the package was deleted after its retention; the manifest stays
+--   refused     somebody in the chain said no, with a reason
+--   failed      production stopped, and the reason is written down
+--
+-- Not guarded by the retired-tenant rule, for the same reason a hold is not: an export is made for an
+-- organisation that is already closed. It is removed only with its organisation, and a summary of it is
+-- written to the deletion record first.
+create table if not exists legal_export (
+  id                      uuid primary key,
+  tenant_id               text not null references tenant(id),
+  hold_id                 uuid not null references legal_hold(id),
+  status                  text not null check (status in
+                            ('requested','approved','confirmed','producing','ready','expired','refused','failed')),
+  -- The demand this answers, which can differ from the hold's notice: a hold says keep, a demand says produce.
+  demand_authority        text not null check (demand_authority <> ''),
+  demand_reference        text not null check (demand_reference <> ''),
+  demanded_on             date not null,
+  demand_text             text not null check (demand_text <> ''),
+  -- The scope: whole datasets, every sealed version of each. The dates narrow the audit trail only.
+  dataset_ids             uuid[] not null check (cardinality(dataset_ids) > 0),
+  include_audit           boolean not null default true,
+  data_from               date,
+  data_to                 date,
+  -- Who receives it. The platform does not send anything: a person delivers the package.
+  recipient_name          text not null check (recipient_name <> ''),
+  recipient_organisation  text not null check (recipient_organisation <> ''),
+  recipient_email         text not null check (recipient_email <> ''),
+  requested_by            text not null references directory(id),
+  requested_at            timestamptz not null default now(),
+  approved_by             text references directory(id),
+  approved_at             timestamptz,
+  approval_note           text,
+  confirmed_by            text references directory(id),
+  confirmed_at            timestamptz,
+  confirm_note            text,
+  refused_by              text references directory(id),
+  refused_at              timestamptz,
+  refusal_reason          text,
+  production_started_at   timestamptz,
+  produced_at             timestamptz,
+  failure                 text,
+  -- The package. Encrypted with a passphrase that is kept sealed until the custodian reads it, once.
+  package_key             text,
+  package_bytes           bigint,
+  package_sha256          text,
+  manifest_sha256         text,
+  signature               text,
+  file_count              int,
+  passphrase_ciphertext   bytea,
+  passphrase_wrapped_key  bytea,
+  passphrase_revealed_at  timestamptz,
+  passphrase_revealed_by  text,
+  expires_at              timestamptz,
+  expired_at              timestamptz,
+  constraint legal_export_two_people check (approved_by is null or approved_by <> requested_by),
+  constraint legal_export_dates check (data_from is null or data_to is null or data_from <= data_to)
+);
+create index if not exists legal_export_hold_idx on legal_export (hold_id, status);
+
+-- What a package holds, as rows, so it can be listed and checked without opening it.
+create table if not exists legal_export_file (
+  export_id   uuid not null references legal_export(id),
+  tenant_id   text not null,
+  path        text not null,
+  dataset_id  uuid,
+  dataset     text,
+  version     int,
+  version_id  uuid,
+  bytes       bigint not null,
+  sha256      text not null,
+  source_key  text not null,
+  primary key (export_id, path)
+);
+
+-- A way to download a ready package: short-lived, and limited in uses. Only a hash of the token is kept, so
+-- a token is shown once. The package is encrypted, so a token alone opens nothing.
+create table if not exists legal_export_link (
+  id          uuid primary key,
+  export_id   uuid not null references legal_export(id),
+  tenant_id   text not null,
+  token_hash  text not null unique,
+  created_by  text not null references directory(id),
+  created_at  timestamptz not null default now(),
+  expires_at  timestamptz not null,
+  max_uses    int not null check (max_uses > 0),
+  uses        int not null default 0,
+  revoked_at  timestamptz,
+  constraint legal_export_link_uses check (uses <= max_uses)
+);
+
+drop rule if exists legal_export_no_delete on legal_export;
+create rule legal_export_no_delete as
+  on delete to legal_export
+  where not tenant_is_being_purged(old.tenant_id)
+    and not exists (select 1 from tenant t where t.id = old.tenant_id and t.purpose = 'scratch')
+  do instead nothing;
+
+-- An erasure that a legal hold held back. Erasing a record destroys its key, which cannot be undone, so
+-- while a hold is pending or in force the request is kept instead and carried out when no hold stands.
+create table if not exists deferred_erasure (
+  record_id     text primary key,
+  tenant_id     text not null references tenant(id),
+  reason        text not null,
+  requested_by  text not null,
+  requested_at  timestamptz not null default now(),
+  honoured_at   timestamptz
+);
+
+-- What the deletion record keeps about exports: the matter, the demand, the manifest hash and who received it.
+alter table tenant_deletion_record add column if not exists exports jsonb not null default '[]'::jsonb;
+
+-- The record is still never edited but for the day its audit rows were removed; `exports` is part of what it keeps.
+drop rule if exists tenant_deletion_record_no_update on tenant_deletion_record;
+create rule tenant_deletion_record_no_update as on update to tenant_deletion_record
+  where (new.id, new.tenant_id, new.original_tenant_id, new.retire_reason, new.retire_requested_by,
+         new.retired_at, new.closing_ended_at, new.purged_at, new.purged_by, new.holds, new.rows_removed,
+         new.files_removed, new.buckets_removed, new.buckets_left, new.audit_kept_until,
+         new.audit_rows_kept, new.identities_removed, new.exports)
+        is distinct from
+        (old.id, old.tenant_id, old.original_tenant_id, old.retire_reason, old.retire_requested_by,
+         old.retired_at, old.closing_ended_at, old.purged_at, old.purged_by, old.holds, old.rows_removed,
+         old.files_removed, old.buckets_removed, old.buckets_left, old.audit_kept_until,
+         old.audit_rows_kept, old.identities_removed, old.exports)
+  do instead nothing;

@@ -733,6 +733,92 @@
         "title": "EndPipelineRun",
         "type": "object"
       },
+      "ExportIn": {
+        "properties": {
+          "data_from": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data From"
+          },
+          "data_to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data To"
+          },
+          "dataset_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Dataset Ids",
+            "type": "array"
+          },
+          "demand_authority": {
+            "title": "Demand Authority",
+            "type": "string"
+          },
+          "demand_reference": {
+            "title": "Demand Reference",
+            "type": "string"
+          },
+          "demand_text": {
+            "title": "Demand Text",
+            "type": "string"
+          },
+          "demanded_on": {
+            "format": "date",
+            "title": "Demanded On",
+            "type": "string"
+          },
+          "hold_id": {
+            "title": "Hold Id",
+            "type": "string"
+          },
+          "include_audit": {
+            "default": true,
+            "title": "Include Audit",
+            "type": "boolean"
+          },
+          "recipient_email": {
+            "title": "Recipient Email",
+            "type": "string"
+          },
+          "recipient_name": {
+            "title": "Recipient Name",
+            "type": "string"
+          },
+          "recipient_organisation": {
+            "title": "Recipient Organisation",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hold_id",
+          "demand_authority",
+          "demand_reference",
+          "demanded_on",
+          "demand_text",
+          "dataset_ids",
+          "recipient_name",
+          "recipient_organisation",
+          "recipient_email"
+        ],
+        "title": "ExportIn",
+        "type": "object"
+      },
       "FetchHuggingFace": {
         "properties": {
           "fetched_by": {
@@ -6364,6 +6450,440 @@
         "summary": "Revoke Lease"
       }
     },
+    "/legal-exports": {
+      "get": {
+        "operationId": "list_exports_legal_exports_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "hold_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Hold Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response List Exports Legal Exports Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Exports",
+        "tags": [
+          "legal-export"
+        ]
+      },
+      "post": {
+        "operationId": "request_export_legal_exports_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Request Export Legal Exports Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Request Export",
+        "tags": [
+          "legal-export"
+        ]
+      }
+    },
+    "/legal-exports/download/{token}": {
+      "get": {
+        "description": "Hand over the encrypted package to whoever holds a link, a limited number of times and for a limited time.\n\nThe token is the credential, so this needs no session. It opens nothing by itself: the package is encrypted.",
+        "operationId": "download_legal_exports_download__token__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download",
+        "tags": [
+          "legal-export"
+        ]
+      }
+    },
+    "/legal-exports/scope": {
+      "get": {
+        "description": "The datasets of a held organisation that an export could name, for choosing a scope. Names and sizes, never\ncontents, and only for an organisation with a legal hold in force.",
+        "operationId": "scope_legal_exports_scope_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "hold_id",
+            "required": true,
+            "schema": {
+              "title": "Hold Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Scope Legal Exports Scope Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Scope",
+        "tags": [
+          "legal-export"
+        ]
+      }
+    },
+    "/legal-exports/signing-key": {
+      "get": {
+        "description": "The public half of the key that signs every package's manifest, so a recipient can verify it.",
+        "operationId": "signing_key_legal_exports_signing_key_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Signing Key Legal Exports Signing Key Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Signing Key",
+        "tags": [
+          "legal-export"
+        ]
+      }
+    },
+    "/legal-exports/{export_id}/approve": {
+      "post": {
+        "operationId": "approve_legal_exports__export_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "title": "Export Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecideIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Approve Legal Exports  Export Id  Approve Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve",
+        "tags": [
+          "legal-export"
+        ]
+      }
+    },
+    "/legal-exports/{export_id}/confirm": {
+      "post": {
+        "operationId": "confirm_legal_exports__export_id__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "title": "Export Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecideIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Confirm Legal Exports  Export Id  Confirm Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm",
+        "tags": [
+          "legal-export"
+        ]
+      }
+    },
+    "/legal-exports/{export_id}/links": {
+      "post": {
+        "operationId": "make_link_legal_exports__export_id__links_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "title": "Export Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Make Link Legal Exports  Export Id  Links Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Make Link",
+        "tags": [
+          "legal-export"
+        ]
+      }
+    },
+    "/legal-exports/{export_id}/manifest": {
+      "get": {
+        "operationId": "manifest_legal_exports__export_id__manifest_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "title": "Export Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Manifest Legal Exports  Export Id  Manifest Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Manifest",
+        "tags": [
+          "legal-export"
+        ]
+      }
+    },
+    "/legal-exports/{export_id}/passphrase": {
+      "post": {
+        "description": "The package's passphrase, to the hold's custodian, once. It is not kept after it is read.",
+        "operationId": "passphrase_legal_exports__export_id__passphrase_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "title": "Export Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Passphrase Legal Exports  Export Id  Passphrase Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Passphrase",
+        "tags": [
+          "legal-export"
+        ]
+      }
+    },
     "/lifecycle/deletions": {
       "get": {
         "description": "What was left behind by each purge, for a platform administrator.",
@@ -7729,7 +8249,7 @@
     },
     "/records/{record_id}": {
       "delete": {
-        "description": "Delete a record by destroying its key.\n\nNothing is overwritten. The ciphertext stays in every sealed version that\nheld it and stops being readable in all of them at once, and the tombstone\nkeeps the fact of the record's existence so that erasure does not break the\naudit trail it was meant to serve.",
+        "description": "Delete a record by destroying its key.\n\nNothing is overwritten. The ciphertext stays in every sealed version that\nheld it and stops being readable in all of them at once, and the tombstone\nkeeps the fact of the record's existence so that erasure does not break the\naudit trail it was meant to serve.\n\nRefused while a legal hold is pending or in force over the organisation, because a hold exists to stop\nexactly this and the destruction cannot be undone. The request is kept, and carried out by the sweep once\nno hold stands (legal_export.honour_deferred_erasures).",
         "operationId": "destroy_record_records__record_id__delete",
         "parameters": [
           {

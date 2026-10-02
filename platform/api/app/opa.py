@@ -200,6 +200,41 @@ def may_see_lifecycle(payload: dict) -> tuple[bool, list[str]]:
     return _ask(_SEE_LIFECYCLE_PATH, payload)
 
 
+_EXPORT_REQUEST_PATH = "/v1/data/munitas/access/export_request_decision"
+_EXPORT_APPROVAL_PATH = "/v1/data/munitas/access/export_approval_decision"
+_EXPORT_CONFIRMATION_PATH = "/v1/data/munitas/access/export_confirmation_decision"
+_EXPORT_LINK_PATH = "/v1/data/munitas/access/export_link_decision"
+_EXPORT_PASSPHRASE_PATH = "/v1/data/munitas/access/export_passphrase_decision"
+
+
+def may_request_export(payload: dict) -> tuple[bool, list[str]]:
+    """May this principal ask for an organisation's records to be produced for a legal matter?
+
+    Only a platform administrator, only while a legal hold is in force, and only with the demand and the
+    recipient written down. The refusal names what is missing."""
+    return _ask(_EXPORT_REQUEST_PATH, payload)
+
+
+def may_approve_export(payload: dict) -> tuple[bool, list[str]]:
+    """May this principal approve an export? A different platform administrator from the one who asked."""
+    return _ask(_EXPORT_APPROVAL_PATH, payload)
+
+
+def may_confirm_export(payload: dict) -> tuple[bool, list[str]]:
+    """May this principal confirm what an export holds? Only the custodian the hold names."""
+    return _ask(_EXPORT_CONFIRMATION_PATH, payload)
+
+
+def may_link_export(payload: dict) -> tuple[bool, list[str]]:
+    """May this principal make a download link for a ready package?"""
+    return _ask(_EXPORT_LINK_PATH, payload)
+
+
+def may_read_passphrase(payload: dict) -> tuple[bool, list[str]]:
+    """May this principal be given a package's passphrase? The hold's custodian, once."""
+    return _ask(_EXPORT_PASSPHRASE_PATH, payload)
+
+
 _EXPORT_PATH = "/v1/data/munitas/access/export_decision"
 
 
