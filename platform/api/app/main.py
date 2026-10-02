@@ -1193,6 +1193,14 @@ def request_credential(body: models.CredentialRequest):
             403, {"allowed": False, "reasons": reasons, "class": version["current_class"]}
         )
 
+    if body.decide_only:
+        if body.principal_kind != "human":
+            raise HTTPException(422, {"allowed": False, "reasons": [
+                "only a person can ask for a decision without a key; a workload needs the key"]})
+        # No key is minted here. The caller is a workspace that issues its own,
+        # and it writes the grant row when it has.
+        return {"allowed": True, "decide_only": True, "class": version["current_class"]}
+
     # Policy said yes. Whether the grant can actually be applied is a separate
     # question with a separate answer, and it gets its own audit row either way.
     #

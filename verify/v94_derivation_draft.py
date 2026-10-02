@@ -55,6 +55,9 @@ def main() -> int:
           draft([{"dataset": src, "version": 99}], "SELECT 1").status_code == 404, "")
 
     heading("U94: only a single SELECT over the declared inputs is accepted")
+    r = draft(one, "SELECT content AS record_id FROM read_text('/etc/passwd')")
+    check("a query that reads a file is refused, and says it reaches outside its inputs",
+          r.status_code == 422 and "outside the datasets it declared" in r.text, f"HTTP {r.status_code} {r.text[:130]}")
     for label, sql in (("a DROP", "DROP TABLE t"),
                        ("two statements", "SELECT record_id FROM t; SELECT 1"),
                        ("a table that was not declared", "SELECT record_id FROM somewhere_else"),
@@ -101,6 +104,9 @@ def main() -> int:
     heading("U94: confirming registers the result, on terms")
     r = draft(one, "SELECT record_id, length(transcript) AS n FROM t", target=f"derived-{uuid.uuid4().hex[:8]}")
     d = r.json()
+    # A second draft of the same name, made before the first is confirmed: the
+    # only way two requests for one name can exist, since a confirmed one takes it.
+    same = draft(one, "SELECT record_id, length(transcript) AS n FROM t", target=d["target_name"])
     lowered = api("POST", f"/derivations/{d['id']}/confirm", json={"sensitivities": {"n": "none"}},
                   headers=bearer_for(RESEARCHER))
     check("lowering a computed field's sensitivity is refused", lowered.status_code == 422,
@@ -118,15 +124,33 @@ def main() -> int:
     check("the contract carries the chosen sensitivities, and who added the fields",
           {x["name"]: x["sensitivity"] for x in contract["fields"]} == {"record_id": "quasi", "n": "phi"}
           and all(x["added_by"] == RESEARCHER for x in contract["fields"]), str(contract))
-    same = draft(one, "SELECT record_id, length(transcript) AS n FROM t", target=d["target_name"] + "-b")
-    # Same query, same version, same shape (record_id raised to quasi again).
+    # Same person, same name, same query, same version, same shape.
     again = api("POST", f"/derivations/{same.json()['id']}/confirm", json={"sensitivities": {"record_id": "quasi"}},
                 headers=bearer_for(RESEARCHER))
-    check("the same query over the same versions is recognised, not run twice",
+    check("the same request by the same person is recognised, not run twice",
           again.status_code == 202 and again.json().get("reused") is True and again.json()["id"] == d["id"],
           f"HTTP {again.status_code} reused={again.json().get('reused')}")
-    check("and registers nothing new", not db_one("select 1 as x from dataset where name = %s", (d["target_name"] + "-b",)),
-          "no second dataset")
+    count = db_one("select count(*) as n from dataset where tenant_id = %s and name = %s", (tenant, d["target_name"]))["n"]
+    check("and registers nothing new", count == 1, f"{count} dataset called {d['target_name']}")
+    other = draft(one, "SELECT record_id, length(transcript) AS n FROM t", target=d["target_name"] + "-b")
+    check("a different name for the same query is a different request, with its own dataset",
+          other.status_code == 201 and api("POST", f"/derivations/{other.json()['id']}/confirm",
+                                           json={"sensitivities": {"record_id": "quasi"}},
+                                           headers=bearer_for(RESEARCHER)).json().get("reused") is False, "not reused")
+    # A colleague with the same read access asking for the same query under a name
+    # of their own gets their own request and dataset, never the first person's.
+    colleague = draft(one, "SELECT record_id, length(transcript) AS n FROM t",
+                      target=d["target_name"] + "-colleague", who="canary-engineer")
+    theirs = api("POST", f"/derivations/{colleague.json()['id']}/confirm", json={"sensitivities": {"record_id": "quasi"}},
+                 headers=bearer_for("canary-engineer"))
+    owner = db_one("select registered_by from dataset where tenant_id = %s and name = %s",
+                   (tenant, d["target_name"] + "-colleague"))
+    check("the same query by a colleague is their own request, not the first person's",
+          theirs.status_code == 202 and theirs.json().get("reused") is False
+          and theirs.json()["id"] != d["id"] and owner and owner["registered_by"] == "canary-engineer",
+          f"HTTP {theirs.status_code} reused={theirs.json().get('reused')} owner={owner}")
+    check("and nothing of the first person's request is shown to the colleague",
+          d["purpose"] not in theirs.text or d["purpose"] == colleague.json()["purpose"], "own purpose only")
     check("somebody else cannot see or confirm it",
           api("GET", f"/derivations/{d['id']}", headers=bearer_for("canary-engineer")).status_code == 404, "")
 

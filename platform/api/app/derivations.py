@@ -120,6 +120,12 @@ def _describe(con, sql: str) -> list[tuple[str, str]]:
         kind = type(exc).__name__
         if kind in ("ParserException", "BinderException", "CatalogException"):
             raise HTTPException(422, {"reasons": [str(exc).splitlines()[0][:300]]}) from exc
+        if kind == "PermissionException":
+            # External access is switched off for exactly this: a query that
+            # reads a file or an address is reaching outside its inputs.
+            raise HTTPException(422, {"reasons": [
+                "that query reaches outside the datasets it declared (a file or an address). "
+                "A query may read only its declared inputs"]}) from exc
         raise HTTPException(422, {"reasons": [
             f"the query could not be described ({kind}). Give every computed column an "
             "alias, and avoid queries whose columns depend on the data, such as PIVOT"]}) from exc
@@ -286,9 +292,14 @@ def _provenance(inputs: list[dict]) -> str:
     return min((i["provenance"] for i in inputs), key=order.index)
 
 
-def _derivation_key(tenant_id: str, sql: str, inputs: list[dict], fields: list[dict], primary_key: list[str]) -> str:
+def _derivation_key(tenant_id: str, person: str, target: str, sql: str, inputs: list[dict],
+                    fields: list[dict], primary_key: list[str]) -> str:
+    """Identifies one request: this person asking for this named result of this
+    query over these input versions. The person and the name are part of it so a
+    repeat finds the person's own earlier request, never somebody else's and
+    never a dataset under a different name than the one asked for."""
     body = {
-        "tenant": tenant_id, "sql": " ".join(sql.split()),
+        "tenant": tenant_id, "person": person, "target": target, "sql": " ".join(sql.split()),
         "inputs": sorted((i["alias"], i["version_id"]) for i in inputs),
         "fields": [(f["name"], f["type"], f["sensitivity"]) for f in fields],
         "primary_key": primary_key,
@@ -302,7 +313,7 @@ def _derivation_key(tenant_id: str, sql: str, inputs: list[dict], fields: list[d
 def _shown(row: dict) -> dict:
     return {
         "id": str(row["id"]), "status": row["status"], "target_name": row["target_name"],
-        "purpose": row["purpose"], "output_class": row["output_class"],
+        "purpose": row["purpose"], "output_class": row["output_class"], "sql": row["sql"],
         "inputs": [{k: i[k] for k in ("alias", "dataset", "version", "class")} for i in row["inputs"]],
         "fields": row["proposed_fields"], "primary_key": list(row["primary_key"]),
         "output_version_id": str(row["output_version_id"]) if row["output_version_id"] else None,
@@ -415,7 +426,8 @@ async def confirm(derivation_id: str, body: models.DerivationConfirmIn,
                 f"you can no longer read {item['dataset']!r} version {item['version']}"]})
     out_class = _output_class(inputs)
 
-    key = _derivation_key(identity["tenant_id"], row["sql"], inputs, fields, list(row["primary_key"]))
+    key = _derivation_key(identity["tenant_id"], identity["id"], row["target_name"], row["sql"], inputs,
+                          fields, list(row["primary_key"]))
     earlier = db.one(
         """select * from derivation where derivation_key = %s and tenant_id = %s
               and status in ('queued', 'running', 'succeeded') order by created_at limit 1""",

@@ -308,12 +308,13 @@ def _open(principal: dict, ref: dict) -> dict:
     from . import main as platform
 
     from fastapi import HTTPException
+    request = models.CredentialRequest(
+        principal=principal["id"], principal_kind="human",
+        roles=principal["roles"] or ["notebook_explore"], tenant_id=principal["tenant_id"],
+        dataset_version_id=ref["version_id"], purpose=principal["purpose"], decide_only=True,
+    )
     try:
-        grant = platform.request_credential(models.CredentialRequest(
-            principal=principal["id"], principal_kind="human",
-            roles=principal["roles"] or ["notebook_explore"], tenant_id=principal["tenant_id"],
-            dataset_version_id=ref["version_id"], purpose=principal["purpose"],
-        ))
+        grant = platform.request_credential(request)
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, dict) else {}
         reasons = "; ".join(detail.get("reasons") or [str(exc.detail)])
@@ -321,13 +322,6 @@ def _open(principal: dict, ref: dict) -> dict:
             raise CatalogError(403, "ForbiddenException", reasons) from exc
         raise CatalogError(503 if exc.status_code == 503 else exc.status_code,
                            "ServiceUnavailableException", reasons) from exc
-    if isinstance(grant, JSONResponse):
-        # Approved, but storage permissions are still being updated. Not a refusal.
-        raise CatalogError(503, "ServiceUnavailableException",
-                           "access is approved and takes effect once storage permissions are "
-                           "updated, which is in progress. Try again shortly",
-                           headers={"Retry-After": grant.headers.get("retry-after", "5")})
-
     # A key rests on the person's live lease when there is one, so revoking the
     # lease ends it at once, not at the end of its time.
     lease = db.one(
@@ -345,6 +339,11 @@ def _open(principal: dict, ref: dict) -> dict:
                                "access is approved and takes effect once storage permissions are "
                                "updated, which is in progress. Try again shortly",
                                headers={"Retry-After": "5"}) from exc
+    # The decision row was written when it was made. This is the other half of
+    # the pair every credential request leaves: that a key was in fact issued.
+    platform._record_decision(
+        request, db.one("select * from version_class where dataset_version_id = %s", (ref["version_id"],)),
+        "grant", True, ["a catalog key was issued"])
     return key
 
 

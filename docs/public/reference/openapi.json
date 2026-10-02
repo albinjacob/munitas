@@ -320,6 +320,11 @@
             "title": "Dataset Version Id",
             "type": "string"
           },
+          "decide_only": {
+            "default": false,
+            "title": "Decide Only",
+            "type": "boolean"
+          },
           "principal": {
             "title": "Principal",
             "type": "string"
@@ -5216,7 +5221,7 @@
     },
     "/iceberg/v1/{prefix}/namespaces/{namespace}": {
       "get": {
-        "operationId": "get_namespace_iceberg_v1__prefix__namespaces__namespace__head",
+        "operationId": "get_namespace_iceberg_v1__prefix__namespaces__namespace__get",
         "parameters": [
           {
             "in": "path",
@@ -5263,7 +5268,7 @@
         ]
       },
       "head": {
-        "operationId": "get_namespace_iceberg_v1__prefix__namespaces__namespace__head",
+        "operationId": "get_namespace_iceberg_v1__prefix__namespaces__namespace__get",
         "parameters": [
           {
             "in": "path",
@@ -5365,7 +5370,7 @@
     "/iceberg/v1/{prefix}/namespaces/{namespace}/tables/{table}": {
       "get": {
         "description": "Open one table: decide, record the decision, then hand over the key.\n\nThe decision, the audit rows and the key all come from request_credential,\nthe function behind POST /credentials, so a table opened here is recorded\nexactly as the same version read any other way would be.",
-        "operationId": "load_table_iceberg_v1__prefix__namespaces__namespace__tables__table__head",
+        "operationId": "load_table_iceberg_v1__prefix__namespaces__namespace__tables__table__get",
         "parameters": [
           {
             "in": "path",
@@ -5422,7 +5427,7 @@
       },
       "head": {
         "description": "Open one table: decide, record the decision, then hand over the key.\n\nThe decision, the audit rows and the key all come from request_credential,\nthe function behind POST /credentials, so a table opened here is recorded\nexactly as the same version read any other way would be.",
-        "operationId": "load_table_iceberg_v1__prefix__namespaces__namespace__tables__table__head",
+        "operationId": "load_table_iceberg_v1__prefix__namespaces__namespace__tables__table__get",
         "parameters": [
           {
             "in": "path",

@@ -126,6 +126,12 @@ class CredentialRequest(BaseModel):
     # is agent-specific and a pipeline task has no equivalent id to pair it
     # with -- the token itself carries which action_run it is.
     task_credential: str | None = None
+    # Ask for the decision only, and no storage key. For a person reaching data
+    # through a workspace that issues its own scoped key (the Iceberg catalog),
+    # so the roles that hold no key themselves, such as analyst, are decided on
+    # their real role and not refused at the key. The workspace records the
+    # grant row itself once its key exists. People only.
+    decide_only: bool = False
 
 
 class WriteCredentialRequest(BaseModel):
