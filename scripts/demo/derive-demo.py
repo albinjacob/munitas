@@ -111,8 +111,17 @@ class Stage:
         self.scenes.append(scene)
         return scene
 
-    def run(self, scene: dict, code: str, expect_error: bool = False) -> str:
-        """Show this code, run exactly this code, and record what it printed."""
+    # Who types a step unless a block says otherwise. Everything is the researcher's
+    # except the colleague's refusal in step 10.
+    TYPED_BY = {10: "colleague"}
+
+    def run(self, scene: dict, code: str, expect_error: bool = False, who: str | None = None) -> str:
+        """Show this code, run exactly this code, and record what it printed and who typed it.
+
+        `who` is a role in the story (researcher, custodian or colleague). Each is
+        a person on their own computer, signed in as themselves, so the page can say
+        plainly where every command was typed.
+        """
         code = textwrap.dedent(code).strip("\n")
         print("\n" + textwrap.indent(code, "    >>> ", lambda line: True))
         out = io.StringIO()
@@ -130,7 +139,8 @@ class Stage:
             # even though it raised nothing. Better to stop than to narrate over it.
             raise SystemExit("\nThis step printed nothing, so it did not do what the demo says it does.")
         print(textwrap.indent(text, "    ") if text else "    (no output)")
-        scene["blocks"].append({"code": code, "output": text})
+        scene["blocks"].append({"code": code, "output": text,
+                                "who": who or self.TYPED_BY.get(scene["step"], "researcher")})
         return text
 
     def wait(self):
@@ -225,7 +235,7 @@ def main() -> int:
     stage.run(s, '''
         lease = custodian.approve(request)
         print("Approved by the custodian. Lease:", lease[:8])
-    ''')
+    ''', who="custodian")
     stage.run(s, f'''
         for _ in range(20):                      # storage takes a few seconds to learn of new access
             try:
@@ -355,8 +365,11 @@ def main() -> int:
         "Notebook (DuckDB)",
         "The custodian withdraws the lease. The person loses the restricted table at once, and also the new "
         "dataset that was made from it, because that access was granted on the strength of the lease.")
-    stage.run(s, f'''
+    stage.run(s, '''
         custodian.revoke(lease)
+        print("The lease is withdrawn.")
+    ''', who="custodian")
+    stage.run(s, f'''
         time.sleep(3)
         con = me.attach_duckdb(token)
         for name in ["{cfg["raw"]}", "{target}"]:
@@ -369,7 +382,10 @@ def main() -> int:
     print(f"\n{'=' * 78}\nDone. {len(stage.scenes)} steps.")
     if args.transcript:
         Path(args.transcript).write_text(json.dumps({
-            "tenant": tenant, "department": cfg["department"], "target": target, "scenes": stage.scenes},
+            "tenant": tenant, "department": cfg["department"], "target": target,
+            "people": {role: cfg["who"][cfg[role]].split(",")[0]
+                       for role in ("researcher", "custodian", "colleague")},
+            "scenes": stage.scenes},
             indent=2), encoding="utf-8")
         print(f"Transcript saved to {args.transcript}")
     return 0
