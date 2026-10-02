@@ -120,7 +120,8 @@ def main() -> int:
     retired = f"ingest-probe-retired-{uuid.uuid4().hex[:8]}"
     fixture_tenant(retired)
     with db() as conn:
-        conn.execute("update tenant set purpose = 'retired' where id = %s", (retired,))
+        conn.execute("update tenant set purpose = 'retired', retired_at = now(), retiring_until = now(), "
+                     "closing_until = now() + interval '1 day' where id = %s", (retired,))
     import psycopg.errors
     try:
         grants.identity_for_tenant_ingest(retired)

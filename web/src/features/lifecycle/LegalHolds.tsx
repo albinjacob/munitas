@@ -106,17 +106,28 @@ export function LegalHolds() {
         ) : (
           <div data-testid="deletion-records" className="space-y-3">
             {deletions.data!.deletions.map((d) => (
-              <div key={d.tenant_id} data-deletion={d.tenant_id} className="rounded border border-slate-200 bg-white p-3 text-sm">
-                <div className="font-medium">{d.tenant_id}</div>
+              <div key={d.tenant_id} data-deletion={d.original_tenant_id ?? d.tenant_id} className="rounded border border-slate-200 bg-white p-3 text-sm">
+                <div className="font-medium">{d.original_tenant_id ?? d.tenant_id}</div>
+                <p className="mt-1 text-xs text-slate-500">
+                  Filed under <code>{d.tenant_id}</code>, so the name {d.original_tenant_id ?? d.tenant_id} can be used again.
+                </p>
                 <p className="mt-1 text-slate-600">
-                  Closing was asked for by {d.retire_requested_by ?? "somebody"} on {when(d.retired_at)}
+                  Closing down was asked for by {d.retire_requested_by ?? "somebody"} on {when(d.retired_at)}
                   {d.retire_reason ? `, because: ${bare(d.retire_reason)}` : ""}. Deleted on {when(d.purged_at)} by{" "}
                   {d.purged_by}.
                 </p>
                 <p className="mt-1 text-slate-600">
                   Removed {Object.values(d.rows_removed).reduce((a, b) => a + b, 0)} records in{" "}
                   {Object.keys(d.rows_removed).length} kinds, and {d.files_removed} stored files.
-                  {d.buckets_left.length > 0 && ` ${d.buckets_left.length} external storage bucket was left for a person to remove.`}
+                  {d.buckets_left.length > 0 && ` ${d.buckets_left.length} external storage bucket was left for a person to remove.`}{" "}
+                  Removed {d.identities_removed} sign-in accounts.
+                </p>
+                <p className="mt-1 text-slate-600">
+                  {d.audit_rows_kept === 0
+                    ? "There were no audit rows of who read what to keep."
+                    : d.audit_removed_at
+                      ? `${d.audit_rows_kept} audit rows of who read what were kept until ${when(d.audit_kept_until)} and have been removed.`
+                      : `${d.audit_rows_kept} audit rows of who read what are kept until ${when(d.audit_kept_until)}, and then removed.`}
                 </p>
                 {d.holds.length > 0 && (
                   <p className="mt-1 text-slate-600">

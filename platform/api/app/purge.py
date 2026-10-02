@@ -20,29 +20,39 @@ before, and verify/v100_purge.py proves each of those refusals.
 
 WHAT IS DELETED, AND WHAT STAYS
 
-Every row in every table that carries the organisation's id, and the three tables
-that hold its data through a parent (INDIRECT_TABLES), then its storage buckets on
-SeaweedFS. A bucket on Cloudflare R2 is external storage: it is named in the
+Every row in every table that carries the organisation's id, the three tables that hold its data
+through a parent (INDIRECT_TABLES), its storage buckets on SeaweedFS, and the sign-in accounts of its
+people in the identity provider. A bucket on Cloudflare R2 is external storage: it is named in the
 deletion record as left, for a person to remove, and never touched from here.
 
-What stays is the organisation's own row, marked purged so the name is never
-reused, and one row in `tenant_deletion_record`: which organisation, who asked for it
-to close and why, the holds that applied (numbers and authorities, no contact
-details), what was removed, and when. The people's sign-in identities in the
-identity provider are not touched either. The platform holds no administrative
-credential to it by design (people.py), so each such identity simply finds no
-person behind it and is refused.
+What stays:
 
-Order of work. Storage is emptied first and the rows afterwards, in one
-transaction. If the rows fail, nothing was changed in the database and the next
-sweep finds the buckets already gone and finishes the rest, so there is never a
-state in which rows exist that record a bucket which is not there and nothing says so.
+  * One row in `tenant_deletion_record`: which organisation, who asked for it to close and why, the
+    holds that applied (numbers and authorities, no contact details), what was removed, and when.
+  * The organisation's audit rows (`access_decision`), for AUDIT_RETENTION_YEARS, and then they are
+    removed too (`expire_audit`). A decision about who read what is evidence long after the data is gone.
+
+Both are re-labelled in the same transaction, so the name can be used again. The organisation was
+called `harbour`; its record and its audit rows are now filed under `harbour~deleted-20261002-a1b2`,
+and the record says in `original_tenant_id` what it was. The organisation's own row is deleted, so a
+new organisation may take the old name and will see none of the old audit rows.
+
+The sign-in accounts are removed first, before any row, because the directory is what says which
+accounts belong to the organisation. An account already gone counts as removed. If the identity
+provider cannot be reached the purge stops before changing anything, and the next sweep tries again.
+
+Order of work. Storage and accounts first, then the rows in one transaction. If the rows fail, nothing
+was changed in the database and the next sweep finds the buckets and accounts already gone and finishes
+the rest, so there is never a state in which rows exist that name a bucket which is not there and
+nothing says so.
 """
 
 from __future__ import annotations
 
 import json
+import secrets
 
+import httpx
 import psycopg
 from psycopg.rows import dict_row
 
@@ -60,7 +70,8 @@ INDIRECT_TABLES: dict[str, tuple[str, str]] = {
     "huggingface_fetch_job": ("dataset_id", "dataset"),
 }
 
-# Never deleted with the organisation: what is left behind on purpose.
+# Never deleted with the organisation: what is left behind on purpose. The audit rows are kept for
+# a period of their own and removed by expire_audit, not here.
 KEPT = {"tenant_deletion_record"}
 
 
@@ -74,7 +85,7 @@ def _tables(conn) -> list[str]:
     ).fetchall()
     # A partition is deleted through its parent.
     return sorted(r["table_name"] for r in rows
-                  if r["table_name"] not in KEPT and not r["table_name"].startswith("access_decision_"))
+                  if r["table_name"] not in KEPT and not r["table_name"].startswith("access_decision"))
 
 
 def _clause(table: str) -> str:
@@ -135,6 +146,42 @@ def _empty_bucket(client, bucket: str) -> int:
     return len(keys)
 
 
+def _remove_identities(tenant_id: str) -> int:
+    """Remove the sign-in accounts of this organisation's people from the identity provider.
+
+    An account that is already gone counts as removed. Any other answer stops the purge, because a
+    deleted organisation that still has working logins is worse than one that is deleted a sweep late."""
+    ids = [r["kratos_identity_id"] for r in db.all_rows(
+        "select kratos_identity_id from directory where tenant_id = %s and kratos_identity_id is not null",
+        (tenant_id,))]
+    for identity in ids:
+        try:
+            response = httpx.delete(f"{config.KRATOS_ADMIN_URL}/admin/identities/{identity}", timeout=10.0)
+        except httpx.HTTPError as exc:
+            raise RuntimeError(f"the identity provider could not be reached to remove sign-in accounts: {exc}") from exc
+        if response.status_code not in (200, 204, 404):
+            raise RuntimeError(f"the identity provider refused to remove an account (HTTP {response.status_code})")
+    return len(ids)
+
+
+def expire_audit() -> list[dict]:
+    """Remove the audit rows of deleted organisations whose retention has ended, and write the day on
+    the record. Returns what was removed."""
+    due = db.all_rows(
+        "select id, tenant_id, original_tenant_id from tenant_deletion_record "
+        "where audit_removed_at is null and audit_kept_until is not null and audit_kept_until <= now()")
+    removed = []
+    for record in due:
+        row = db.one("with d as (delete from access_decision where tenant_id = %s returning 1) "
+                     "select count(*) as n from d", (record["tenant_id"],))
+        db.execute("update tenant_deletion_record set audit_removed_at = now() where id = %s", (record["id"],))
+        removed.append({"tenant_id": record["tenant_id"], "original_tenant_id": record["original_tenant_id"],
+                        "audit_rows_removed": row["n"]})
+        log.info("audit rows of a deleted organisation removed after their retention",
+                 extra={"tenant_id": record["tenant_id"], "count": row["n"]})
+    return removed
+
+
 def purge_tenant(tenant_id: str, purged_by: str) -> dict:
     """Delete one organisation's contents and write the record that it was done.
 
@@ -155,6 +202,8 @@ def purge_tenant(tenant_id: str, purged_by: str) -> dict:
         else:
             left_buckets.append({"bucket": p["bucket"], "backend": p["backend"],
                                  "why": "external storage, for a person to remove"})
+
+    identities = _remove_identities(tenant_id)
 
     with psycopg.connect(config.PG_DSN, row_factory=dict_row) as conn:
         with conn.transaction():
@@ -184,15 +233,23 @@ def purge_tenant(tenant_id: str, purged_by: str) -> dict:
 
             counts = _delete_all(conn, _tables(conn) + list(INDIRECT_TABLES), tenant_id)
 
+            # The name the organisation is kept under, so that the name itself is free again.
+            today = conn.execute("select to_char(now(), 'YYYYMMDD') as d").fetchone()["d"]
+            kept_as = f"{tenant_id}~deleted-{today}-{secrets.token_hex(2)}"
+            audit = conn.execute("update access_decision set tenant_id = %s where tenant_id = %s",
+                                 (kept_as, tenant_id)).rowcount
             conn.execute(
-                """insert into tenant_deletion_record (tenant_id, retire_reason, retire_requested_by,
-                          retired_at, closing_ended_at, purged_by, holds, rows_removed, files_removed,
-                          buckets_removed, buckets_left)
-                   values (%s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s::jsonb, %s::jsonb)""",
-                (tenant_id, tenant["retire_reason"], tenant["retire_requested_by"], tenant["retired_at"],
+                """insert into tenant_deletion_record (tenant_id, original_tenant_id, retire_reason,
+                          retire_requested_by, retired_at, closing_ended_at, purged_by, holds, rows_removed,
+                          files_removed, buckets_removed, buckets_left, audit_kept_until, audit_rows_kept,
+                          identities_removed)
+                   values (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s::jsonb, %s::jsonb,
+                           now() + make_interval(years => %s), %s, %s)""",
+                (kept_as, tenant_id, tenant["retire_reason"], tenant["retire_requested_by"], tenant["retired_at"],
                  tenant["closing_until"], purged_by, json.dumps(holds), json.dumps(counts), files,
-                 json.dumps(removed_buckets), json.dumps(left_buckets)))
-            conn.execute("update tenant set purged_at = now() where id = %s", (tenant_id,))
+                 json.dumps(removed_buckets), json.dumps(left_buckets), config.AUDIT_RETENTION_YEARS, audit,
+                 identities))
+            conn.execute("delete from tenant where id = %s", (tenant_id,))
 
     try:
         # Storage keys that named the deleted rows are dropped from the permissions document.
@@ -201,5 +258,6 @@ def purge_tenant(tenant_id: str, purged_by: str) -> dict:
         log.error("storage permissions could not be printed after a purge; the activator keeps trying",
                   extra={"tenant_id": tenant_id, "reason": str(exc)})
     log.info("organisation purged", extra={"tenant_id": tenant_id, "count": sum(counts.values())})
-    return {"tenant_id": tenant_id, "rows_removed": counts, "files_removed": files,
-            "buckets_removed": removed_buckets, "buckets_left": left_buckets, "holds": holds}
+    return {"tenant_id": tenant_id, "kept_as": kept_as, "rows_removed": counts, "files_removed": files,
+            "buckets_removed": removed_buckets, "buckets_left": left_buckets, "holds": holds,
+            "audit_rows_kept": audit, "identities_removed": identities}

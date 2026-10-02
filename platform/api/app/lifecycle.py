@@ -235,7 +235,7 @@ def retire(body: RetireIn, session: dict = Depends(current_session)) -> dict:
         (session["id"], body.reason.strip(), now, retiring_until, closing_until, target),
     )
     if not done:
-        _refuse([f"{target} was already being closed"], status=409)
+        _refuse([f"{target} was already closing down"], status=409)
     _event(target, session["id"], "retirement_started",
            detail={"reason": body.reason.strip(), "retiring_until": retiring_until,
                    "closing_until": closing_until})
@@ -255,7 +255,7 @@ def cancel(body: CancelIn, session: dict = Depends(current_session)) -> dict:
     if row["phase"] != "retiring":
         ended = f"{row['retiring_until']:%Y-%m-%d}" if row["retiring_until"] else ""
         why = {
-            "active": f"{target} is not being closed",
+            "active": f"{target} is not closing down",
             "retired": f"{target} was closed before closing dates were recorded, so it cannot be cancelled here",
             "closing": f"the time to cancel ended on {ended}",
             "purge_due": f"the time to cancel ended on {ended}",
@@ -494,8 +494,10 @@ def sweep(purged_by: str = "the scheduled sweep") -> dict:
             # administrators can see it.
             log.exception("purge failed", extra={"tenant_id": tenant_id})
             _event(tenant_id, "the platform", "purge_failed", None, {"reason": str(exc)[:500]})
+    audit_removed = purge.expire_audit()
     return {"lapsed": [str(r["id"]) for r in lapsed],
-            "purged": [p["tenant_id"] for p in purged], "records": _clean(purged)}
+            "purged": [p["tenant_id"] for p in purged], "records": _clean(purged),
+            "audit_removed": _clean(audit_removed)}
 
 
 @router.post("/sweep")

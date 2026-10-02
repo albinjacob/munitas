@@ -127,7 +127,7 @@ const GROUPS: { title: string; items: Item[] }[] = [
       { to: "/roles", label: "What each role can do", icon: KeyIcon },
       {
         to: "/closing",
-        label: "Closing the organisation",
+        label: "Closing down the organisation",
         icon: ClosingIcon,
         roles: ["data_custodian", "dpo", "platform_admin"],
       },
@@ -262,7 +262,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                     {principal.tenant_purpose === "canary"
                       ? "for testing"
                       : closing?.phase === "retiring"
-                        ? "being closed"
+                        ? "closing down"
                         : "closed"}
                   </span>
                 )}
@@ -341,7 +341,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               data-testid="closing-banner"
               className="mb-6 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"
             >
-              <strong>This organisation is being closed.</strong> Nothing can be added or changed. You can still
+              <strong>This organisation is closing down.</strong> Nothing can be added or changed. You can still
               read, and it can be cancelled until {new Date(closing.retiring_until ?? "").toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" })} ({closing.days_left} days left).{" "}
               <NavLink to="/closing" className="underline">
                 See where it stands

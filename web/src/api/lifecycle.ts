@@ -87,7 +87,10 @@ export interface NewHold {
 }
 
 export interface DeletionRecord {
+  /** The name the record and the audit rows are filed under: the old name, then `~deleted-`, a date and a few letters. */
   tenant_id: string;
+  /** What the organisation was called. The name is free to be used again. */
+  original_tenant_id: string | null;
   retire_reason: string | null;
   retire_requested_by: string | null;
   retired_at: string | null;
@@ -108,6 +111,11 @@ export interface DeletionRecord {
   files_removed: number;
   buckets_removed: string[];
   buckets_left: { bucket: string; backend: string; why: string }[];
+  /** The audit rows kept after the deletion, until the date given, when they are removed too. */
+  audit_rows_kept: number;
+  audit_kept_until: string | null;
+  audit_removed_at: string | null;
+  identities_removed: number;
 }
 
 const KEY = ["lifecycle"] as const;
@@ -218,13 +226,13 @@ export const PHASE_COPY: Record<Phase, { label: string; tone: string; plain: str
     plain: "The organisation is running normally.",
   },
   retiring: {
-    label: "Being closed",
+    label: "Closing down",
     tone: "bg-amber-100 text-amber-900",
     plain:
-      "Closing has started. Nothing can be added or changed, people can still read what the organisation holds, and the closing can still be cancelled.",
+      "The closing down has started. Nothing can be added or changed, people can still read what the organisation holds, and the closing down can still be cancelled.",
   },
   closing: {
-    label: "Closing",
+    label: "Closed to its people",
     tone: "bg-red-100 text-red-900",
     plain:
       "The time to cancel has passed. Nobody in the organisation can do anything. Everything inside it will be deleted when this period ends, unless a legal hold stands over it.",

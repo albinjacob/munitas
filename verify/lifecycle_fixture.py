@@ -175,8 +175,13 @@ def forget_deletion_record(tenant_id: str) -> None:
     with db() as conn:
         with conn.transaction():
             conn.execute("alter table tenant_deletion_record disable rule tenant_deletion_record_no_delete")
-            conn.execute("delete from tenant_deletion_record where tenant_id = %s "
-                         "and tenant_id like 'verify-%%'", (tenant_id,))
+            # Filed under the name it was kept as, and carrying what it was called. The audit rows
+            # kept beside it go too, which is for a throwaway organisation only.
+            conn.execute("delete from access_decision where tenant_id in (select tenant_id from "
+                         "tenant_deletion_record where original_tenant_id = %s and original_tenant_id like 'verify-%%')",
+                         (tenant_id,))
+            conn.execute("delete from tenant_deletion_record where original_tenant_id = %s "
+                         "and original_tenant_id like 'verify-%%'", (tenant_id,))
             conn.execute("alter table tenant_deletion_record enable rule tenant_deletion_record_no_delete")
 
 
@@ -195,4 +200,4 @@ def drop_org(org: Org) -> None:
             conn.execute("delete from tenant where id = %s", (org.id,))
     forget_deletion_record(org.id)
     for identity in org.identities:
-        httpx.delete(f"{KRATOS_ADMIN}/admin/identities/{identity}", timeout=10.0)
+        httpx.delete(f"{KRATOS_ADMIN}/admin/identities/{identity}", timeout=10.0)  # already gone after a purge

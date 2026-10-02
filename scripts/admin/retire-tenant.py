@@ -10,13 +10,12 @@ scripts/admin/reclaim-storage.py --tenant <id> afterward.
     python scripts/admin/retire-tenant.py --tenant acme
     python scripts/admin/retire-tenant.py --tenant acme --force
 
-This closes the organisation at once and gives it no dates, so the platform never
-deletes it by itself: it stays readable until somebody runs reclaim-storage.py or
-nuke-tenant.py. That is the right tool for a verification or throwaway organisation.
+This closes the organisation at once and sets its removal to one day: the platform deletes
+everything inside it a day later (honouring any legal hold) unless somebody runs
+nuke-tenant.py first. That is the right tool for a verification or throwaway organisation.
 A customer organisation is closed through the console (or POST
-/lifecycle/organisation/retire), which gives its people 15 days to read and cancel,
-another 15 with nothing, honours any legal hold, and then deletes everything inside it
-(platform/api/app/lifecycle.py).
+/lifecycle/organisation/retire), which gives its people 15 days to read and cancel and
+another 15 with nothing before the same deletion (platform/api/app/lifecycle.py).
 """
 
 from __future__ import annotations
@@ -65,10 +64,13 @@ def main() -> int:
                 return 1
 
         conn.execute(
-            "update tenant set purpose = 'retired' where id = %s", (args.tenant,)
+            "update tenant set purpose = 'retired', retire_reason = 'Closed by scripts/admin/retire-tenant.py; "
+            "removal set to one day', retired_at = now(), retiring_until = now(), "
+            "closing_until = now() + interval '1 day' where id = %s", (args.tenant,)
         )
 
-    print(f"tenant {args.tenant!r} retired. Reads still work; writes are refused.")
+    print(f"tenant {args.tenant!r} retired. Reads still work; writes are refused. Its contents are "
+          "deleted by the sweep in one day.")
     print(f"To free its storage: python scripts/admin/reclaim-storage.py --tenant {args.tenant}")
     return 0
 

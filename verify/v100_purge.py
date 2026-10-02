@@ -16,8 +16,10 @@ from __future__ import annotations
 
 import sys
 
+import httpx
+
 from common import api, bearer_for, check, db, heading, require_api, summary
-from lifecycle_fixture import (ADMIN_A, ADMIN_B, bucket_exists, drop_org, forget_deletion_record,
+from lifecycle_fixture import (ADMIN_A, ADMIN_B, KRATOS_ADMIN, bucket_exists, drop_org, forget_deletion_record,
                                hold_body, make_org, move_dates, seal_data)
 
 
@@ -144,11 +146,14 @@ def main() -> int:
         check("its bucket is gone", not bucket_exists(data["bucket"]))
         check("and the purge counted the files it removed", record.get("files_removed") == 2, str(record.get("files_removed")))
         with db() as conn:
-            tenant = conn.execute("select purged_at, tenant_phase(id) as p from tenant where id = %s", (org.id,)).fetchone()
-            rec = conn.execute("select * from tenant_deletion_record where tenant_id = %s", (org.id,)).fetchone()
-        check("its row stays as a tombstone marked purged", tenant and tenant["purged_at"] is not None and tenant["p"] == "purged")
-        check("one deletion record was left", rec is not None)
+            tenant = conn.execute("select id from tenant where id = %s", (org.id,)).fetchone()
+            rec = conn.execute("select * from tenant_deletion_record where original_tenant_id = %s", (org.id,)).fetchone()
+        check("its own row is gone, so the name is free again", tenant is None)
+        check("one deletion record was left, and it says what the organisation was called", rec is not None)
+        kept_as = rec["tenant_id"] if rec else ""
         if rec:
+            check("it is filed under a name made from the old one, which cannot be mistaken for a live organisation",
+                  kept_as.startswith(org.id + "~deleted-") and kept_as != org.id, kept_as)
             check("it says who asked, why, and what was removed",
                   rec["retire_requested_by"] == "Custodian" and rec["retire_reason"] == "The clinic is closing"
                   and rec["rows_removed"].get("dataset_version") == 1 and rec["files_removed"] == 2, str(rec["rows_removed"])[:120])
@@ -159,22 +164,72 @@ def main() -> int:
             flat = str(rec)
             check("it holds no contact detail, no matter name and no description",
                   "example.test" not in flat and "Doe v" not in flat and "Ruth Aldous" not in flat and "claim about" not in flat)
-        check("a person of that organisation is refused",
-              api("GET", "/auth/whoami", headers=org.bearer("member")).status_code in (401, 403))
-        check("a second sweep finds nothing to do", org.id not in api("POST", "/lifecycle/sweep", headers=priya).json()["purged"])
+            check("it counts the three sign-in accounts removed", rec["identities_removed"] == 3, str(rec["identities_removed"]))
+
+        heading("Sign-in accounts and the audit trail")
+        gone = [httpx.get(f"{KRATOS_ADMIN}/admin/identities/{i}", timeout=10.0).status_code for i in org.identities]
+        check("every sign-in account of its people was removed from the identity provider", gone == [404, 404, 404], str(gone))
+        refused = False
+        try:
+            bearer_for(org.people["member"])
+        except RuntimeError:
+            refused = True
+        check("so a person of that organisation cannot sign in at all", refused)
+        with db() as conn:
+            audit_old = scalar("select count(*) from access_decision where tenant_id = %s", (org.id,))
+            audit_kept = scalar("select count(*) from access_decision where tenant_id = %s", (kept_as,))
+        check("its audit rows are not under the old name", audit_old == 0, str(audit_old))
+        check("they are kept under the new one", audit_kept >= 1 and rec is not None and rec["audit_rows_kept"] == audit_kept,
+              f"{audit_kept} rows")
+        if rec:
+            years = float(scalar("select extract(epoch from audit_kept_until - purged_at)/86400/365.25 "
+                                 "from tenant_deletion_record where id = %s", (rec["id"],)))
+            check("for seven years", 6.99 < years < 7.01, f"{years:.3f}")
+        sweep_now = api("POST", "/lifecycle/sweep", headers=priya).json()
+        check("a sweep now removes nothing from it", kept_as not in [a["tenant_id"] for a in sweep_now["audit_removed"]]
+              and scalar("select count(*) from access_decision where tenant_id = %s", (kept_as,)) == audit_kept)
+
+        heading("The name can be used again, and sees none of it")
+        fixture_tenant_row = scalar("insert into tenant (id, isolation_level, key_ref, purpose) values (%s, 'shared', 'k', 'production') returning id",
+                                    (org.id,))
+        check("a new organisation takes the old name", fixture_tenant_row == org.id)
+        check("and it sees none of the old audit rows",
+              scalar("select count(*) from access_decision where tenant_id = %s", (org.id,)) == 0)
+        with db() as conn:
+            conn.execute("delete from tenant where id = %s", (org.id,))
+
+        heading("After seven years")
+        # Brought forward by lifting the record's protection for one statement inside a transaction, the
+        # way scripts/admin/nuke-tenant.py does for the sealed-version rules: the clock cannot be moved.
+        with db() as conn:
+            with conn.transaction():
+                conn.execute("alter table tenant_deletion_record disable rule tenant_deletion_record_no_update")
+                conn.execute("update tenant_deletion_record set audit_kept_until = now() - interval '1 hour' where id = %s", (rec["id"],))
+                conn.execute("alter table tenant_deletion_record enable rule tenant_deletion_record_no_update")
+        after_years = api("POST", "/lifecycle/sweep", headers=priya).json()
+        check("the sweep removes the audit rows", any(a["tenant_id"] == kept_as and a["audit_rows_removed"] == audit_kept
+                                                      for a in after_years["audit_removed"]), str(after_years["audit_removed"])[:150])
+        check("none are left", scalar("select count(*) from access_decision where tenant_id = %s", (kept_as,)) == 0)
+        check("and the record says when", scalar("select audit_removed_at is not null from tenant_deletion_record where id = %s", (rec["id"],)) is True)
+        check("a second sweep has nothing more to remove",
+              api("POST", "/lifecycle/sweep", headers=priya).json()["audit_removed"] == [])
+
+        heading("The rest of the record")
+        check("a second sweep finds nothing to purge", org.id not in api("POST", "/lifecycle/sweep", headers=priya).json()["purged"])
         r = api("POST", "/lifecycle/holds", headers=priya, json=hold_body(org, number="HC-9"))
-        check("a hold cannot be placed on what no longer exists", r.status_code in (409, 422), f"{r.status_code}")
+        check("a hold cannot be placed on what no longer exists", r.status_code in (404, 409, 422), f"{r.status_code}")
         listing = api("GET", "/lifecycle/deletions", headers=priya).json()["deletions"]
-        check("a platform administrator can read the record", any(d["tenant_id"] == org.id for d in listing))
+        check("a platform administrator can read the record", any(d["original_tenant_id"] == org.id for d in listing))
         check("a member of another organisation cannot",
               api("GET", "/lifecycle/deletions", headers=bystander.bearer("member")).status_code == 403)
         with db() as conn:
             before = conn.execute("select count(*) as n from tenant_deletion_record").fetchone()["n"]
-            conn.execute("delete from tenant_deletion_record where tenant_id = %s", (org.id,))
-            conn.execute("update tenant_deletion_record set purged_by = 'x' where tenant_id = %s", (org.id,))
+            conn.execute("delete from tenant_deletion_record where original_tenant_id = %s", (org.id,))
+            conn.execute("update tenant_deletion_record set purged_by = 'x' where original_tenant_id = %s", (org.id,))
+            conn.execute("update tenant_deletion_record set audit_kept_until = now() where original_tenant_id = %s", (org.id,))
             after = conn.execute("select count(*) as n from tenant_deletion_record where purged_by = 'x'").fetchone()["n"]
             now = conn.execute("select count(*) as n from tenant_deletion_record").fetchone()["n"]
-        check("the record cannot be deleted or changed", now == before and after == 0, f"{before} -> {now}, changed {after}")
+        check("the record cannot be deleted or changed, retention date included", now == before and after == 0, f"{before} -> {now}, changed {after}")
 
         heading("Nothing else was touched")
         check("the organisation that was only beside it keeps its data", versions(bystander.id) == 1 and bucket_exists(keep["bucket"]))

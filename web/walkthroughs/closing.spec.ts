@@ -82,16 +82,16 @@ test("capture: an organisation is closed, held for a legal matter, then deleted"
   await page.goto("/closing");
   await expect(page.getByTestId("closing-status")).toContainText("Open");
   await expect(page.getByTestId("closing-stages")).toBeVisible();
-  await shot(page, "dunmore-opens-closing-the-organisation");
+  await shot(page, "dunmore-opens-closing-down-the-organisation");
 
   await page.getByTestId("close-organisation").click();
   await page.getByTestId("confirm-dialog-reason").fill(REASON);
   await shot(page, "dunmore-says-why");
 
   await page.getByTestId("confirm-dialog-confirm").click();
-  await expect(page.getByTestId("closing-status")).toContainText("Being closed");
+  await expect(page.getByTestId("closing-status")).toContainText("Closing down");
   await expect(page.getByTestId("closing-banner")).toBeVisible();
-  await shot(page, "the-clinic-is-being-closed");
+  await shot(page, "the-clinic-is-closing-down");
 
   // ---- Part two: a member can read, and cannot stop it ----------------------
   await loginAs(page, MEMBER);
@@ -108,7 +108,7 @@ test("capture: an organisation is closed, held for a legal matter, then deleted"
   // ---- Part three: the 15 days pass, and the clinic's people can do nothing -
   advance("--end-retiring");
   await loginAs(page, CUSTODIAN);
-  await expect(page.getByTestId("closing-notice")).toContainText("Closing");
+  await expect(page.getByTestId("closing-notice")).toContainText("Closed to its people");
   await shot(page, "dunmore-finds-the-clinic-closed");
 
   // ---- Part four: a platform administrator records a legal hold -------------

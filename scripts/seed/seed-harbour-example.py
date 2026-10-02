@@ -26,6 +26,7 @@ API = f"http://localhost:{PORTS['munitas_api_http']}"
 TENANT = "harbour"
 DEPARTMENT = "Patient Records"
 CUSTODIAN = "cust-dunmore"
+ANALYST = "ana-quinn"
 
 LETTERS = {
     "appointment-reminders": {
@@ -48,6 +49,29 @@ def department_id(session: dict) -> str:
     raise SystemExit(f"department {DEPARTMENT!r} is missing from {TENANT!r}. Apply infra/postgres/seed-harbour.sql first.")
 
 
+def history(session: dict) -> None:
+    """A little history in the audit trail, which is what a deletion keeps for seven years: Quinn asked
+    Dunmore for access to the reminders and was granted it. Skipped
+    when Quinn has already asked, so running this twice adds nothing."""
+    versions = httpx.get(f"{API}/dataset-versions", params={"tenant_id": TENANT}, headers=session, timeout=30.0).json()
+    first_version = sorted(versions, key=lambda v: v["storage_prefix"])[0]["dataset_version_id"]
+    existing = httpx.get(f"{API}/lease-requests", params={"tenant_id": TENANT}, headers=session, timeout=30.0)
+    if existing.status_code == 200 and any(r["principal"] == ANALYST for r in existing.json().get("lease_requests", [])):
+        print("  Quinn has already asked for access. Nothing to add.")
+        return
+    quinn = bearer_for(ANALYST)
+    asked = httpx.post(f"{API}/leases/requests", timeout=30.0, headers=quinn, json={
+        "tenant_id": TENANT, "principal": ANALYST, "dataset_version_id": first_version,
+        "purpose": "checking that reminder letters were sent", "ttl_hours": 72,
+        "justification": "Matching the reminders against the appointment book for the final audit.",
+    })
+    expect(asked, 201, doing="Quinn asking for access to the reminders")
+    approved = httpx.post(f"{API}/leases/requests/{asked.json()['id']}/approve", timeout=30.0,
+                          headers=session, json={"approver": CUSTODIAN})
+    expect(approved, 201, doing="Dunmore approving the request")
+    print("  Quinn asked for access to the reminders and was approved")
+
+
 def main() -> int:
     try:
         httpx.get(f"{API}/health", timeout=10.0).raise_for_status()
@@ -57,7 +81,8 @@ def main() -> int:
     session = bearer_for(CUSTODIAN)
     existing = httpx.get(f"{API}/datasets", params={"tenant_id": TENANT}, headers=session, timeout=30.0).json()
     if existing.get("total"):
-        print(f"{TENANT} already holds {existing['total']} datasets. Nothing to do.")
+        print(f"{TENANT} already holds {existing['total']} datasets.")
+        history(session)
         return 0
 
     department = department_id(session)
@@ -77,6 +102,8 @@ def main() -> int:
         sealed = httpx.post(f"{API}/datasets/{dataset_id}/seal", timeout=60.0, headers=session)
         expect(sealed, 201, doing=f"sealing {name}")
         print(f"  {name}: {len(files)} files, sealed")
+
+    history(session)
     return 0
 
 

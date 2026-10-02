@@ -44,7 +44,7 @@ export function Standing({ status }: { status: ClosingStatus }) {
   if (status.phase === "retiring") {
     return (
       <p>
-        Closing started on {when(status.retired_at)}
+        Closing down started on {when(status.retired_at)}
         {status.requested_by ? `, asked for by ${status.requested_by}` : ""}. People can read until{" "}
         <strong>{when(status.retiring_until)}</strong> ({status.days_left} days left) and may cancel until then.
         After that, nobody can do anything until <strong>{when(status.closing_until)}</strong>, when everything
@@ -86,23 +86,23 @@ export function Closing() {
     <>
       <Section
         level="page"
-        title="Closing the organisation"
+        title="Closing down the organisation"
         description={
           isAdmin
-            ? "Closing an organisation takes two stages, and ends with everything inside it being deleted."
-            : `Closing ${status.tenant_id} takes two stages, and ends with everything inside it being deleted.`
+            ? "Closing down an organisation takes two stages, and ends with everything inside it being deleted."
+            : `Closing down ${status.tenant_id} takes two stages, and ends with everything inside it being deleted.`
         }
       >
         <ol data-testid="closing-stages" className="grid gap-3 text-sm md:grid-cols-3">
           <li className="rounded border border-slate-200 bg-white p-3">
-            <div className="font-medium">1. Being closed, 15 days</div>
+            <div className="font-medium">1. Closing down, 15 days</div>
             <p className="mt-1 text-slate-600">
               Nothing can be added or changed. People can still read what the organisation holds, and a data
-              custodian can cancel the closing.
+              custodian can cancel the closing down.
             </p>
           </li>
           <li className="rounded border border-slate-200 bg-white p-3">
-            <div className="font-medium">2. Closing, 15 days</div>
+            <div className="font-medium">2. Closed to its people, 15 days</div>
             <p className="mt-1 text-slate-600">
               Nobody in the organisation can do anything. Only a platform administrator can act, and only to
               place a legal hold.
@@ -135,10 +135,10 @@ export function Closing() {
                 onClick={() => setAsking(status.tenant_id)}
                 className="rounded bg-red-700 px-3 py-1.5 text-sm font-medium text-white"
               >
-                Close this organisation
+                Close down this organisation
               </button>
               <p className="mt-2 text-xs text-slate-500">
-                Only a data custodian of the organisation, or a platform administrator, may close it.
+                Only a data custodian of the organisation, or a platform administrator, may close it down.
               </p>
             </div>
           )}
@@ -154,13 +154,13 @@ export function Closing() {
                 }
                 className="rounded bg-slate-800 px-3 py-1.5 text-sm font-medium text-white disabled:bg-slate-300"
               >
-                {cancel.isPending ? "Cancelling" : "Cancel the closing"}
+                {cancel.isPending ? "Cancelling" : "Cancel the closing down"}
               </button>
             </div>
           )}
           {cancel.error && (
             <div className="mt-3">
-              <Failure error={cancel.error} what="the closing" verb="cancel" />
+              <Failure error={cancel.error} what="the closing down" verb="cancel" />
             </div>
           )}
         </div>
@@ -203,15 +203,15 @@ export function Closing() {
 
       <ConfirmDialog
         open={asking !== null}
-        title={`Close ${asking ?? ""}?`}
+        title={`Close down ${asking ?? ""}?`}
         description={
           "Nothing is deleted yet. For 15 days people can read what the organisation holds and cancel. " +
           "For another 15 days nobody can do anything. Then everything inside it is deleted, unless a " +
           "legal hold stands over it."
         }
-        confirmLabel="Close it"
+        confirmLabel="Close it down"
         destructive
-        reasonLabel="Why it is being closed, which is recorded"
+        reasonLabel="Why it is being closed down, which is recorded"
         onCancel={() => setAsking(null)}
         onConfirm={(reason) => {
           const target = asking!;
@@ -220,14 +220,14 @@ export function Closing() {
             {
               onSuccess: () => {
                 setAsking(null);
-                notify(`${target} is being closed.`);
+                notify(`${target} is closing down.`);
               },
               onError: () => setAsking(null),
             },
           );
         }}
       />
-      {retire.error && <Failure error={retire.error} what="this organisation" verb="close" />}
+      {retire.error && <Failure error={retire.error} what="this organisation" verb="close down" />}
     </>
   );
 }
@@ -263,7 +263,7 @@ function Row({ org, onClose }: { org: OrganisationRow; onClose: () => void }) {
       <td className="p-3 align-top">
         {org.phase === "active" && (
           <button type="button" onClick={onClose} className="rounded border border-red-300 px-2 py-1 text-xs text-red-800">
-            Close
+            Close down
           </button>
         )}
         {org.phase === "retiring" && (
@@ -275,7 +275,7 @@ function Row({ org, onClose }: { org: OrganisationRow; onClose: () => void }) {
             }
             className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-800"
           >
-            Cancel closing
+            Cancel closing down
           </button>
         )}
       </td>

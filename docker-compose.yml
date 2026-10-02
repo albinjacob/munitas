@@ -293,6 +293,8 @@ services:
       S3_PIPELINE_SECRET: ${S3_PIPELINE_SECRET:-}
       TEMPORAL_ADDRESS: temporal:7233
       MUNITAS_KRATOS_PUBLIC_URL: http://kratos:4433
+      # Only a purge uses this, to remove the sign-in accounts of the organisation it deletes.
+      MUNITAS_KRATOS_ADMIN_URL: http://kratos:4434
       # Iceberg (platform/api/app/iceberg.py). Newer S3 clients, pyarrow's
       # among them, send an upload with its checksum in a trailer by default,
       # and SeaweedFS stores the transfer framing as part of the object

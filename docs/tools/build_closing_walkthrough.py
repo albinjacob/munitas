@@ -25,51 +25,53 @@ CLOCK = (
 
 STEPS = [
     {
-        "file": "01-dunmore-opens-closing-the-organisation.png", "actor": "dunmore",
-        "act": ("PART ONE", "The data custodian closes the clinic",
+        "file": "01-dunmore-opens-closing-down-the-organisation.png", "actor": "dunmore",
+        "act": ("PART ONE", "The data custodian closes the clinic down",
                 "Harbour Clinic is a small clinic that is closing down. It holds two datasets of letters in its "
                 "one department, Patient Records. A dataset is the platform&rsquo;s name for a registered, "
                 "named collection of records. The platform calls the clinic <code>harbour</code> on screen. "
                 "Dunmore is the data custodian of Patient Records, which means that Dunmore is the person the "
                 "department trusts to decide who may read its data."),
-        "title": "Dunmore opens the page about closing the organisation",
-        "screen": "Closing the organisation &middot; /closing",
-        "text": "Closing an organisation means ending its use of Munitas in stages, and the page explains the "
-                "three stages before it offers anything. In the first stage, 15 days long, the clinic takes no "
-                "changes but its people can still read, and a data custodian can cancel. In the second stage, "
-                "also 15 days long, nobody in the clinic can do anything. In the third, everything inside the "
-                "clinic is deleted, unless a legal hold stands over it. A legal hold is an order to keep "
-                "records, and it appears in part four.",
+        "title": "Dunmore opens the page about closing down the organisation",
+        "screen": "Closing down the organisation &middot; /closing",
+        "text": "Closing down an organisation means ending its use of Munitas in stages, and the page "
+                "explains the three stages before it offers anything. In the first stage, called Closing down "
+                "and 15 days long, the clinic takes no changes but its people can still read, and a data "
+                "custodian can cancel. In the second stage, called Closed to its people and also 15 days long, "
+                "nobody in the clinic can do anything. In the third, everything inside the clinic is deleted, "
+                "unless a legal hold stands over it. A legal hold is an order to keep records, and it appears "
+                "in part four.",
         "note": "Under <strong>Where harbour stands</strong> a green <strong>Open</strong> label says "
                 "<strong>The organisation is running normally</strong>. The one button is the red "
-                "<strong>Close this organisation</strong>, with a line below it naming who may press it: a data "
+                "<strong>Close down this organisation</strong>, with a line below it naming who may press it: a data "
                 "custodian of the organisation, or a platform administrator.",
     },
     {
         "file": "02-dunmore-says-why.png", "actor": "dunmore",
-        "title": "Dunmore writes down why the clinic is closing",
-        "screen": "Closing the organisation &middot; the Close harbour? box",
+        "title": "Dunmore writes down why the clinic is closing down",
+        "screen": "Closing down the organisation &middot; the Close down harbour? box",
         "text": "Pressing the button opens a box that asks for a reason before anything happens. The reason is "
-                "stored with the closing and is shown to everybody in the clinic afterwards, so that nobody "
-                "has to guess why the organisation was closed. Nothing is deleted by this step.",
-        "note": "The box is titled <strong>Close harbour?</strong> and repeats the three stages in one "
+                "stored with the closing down and is shown to everybody in the clinic afterwards, so that "
+                "nobody has to guess why the organisation was closed. Nothing is deleted by this step.",
+        "note": "The box is titled <strong>Close down harbour?</strong> and repeats the three stages in one "
                 "paragraph. The reason field reads <strong>Harbour Clinic is winding down. The last patient was "
-                "seen on 30 September.</strong> and the red <strong>Close it</strong> button is now usable.",
+                "seen on 30 September.</strong> and the red <strong>Close it down</strong> button is now "
+                "usable.",
     },
     {
-        "file": "03-the-clinic-is-being-closed.png", "actor": "dunmore",
-        "title": "The clinic is now being closed, and Dunmore can still cancel",
-        "screen": "Closing the organisation &middot; /closing",
-        "text": "The status changes from Open to Being closed. From this moment the clinic takes no changes: "
+        "file": "03-the-clinic-is-closing-down.png", "actor": "dunmore",
+        "title": "The clinic is now closing down, and Dunmore can still cancel",
+        "screen": "Closing down the organisation &middot; /closing",
+        "text": "The status changes from Open to Closing down. From this moment the clinic takes no changes: "
                 "nothing can be added, registered or approved, because a write of any kind is refused by the "
                 "database. Reading still works until the first date. Because this is the first stage, the "
                 "page offers Dunmore a button to cancel.",
-        "note": "A yellow banner across the top reads <strong>This organisation is being closed</strong> and "
+        "note": "A yellow banner across the top reads <strong>This organisation is closing down</strong> and "
                 "gives <strong>October 17, 2026 (15 days left)</strong> as the last day to cancel. The status "
-                "box says <strong>Closing started on October 2, 2026, asked for by Dunmore</strong> and names "
-                "<strong>November 1, 2026</strong> as the day everything inside is deleted. The "
-                "<strong>Cancel the closing</strong> button is there, and a notice at the bottom right reads "
-                "<strong>harbour is being closed</strong>.",
+                "box says <strong>Closing down started on October 2, 2026, asked for by Dunmore</strong> and "
+                "names <strong>November 1, 2026</strong> as the day everything inside is deleted. The "
+                "<strong>Cancel the closing down</strong> button is there, and a notice at the bottom right "
+                "reads <strong>harbour is closing down</strong>.",
     },
     {
         "file": "04-quinn-sees-the-banner.png", "actor": "quinn",
@@ -79,25 +81,25 @@ STEPS = [
         "title": "Quinn sees the same yellow banner on the home page",
         "screen": "Home &middot; /",
         "text": "Everybody in the clinic is told that it is being closed, not only the person who started it. "
-                "Quinn has no menu entry for closing, because that entry is shown only to data custodians, "
+                "Quinn has no menu entry for closing down, because that entry is shown only to data custodians, "
                 "data protection officers and platform administrators. The banner carries a link instead.",
-        "note": "The banner reads <strong>This organisation is being closed</strong> with the same last day to "
+        "note": "The banner reads <strong>This organisation is closing down</strong> with the same last day to "
                 "cancel, <strong>October 17, 2026</strong>, and ends with a link <strong>See where it "
-                "stands</strong>. In the box at the top left the clinic is marked <strong>being closed</strong> "
+                "stands</strong>. In the box at the top left the clinic is marked <strong>closing down</strong> "
                 "and the role is <strong>Analyst</strong>.",
     },
     {
         "file": "05-quinn-is-refused.png", "actor": "quinn",
-        "title": "Quinn presses Cancel the closing and is refused",
-        "screen": "Closing the organisation &middot; /closing",
-        "text": "Quinn follows the link and reaches the status page, which shows the same Cancel the closing "
+        "title": "Quinn presses Cancel the closing down and is refused",
+        "screen": "Closing down the organisation &middot; /closing",
+        "text": "Quinn follows the link and reaches the status page, which shows the same Cancel the closing down "
                 "button. The page draws the button for everybody, because the platform decides when it is "
                 "pressed and not the page. The platform checks the role against its access rules and answers "
                 "with the reason.",
-        "note": "A red panel under the button reads <strong>Could not cancel the closing</strong>, and gives one "
-                "reason: <strong>only a data custodian of the organisation, or a platform administrator, may "
-                "cancel its closing</strong>. Nothing on the page has changed, and the status still reads "
-                "<strong>Being closed</strong>.",
+        "note": "A red panel under the button reads <strong>Could not cancel the closing down</strong>, and "
+                "gives one reason: <strong>only a data custodian of the organisation, or a platform "
+                "administrator, may cancel its closing down</strong>. Nothing on the page has changed, and "
+                "the status still reads <strong>Closing down</strong>.",
     },
     {
         "file": "06-dunmore-finds-the-clinic-closed.png", "actor": "dunmore",
@@ -105,11 +107,12 @@ STEPS = [
                 "Nobody cancelled. " + CLOCK),
         "title": "Dunmore signs in and finds a notice instead of the usual screens",
         "screen": "Closing notice &middot; shown in place of every other screen",
-        "text": "The first stage has ended, so the clinic is now in the second stage, called Closing. The "
+        "text": "The first stage has ended, so the clinic is now in the second stage, called Closed to its people. The "
                 "platform refuses every request from the clinic&rsquo;s people from this point, including "
                 "the request to cancel. The console therefore shows one notice and nothing else, instead of a "
                 "menu whose every link would be refused.",
-        "note": "The heading reads <strong>harbour is closing</strong>, with a red <strong>Closing</strong> "
+        "note": "The heading reads <strong>harbour has closed down to its people</strong>, with a red "
+                "<strong>Closed to its people</strong> "
                 "label. The status line reads <strong>The time to cancel ended on October 2, 2026. Everything "
                 "inside is deleted on October 17, 2026 (15 days left)</strong>, which are earlier dates than "
                 "before because of the clock move described above. The only control is <strong>Sign "
@@ -124,14 +127,14 @@ STEPS = [
                 "and goes to a platform administrator. A platform administrator is a person who runs Munitas "
                 "itself, and who has no say over who may read any department&rsquo;s data. Priya is one."),
         "title": "Priya sees every organisation and where each one stands",
-        "screen": "Closing the organisation &middot; /closing, the table of every organisation",
+        "screen": "Closing down the organisation &middot; /closing, the table of every organisation",
         "text": "A platform administrator sees the clinic as one row of a table that covers every "
                 "organisation. The table shows dates and states only, and never what an organisation holds. "
                 "Harbour Clinic is already in the second stage.",
-        "note": "The row for <strong>harbour</strong> reads <strong>Closing</strong> in red, with "
+        "note": "The row for <strong>harbour</strong> reads <strong>Closed to its people</strong> in red, with "
                 "<strong>Deleted on October 17, 2026</strong> and <strong>None</strong> under Legal hold. The "
                 "rows for <strong>finance</strong> and <strong>health</strong> read <strong>Open</strong> and "
-                "each carries a <strong>Close</strong> button.",
+                "each carries a <strong>Close down</strong> button.",
     },
     {
         "file": "08-priya-fills-in-the-notice.png", "actor": "priya",
@@ -239,7 +242,7 @@ STEPS = [
         "act": ("PART SEVEN", "The time is up, and the hold stands",
                 "The second period ends. " + CLOCK),
         "title": "Both periods have ended, and nothing is deleted",
-        "screen": "Closing the organisation &middot; /closing, the table of every organisation",
+        "screen": "Closing down the organisation &middot; /closing, the table of every organisation",
         "text": "Every few minutes the platform runs a sweep, which is a check for organisations whose time "
                 "is up. It deletes an organisation only when both periods have ended and no legal hold "
                 "stands. A sweep ran after the dates moved, and it deleted nothing, because the hold is in "
@@ -265,10 +268,10 @@ STEPS = [
     {
         "file": "17-the-closing-period-starts-again.png", "actor": "ravi",
         "title": "The closing period starts again",
-        "screen": "Closing the organisation &middot; /closing, the table of every organisation",
+        "screen": "Closing down the organisation &middot; /closing, the table of every organisation",
         "text": "The clinic is back in the second stage, with a new deletion date 15 days after the release. "
                 "No hold stands, so the sweep will delete the clinic when that date arrives.",
-        "note": "The row for <strong>harbour</strong> reads <strong>Closing</strong> in red, with "
+        "note": "The row for <strong>harbour</strong> reads <strong>Closed to its people</strong> in red, with "
                 "<strong>Deleted on October 17, 2026</strong> and <strong>None</strong> under Legal hold. The "
                 "date matches the 15 days that the release added.",
     },
@@ -281,14 +284,19 @@ STEPS = [
         "text": "The sweep deletes everything inside the clinic: its datasets, its sealed versions, its "
                 "departments, its people and its stored files. A sealed version is a dataset state that can "
                 "never be edited, and the platform allows its deletion only inside a purge that the "
-                "database itself has confirmed as due, so nothing else can be removed this way. What stays "
-                "is one short record. It names no contact detail and holds none of the clinic&rsquo;s "
-                "records.",
-        "note": "Under <strong>Deleted organisations</strong> the entry for <strong>harbour</strong> reads "
-                "<strong>Closing was asked for by Dunmore on October 2, 2026, because: Harbour Clinic is "
-                "winding down</strong>, and <strong>Removed 24 records in 10 kinds, and 5 stored "
-                "files</strong>. The last line, <strong>Legal holds that applied: HC-2026-0417 (Aldous and "
-                "Brennan LLP, for the claimant, released)</strong>, shows the hold by its number and issuer.",
+                "database itself has confirmed as due, so nothing else can be removed this way. The clinic&rsquo;s "
+                "sign-in accounts are removed too, so nobody can sign in as a person of the clinic any more. "
+                "Two things stay. One is a short record, which names no contact detail and holds none of the "
+                "clinic&rsquo;s records. The other is the audit trail, the list of who was allowed to read "
+                "what, which is kept for seven years and then removed. Both are filed under a new name made "
+                "from the old one, so that a later organisation can be called harbour again.",
+        "note": "Under <strong>Deleted organisations</strong> the entry for <strong>harbour</strong> begins "
+                "with the line <strong>Filed under</strong> and the new name, which starts with "
+                "<code>harbour~deleted-</code>. It then reads <strong>Closing down was asked for by Dunmore "
+                "on October 2, 2026, because: Harbour Clinic is winding down</strong>, <strong>Removed 3 "
+                "sign-in accounts</strong>, and <strong>4 audit rows of who read what are kept until October "
+                "2, 2033, and then removed</strong>. The last line, <strong>Legal holds that applied: HC-2026-0417 (Aldous and Brennan "
+                "LLP, for the claimant, released)</strong>, shows the hold by its number and issuer.",
     },
 ]
 
@@ -303,8 +311,8 @@ ACTORS = {
 PAGE = Page(
     slug="closing-an-organisation", org="harbour",
     title=series_entry("closing-an-organisation")["title"],
-    eyebrow="Harbour Clinic &middot; Closing an organisation",
-    lede="A small clinic is closing. Its data custodian starts the closing, and an ordinary member is refused when "
+    eyebrow="Harbour Clinic &middot; Closing down an organisation",
+    lede="A small clinic is closing down. Its data custodian starts the closing down, and an ordinary member is refused when "
          "trying to stop it. After 15 days nobody in the clinic can do anything. A law firm asks that the records "
          "be kept, so one platform administrator records a legal hold and a different one approves it. Everything "
          "inside the clinic is deleted only after the hold is released, and a short record says that it was.",

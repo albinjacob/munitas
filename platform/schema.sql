@@ -2273,8 +2273,35 @@ create table if not exists tenant_deletion_record (
   buckets_left        jsonb not null default '[]'::jsonb
 );
 
+-- What a purge keeps about the audit trail, and about the name.
+--
+-- The audit rows of a deleted organisation are kept for seven years (a decision about who read what is
+-- evidence for a long time after the data itself is gone), and then removed. They are re-labelled so
+-- that a new organisation can take the old name again without seeing them: `tenant_id` is now the
+-- name the organisation was kept under, `harbour~deleted-20261002-a1b2`, and `original_tenant_id` says
+-- what it was called. The record and the audit rows carry the same kept-under name, so each leads to
+-- the other.
+alter table tenant_deletion_record add column if not exists original_tenant_id text;
+alter table tenant_deletion_record add column if not exists audit_kept_until timestamptz;
+alter table tenant_deletion_record add column if not exists audit_rows_kept int not null default 0;
+alter table tenant_deletion_record add column if not exists audit_removed_at timestamptz;
+alter table tenant_deletion_record add column if not exists identities_removed int not null default 0;
+create index if not exists tenant_deletion_record_original_idx on tenant_deletion_record (original_tenant_id);
+
+-- A record is never edited, with one exception: when the audit rows reach the end of their seven years
+-- and are removed, that day is written on it.
 drop rule if exists tenant_deletion_record_no_update on tenant_deletion_record;
-create rule tenant_deletion_record_no_update as on update to tenant_deletion_record do instead nothing;
+create rule tenant_deletion_record_no_update as on update to tenant_deletion_record
+  where (new.id, new.tenant_id, new.original_tenant_id, new.retire_reason, new.retire_requested_by,
+         new.retired_at, new.closing_ended_at, new.purged_at, new.purged_by, new.holds, new.rows_removed,
+         new.files_removed, new.buckets_removed, new.buckets_left, new.audit_kept_until,
+         new.audit_rows_kept, new.identities_removed)
+        is distinct from
+        (old.id, old.tenant_id, old.original_tenant_id, old.retire_reason, old.retire_requested_by,
+         old.retired_at, old.closing_ended_at, old.purged_at, old.purged_by, old.holds, old.rows_removed,
+         old.files_removed, old.buckets_removed, old.buckets_left, old.audit_kept_until,
+         old.audit_rows_kept, old.identities_removed)
+  do instead nothing;
 drop rule if exists tenant_deletion_record_no_delete on tenant_deletion_record;
 create rule tenant_deletion_record_no_delete as on delete to tenant_deletion_record do instead nothing;
 
@@ -2351,3 +2378,14 @@ create rule lifecycle_event_no_delete as
   where not tenant_is_being_purged(old.tenant_id)
     and not exists (select 1 from tenant t where t.id = old.tenant_id and t.purpose = 'scratch')
   do instead nothing;
+
+
+-- An organisation closed by the old script has no dates, which made it a state of its own that nothing
+-- ever deleted. Nothing is left in it: each gets one day, and then the same sweep deletes it as any other.
+-- Applied every time this file is, and a no-op once there is nothing undated left.
+update tenant
+   set retire_reason = coalesce(retire_reason, 'Closed before closing dates were recorded; removal set to one day'),
+       retired_at = coalesce(retired_at, now()),
+       retiring_until = now(),
+       closing_until = now() + interval '1 day'
+ where purpose = 'retired' and retiring_until is null and purged_at is null;

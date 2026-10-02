@@ -888,11 +888,11 @@ lifecycle_actor_ok if {
 	approver_roles[role]
 }
 
-retire_reason contains "only a data custodian of the organisation, or a platform administrator, may close it" if {
+retire_reason contains "only a data custodian of the organisation, or a platform administrator, may close it down" if {
 	not lifecycle_actor_ok
 }
 
-retire_reason contains "closing an organisation needs a reason, which is recorded with it" if {
+retire_reason contains "closing down an organisation needs a reason, which is recorded with it" if {
 	count(trim_space(object.get(input, "reason", ""))) == 0
 }
 
@@ -905,7 +905,7 @@ default may_cancel_retirement := false
 
 may_cancel_retirement if lifecycle_actor_ok
 
-cancel_reason contains "only a data custodian of the organisation, or a platform administrator, may cancel its closing" if {
+cancel_reason contains "only a data custodian of the organisation, or a platform administrator, may cancel its closing down" if {
 	not lifecycle_actor_ok
 }
 

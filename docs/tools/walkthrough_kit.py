@@ -157,7 +157,7 @@ WORDS = {
                               "decide it."),
     "open_for_annotation": ("Open for annotation", "An access level above Under review, where people who label data "
                                                    "may work with it."),
-    "closing": ("Closing an organisation", "Ending an organisation&rsquo;s use of Munitas in two stages of 15 days. In the "
+    "closing": ("Closing down an organisation", "Ending an organisation&rsquo;s use of Munitas in two stages of 15 days. In the "
                                            "first its people can read and may cancel. In the second they can do "
                                            "nothing. When both end, everything inside the organisation is deleted."),
     "legal_hold": ("Legal hold", "An instruction from a court, a regulator or a law firm to keep an organisation&rsquo;s "

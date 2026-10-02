@@ -53,7 +53,7 @@ CLOSED_TO_PEOPLE = ("closing", "purge_due", "purged")
 def closed_refusal(phase: str | None, roles: list[str]) -> str | None:
     """The sentence that says why this person cannot act, or None when they can."""
     if phase in CLOSED_TO_PEOPLE and "platform_admin" not in roles:
-        return ("this organisation is closing, so nothing can be done in it any more. "
+        return ("this organisation is closing down, so nothing can be done in it any more. "
                 "Only a platform administrator can act on it now")
     return None
 

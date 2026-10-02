@@ -135,18 +135,13 @@ def main() -> int:
                 json={"tenant_id": "canary", "reason": "should be refused: canary is not a customer"})
         check("only a customer organisation can be closed this way", r.status_code == 409, f"{r.status_code} {reasons(r)}")
 
-        heading("An organisation closed before dates were recorded is left alone")
+        heading("No organisation is left closed without a deadline")
         with db() as conn:
-            legacy = conn.execute("select id from tenant where purpose = 'retired' and retiring_until is null "
-                                  "and purged_at is null limit 1").fetchone()
-        if legacy:
-            with db() as conn:
-                allowed = conn.execute("select tenant_purge_allowed(%s) as a, tenant_phase(%s) as p",
-                                       (legacy["id"], legacy["id"])).fetchone()
-            check("it reads as retired and is never due for deletion", allowed["p"] == "retired" and allowed["a"] is False,
-                  f"{legacy['id']}: {allowed['p']}")
-            r = api("POST", "/lifecycle/organisation/cancel", headers=admin, json={"tenant_id": legacy["id"]})
-            check("and it cannot be cancelled here", r.status_code == 409, reasons(r))
+            undated = conn.execute("select id from tenant where purpose = 'retired' and retiring_until is null "
+                                   "and purged_at is null and id not like 'verify-%%'").fetchall()
+        check("every organisation closed by the old script was given one day, and so will be deleted",
+              undated == [], ", ".join(r["id"] for r in undated)[:120])
+
     finally:
         drop_org(org)
         drop_org(other)

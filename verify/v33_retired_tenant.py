@@ -82,7 +82,8 @@ def make_retired_fixture() -> dict:
             (person_id, tenant_id, version["id"]),
         )
         conn.execute(
-            "update tenant set purpose = 'retired' where id = %s", (tenant_id,)
+            "update tenant set purpose = 'retired', retired_at = now(), retiring_until = now(), "
+            "closing_until = now() + interval '1 day' where id = %s", (tenant_id,)
         )
 
     return {

@@ -112,10 +112,10 @@ if ($LASTEXITCODE -ne 0) { throw "scripts/admin/nuke-tenant.py failed; nothing f
 # Harbour is deleted by the closing walkthrough, and a deletion leaves a record that nothing may delete.
 # Rebuilding the demonstration organisation under the same name is a deliberate reset, so the earlier
 # record of its deletion is cleared inside one transaction, which puts the rule back whatever happens.
-# Only this organisation: any other record stays exactly as written.
+# Only this organisation: any other record, and its audit rows, stay exactly as written.
 if ($Tenant -eq "harbour") {
     Write-Host "    clearing the earlier record that harbour was deleted..."
-    Get-Scalar "begin; alter table tenant_deletion_record disable rule tenant_deletion_record_no_delete; delete from tenant_deletion_record where tenant_id = 'harbour'; alter table tenant_deletion_record enable rule tenant_deletion_record_no_delete; commit; select count(*) from tenant_deletion_record where tenant_id = 'harbour'" | Out-Null
+    Get-Scalar "begin; alter table tenant_deletion_record disable rule tenant_deletion_record_no_delete; delete from access_decision where tenant_id in (select tenant_id from tenant_deletion_record where original_tenant_id = 'harbour' or tenant_id = 'harbour'); delete from tenant_deletion_record where original_tenant_id = 'harbour' or tenant_id = 'harbour'; alter table tenant_deletion_record enable rule tenant_deletion_record_no_delete; commit; select count(*) from tenant_deletion_record where original_tenant_id = 'harbour'" | Out-Null
 }
 
 Write-Host "2/5 restoring the people from $($recipe.Sql)..."

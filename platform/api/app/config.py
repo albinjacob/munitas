@@ -191,3 +191,10 @@ HOLD_REVIEW_DAYS = int(os.environ.get("MUNITAS_HOLD_REVIEW_DAYS", "90"))
 # timer off (the sweep can still be run by hand), which a verification run uses
 # so a purge only happens when it asks for one.
 LIFECYCLE_SWEEP_SECONDS = int(os.environ.get("MUNITAS_LIFECYCLE_SWEEP_SECONDS", "300"))
+
+# What a purge keeps: the audit rows of a deleted organisation, for this many years, and then removes
+# (purge.py). Seven is the retention period the platform was asked to meet for records of who read what.
+AUDIT_RETENTION_YEARS = int(os.environ.get("MUNITAS_AUDIT_RETENTION_YEARS", "7"))
+# The identity provider's admin address. A purge removes the sign-in accounts of the people of the
+# organisation it deletes, and nothing else, so a deleted organisation leaves no working login behind.
+KRATOS_ADMIN_URL = os.environ.get("MUNITAS_KRATOS_ADMIN_URL", "http://kratos:4434")
