@@ -46,6 +46,7 @@ CONSOLE = "Munitas console"
 ORG_TITLES = {
     "health": "Health organisation",
     "finance": "Finance organisation",
+    "harbour": "Harbour Clinic",
 }
 
 SERIES = [
@@ -77,6 +78,13 @@ SERIES = [
      "summary": "An analyst is stopped at a restricted table of card transactions, asks the Fraud Operations "
                 "custodian for access, and makes a new dataset of large payments made abroad.",
      "you_see": "Python and the console side by side: a refusal, a lease, a plan, and a finished dataset"},
+    {"slug": "closing-an-organisation", "org": "harbour", "title": "Close down an organisation, and keep its records for a legal case",
+     "summary": "A small clinic is closing. Its data custodian starts the closing, and an ordinary member cannot "
+                "stop it. A law firm asks that the records be kept for a patient claim, two platform "
+                "administrators record and approve a legal hold, and everything is deleted only after the hold is "
+                "released.",
+     "you_see": "A closing with two stages, a refusal, a legal hold that needs two administrators, and a short "
+                "record of what was deleted"},
 ]
 
 
@@ -149,6 +157,17 @@ WORDS = {
                               "decide it."),
     "open_for_annotation": ("Open for annotation", "An access level above Under review, where people who label data "
                                                    "may work with it."),
+    "closing": ("Closing an organisation", "Ending an organisation&rsquo;s use of Munitas in two stages of 15 days. In the "
+                                           "first its people can read and may cancel. In the second they can do "
+                                           "nothing. When both end, everything inside the organisation is deleted."),
+    "legal_hold": ("Legal hold", "An instruction from a court, a regulator or a law firm to keep an organisation&rsquo;s "
+                                 "records and not delete them while a legal matter is open."),
+    "temp_custodian": ("Temporary custodian", "The person a legal hold names to answer for the kept records while the "
+                                               "hold stands. The person confirms having read the notice."),
+    "dpo": ("Data protection officer", "A person who watches how an organisation handles personal data. The role "
+                                       "decides nothing about who may read it."),
+    "sweep": ("Sweep", "The check that Munitas makes every few minutes for organisations whose time is up. It deletes "
+                       "an organisation only when both periods have ended and no legal hold stands."),
     "iceberg": ("Iceberg table", "An open way of storing a table that tools such as DuckDB can read directly."),
 }
 

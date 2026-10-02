@@ -22,6 +22,8 @@ ORG_BLURB = {
               "custodian in each department decides who may read it.",
     "finance": "A company that handles card payments. Fraud Operations and Risk and Compliance are separate "
                "departments with their own custodians.",
+    "harbour": "A small clinic that is closing down. One department, Patient Records, holds its letters, and two "
+               "platform administrators handle the legal hold that keeps them.",
 }
 
 
@@ -74,14 +76,15 @@ def render() -> str:
 <section class="before">
   <h2>How the walkthroughs work</h2>
   <ul>
-    <li>Two example organisations appear, a hospital group and a card payments company. Every name of a person,
-    patient and card holder in them is invented, and each organisation sees only its own data.</li>
+    <li>Three example organisations appear, a hospital group, a card payments company and a small clinic that is
+    closing. Every name of a person, patient and card holder in them is invented, and each organisation sees only
+    its own data.</li>
     <li>Every step names where it happens, shows the evidence, and then says what to look for in it. Each page
     starts with the words that it uses, so a page can be read on its own.</li>
     <li>The screens are captured live from a running Munitas, and the Python steps show the exact commands that
     were typed and what came back. Nothing is mocked.</li>
-    <li>New here? Start with the first walkthrough under Health organisation. The Finance organisation
-    walkthroughs tell similar stories with different people, so they can be read in any order.</li>
+    <li>New here? Start with the first walkthrough under Health organisation. The other walkthroughs tell
+    different stories with different people, so they can be read in any order.</li>
   </ul>
 </section>
 {groups()}

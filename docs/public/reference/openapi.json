@@ -252,6 +252,23 @@
         "title": "Body_upload_version_pipelines__pipeline_id__versions_upload_post",
         "type": "object"
       },
+      "CancelIn": {
+        "properties": {
+          "tenant_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
+          }
+        },
+        "title": "CancelIn",
+        "type": "object"
+      },
       "CatalogTokenIn": {
         "description": "What a person says when they ask for a token for their own tools.\n\nThe purpose is the same sentence a lease is approved for. A table opened\nwith this token is decided on it, exactly as a credential request is, so a\ntoken whose purpose is not the purpose of the person's lease opens nothing\nthat lease covers.",
         "properties": {
@@ -499,6 +516,24 @@
           "visibility_class"
         ],
         "title": "DatasetVersionIn",
+        "type": "object"
+      },
+      "DecideIn": {
+        "properties": {
+          "approve": {
+            "title": "Approve",
+            "type": "boolean"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "approve"
+        ],
+        "title": "DecideIn",
         "type": "object"
       },
       "Decision": {
@@ -804,6 +839,99 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HoldIn": {
+        "properties": {
+          "attorney_email": {
+            "title": "Attorney Email",
+            "type": "string"
+          },
+          "attorney_name": {
+            "title": "Attorney Name",
+            "type": "string"
+          },
+          "authority_reference": {
+            "title": "Authority Reference",
+            "type": "string"
+          },
+          "custodian_id": {
+            "title": "Custodian Id",
+            "type": "string"
+          },
+          "data_from": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data From"
+          },
+          "data_to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data To"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "issuing_authority": {
+            "title": "Issuing Authority",
+            "type": "string"
+          },
+          "matter_name": {
+            "title": "Matter Name",
+            "type": "string"
+          },
+          "matter_number": {
+            "title": "Matter Number",
+            "type": "string"
+          },
+          "notice_received_on": {
+            "format": "date",
+            "title": "Notice Received On",
+            "type": "string"
+          },
+          "preserve": {
+            "title": "Preserve",
+            "type": "string"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "triggering_event": {
+            "title": "Triggering Event",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "matter_name",
+          "matter_number",
+          "description",
+          "triggering_event",
+          "issuing_authority",
+          "authority_reference",
+          "attorney_name",
+          "attorney_email",
+          "notice_received_on",
+          "preserve",
+          "custodian_id"
+        ],
+        "title": "HoldIn",
         "type": "object"
       },
       "LeaseApprovalIn": {
@@ -1272,6 +1400,43 @@
           "registered_by"
         ],
         "title": "RegisterPipeline",
+        "type": "object"
+      },
+      "ReleaseIn": {
+        "properties": {
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "ReleaseIn",
+        "type": "object"
+      },
+      "RetireIn": {
+        "properties": {
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "RetireIn",
         "type": "object"
       },
       "RoleRequest": {
@@ -6197,6 +6362,522 @@
           }
         },
         "summary": "Revoke Lease"
+      }
+    },
+    "/lifecycle/deletions": {
+      "get": {
+        "description": "What was left behind by each purge, for a platform administrator.",
+        "operationId": "deletions_lifecycle_deletions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Deletions Lifecycle Deletions Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Deletions",
+        "tags": [
+          "lifecycle"
+        ]
+      }
+    },
+    "/lifecycle/events": {
+      "get": {
+        "description": "What happened to an organisation's closing, newest first.",
+        "operationId": "events_lifecycle_events_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Events Lifecycle Events Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Events",
+        "tags": [
+          "lifecycle"
+        ]
+      }
+    },
+    "/lifecycle/holds": {
+      "get": {
+        "description": "Holds for a platform administrator, or the holds a custodian answers for.\n\nA hold carries the notice's contact details, so nobody else sees it.",
+        "operationId": "holds_lifecycle_holds_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenant Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Holds Lifecycle Holds Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Holds",
+        "tags": [
+          "lifecycle"
+        ]
+      },
+      "post": {
+        "description": "Record a legal hold on a whole organisation. It takes effect when a different\nplatform administrator approves it, and in the meantime it already stops a purge.",
+        "operationId": "place_hold_lifecycle_holds_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HoldIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Place Hold Lifecycle Holds Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Place Hold",
+        "tags": [
+          "lifecycle"
+        ]
+      }
+    },
+    "/lifecycle/holds/{hold_id}/acknowledge": {
+      "post": {
+        "description": "The temporary custodian confirms that they have read the notice and will answer for the records.",
+        "operationId": "acknowledge_hold_lifecycle_holds__hold_id__acknowledge_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hold_id",
+            "required": true,
+            "schema": {
+              "title": "Hold Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Acknowledge Hold Lifecycle Holds  Hold Id  Acknowledge Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Acknowledge Hold",
+        "tags": [
+          "lifecycle"
+        ]
+      }
+    },
+    "/lifecycle/holds/{hold_id}/decide": {
+      "post": {
+        "description": "Approve or decline a hold that a different platform administrator recorded.",
+        "operationId": "decide_hold_lifecycle_holds__hold_id__decide_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hold_id",
+            "required": true,
+            "schema": {
+              "title": "Hold Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecideIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Decide Hold Lifecycle Holds  Hold Id  Decide Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Decide Hold",
+        "tags": [
+          "lifecycle"
+        ]
+      }
+    },
+    "/lifecycle/holds/{hold_id}/release": {
+      "post": {
+        "description": "End a hold that is in force. The closing period starts again, so a release\nmade by mistake still leaves time before anything is deleted.",
+        "operationId": "release_hold_lifecycle_holds__hold_id__release_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hold_id",
+            "required": true,
+            "schema": {
+              "title": "Hold Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReleaseIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Release Hold Lifecycle Holds  Hold Id  Release Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Release Hold",
+        "tags": [
+          "lifecycle"
+        ]
+      }
+    },
+    "/lifecycle/organisation": {
+      "get": {
+        "description": "Where one organisation is in its closing. Open to its own people even while\nit is closing, because it is how they find out why they can do nothing.",
+        "operationId": "organisation_status_lifecycle_organisation_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenant Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Organisation Status Lifecycle Organisation Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Organisation Status",
+        "tags": [
+          "lifecycle"
+        ]
+      }
+    },
+    "/lifecycle/organisation/cancel": {
+      "post": {
+        "description": "Cancel a retirement while the retiring period is still running.",
+        "operationId": "cancel_lifecycle_organisation_cancel_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Cancel Lifecycle Organisation Cancel Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel",
+        "tags": [
+          "lifecycle"
+        ]
+      }
+    },
+    "/lifecycle/organisation/retire": {
+      "post": {
+        "description": "Start closing an organisation. Nothing is deleted yet: its people can read\nfor the retiring period and cancel, then there is a closing period after that.",
+        "operationId": "retire_lifecycle_organisation_retire_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetireIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Retire Lifecycle Organisation Retire Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retire",
+        "tags": [
+          "lifecycle"
+        ]
+      }
+    },
+    "/lifecycle/organisations": {
+      "get": {
+        "description": "Every organisation and where it is, for a platform administrator.\n\nDates and states only, never contents. An organisation closed before closing\nhad dates (nothing then deletes it) is left out unless `legacy` is set.",
+        "operationId": "organisations_lifecycle_organisations_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "legacy",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Legacy",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Organisations Lifecycle Organisations Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Organisations",
+        "tags": [
+          "lifecycle"
+        ]
+      }
+    },
+    "/lifecycle/sweep": {
+      "post": {
+        "description": "Do now what the timer does every few minutes. For a platform administrator.",
+        "operationId": "run_sweep_lifecycle_sweep_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Run Sweep Lifecycle Sweep Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Run Sweep",
+        "tags": [
+          "lifecycle"
+        ]
       }
     },
     "/lineage/{version_id}": {

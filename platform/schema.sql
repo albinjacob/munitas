@@ -2256,7 +2256,10 @@ create index if not exists lifecycle_event_tenant_idx on lifecycle_event (tenant
 -- records. Not tied to the organisation by a foreign key, and never changed or
 -- removed.
 create table if not exists tenant_deletion_record (
-  tenant_id           text primary key,
+  id                  bigserial primary key,
+  -- Not unique: an organisation deliberately rebuilt under the same name by an operator
+  -- (scripts/admin/nuke-tenant.py) and purged again has two records, which is true.
+  tenant_id           text not null,
   retire_reason       text,
   retire_requested_by text,
   retired_at          timestamptz,

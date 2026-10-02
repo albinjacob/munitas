@@ -166,9 +166,12 @@ def purge_tenant(tenant_id: str, purged_by: str) -> dict:
             if not conn.execute("select tenant_purge_allowed(%s) as ok", (tenant_id,)).fetchone()["ok"]:
                 raise PermissionError(f"{tenant_id} stopped being due for deletion before the purge began")
 
+            # The name, not the id: the person's directory row goes with the organisation, and an
+            # id that points at nothing says nothing to whoever reads the record later.
             tenant = conn.execute(
-                "select retire_reason, retire_requested_by, retired_at, closing_until "
-                "from tenant where id = %s", (tenant_id,)).fetchone()
+                "select t.retire_reason, coalesce(d.label, t.retire_requested_by) as retire_requested_by, "
+                "t.retired_at, t.closing_until from tenant t "
+                "left join directory d on d.id = t.retire_requested_by where t.id = %s", (tenant_id,)).fetchone()
             holds = [{
                 "matter_number": h["matter_number"], "issuing_authority": h["issuing_authority"],
                 "authority_reference": h["authority_reference"], "status": h["status"],

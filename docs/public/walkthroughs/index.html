@@ -254,14 +254,15 @@
 <section class="before">
   <h2>How the walkthroughs work</h2>
   <ul>
-    <li>Two example organisations appear, a hospital group and a card payments company. Every name of a person,
-    patient and card holder in them is invented, and each organisation sees only its own data.</li>
+    <li>Three example organisations appear, a hospital group, a card payments company and a small clinic that is
+    closing. Every name of a person, patient and card holder in them is invented, and each organisation sees only
+    its own data.</li>
     <li>Every step names where it happens, shows the evidence, and then says what to look for in it. Each page
     starts with the words that it uses, so a page can be read on its own.</li>
     <li>The screens are captured live from a running Munitas, and the Python steps show the exact commands that
     were typed and what came back. Nothing is mocked.</li>
-    <li>New here? Start with the first walkthrough under Health organisation. The Finance organisation
-    walkthroughs tell similar stories with different people, so they can be read in any order.</li>
+    <li>New here? Start with the first walkthrough under Health organisation. The other walkthroughs tell
+    different stories with different people, so they can be read in any order.</li>
   </ul>
 </section>
 <section class="group" id="health">
@@ -315,6 +316,19 @@
       <p>An analyst is stopped at a restricted table of card transactions, asks the Fraud Operations custodian for access, and makes a new dataset of large payments made abroad.</p>
       <p class="meta">You will see: Python and the console side by side: a refusal, a lease, a plan, and a finished dataset.</p>
       <p class="meta">20 steps, about 16 minutes. <span class="open">Open &rarr;</span></p>
+    </a>
+  </div>
+</section>
+<section class="group" id="harbour">
+  <h2>Harbour Clinic</h2>
+  <p>A small clinic that is closing down. One department, Patient Records, holds its letters, and two platform administrators handle the legal hold that keeps them.</p>
+  <div class="tiles">
+    <a class="tile" href="closing-an-organisation-walkthrough.html">
+      <span class="tag">1. Harbour Clinic</span>
+      <h3>Close down an organisation, and keep its records for a legal case</h3>
+      <p>A small clinic is closing. Its data custodian starts the closing, and an ordinary member cannot stop it. A law firm asks that the records be kept for a patient claim, two platform administrators record and approve a legal hold, and everything is deleted only after the hold is released.</p>
+      <p class="meta">You will see: A closing with two stages, a refusal, a legal hold that needs two administrators, and a short record of what was deleted.</p>
+      <p class="meta">18 steps, about 14 minutes. <span class="open">Open &rarr;</span></p>
     </a>
   </div>
 </section>

@@ -150,7 +150,7 @@ def main() -> int:
         check("one deletion record was left", rec is not None)
         if rec:
             check("it says who asked, why, and what was removed",
-                  rec["retire_requested_by"] == org.people["custodian"] and rec["retire_reason"] == "The clinic is closing"
+                  rec["retire_requested_by"] == "Custodian" and rec["retire_reason"] == "The clinic is closing"
                   and rec["rows_removed"].get("dataset_version") == 1 and rec["files_removed"] == 2, str(rec["rows_removed"])[:120])
             holds = rec["holds"]
             check("it names the hold by number and authority, and says it was released",

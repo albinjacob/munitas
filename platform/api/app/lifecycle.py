@@ -505,7 +505,7 @@ def run_sweep(session: dict = Depends(current_session)) -> dict:
         "scope": "platform",
         "viewer": {"id": session["id"], "tenant_id": session["tenant_id"], "roles": session["roles"]},
     }))
-    return sweep(purged_by=f"the sweep run by {session['id']}")
+    return sweep(purged_by=f"a sweep run by {session['label']}")
 
 
 async def run_forever() -> None:

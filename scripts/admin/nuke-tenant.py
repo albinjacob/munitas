@@ -102,6 +102,10 @@ PROTECTED_RULES = [
     ("dataset_version", "dataset_version_no_delete"),
     ("agent_version", "agent_version_no_update"),
     ("agent_version", "agent_version_no_delete"),
+    # The closing records: a hold and the history of a closing are removed only with their
+    # organisation, and this is how a deliberately deleted one goes.
+    ("legal_hold", "legal_hold_no_delete"),
+    ("lifecycle_event", "lifecycle_event_no_delete"),
 ]
 
 
@@ -123,7 +127,9 @@ def tenant_scoped_tables(conn) -> list[str]:
         "where c.column_name = 'tenant_id' and c.table_schema = 'public' "
         "  and t.table_type = 'BASE TABLE'"
     ).fetchall()
-    return sorted(r["table_name"] for r in rows)
+    # tenant_deletion_record is what a purge leaves behind on purpose and is never deleted, so it
+    # is not something this script clears.
+    return sorted(r["table_name"] for r in rows if r["table_name"] != "tenant_deletion_record")
 
 
 # Tables carrying one tenant's data with no tenant_id column of their own:

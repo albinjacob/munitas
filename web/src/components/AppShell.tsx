@@ -21,11 +21,14 @@ import { useIdentity } from "../identity/IdentityContext";
 import { UnauthenticatedBanner } from "../identity/IdentityBar";
 import { roleLabel } from "../api/roles";
 import { ToastHost } from "./toast";
+import { useClosing } from "../api/lifecycle";
 import {
   AgentIcon,
   AuditIcon,
+  ClosingIcon,
   DatasetIcon,
   EgressIcon,
+  HoldIcon,
   HomeIcon,
   HousekeepingIcon,
   KeyIcon,
@@ -99,6 +102,7 @@ const GROUPS: { title: string; items: Item[] }[] = [
         roles: ["network_architect", "platform_admin"],
       },
       { to: "/services", label: "Services", icon: ServicesIcon, roles: ["platform_admin"] },
+      { to: "/legal-holds", label: "Legal holds", icon: HoldIcon, roles: ["platform_admin"] },
       {
         to: "/housekeeping",
         label: "Storage housekeeping",
@@ -121,6 +125,12 @@ const GROUPS: { title: string; items: Item[] }[] = [
         roles: ["dpo", "platform_admin", "data_custodian"],
       },
       { to: "/roles", label: "What each role can do", icon: KeyIcon },
+      {
+        to: "/closing",
+        label: "Closing the organisation",
+        icon: ClosingIcon,
+        roles: ["data_custodian", "dpo", "platform_admin"],
+      },
     ],
   },
   {
@@ -138,6 +148,7 @@ const GROUPS: { title: string; items: Item[] }[] = [
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { principal, authenticated, clear } = useIdentity();
+  const closing = useClosing(undefined, Boolean(principal)).data;
   const navigate = useNavigate();
   const location = useLocation();
   // Closed by default on mobile, where the identity card plus the full nav
@@ -250,7 +261,9 @@ export function AppShell({ children }: { children: ReactNode }) {
                   >
                     {principal.tenant_purpose === "canary"
                       ? "for testing"
-                      : "closed"}
+                      : closing?.phase === "retiring"
+                        ? "being closed"
+                        : "closed"}
                   </span>
                 )}
               </div>
@@ -321,7 +334,22 @@ export function AppShell({ children }: { children: ReactNode }) {
           </nav>
         </aside>
 
-        <main className="min-w-0 flex-1">{children}</main>
+        <main className="min-w-0 flex-1">
+          {closing?.phase === "retiring" && (
+            <div
+              role="status"
+              data-testid="closing-banner"
+              className="mb-6 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"
+            >
+              <strong>This organisation is being closed.</strong> Nothing can be added or changed. You can still
+              read, and it can be cancelled until {new Date(closing.retiring_until ?? "").toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" })} ({closing.days_left} days left).{" "}
+              <NavLink to="/closing" className="underline">
+                See where it stands
+              </NavLink>
+            </div>
+          )}
+          {children}
+        </main>
       </div>
       <ToastHost />
     </div>

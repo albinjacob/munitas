@@ -30,9 +30,12 @@ import { RegisterPipeline } from "./features/pipelines/RegisterPipeline";
 import { PipelineDetail } from "./features/pipelines/PipelineDetail";
 import { ActionRuns } from "./features/pipelines/ActionRuns";
 import { EgressApprovalQueue, EgressApprovalDetailScreen } from "./features/agents/EgressApprovals";
+import { Closing } from "./features/lifecycle/Closing";
+import { ClosingNotice } from "./features/lifecycle/ClosingNotice";
+import { LegalHolds } from "./features/lifecycle/LegalHolds";
 
 export default function App() {
-  const { principal, loading } = useIdentity();
+  const { principal, loading, closed } = useIdentity();
   const location = useLocation();
 
   // Wait rather than redirect. The acting persona is resolved against the
@@ -50,6 +53,9 @@ export default function App() {
       </div>
     );
   }
+
+  // Signed in, and the organisation is closing. Nothing else would load, so say why.
+  if (closed) return <ClosingNotice />;
 
   if (!principal) {
     // The front door carries the banner itself, because it renders outside
@@ -99,6 +105,8 @@ export default function App() {
         <Route path="/housekeeping" element={<Housekeeping />} />
         <Route path="/directory" element={<Directory />} />
         <Route path="/roles" element={<Roles />} />
+        <Route path="/closing" element={<Closing />} />
+        <Route path="/legal-holds" element={<LegalHolds />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AppShell>
