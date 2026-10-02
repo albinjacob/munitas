@@ -76,6 +76,40 @@ test_revoked_lease_denied if {
 	}
 }
 
+# Many leases on one version have ended over time. The refusal names the most
+# recent one, once, not every lease the person has ever held on it.
+test_many_ended_leases_give_one_reason_each if {
+	d := access.decision with input as {
+		"principal": principal(["notebook_explore"], [
+			# The most recently revoked is not the one due to run longest: l-mid ran
+			# furthest into the future but was withdrawn first of the two later ones.
+			lease({"id": "l-old", "revoked": true, "revoked_at": "2026-10-01T00:00:00Z", "expires_at": "2026-10-02T00:00:00Z"}),
+			lease({"id": "l-mid", "revoked": true, "revoked_at": "2026-10-02T00:00:00Z", "expires_at": "2040-01-01T00:00:00Z"}),
+			lease({"id": "l-new", "revoked": true, "revoked_at": "2026-10-03T00:00:00Z", "expires_at": "2026-10-04T00:00:00Z"}),
+			lease({"id": "l-ran-out", "expires_at": past}),
+			lease({"id": "l-ran-out-earlier", "expires_at": "2019-01-01T00:00:00Z"}),
+		]),
+		"dataset": ds("RAW"),
+		"purpose": "shape exploration",
+	}
+	"lease l-new revoked" in d.reasons
+	not "lease l-old revoked" in d.reasons
+	not "lease l-mid revoked" in d.reasons
+	"lease l-ran-out expired" in d.reasons
+	not "lease l-ran-out-earlier expired" in d.reasons
+}
+
+# A lease that was revoked is not also reported as having expired.
+test_revoked_lease_is_not_also_expired if {
+	d := access.decision with input as {
+		"principal": principal(["notebook_explore"], [lease({"id": "l-1", "revoked": true, "expires_at": past})]),
+		"dataset": ds("RAW"),
+		"purpose": "shape exploration",
+	}
+	"lease l-1 revoked" in d.reasons
+	not "lease l-1 expired" in d.reasons
+}
+
 # Self-approval must not work, even with an otherwise valid lease.
 test_self_approved_lease_denied if {
 	not access.allow with input as {
@@ -818,8 +852,15 @@ test_only_the_pipeline_holds_bucket_wide_access if {
 	holders == {"pipeline_action"}
 }
 
-test_pipeline_bucket_wide_access_is_exactly_read_write_list_tagging if {
-	{verb | some verb in access.storage_roles.pipeline_action.every_bucket} == {"Read", "Write", "List", "Tagging"}
+test_pipeline_bucket_wide_access_is_exactly_read_list_tagging if {
+	{verb | some verb in access.storage_roles.pipeline_action.every_bucket} == {"Read", "List", "Tagging"}
+}
+
+# Writing is not standing access any more. It is granted per task and per prefix,
+# on the same proof reading needs (POST /write-credentials), so Write must never
+# come back into the bucket-wide list.
+test_pipeline_has_no_standing_write if {
+	not "Write" in access.storage_roles.pipeline_action.every_bucket
 }
 
 # Every role that holds a storage key is a role the policy already knows, so a

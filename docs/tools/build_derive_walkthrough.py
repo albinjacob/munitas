@@ -148,6 +148,17 @@ STEPS = [
                 "names. The admissions dataset does not appear at all, because Sam may not read it.",
     },
     {
+        "kind": "shot", "file": "01-sam-finds-the-open-lookup.png", "actor": "sam",
+        "title": "The console shows why that table is open",
+        "screen": CONSOLE + " &middot; Datasets",
+        "text": "The console is the platform's web page for people. Signed in as Sam, the datasets list shows "
+                "<code>diagnosis_codes</code>, the public lookup of diagnosis names, which the Cardiology "
+                "department owns.",
+        "note": "The <strong>You can read</strong> column says <strong>1 of 1</strong>, and the access level is "
+                "<strong>Published</strong>, the most open level. Sam may read this dataset without asking "
+                "anybody.",
+    },
+    {
         "kind": "code", "source": "health", "scenes": [2], "actor": "sam",
         "title": "The restricted table is closed, and the platform says why",
         "screen": SESSION,
@@ -156,19 +167,21 @@ STEPS = [
                 "one stated purpose and for a limited time. Sam tries to read it anyway.",
         "note": "The refusal ends with <code>no role reaches class RAW</code>. Sam's role, researcher, reaches "
                 "the Published level and nothing above it. The platform gives the reason instead of a bare "
-                "error.",
+                "error. The line also names one lease that was revoked earlier, because this example was "
+                "recorded more than once on the same data and the platform remembers Sam's earlier lease. "
+                "Only the most recent revoked lease is named, however many there have been.",
     },
     {
-        "kind": "shot", "file": "01-sam-finds-admissions-closed.png", "actor": "sam",
+        "kind": "shot", "file": "02-sam-finds-admissions-closed.png", "actor": "sam",
         "title": "The console shows the same closed table",
         "screen": CONSOLE + " &middot; Datasets",
-        "text": "The console is the platform's web page for people. Signed in as Sam, the datasets list shows "
-                "the admissions dataset, which the Cardiology department owns.",
+        "text": "The same datasets list in the console now shows the admissions dataset, which the Cardiology "
+                "department owns and which holds the patient records.",
         "note": "The <strong>You can read</strong> column says <strong>0 of 1</strong>, and the access level "
                 "is <strong>Raw</strong>. The dataset has one version, and Sam may read none of it.",
     },
     {
-        "kind": "shot", "file": "02-sam-fills-in-the-request.png", "actor": "sam",
+        "kind": "shot", "file": "03-sam-fills-in-the-request.png", "actor": "sam",
         "title": "Sam asks the Cardiology custodian for access",
         "screen": CONSOLE + " &middot; A dataset's page",
         "text": "On the dataset's page, Sam writes what the data will be used for, why something less "
@@ -179,24 +192,27 @@ STEPS = [
                 "that in view whenever somebody asks again.",
     },
     {
-        "kind": "shot", "file": "04-hartley-sees-the-request.png", "actor": "hartley",
+        "kind": "shot", "file": "05-hartley-sees-the-request.png", "actor": "hartley",
         "title": "Hartley sees the request in the Cardiology queue",
         "screen": CONSOLE + " &middot; The custodian's home page",
         "text": "Hartley's home page lists the requests to read Cardiology's data. Nobody else can decide this "
                 "one, and Sam cannot approve a request made under Sam's own name.",
-        "note": "The first card reads <strong>Sam (Researcher) wants to read admissions v1</strong>, followed "
-                "by Sam's reason and two buttons, <strong>Grant access</strong> and <strong>Refuse</strong>. "
-                "The small text under them says what granting means: a fixed time, this purpose only, and it "
-                "ends by itself.",
+        "note": "The card reads <strong>Sam (Researcher) wants to read admissions v1</strong>, followed by "
+                "Sam's reason and two buttons, <strong>Grant access</strong> and <strong>Refuse</strong>. The "
+                "small text under them says what granting means: a fixed time, this purpose only, and it ends "
+                "by itself. The counter says 2 because the queue also holds an older request from Sam for a "
+                "different dataset, which this walkthrough does not touch.",
     },
     {
-        "kind": "shot", "file": "05-after-granting.png", "actor": "hartley",
+        "kind": "shot", "file": "06-after-granting.png", "actor": "hartley",
         "title": "Hartley grants the request",
         "screen": CONSOLE + " &middot; The custodian's home page",
         "text": "Hartley chooses Grant access. The request leaves the queue, and a lease now exists that lets "
                 "Sam read this one dataset for the stated purpose.",
         "note": "A notice at the bottom right reads <strong>Access granted to Sam (Researcher)</strong>, and "
-                "the box <strong>Currently granted</strong> now counts one.",
+                "the box <strong>Currently granted</strong> now counts one. The newest entry under <strong>What "
+                "you have decided</strong> says <strong>Granted</strong>, shows when the lease runs out, and "
+                "offers a <strong>Revoke</strong> link, which Hartley uses at the end of this walkthrough.",
     },
     {
         "kind": "code", "source": "health", "scenes": [4], "actor": "sam",
@@ -250,7 +266,7 @@ STEPS = [
                 "Sam did not choose that level: it follows from the datasets the query read.",
     },
     {
-        "kind": "shot", "file": "06-sam-finds-the-new-dataset.png", "actor": "sam",
+        "kind": "shot", "file": "07-sam-finds-the-new-dataset.png", "actor": "sam",
         "title": "The new dataset appears in the console, owned by Cardiology",
         "screen": CONSOLE + " &middot; Datasets",
         "text": "The new dataset belongs to the same department as the data it came from, so Hartley is still "
@@ -271,7 +287,7 @@ STEPS = [
                 "is above 65 as the query required.",
     },
     {
-        "kind": "shot", "file": "07-where-it-came-from.png", "actor": "sam",
+        "kind": "shot", "file": "08-where-it-came-from.png", "actor": "sam",
         "title": "The console records where the new dataset came from",
         "screen": CONSOLE + " &middot; A dataset's page",
         "text": "Every version of a dataset records what produced it: the step, who ran it, and the exact "
@@ -314,7 +330,7 @@ STEPS = [
                 "declared</strong>. Nothing ran.",
     },
     {
-        "kind": "shot", "file": "08-the-decision-log.png", "actor": "hartley",
+        "kind": "shot", "file": "09-the-decision-log.png", "actor": "hartley",
         "title": "Every refusal is on record, with the reason",
         "screen": CONSOLE + " &middot; Who accessed what",
         "text": "The decision log lists every request to read data. Each request is recorded twice: once for "
@@ -333,7 +349,7 @@ STEPS = [
         "note": "Both tables report <strong>refused</strong>, and the reasons name the revoked leases.",
     },
     {
-        "kind": "shot", "file": "09-sam-after-the-lease-is-withdrawn.png", "actor": "sam",
+        "kind": "shot", "file": "10-sam-after-the-lease-is-withdrawn.png", "actor": "sam",
         "title": "The console agrees",
         "screen": CONSOLE + " &middot; Datasets",
         "text": "The new dataset is still listed, so Sam can still know that it exists, but Sam can no longer "
@@ -492,10 +508,17 @@ FOOTER_TEMPLATE = """
 # A screenshot of a short list is mostly empty page. These keep only the part of the
 # screen that holds the list, cut from the same pixels with nothing redrawn.
 CROPS = {name: (330, 0, 1600, 330) for name in (
-    "01-sam-finds-admissions-closed.png",
-    "06-sam-finds-the-new-dataset.png",
-    "09-sam-after-the-lease-is-withdrawn.png",
+    "01-sam-finds-the-open-lookup.png",
+    "02-sam-finds-admissions-closed.png",
+    "07-sam-finds-the-new-dataset.png",
+    "10-sam-after-the-lease-is-withdrawn.png",
 )}
+# The custodian's home page continues below Sam's request with other waiting requests and the
+# history of past decisions. This step is about the request, so it keeps the top of the page.
+CROPS["05-hartley-sees-the-request.png"] = (330, 0, 1600, 540)
+# The decision log is newest first, and older rows keep the long lists of leases they were
+# recorded with, because the log is never rewritten. This step is about the newest rows.
+CROPS["09-the-decision-log.png"] = (330, 0, 1600, 545)
 
 
 def encoded(path: Path) -> str:
@@ -526,6 +549,77 @@ def stylesheet() -> str:
     source = (DOCS / "public" / "walkthroughs" / "custom-pipeline-walkthrough.html").read_text(encoding="utf-8")
     style = source[source.index("<style>"): source.index("</style>") + len("</style>")]
     return style + EXTRA_CSS
+
+
+import ast
+import builtins
+
+# Names the recorded session starts with, explained once in "How to read this page".
+SESSION_NAMES = {"me", "custodian", "colleague"}
+
+# Names that no visible box sets. A short, plain reason is given instead of leaving the reader to wonder.
+HIDDEN_NAMES = {
+    "lease": "the lease the custodian approved earlier in the same session",
+    "request": "the access request filed earlier in the same session",
+    "token": "the token requested at the start of the same session",
+    "time": "Python&rsquo;s standard time module",
+    "MunitasError": "the error the client library raises when Munitas refuses a request",
+}
+
+
+def _stores_and_loads(code: str) -> tuple[set[str], list[str]]:
+    tree = ast.parse(code)
+    stored, loaded = set(), []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name):
+            (stored.add(node.id) if isinstance(node.ctx, ast.Store) else loaded.append(node.id))
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            stored.update((a.asname or a.name).split(".")[0] for a in node.names)
+        elif isinstance(node, ast.ExceptHandler) and node.name:
+            stored.add(node.name)
+    return stored, list(dict.fromkeys(loaded))
+
+
+def _page_step_of(source: str, scene: int) -> int | None:
+    for i, step in enumerate(STEPS, start=1):
+        if step["kind"] == "code" and step["source"] == source and scene in step["scenes"]:
+            return i
+    return None
+
+
+def earlier_names(source: str) -> dict[tuple[int, int], list[tuple[str, int | None]]]:
+    """For every recorded box, the names it uses that an earlier box of the session set,
+    each with the page step that set it (None when that box is not shown on the page)."""
+    defined: dict[str, int] = {}
+    found: dict[tuple[int, int], list[tuple[str, int | None]]] = {}
+    for scene in TRANSCRIPTS[source]["scenes"]:
+        for index, block in enumerate(scene["blocks"]):
+            stored, loaded = _stores_and_loads(block["code"])
+            uses = []
+            for name in loaded:
+                if name in stored or name in SESSION_NAMES or hasattr(builtins, name):
+                    continue
+                if name in defined:
+                    uses.append((name, _page_step_of(source, defined[name])))
+                elif name in HIDDEN_NAMES:
+                    uses.append((name, None))
+            found[(scene["step"], index)] = uses
+            for name in stored:
+                defined[name] = scene["step"]
+    return found
+
+
+def names_line(uses: list[tuple[str, int | None]]) -> str:
+    """One plain sentence naming where each carried-over name came from."""
+    if not uses:
+        return ""
+    parts = []
+    for name, step in uses:
+        if step is not None:
+            parts.append(f"<code>{name}</code> was set in step {step}")
+        else:
+            parts.append(f"<code>{name}</code> is {HIDDEN_NAMES.get(name, 'set earlier in the same session')}")
+    return "Names used here that are not defined in this box: " + "; ".join(parts) + "."
 
 
 def what_it_does(code: str, typist: str) -> str:
@@ -566,15 +660,17 @@ def terminal(step: dict) -> str:
     """The recorded code boxes of a step, each labelled with who typed it and where."""
     transcript = TRANSCRIPTS[step["source"]]
     people = transcript["people"]
+    carried = earlier_names(step["source"])
     boxes = []
     for number in step["scenes"]:
         scene = next(s for s in transcript["scenes"] if s["step"] == number)
-        for block in scene["blocks"]:
+        for index, block in enumerate(scene["blocks"]):
             name = people[block["who"]].removeprefix("Dr ")
             boxes.append(
                 '<div class="term">'
                 f'<span class="tag who">Typed by {name}, in Python on {name}&rsquo;s own computer</span>'
                 f'<span class="tag does">{what_it_does(block["code"], name)}</span>'
+                f'<span class="tag does">{names_line(carried[(number, index)])}</span>'
                 f'<pre class="code">{html.escape(block["code"])}</pre>'
                 f'<span class="tag">What came back</span>'
                 f'<pre class="out">{html.escape(block["output"] or "(nothing is printed)")}</pre>'

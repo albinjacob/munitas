@@ -204,17 +204,52 @@ reason contains "no declared purpose" if {
 	input.purpose == ""
 }
 
-reason contains sprintf("lease %v expired", [lease.id]) if {
-	some lease in input.principal.leases
-	lease.dataset_version == input.dataset.version_id
-	lease.expires_at != null
-	time.parse_rfc3339_ns(lease.expires_at) <= time.now_ns()
+# A person can hold, lose and be granted access to the same data again and again,
+# and every one of those leases stays on record. The refusal names only the most
+# recent lease that ended in each way: listing them all made the reason longer
+# with every cycle, and read as though all of them had just been withdrawn.
+leases_here := [l |
+	some l in input.principal.leases
+	l.dataset_version == input.dataset.version_id
+]
+
+# When a lease ended: the moment it was revoked, or the moment it ran out. A lease
+# revoked before revocation times were recorded falls back to its expiry.
+ended_when(l) := at if {
+	l.revoked
+	at := object.get(l, "revoked_at", null)
+	at != null
 }
 
-reason contains sprintf("lease %v revoked", [lease.id]) if {
-	some lease in input.principal.leases
-	lease.dataset_version == input.dataset.version_id
-	lease.revoked
+ended_when(l) := l.expires_at if {
+	l.revoked
+	object.get(l, "revoked_at", null) == null
+}
+
+ended_when(l) := l.expires_at if not l.revoked
+
+# Orders ended leases by when they ended, then by id so ties are settled.
+lease_order(l) := sprintf("%v|%v", [ended_when(l), l.id])
+
+reason contains sprintf("lease %v expired", [latest.id]) if {
+	ran_out := [l |
+		some l in leases_here
+		not l.revoked
+		l.expires_at != null
+		time.parse_rfc3339_ns(l.expires_at) <= time.now_ns()
+	]
+	count(ran_out) > 0
+	newest := max([lease_order(l) | some l in ran_out])
+	some latest in ran_out
+	lease_order(latest) == newest
+}
+
+reason contains sprintf("lease %v revoked", [latest.id]) if {
+	withdrawn := [l | some l in leases_here; l.revoked]
+	count(withdrawn) > 0
+	newest := max([lease_order(l) | some l in withdrawn])
+	some latest in withdrawn
+	lease_order(latest) == newest
 }
 
 reason contains sprintf("no role reaches class %v", [input.dataset.visibility_class]) if {

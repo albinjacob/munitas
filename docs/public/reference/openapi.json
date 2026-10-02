@@ -5268,7 +5268,7 @@
         ]
       },
       "head": {
-        "operationId": "get_namespace_iceberg_v1__prefix__namespaces__namespace__get",
+        "operationId": "get_namespace_iceberg_v1__prefix__namespaces__namespace__head",
         "parameters": [
           {
             "in": "path",
@@ -5427,7 +5427,7 @@
       },
       "head": {
         "description": "Open one table: decide, record the decision, then hand over the key.\n\nThe decision, the audit rows and the key all come from request_credential,\nthe function behind POST /credentials, so a table opened here is recorded\nexactly as the same version read any other way would be.",
-        "operationId": "load_table_iceberg_v1__prefix__namespaces__namespace__tables__table__get",
+        "operationId": "load_table_iceberg_v1__prefix__namespaces__namespace__tables__table__head",
         "parameters": [
           {
             "in": "path",

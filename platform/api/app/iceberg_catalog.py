@@ -235,7 +235,11 @@ def list_namespaces(prefix: str, principal: dict = Depends(catalog_principal)) -
     return {"namespaces": [[n] for n in names]}
 
 
-@router.api_route("/iceberg/v1/{prefix}/namespaces/{namespace}", methods=["GET", "HEAD"])
+# GET and HEAD are registered as two routes, not one route for both methods: a route
+# for several methods takes its operation id from an unordered set, so the published
+# API reference would change from one start of the API to the next.
+@router.head("/iceberg/v1/{prefix}/namespaces/{namespace}")
+@router.get("/iceberg/v1/{prefix}/namespaces/{namespace}")
 def get_namespace(prefix: str, namespace: str, request: Request,
                   principal: dict = Depends(catalog_principal)):
     _own_warehouse(principal, prefix)
@@ -359,8 +363,8 @@ def _table_ref(principal: dict, prefix: str, namespace: str, table: str) -> dict
     return ref
 
 
-@router.api_route("/iceberg/v1/{prefix}/namespaces/{namespace}/tables/{table}",
-                  methods=["GET", "HEAD"])
+@router.head("/iceberg/v1/{prefix}/namespaces/{namespace}/tables/{table}")
+@router.get("/iceberg/v1/{prefix}/namespaces/{namespace}/tables/{table}")
 def load_table(prefix: str, namespace: str, table: str, request: Request,
                principal: dict = Depends(catalog_principal)):
     """Open one table: decide, record the decision, then hand over the key.

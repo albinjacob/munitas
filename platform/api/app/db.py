@@ -48,6 +48,12 @@ def policy_lease(r: dict) -> dict:
         "pattern": r["pattern"],
         "approved_by": r["approved_by"],
         "revoked": r["revoked"],
+        # When it was revoked, so a refusal can name the lease that was withdrawn
+        # most recently and not the one that happened to be due to run longest.
+        "revoked_at": (
+            r["revoked_at"].astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+            if r.get("revoked_at") else None
+        ),
         # None for a standing lease, which policy's `lease_current` treats
         # as never expiring rather than as missing data.
         "expires_at": (
@@ -73,7 +79,7 @@ def active_leases(principal: str, version_id: str) -> list[dict]:
     expired lease.
     """
     rows = all_rows(
-        """select id, dataset_version_id, purpose, pattern, approved_by, revoked, expires_at
+        """select id, dataset_version_id, purpose, pattern, approved_by, revoked, expires_at, revoked_at
            from access_lease
            where principal = %s and dataset_version_id = %s""",
         (principal, version_id),

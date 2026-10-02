@@ -91,8 +91,22 @@ test("a person makes a new dataset from a query, and the custodian stays in char
     }
   }
 
+  // The custodian's home page lists every request waiting on that person. Leftovers from
+  // automated test runs would bury the one this walkthrough is about, so close them first.
+  const waiting = await api(`/lease-requests?state=pending&custodian=${CUSTODIAN}&limit=500`, CUSTODIAN);
+  for (const r of waiting.lease_requests ?? []) {
+    if (r.principal === "svc-trainer" && String(r.purpose).startsWith("queue rendering check")) {
+      await api(`/leases/requests/${r.id}/reject`, CUSTODIAN, {
+        method: "POST", body: JSON.stringify({ reason: "automated test request, closed" }),
+      });
+    }
+  }
+
   // ---- Act one: a closed table, and a request for access ----------------
   await loginAs(page, RESEARCHER);
+  // First the table that is open to every signed-in person, to contrast with the closed one.
+  await searchDatasets(page, "diagnosis_codes");
+  await shot(page, "sam-finds-the-open-lookup");
   await searchDatasets(page, "admissions");
   await shot(page, "sam-finds-admissions-closed");
 
