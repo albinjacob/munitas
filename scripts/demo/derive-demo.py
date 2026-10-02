@@ -142,9 +142,12 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--tenant", choices=sorted(SCENARIOS), default="health")
     ap.add_argument("--pause", action="store_true")
+    ap.add_argument("--name", help="what to call the new dataset (default: a name for this story)")
     ap.add_argument("--transcript", help="save everything shown, as JSON")
     args = ap.parse_args()
     cfg = SCENARIOS[args.tenant]
+    if args.name:
+        cfg = {**cfg, "target": args.name}
 
     def login(person: str) -> Munitas:
         return Munitas(API, bearer_for(person)["Authorization"].split()[1])

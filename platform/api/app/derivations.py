@@ -407,8 +407,8 @@ async def confirm(derivation_id: str, body: models.DerivationConfirmIn,
         if SENSITIVITY_ORDER.index(wanted) < SENSITIVITY_ORDER.index(f["floor"]):
             raise HTTPException(422, {"reasons": [
                 f"{f['name']!r} is computed from fields marked {f['floor']!r}, so it cannot be "
-                f"marked {wanted!r}. Lowering a sensitivity needs somebody else to agree, "
-                "and that is not offered yet"]})
+                f"marked {wanted!r}. A sensitivity can only be raised here: lowering one needs "
+                "the agreement of somebody other than the person who wrote the query"]})
         f["sensitivity"] = wanted
 
     # The inputs are checked again: the draft may be an hour old, and a lease
