@@ -36,9 +36,9 @@ The trust chain, and why each link is the one it is
 from __future__ import annotations
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 
-from . import config, db
+from . import config, db, task_credential
 
 router = APIRouter(tags=["auth"])
 
@@ -168,6 +168,39 @@ def identity_for(person_id: str) -> dict | None:
         (person_id,),
     )
     return person
+
+
+def organisation_scope(
+    request: Request,
+    tenant_id: str | None = Query(default=None),
+    x_worker_token: str | None = Header(default=None),
+    x_task_credential: str | None = Header(default=None),
+) -> str | None:
+    """The organisation a read of one record is limited to.
+
+    A signed-in person is limited to their own organisation, taken from the session. A
+    `tenant_id` in the URL is ignored for them, so naming somebody else's organisation, or
+    leaving it out, shows nothing of another organisation's data.
+
+    The platform's own workers have no login to present. They send the worker token instead,
+    and then name the organisation they act for. A worker that names none is not narrowed,
+    because the token already says it is the platform itself.
+
+    An agent's code runs with neither a login nor the worker token, which it must never hold.
+    It presents the signed credential minted for its own run instead, and that credential
+    names the organisation, so the organisation is again not something the caller can choose.
+
+    Anybody else is refused: no session, no worker token and no run credential means no
+    answer.
+    """
+    if config.WORKER_TOKEN and x_worker_token == config.WORKER_TOKEN:
+        return tenant_id
+    if x_task_credential:
+        try:
+            return task_credential.verify(x_task_credential).tenant_id
+        except task_credential.InvalidTaskCredential as exc:
+            raise HTTPException(401, {"reasons": [f"run credential rejected: {exc}"]}) from exc
+    return current_session(request)["tenant_id"]
 
 
 @router.get("/auth/whoami")

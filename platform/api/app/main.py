@@ -491,7 +491,7 @@ def create_version(body: models.DatasetVersionIn) -> dict:
 
 
 @app.get("/dataset-versions/{version_id}")
-def get_version(version_id: str, tenant_id: str | None = None) -> dict:
+def get_version(version_id: str, tenant_id: str | None = Depends(auth.organisation_scope)) -> dict:
     """One version, with the fields a detail screen needs.
 
     `version_class` deliberately carries only the class question. The name,
@@ -499,17 +499,12 @@ def get_version(version_id: str, tenant_id: str | None = None) -> dict:
     view, because widening the view would make every caller pay for columns most
     of them ignore, and the view's single purpose is what makes it trustworthy.
 
-    `tenant_id` narrows it to one organisation, and a version belonging to
-    another is **not found** rather than forbidden. That distinction is the
-    point: 403 confirms the version exists, which is half of what somebody
-    probing ids was trying to learn, and this endpoint would otherwise hand out
-    dataset names, classes and release histories to anybody who guessed one.
-
-    The parameter is optional, and omitting it searches every tenant. There is
-    no authentication here, so nothing stops a caller leaving it out; what this
-    prevents is the console showing one organisation another's metadata, not a
-    determined request. The other three detail endpoints follow the same shape
-    and the same limit.
+    The organisation comes from the caller's session (`auth.organisation_scope`), never from
+    the URL, and a version belonging to another is **not found** rather than forbidden. That
+    distinction is the point: 403 confirms the version exists, which is half of what somebody
+    probing ids was trying to learn. The platform's own workers send the worker token instead
+    and name the organisation they act for. This endpoint also returns `object_manifest`, the
+    storage keys of the version's files, so it must never answer without one or the other.
     """
     row = db.one(
         """select vc.*, d.name as dataset_name,
@@ -528,7 +523,7 @@ def get_version(version_id: str, tenant_id: str | None = None) -> dict:
 
 
 @app.get("/lineage/{version_id}")
-def get_lineage(version_id: str, tenant_id: str | None = None) -> dict:
+def get_lineage(version_id: str, tenant_id: str | None = Depends(auth.organisation_scope)) -> dict:
     row = db.one(
         """select l.* from lineage l
            join dataset_version dv on dv.id = l.dataset_version_id

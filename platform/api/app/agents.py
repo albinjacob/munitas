@@ -474,9 +474,10 @@ def egress_status(version_id: str) -> dict:
     """What this version may call, and whether that has been approved.
 
     Called by the agent's own runtime (`agent/tools.py`'s `fetch_url`), a
-    workload with no Kratos session to present, the same reason
-    `GET /dataset-versions/{id}` (`main.py`) also takes no session -- a
-    version's requested hosts and approval state are not sensitive in the
+    workload with no Kratos session to present. (`GET /dataset-versions/{id}`
+    used to take no session either, and no longer does: it carries a version's
+    storage keys, so it answers a session, the worker token or a run credential
+    only.) A version's requested hosts and approval state are not sensitive in the
     way tenant data is, and this is read on every network call an agent
     makes, not once at deploy time. Scoped by version id alone, no tenant
     check: an agent already knows only its own `agent_version_id`, and a

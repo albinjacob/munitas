@@ -1826,7 +1826,7 @@
     },
     "/agent-versions/{version_id}/egress-status": {
       "get": {
-        "description": "What this version may call, and whether that has been approved.\n\nCalled by the agent's own runtime (`agent/tools.py`'s `fetch_url`), a\nworkload with no Kratos session to present, the same reason\n`GET /dataset-versions/{id}` (`main.py`) also takes no session -- a\nversion's requested hosts and approval state are not sensitive in the\nway tenant data is, and this is read on every network call an agent\nmakes, not once at deploy time. Scoped by version id alone, no tenant\ncheck: an agent already knows only its own `agent_version_id`, and a\nstranger who guessed one learns a host list and a state, nothing about\nany tenant's actual data.\n\nThe most recent approval decides, not \"any approval ever\", the same\ndefensive read `deploy` above and `_pending_gate` elsewhere both make.",
+        "description": "What this version may call, and whether that has been approved.\n\nCalled by the agent's own runtime (`agent/tools.py`'s `fetch_url`), a\nworkload with no Kratos session to present. (`GET /dataset-versions/{id}`\nused to take no session either, and no longer does: it carries a version's\nstorage keys, so it answers a session, the worker token or a run credential\nonly.) A version's requested hosts and approval state are not sensitive in the\nway tenant data is, and this is read on every network call an agent\nmakes, not once at deploy time. Scoped by version id alone, no tenant\ncheck: an agent already knows only its own `agent_version_id`, and a\nstranger who guessed one learns a host list and a state, nothing about\nany tenant's actual data.\n\nThe most recent approval decides, not \"any approval ever\", the same\ndefensive read `deploy` above and `_pending_gate` elsewhere both make.",
         "operationId": "egress_status_agent_versions__version_id__egress_status_get",
         "parameters": [
           {
@@ -2661,7 +2661,7 @@
     },
     "/dataset-versions/{version_id}": {
       "get": {
-        "description": "One version, with the fields a detail screen needs.\n\n`version_class` deliberately carries only the class question. The name,\ncontent hash and record count are joined in here rather than added to the\nview, because widening the view would make every caller pay for columns most\nof them ignore, and the view's single purpose is what makes it trustworthy.\n\n`tenant_id` narrows it to one organisation, and a version belonging to\nanother is **not found** rather than forbidden. That distinction is the\npoint: 403 confirms the version exists, which is half of what somebody\nprobing ids was trying to learn, and this endpoint would otherwise hand out\ndataset names, classes and release histories to anybody who guessed one.\n\nThe parameter is optional, and omitting it searches every tenant. There is\nno authentication here, so nothing stops a caller leaving it out; what this\nprevents is the console showing one organisation another's metadata, not a\ndetermined request. The other three detail endpoints follow the same shape\nand the same limit.",
+        "description": "One version, with the fields a detail screen needs.\n\n`version_class` deliberately carries only the class question. The name,\ncontent hash and record count are joined in here rather than added to the\nview, because widening the view would make every caller pay for columns most\nof them ignore, and the view's single purpose is what makes it trustworthy.\n\nThe organisation comes from the caller's session (`auth.organisation_scope`), never from\nthe URL, and a version belonging to another is **not found** rather than forbidden. That\ndistinction is the point: 403 confirms the version exists, which is half of what somebody\nprobing ids was trying to learn. The platform's own workers send the worker token instead\nand name the organisation they act for. This endpoint also returns `object_manifest`, the\nstorage keys of the version's files, so it must never answer without one or the other.",
         "operationId": "get_version_dataset_versions__version_id__get",
         "parameters": [
           {
@@ -2687,6 +2687,38 @@
                 }
               ],
               "title": "Tenant Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-worker-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Token"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-task-credential",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Task-Credential"
             }
           }
         ],
@@ -3082,7 +3114,7 @@
     },
     "/datasets/{dataset_id}": {
       "get": {
-        "description": "One dataset's own record.\n\nWhat the console reads to resume bringing data into a dataset that was\nregistered and then left, rather than sealed on the spot: registering\nand uploading were always two separate steps, but until now nothing let\na person come back to the second one. Narrowed to one organisation when\nasked, and answering \"no such dataset\" rather than \"not yours\" for a\ndataset in another tenant, the same non-disclosure posture the other\ndetail endpoints already use.",
+        "description": "One dataset's own record.\n\nWhat the console reads to resume bringing data into a dataset that was\nregistered and then left, rather than sealed on the spot: registering\nand uploading were always two separate steps, but until now nothing let\na person come back to the second one. Narrowed to the caller's organisation\n(`auth.organisation_scope`), and answering \"no such dataset\" rather than \"not\nyours\" for a dataset in another tenant, the same non-disclosure posture the other\ndetail endpoints already use.",
         "operationId": "get_dataset_datasets__dataset_id__get",
         "parameters": [
           {
@@ -3108,6 +3140,38 @@
                 }
               ],
               "title": "Tenant Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-worker-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Token"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-task-credential",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Task-Credential"
             }
           }
         ],
@@ -6162,6 +6226,38 @@
                 }
               ],
               "title": "Tenant Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-worker-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Token"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-task-credential",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Task-Credential"
             }
           }
         ],

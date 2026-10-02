@@ -25,7 +25,7 @@ import uuid
 
 import psycopg
 
-from common import (CANARY, ENGINEER, api, bearer_for, check, db,
+from common import (CANARY, ENGINEER, WORKER_HEADERS, api, bearer_for, check, db,
                      fixture_contract, fixture_tenant, fixture_version,
                      heading, require_api, summary)
 
@@ -182,7 +182,7 @@ def run_checks(RETIRED: str) -> int:
         "select id from dataset_version where tenant_id = %s limit 1", (RETIRED,)
     )
     if version:
-        lineage = api("GET", f"/lineage/{version['id']}")
+        lineage = api("GET", f"/lineage/{version['id']}", headers=WORKER_HEADERS)
         check("and the lineage of a version inside it still answers",
               lineage.status_code == 200, f"HTTP {lineage.status_code}")
     else:

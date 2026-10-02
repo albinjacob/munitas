@@ -143,6 +143,11 @@ def bucket_for(tenant_id: str, backend: str = "seaweedfs") -> str:
     )
 
 
+# What the platform's own workers send where they have no login. A few reads of one record answer
+# a signed-in person (limited to their own organisation) or a worker presenting this.
+WORKER_HEADERS = {"x-worker-token": os.environ.get("MUNITAS_WORKER_TOKEN", "dev-worker-token-not-for-production")}
+
+
 def api(method: str, path: str, **kwargs) -> httpx.Response:
     return httpx.request(method, f"{API}{path}", timeout=15.0, **kwargs)
 

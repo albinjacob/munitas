@@ -393,6 +393,7 @@ def stage_data(params: dict, run_dir: Path,
     version = httpx.get(
         f"{config.API}/dataset-versions/{dataset_version_id}",
         params={"tenant_id": params["tenant_id"]}, timeout=20.0,
+        headers={"x-worker-token": config.WORKER_TOKEN},
         verify=config.api_verify(),
     )
     version.raise_for_status()

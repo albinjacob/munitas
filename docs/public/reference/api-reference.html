@@ -281,18 +281,13 @@ content hash and record count are joined in here rather than added to the
 view, because widening the view would make every caller pay for columns most
 of them ignore, and the view&#x27;s single purpose is what makes it trustworthy.
 
-`tenant_id` narrows it to one organisation, and a version belonging to
-another is **not found** rather than forbidden. That distinction is the
-point: 403 confirms the version exists, which is half of what somebody
-probing ids was trying to learn, and this endpoint would otherwise hand out
-dataset names, classes and release histories to anybody who guessed one.
-
-The parameter is optional, and omitting it searches every tenant. There is
-no authentication here, so nothing stops a caller leaving it out; what this
-prevents is the console showing one organisation another&#x27;s metadata, not a
-determined request. The other three detail endpoints follow the same shape
-and the same limit.</p>
-  <div class="block-label">Parameters</div><table class="fields"><thead><tr><th>Name</th><th>In</th><th>Type</th><th>&nbsp;</th></tr></thead><tbody><tr><td class="mono">version_id</td><td>path</td><td class="mono">string</td><td class="req-required">required</td></tr><tr><td class="mono">tenant_id</td><td>query</td><td class="mono">string | null</td><td class="req-optional">optional</td></tr></tbody></table>
+The organisation comes from the caller&#x27;s session (`auth.organisation_scope`), never from
+the URL, and a version belonging to another is **not found** rather than forbidden. That
+distinction is the point: 403 confirms the version exists, which is half of what somebody
+probing ids was trying to learn. The platform&#x27;s own workers send the worker token instead
+and name the organisation they act for. This endpoint also returns `object_manifest`, the
+storage keys of the version&#x27;s files, so it must never answer without one or the other.</p>
+  <div class="block-label">Parameters</div><table class="fields"><thead><tr><th>Name</th><th>In</th><th>Type</th><th>&nbsp;</th></tr></thead><tbody><tr><td class="mono">version_id</td><td>path</td><td class="mono">string</td><td class="req-required">required</td></tr><tr><td class="mono">tenant_id</td><td>query</td><td class="mono">string | null</td><td class="req-optional">optional</td></tr><tr><td class="mono">x-worker-token</td><td>header</td><td class="mono">string | null</td><td class="req-optional">optional</td></tr><tr><td class="mono">x-task-credential</td><td>header</td><td class="mono">string | null</td><td class="req-optional">optional</td></tr></tbody></table>
   
   <div class="block-label">Responses</div>
   <div class="response"><span class="status status-2xx">200</span> <span class="resp-desc">Successful Response</span> <span class="mono resp-type">&rarr; object</span></div><div class="response"><span class="status status-4xx">422</span> <span class="resp-desc">Validation Error</span> <span class="mono resp-type">&rarr; HTTPValidationError</span><table class="fields"><thead><tr><th>Field</th><th>Type</th><th>&nbsp;</th></tr></thead><tbody><tr><td class="mono">detail</td><td class="mono">ValidationError[]</td><td class="req-optional">optional</td></tr></tbody></table></div>
@@ -508,7 +503,7 @@ over the asset at all.</p>
   </div>
   <h3>Get Lineage</h3>
   
-  <div class="block-label">Parameters</div><table class="fields"><thead><tr><th>Name</th><th>In</th><th>Type</th><th>&nbsp;</th></tr></thead><tbody><tr><td class="mono">version_id</td><td>path</td><td class="mono">string</td><td class="req-required">required</td></tr><tr><td class="mono">tenant_id</td><td>query</td><td class="mono">string | null</td><td class="req-optional">optional</td></tr></tbody></table>
+  <div class="block-label">Parameters</div><table class="fields"><thead><tr><th>Name</th><th>In</th><th>Type</th><th>&nbsp;</th></tr></thead><tbody><tr><td class="mono">version_id</td><td>path</td><td class="mono">string</td><td class="req-required">required</td></tr><tr><td class="mono">tenant_id</td><td>query</td><td class="mono">string | null</td><td class="req-optional">optional</td></tr><tr><td class="mono">x-worker-token</td><td>header</td><td class="mono">string | null</td><td class="req-optional">optional</td></tr><tr><td class="mono">x-task-credential</td><td>header</td><td class="mono">string | null</td><td class="req-optional">optional</td></tr></tbody></table>
   
   <div class="block-label">Responses</div>
   <div class="response"><span class="status status-2xx">200</span> <span class="resp-desc">Successful Response</span> <span class="mono resp-type">&rarr; object</span></div><div class="response"><span class="status status-4xx">422</span> <span class="resp-desc">Validation Error</span> <span class="mono resp-type">&rarr; HTTPValidationError</span><table class="fields"><thead><tr><th>Field</th><th>Type</th><th>&nbsp;</th></tr></thead><tbody><tr><td class="mono">detail</td><td class="mono">ValidationError[]</td><td class="req-optional">optional</td></tr></tbody></table></div>
@@ -1204,11 +1199,11 @@ actual licence and overwrites it once the fetch runs, the same as
 What the console reads to resume bringing data into a dataset that was
 registered and then left, rather than sealed on the spot: registering
 and uploading were always two separate steps, but until now nothing let
-a person come back to the second one. Narrowed to one organisation when
-asked, and answering &quot;no such dataset&quot; rather than &quot;not yours&quot; for a
-dataset in another tenant, the same non-disclosure posture the other
+a person come back to the second one. Narrowed to the caller&#x27;s organisation
+(`auth.organisation_scope`), and answering &quot;no such dataset&quot; rather than &quot;not
+yours&quot; for a dataset in another tenant, the same non-disclosure posture the other
 detail endpoints already use.</p>
-  <div class="block-label">Parameters</div><table class="fields"><thead><tr><th>Name</th><th>In</th><th>Type</th><th>&nbsp;</th></tr></thead><tbody><tr><td class="mono">dataset_id</td><td>path</td><td class="mono">string</td><td class="req-required">required</td></tr><tr><td class="mono">tenant_id</td><td>query</td><td class="mono">string | null</td><td class="req-optional">optional</td></tr></tbody></table>
+  <div class="block-label">Parameters</div><table class="fields"><thead><tr><th>Name</th><th>In</th><th>Type</th><th>&nbsp;</th></tr></thead><tbody><tr><td class="mono">dataset_id</td><td>path</td><td class="mono">string</td><td class="req-required">required</td></tr><tr><td class="mono">tenant_id</td><td>query</td><td class="mono">string | null</td><td class="req-optional">optional</td></tr><tr><td class="mono">x-worker-token</td><td>header</td><td class="mono">string | null</td><td class="req-optional">optional</td></tr><tr><td class="mono">x-task-credential</td><td>header</td><td class="mono">string | null</td><td class="req-optional">optional</td></tr></tbody></table>
   
   <div class="block-label">Responses</div>
   <div class="response"><span class="status status-2xx">200</span> <span class="resp-desc">Successful Response</span> <span class="mono resp-type">&rarr; object</span></div><div class="response"><span class="status status-4xx">422</span> <span class="resp-desc">Validation Error</span> <span class="mono resp-type">&rarr; HTTPValidationError</span><table class="fields"><thead><tr><th>Field</th><th>Type</th><th>&nbsp;</th></tr></thead><tbody><tr><td class="mono">detail</td><td class="mono">ValidationError[]</td><td class="req-optional">optional</td></tr></tbody></table></div>
@@ -1412,9 +1407,10 @@ already satisfied.</p>
   <p class="op-desc">What this version may call, and whether that has been approved.
 
 Called by the agent&#x27;s own runtime (`agent/tools.py`&#x27;s `fetch_url`), a
-workload with no Kratos session to present, the same reason
-`GET /dataset-versions/{id}` (`main.py`) also takes no session -- a
-version&#x27;s requested hosts and approval state are not sensitive in the
+workload with no Kratos session to present. (`GET /dataset-versions/{id}`
+used to take no session either, and no longer does: it carries a version&#x27;s
+storage keys, so it answers a session, the worker token or a run credential
+only.) A version&#x27;s requested hosts and approval state are not sensitive in the
 way tenant data is, and this is read on every network call an agent
 makes, not once at deploy time. Scoped by version id alone, no tenant
 check: an agent already knows only its own `agent_version_id`, and a

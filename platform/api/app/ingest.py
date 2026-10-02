@@ -91,15 +91,15 @@ def _dataset(dataset_id: str) -> dict:
 
 
 @router.get("/datasets/{dataset_id}")
-def get_dataset(dataset_id: str, tenant_id: str | None = None) -> dict:
+def get_dataset(dataset_id: str, tenant_id: str | None = Depends(auth.organisation_scope)) -> dict:
     """One dataset's own record.
 
     What the console reads to resume bringing data into a dataset that was
     registered and then left, rather than sealed on the spot: registering
     and uploading were always two separate steps, but until now nothing let
-    a person come back to the second one. Narrowed to one organisation when
-    asked, and answering "no such dataset" rather than "not yours" for a
-    dataset in another tenant, the same non-disclosure posture the other
+    a person come back to the second one. Narrowed to the caller's organisation
+    (`auth.organisation_scope`), and answering "no such dataset" rather than "not
+    yours" for a dataset in another tenant, the same non-disclosure posture the other
     detail endpoints already use.
     """
     dataset = _dataset(dataset_id)
