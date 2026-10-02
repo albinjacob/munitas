@@ -39,6 +39,10 @@ EXEMPT = {
     "storage_reclamation",
     # Closing and reopening a tenant has to remain possible.
     "tenant",
+    # A closed organisation's records stay readable, and opening one through the
+    # catalog records which key was asked for. The row holds no records and
+    # grants nothing a lease or a role had not already decided.
+    "catalog_key",
 }
 
 

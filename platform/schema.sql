@@ -2077,3 +2077,27 @@ begin
       'refuse_retired_' || t, t);
   end loop;
 end $$;
+
+-- The storage keys the Iceberg catalog hands out. One row per person and per
+-- version: the identity it names holds a rolling series of keys, each valid for
+-- a stretch of time, derived from a secret nobody stores (grants.py). The row
+-- says only that the series is wanted and which epoch it was last asked for, so
+-- the series ends by itself once nobody asks, and at once when the lease it
+-- rests on ends.
+--
+-- Not guarded against a retired organisation, and named as an exception in U33:
+-- a closed organisation's records stay readable, and reading them through the
+-- catalog needs this row. It holds no records and grants nothing a lease or a
+-- role did not already decide.
+create table if not exists catalog_key (
+  id                 uuid primary key,
+  tenant_id          text not null references tenant(id),
+  principal          text not null,
+  dataset_version_id uuid not null references dataset_version(id) on delete cascade,
+  lease_id           uuid references access_lease(id),
+  identity_name      text not null unique,
+  issued_epoch       bigint not null,
+  created_at         timestamptz not null default now(),
+  unique (principal, dataset_version_id)
+);
+

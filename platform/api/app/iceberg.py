@@ -240,7 +240,11 @@ def project(
     catalog.create_namespace(dataset_name)
     table = catalog.create_table(
         (dataset_name, name), schema=schema, location=location,
-        properties={"format-version": str(FORMAT_VERSION)},
+        properties={"format-version": str(FORMAT_VERSION),
+                    **({"write.parquet.row-group-limit": str(config.ICEBERG_ROW_GROUP_ROWS)}
+                       if config.ICEBERG_ROW_GROUP_ROWS else {}),
+                    **({"write.target-file-size-bytes": str(config.ICEBERG_FILE_BYTES)}
+                       if config.ICEBERG_FILE_BYTES else {})},
     )
     summary = {
         "munitas.tenant": tenant_id,

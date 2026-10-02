@@ -154,3 +154,17 @@ PUBLIC_S3_ENDPOINT = os.environ.get("MUNITAS_PUBLIC_S3_ENDPOINT", "http://localh
 # How long a catalog token may live, at most. A token carries a person's
 # purpose and nothing else; each table it opens is still decided on its own.
 CATALOG_TOKEN_MAX_HOURS = int(os.environ.get("MUNITAS_CATALOG_TOKEN_MAX_HOURS", "12"))
+# How long a storage key handed out by the catalog lasts, in seconds, at most.
+# A key is one of a rolling series (grants.py), so it lives between half of this
+# and all of it. The floor is two activator ticks per half, below which a key
+# could be refused before the document that holds it is written.
+CATALOG_KEY_SECONDS = max(40, int(os.environ.get("MUNITAS_CATALOG_KEY_SECONDS", "3600")))
+# Rows in one Parquet row group when a table is written. 0 leaves the library's
+# own default (about a million). A reader fetches one row group at a time, so a
+# smaller group spreads a long scan over more, separate storage requests.
+ICEBERG_ROW_GROUP_ROWS = int(os.environ.get("MUNITAS_ICEBERG_ROW_GROUP_ROWS", "0"))
+# Bytes after which a table's rows continue in a new data file. 0 leaves the
+# library's own default (512 MB). A tool that reads one file at a time opens
+# each with the key it held when it started, so many small files spread a
+# long read over many separate key checks.
+ICEBERG_FILE_BYTES = int(os.environ.get("MUNITAS_ICEBERG_FILE_BYTES", "0"))

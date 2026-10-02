@@ -298,7 +298,127 @@ def _minted_identities(*, as_of=None) -> list[dict]:
             "actions": [f"{verb}:{row['bucket']}"
                         for verb in ("Read", "Write", "List", "Tagging")],
         })
+
+    # The catalog's rolling keys. Each identity holds the keys for the previous,
+    # the current and the next epoch, so a key a person was handed a moment ago,
+    # or one that is about to be asked for, is always already in the document
+    # (see catalog_epoch). It is in the document while it was asked for in this
+    # epoch or the one before, and, if it rests on a lease, while that lease is
+    # live. When neither holds it is simply not compiled, and its keys stop
+    # working at the next print.
+    now_epoch = catalog_epoch()
+    for row in db.all_rows(
+        """select ck.identity_name, v.storage_prefix, p.bucket
+             from catalog_key ck
+             join dataset_version v on v.id = ck.dataset_version_id
+             join tenant_storage_provision p
+                    on p.tenant_id = v.tenant_id and p.backend = 'seaweedfs'
+             left join access_lease l on l.id = ck.lease_id
+            where ck.issued_epoch + 1 >= %s
+              and (ck.lease_id is null
+                   or (l.revoked = false and (l.expires_at is null or l.expires_at > now())))""",
+        (now_epoch,),
+    ):
+        identities.append({
+            "name": row["identity_name"],
+            "credentials": [{"accessKey": catalog_access_key(row["identity_name"], e),
+                             "secretKey": catalog_secret(row["identity_name"], e)}
+                            for e in (now_epoch - 1, now_epoch, now_epoch + 1)],
+            "actions": _prefix_actions(row["bucket"], row["storage_prefix"]),
+        })
     return identities
+
+
+# ------------------------------------------------- the catalog's rolling keys --
+#
+# A storage key that works until a lease ends is a bearer credential with a long
+# life: anyone holding it can read for as long as the lease lasts. SeaweedFS has
+# no short-lived credentials of its own (seaweed.credentials_for says so), so
+# this makes them from what it does have, a document the platform rewrites.
+#
+# Time is cut into epochs, half of CATALOG_KEY_SECONDS long. Each identity's
+# secret for an epoch is derived, not stored: an HMAC of the identity and the
+# epoch under a key only the platform holds. The document carries three epochs
+# at a time (the one before, this one, the next) and is reprinted whenever the
+# epoch changes. A key handed out in epoch e is therefore good from then until
+# the document for epoch e+2 is written, which is between one and two epochs, so
+# between half the setting and all of it. A key can be asked for again whenever
+# a client wants a fresh one, and the same decision is made again each time.
+
+def catalog_epoch_seconds() -> int:
+    return config.CATALOG_KEY_SECONDS // 2
+
+
+def catalog_epoch(at: float | None = None) -> int:
+    import time
+    return int((time.time() if at is None else at) // catalog_epoch_seconds())
+
+
+def catalog_access_key(identity_name: str, epoch: int) -> str:
+    return f"{identity_name}-{epoch}"
+
+
+def catalog_secret(identity_name: str, epoch: int) -> str:
+    import hashlib
+    import hmac
+    # Derived from the storage administrator's own secret, which already stands
+    # for the platform's whole authority over storage, and separated by a label
+    # so this use of it can never collide with another.
+    root = hmac.new(config.STORAGE_ADMIN[1].encode("utf-8"),
+                    b"munitas catalog keys v1", hashlib.sha256).digest()
+    return hmac.new(root, f"{identity_name}|{epoch}".encode("utf-8"),
+                    hashlib.sha256).hexdigest()
+
+
+def catalog_key_for(principal: str, tenant_id: str, version_id: str,
+                    lease_id: str | None) -> dict:
+    """The key this person gets for this version right now, and whether the
+    document must be printed before it works.
+
+    Called only after the access decision has been made and recorded. A key is
+    asked for again for as long as the reader needs one, and every ask is
+    decided afresh, so access that has ended is not renewed.
+    """
+    import uuid
+
+    epoch = catalog_epoch()
+    before = db.one(
+        "select id, identity_name, issued_epoch, lease_id::text as lease_id "
+        "from catalog_key where principal = %s and dataset_version_id = %s",
+        (principal, version_id))
+    if before:
+        db.execute(
+            """update catalog_key
+                  set issued_epoch = greatest(issued_epoch, %s), lease_id = %s
+                where id = %s""",
+            (epoch, lease_id, before["id"]))
+        name = before["identity_name"]
+        needs_print = (before["issued_epoch"] < epoch - 1
+                       or before["lease_id"] != lease_id)
+    else:
+        key_id = str(uuid.uuid4())
+        name = f"cat-{key_id[:12]}"
+        db.execute(
+            """insert into catalog_key
+                 (id, tenant_id, principal, dataset_version_id, lease_id,
+                  identity_name, issued_epoch)
+               values (%s, %s, %s, %s, %s, %s, %s)
+               on conflict (principal, dataset_version_id) do nothing""",
+            (key_id, tenant_id, principal, version_id, lease_id, name, epoch))
+        # Another request for the same person and version may have won the race;
+        # use whichever row stands.
+        row = db.one("select identity_name from catalog_key where principal = %s "
+                     "and dataset_version_id = %s", (principal, version_id))
+        name = row["identity_name"]
+        needs_print = True
+    return {
+        "identity_name": name,
+        "access_key": catalog_access_key(name, epoch),
+        "secret_key": catalog_secret(name, epoch),
+        # When the document for epoch + 2 is written, at the latest a tick late.
+        "expires_at": (epoch + 2) * catalog_epoch_seconds(),
+        "needs_print": needs_print,
+    }
 
 
 # The platform's own key. Not a policy role: it provisions buckets and nothing
@@ -754,6 +874,24 @@ def activation_status() -> dict:
                or (not l.revoked and l.expires_at is not null and l.expires_at <= now()
                    and (%s::timestamptz is null or l.expires_at >= %s))""",
         (since, since, since, since))["n"]
+    # The catalog's rolling keys. A new epoch needs a new document (the keys
+    # for the next one, and without the oldest), and a key resting on a lease
+    # that has ended needs the document rewritten without it. Neither is asked
+    # for by a request, so this loop does it.
+    rotation = 0
+    if last_ok:
+        printed_epoch = catalog_epoch(last_ok["started_at"].timestamp())
+        if catalog_epoch() != printed_epoch:
+            rotation = db.one(
+                "select count(*) as n from catalog_key where issued_epoch + 1 >= %s",
+                (printed_epoch,))["n"]
+    ended_keys = db.one(
+        """select count(*) as n
+             from catalog_key ck join access_lease l on l.id = ck.lease_id
+            where (l.revoked and (%s::timestamptz is null or l.revoked_at >= %s))
+               or (not l.revoked and l.expires_at is not null and l.expires_at <= now()
+                   and (%s::timestamptz is null or l.expires_at >= %s))""",
+        (since, since, since, since))["n"]
     retry_due = None
     if latest and latest["retryable"]:
         retry_due = latest["finished_at"] + timedelta(seconds=retry_delay_seconds(len(failures)))
@@ -771,5 +909,6 @@ def activation_status() -> dict:
         "pending_decisions": pending,
         "ended_leases": ended,
         "parked_runs": parked["n"],
-        "unserved": pending + parked["unserved"] + ended,
+        "rotation_due": rotation,
+        "unserved": pending + parked["unserved"] + ended + ended_keys + (1 if rotation else 0),
     }

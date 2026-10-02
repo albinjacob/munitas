@@ -47,7 +47,7 @@ import psycopg.errors
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, Response
 
-from . import access_preview, auth, config, db, logs, models, storage
+from . import access_preview, auth, config, db, grants, logs, models, storage
 
 log = logs.get_logger("iceberg_catalog")
 router = APIRouter(tags=["iceberg"])
@@ -64,6 +64,7 @@ ENDPOINTS = [
     "GET /v1/{prefix}/namespaces/{namespace}/tables",
     "GET /v1/{prefix}/namespaces/{namespace}/tables/{table}",
     "HEAD /v1/{prefix}/namespaces/{namespace}/tables/{table}",
+    "GET /v1/{prefix}/namespaces/{namespace}/tables/{table}/credentials",
 ]
 
 READ_ONLY = ("this catalog is read-only: a table is written once, when its version is "
@@ -268,40 +269,39 @@ def _metadata(ref: dict, version: dict) -> dict:
     return json.loads(client.get_object(Bucket=bucket, Key=key)["Body"].read())
 
 
-def _vended(grant: dict, backend: str) -> dict:
+def _vended(key: dict, ref: dict, prefix: str, namespace: str, table: str) -> dict:
     """The properties a client needs to read this table's files: where storage
-    is, and the key this person's access gave them."""
-    if backend != "seaweedfs" or not grant.get("access_key"):
-        raise CatalogError(501, "UnsupportedOperationException",
-                           f"tables on {backend!r} storage are not served by this catalog yet")
+    is, the key this person's access gave them, when that key stops working, and
+    where to ask for the next one. A client that reads for longer than the key
+    lasts has to ask again, and this is what tells it how."""
     return {
         "s3.endpoint": config.PUBLIC_S3_ENDPOINT,
-        "s3.access-key-id": grant["access_key"],
-        "s3.secret-access-key": grant["secret_key"],
+        "s3.access-key-id": key["access_key"],
+        "s3.secret-access-key": key["secret_key"],
         "s3.region": "us-east-1",
         "s3.path-style-access": "true",
+        "s3.session-token-expires-at-ms": str(key["expires_at"] * 1000),
+        "client.refresh-credentials-endpoint":
+            f"v1/{prefix}/namespaces/{namespace}/tables/{table}/credentials",
     }
 
 
-@router.api_route("/iceberg/v1/{prefix}/namespaces/{namespace}/tables/{table}",
-                  methods=["GET", "HEAD"])
-def load_table(prefix: str, namespace: str, table: str, request: Request,
-               principal: dict = Depends(catalog_principal)):
-    """Open one table: decide, record the decision, then hand over the key.
+def _open(principal: dict, ref: dict) -> dict:
+    """Decide whether this person may read this table now, record the decision,
+    and mint the key that goes with it.
 
-    The decision, the audit rows and the key all come from request_credential,
-    the function behind POST /credentials, so a table opened here is recorded
-    exactly as the same version read any other way would be.
+    The decision and its audit rows are request_credential's, the function
+    behind POST /credentials, so a table opened here is recorded exactly as the
+    same version read any other way would be. The key is not the one that
+    function returns, which lasts as long as a lease does: it is the next key in
+    the catalog's rolling series (grants.catalog_key_for), which lasts at most
+    CATALOG_KEY_SECONDS. Every call decides afresh, so a refresh after access
+    has ended is refused here, which is what ends a long read.
     """
-    _own_warehouse(principal, prefix)
-    ref = db.one(
-        """select dataset_version_id::text as version_id, tenant_id, metadata_location
-             from iceberg_table_ref where tenant_id = %s and namespace = %s and table_name = %s""",
-        (principal["tenant_id"], namespace, table),
-    )
-    if not ref:
-        raise CatalogError(404, "NoSuchTableException", f"table does not exist: {namespace}.{table}")
     version = db.one("select storage_backend from dataset_version where id = %s", (ref["version_id"],))
+    if version["storage_backend"] != "seaweedfs":
+        raise CatalogError(501, "UnsupportedOperationException",
+                           f"tables on {version['storage_backend']!r} storage are not served by this catalog yet")
 
     # Imported here: main imports this module to register it, so a module-level
     # import would be circular. By the time a request arrives both are loaded.
@@ -328,13 +328,72 @@ def load_table(prefix: str, namespace: str, table: str, request: Request,
                            "updated, which is in progress. Try again shortly",
                            headers={"Retry-After": grant.headers.get("retry-after", "5")})
 
+    # A key rests on the person's live lease when there is one, so revoking the
+    # lease ends it at once, not at the end of its time.
+    lease = db.one(
+        """select id::text as id from access_lease
+            where principal = %s and dataset_version_id = %s and revoked = false
+              and expires_at > now() order by expires_at desc limit 1""",
+        (principal["id"], ref["version_id"]))
+    key = grants.catalog_key_for(principal["id"], principal["tenant_id"], ref["version_id"],
+                                 lease["id"] if lease else None)
+    if key["needs_print"]:
+        try:
+            grants.reconcile(trigger="request")
+        except Exception as exc:
+            raise CatalogError(503, "ServiceUnavailableException",
+                               "access is approved and takes effect once storage permissions are "
+                               "updated, which is in progress. Try again shortly",
+                               headers={"Retry-After": "5"}) from exc
+    return key
+
+
+def _table_ref(principal: dict, prefix: str, namespace: str, table: str) -> dict:
+    _own_warehouse(principal, prefix)
+    ref = db.one(
+        """select dataset_version_id::text as version_id, tenant_id, metadata_location, location
+             from iceberg_table_ref where tenant_id = %s and namespace = %s and table_name = %s""",
+        (principal["tenant_id"], namespace, table),
+    )
+    if not ref:
+        raise CatalogError(404, "NoSuchTableException", f"table does not exist: {namespace}.{table}")
+    return ref
+
+
+@router.api_route("/iceberg/v1/{prefix}/namespaces/{namespace}/tables/{table}",
+                  methods=["GET", "HEAD"])
+def load_table(prefix: str, namespace: str, table: str, request: Request,
+               principal: dict = Depends(catalog_principal)):
+    """Open one table: decide, record the decision, then hand over the key.
+
+    The decision, the audit rows and the key all come from request_credential,
+    the function behind POST /credentials, so a table opened here is recorded
+    exactly as the same version read any other way would be.
+    """
+    ref = _table_ref(principal, prefix, namespace, table)
+    version = db.one("select storage_backend from dataset_version where id = %s", (ref["version_id"],))
+    key = _open(principal, ref)
     if request.method == "HEAD":
         return Response(status_code=204)
     return {
         "metadata-location": ref["metadata_location"],
         "metadata": _metadata(ref, version),
-        "config": _vended(grant, version["storage_backend"]),
+        "config": _vended(key, ref, prefix, namespace, table),
     }
+
+
+@router.get("/iceberg/v1/{prefix}/namespaces/{namespace}/tables/{table}/credentials")
+def load_credentials(prefix: str, namespace: str, table: str,
+                     principal: dict = Depends(catalog_principal)) -> dict:
+    """The next key for a table a client already has open. Decided again, in
+    full, every time: this is where a read that outlasts its key either carries
+    on or is told, with the reason, that access has ended."""
+    ref = _table_ref(principal, prefix, namespace, table)
+    key = _open(principal, ref)
+    return {"storage-credentials": [{
+        "prefix": ref["location"],
+        "config": _vended(key, ref, prefix, namespace, table),
+    }]}
 
 
 # ------------------------------------------------------------- refusals --

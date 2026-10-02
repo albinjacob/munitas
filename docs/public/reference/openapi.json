@@ -4938,6 +4938,68 @@
         ]
       }
     },
+    "/iceberg/v1/{prefix}/namespaces/{namespace}/tables/{table}/credentials": {
+      "get": {
+        "description": "The next key for a table a client already has open. Decided again, in\nfull, every time: this is where a read that outlasts its key either carries\non or is told, with the reason, that access has ended.",
+        "operationId": "load_credentials_iceberg_v1__prefix__namespaces__namespace__tables__table__credentials_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "prefix",
+            "required": true,
+            "schema": {
+              "title": "Prefix",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "table",
+            "required": true,
+            "schema": {
+              "title": "Table",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Load Credentials Iceberg V1  Prefix  Namespaces  Namespace  Tables  Table  Credentials Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Load Credentials",
+        "tags": [
+          "iceberg"
+        ]
+      }
+    },
     "/iceberg/v1/{prefix}/namespaces/{namespace}/views": {
       "get": {
         "description": "There are no views. Answered, not refused, because some clients ask.",

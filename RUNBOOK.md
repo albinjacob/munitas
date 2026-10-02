@@ -695,8 +695,7 @@ else.
 
 Each version is a table named `v<N>`. A table the person may not read is not
 listed, and opening it is refused with the reason. Opening a raw table needs an
-approved lease; the storage key the catalog hands out lives as long as that
-lease does, and stops working when it is revoked or runs out.
+approved lease; the storage key it hands out expires, as described below.
 
 Two settings matter when a client runs on another machine. The catalog tells
 the client where storage is from `MUNITAS_PUBLIC_S3_ENDPOINT` (default
@@ -718,6 +717,76 @@ A database created before the Iceberg tables existed gets them with
 `.venv\Scripts\python.exe scripts\admin\apply-schema.py`, which is safe to
 run again. Projection can be turned off with `MUNITAS_ICEBERG_PROJECTION=off`; a
 version that cannot be projected is still sealed, and the reason is logged.
+
+### How long a storage key lasts, and long reads
+
+The key the catalog hands out for a table expires. It lives between half and
+all of `MUNITAS_CATALOG_KEY_SECONDS` (default 3600, so 30 to 60 minutes) and the
+table's configuration says exactly when (`s3.session-token-expires-at-ms`).
+Revoking a lease ends its keys at once, whatever time they had left. A key that
+leaks is useful for at most that long, not for as long as a lease lasts.
+
+A read that outlasts its key has to ask for the next one, and every ask decides
+access again. If access has ended, the ask is refused with the reason and the
+read stops.
+
+- **DuckDB** asks again by itself, by loading the table again. Nothing to do.
+- **PyIceberg** does not. It opens each data file with the key it held when the
+  table was loaded, and on a table too large to read ahead of itself that fails
+  on a later file with an access error. Read with the helper, which loads the
+  table again whenever the key is about to run out:
+
+  ```python
+  import sys; sys.path.insert(0, "scripts/client")
+  from iceberg_reader import read_batches
+  for batch in read_batches(catalog, ("my_dataset", "v1")):
+      ...   # a pyarrow RecordBatch
+  ```
+
+- Anything else that reads the files itself: load the table again, or call
+  `GET /iceberg/v1/<organisation>/namespaces/<dataset>/tables/v<N>/credentials`,
+  before `s3.session-token-expires-at-ms`.
+
+The catalog offers both ways of asking, and each client may use whichever it
+supports. Both run the same decision and mint the same kind of key.
+
+- Loading the table again is what DuckDB 1.5.6 did in U93, every time, even
+  though the catalog also advertises the credentials endpoint. A newer DuckDB
+  Iceberg extension is documented to prefer the credentials endpoint when it is
+  advertised and to load the table again when it is not, so this may change
+  with the extension version. Both work. U93 asserts the behaviour (the tool
+  asked again, and a revoke stopped it), not which of the two it used.
+- The credentials endpoint is the one the Iceberg REST specification defines
+  (version 1.9 onward), and it is advertised in `/iceberg/v1/config` and in the
+  table's `client.refresh-credentials-endpoint` property, as a path relative to
+  the catalog's address, as Java-based clients expect. Of the clients tried,
+  none relied on it: PyIceberg 0.12 has a call for it but its file reader does
+  not use it, and only U93's own explicit calls exercised it. It is kept so that
+  clients which do use it (Spark, Flink and other Java-based ones are the usual
+  ones) work as the specification describes. That is untested here.
+- Some clients do not renew vended keys at all. Public issue trackers show this
+  for Trino and Unity Catalog, and refresh failures in the Java client. A read
+  on such a client stops at the first expiry. For those, raise
+  `MUNITAS_CATALOG_KEY_SECONDS` above the longest read, accepting that a leaked
+  key then lasts that long, or read in pieces and open the table again for each.
+
+The lifetime has a floor of 40 seconds. Raising it costs nothing; lowering it
+makes the API rewrite the storage permissions more often (once per half
+lifetime, while any key is in use).
+
+Check U93 proves all of this with real tools, and takes about six minutes
+because it needs the API started with short keys and small files:
+
+```bash
+$env:MUNITAS_CATALOG_KEY_SECONDS = "60"; $env:MUNITAS_ICEBERG_ROW_GROUP_ROWS = "100"; $env:MUNITAS_ICEBERG_FILE_BYTES = "6000"
+# restart the API with those set, then:
+.venv\Scripts\python.exe -m pip install duckdb numpy "pyiceberg[pyarrow]" boto3
+.venv\Scripts\python.exe verify\v93_catalog_key_expiry.py
+# then restart the API without them
+```
+
+With any other settings, U93 reports every check as skipped and names the
+setting to change.
 
 ---
 

@@ -303,6 +303,9 @@ services:
       # storage at S3_ENDPOINT, which only exists inside this network.
       MUNITAS_PUBLIC_S3_ENDPOINT: http://localhost:${PORT_SEAWEEDFS_S3:-8333}
       MUNITAS_ICEBERG_PROJECTION: ${MUNITAS_ICEBERG_PROJECTION:-on}
+      MUNITAS_CATALOG_KEY_SECONDS: ${MUNITAS_CATALOG_KEY_SECONDS:-3600}
+      MUNITAS_ICEBERG_ROW_GROUP_ROWS: ${MUNITAS_ICEBERG_ROW_GROUP_ROWS:-0}
+      MUNITAS_ICEBERG_FILE_BYTES: ${MUNITAS_ICEBERG_FILE_BYTES:-0}
       # Checked by GET /agents/{id}/versions/{id}/code (agent_upload.py)
       # only. Must match the worker's own MUNITAS_WORKER_TOKEN, set once,
       # here and on the host where the worker runs, from the same env var

@@ -105,6 +105,7 @@ def audit(*, scratch_files: bool = True) -> dict:
             orphan_objects.append({"bucket": b, "key": k, "bytes": o["Size"]})
 
     rows = {r["identity_name"] for r in db.all_rows("select identity_name from storage_identity")}
+    rows |= {r["identity_name"] for r in db.all_rows("select identity_name from catalog_key")}
     from . import grants
     roles = grants.identity_names()
     orphan_identities = sorted(
