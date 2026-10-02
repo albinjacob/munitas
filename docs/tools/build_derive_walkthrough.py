@@ -1,10 +1,15 @@
-r"""Build docs/public/walkthroughs/derive-walkthrough.html from a recorded run.
+r"""Build the two derivation walkthroughs, one page per organisation:
+
+  docs/public/walkthroughs/derive-health-walkthrough.html
+  docs/public/walkthroughs/derive-finance-walkthrough.html
+
+from recorded runs.
 
 Two real recordings feed this page, and nothing on it is mocked:
 
   * The console screens come from web/walkthroughs/derive.spec.ts, which drives
-    the real console against the live stack as the Health organisation's own
-    people.
+    the real console against the live stack as one organisation's own people
+    (DERIVE_TENANT picks which, health by default).
   * The steps taken in a Python session have no screen, so they show the real code
     and the real output that scripts/demo/derive-demo.py printed, saved by its
     --transcript option, with who typed each command. The code on the page is the
@@ -14,11 +19,12 @@ Run them in this order, then this builder:
 
     .venv\Scripts\python.exe scripts\seed\seed-derive-demo-data.py
     .venv\Scripts\python.exe scripts\demo\derive-demo.py --tenant health --name chronic-heart-patients-over-65 ^
-        --transcript web\walkthroughs\shots\derive\transcript-health.json
+        --transcript web\walkthroughs\shots\derive-health\transcript.json
     .venv\Scripts\python.exe scripts\demo\derive-demo.py --tenant finance --name large-foreign-payments ^
-        --transcript web\walkthroughs\shots\derive\transcript-finance.json
+        --transcript web\walkthroughs\shots\derive-finance\transcript.json
     cd web
     npx playwright test --config=walkthroughs/playwright.config.ts derive
+    $env:DERIVE_TENANT = "finance"; npx playwright test --config=walkthroughs/playwright.config.ts derive
     ..\.venv\Scripts\python.exe ..\docs\tools\build_derive_walkthrough.py
 
 Needs Pillow, listed in docs/tools/requirements.txt.
@@ -38,22 +44,29 @@ from pathlib import Path
 from PIL import Image
 
 DOCS = Path(__file__).resolve().parent.parent
-SHOTS = DOCS.parent / "web" / "walkthroughs" / "shots" / "derive"
-OUT = DOCS / "public" / "walkthroughs" / "derive-walkthrough.html"
+SHOTS_ROOT = DOCS.parent / "web" / "walkthroughs" / "shots"
+OUT_DIR = DOCS / "public" / "walkthroughs"
 QUALITY = 72
 
-TRANSCRIPTS = {
-    "health": json.loads((SHOTS / "transcript-health.json").read_text(encoding="utf-8")),
-    "finance": json.loads((SHOTS / "transcript-finance.json").read_text(encoding="utf-8")),
-}
+# Set by use(): the organisation being built. The functions below read these.
+ORG = "health"
+SHOTS = SHOTS_ROOT / "derive-health"
+TRANSCRIPTS: dict = {}
+STEPS: list = []
+ACTORS: dict = {}
+CROPS: dict = {}
 
-ACTORS = {
-    "sam": ("Sam", "Researcher, Health organisation"),
-    "hartley": ("Hartley", "Data custodian for the Cardiology department"),
-    "devi": ("Devi", "Pipeline engineer, Health organisation"),
-    "omar": ("Omar", "Analyst, Finance organisation"),
-    "marcus": ("Marcus", "Data custodian for the Fraud Operations department"),
-}
+
+def use(org: str) -> None:
+    """Point the builder at one organisation's recording, steps and people."""
+    global ORG, SHOTS, TRANSCRIPTS, STEPS, ACTORS, CROPS
+    ORG = org
+    SHOTS = SHOTS_ROOT / f"derive-{org}"
+    TRANSCRIPTS = {org: json.loads((SHOTS / "transcript.json").read_text(encoding="utf-8"))}
+    STEPS = ORGS[org]["steps"]
+    ACTORS = ORGS[org]["actors"]
+    CROPS = ORGS[org]["crops"]
+
 
 SESSION = None  # code steps are labelled from the code they show (see code_screen)
 CONSOLE = "The Munitas console, the platform&rsquo;s web app"
@@ -128,7 +141,7 @@ WORDS = [
     ("Iceberg table", "An open way of storing a table that tools such as DuckDB can read directly."),
 ]
 
-STEPS = [
+HEALTH_STEPS = [
     # ------------------------------------------------------------------ one --
     {
         "act": ("PART ONE", "A closed table, and a request for access",
@@ -200,8 +213,7 @@ STEPS = [
         "note": "The card reads <strong>Sam (Researcher) wants to read admissions v1</strong>, followed by "
                 "Sam's reason and two buttons, <strong>Grant access</strong> and <strong>Refuse</strong>. The "
                 "small text under them says what granting means: a fixed time, this purpose only, and it ends "
-                "by itself. The counter says 2 because the queue also holds an older request from Sam for a "
-                "different dataset, which this walkthrough does not touch.",
+                "by itself.",
     },
     {
         "kind": "shot", "file": "06-after-granting.png", "actor": "hartley",
@@ -357,38 +369,243 @@ STEPS = [
         "note": "The <strong>You can read</strong> column now says <strong>0 of 1</strong>, where it said "
                 "<strong>1 of 1</strong> earlier.",
     },
-    # ----------------------------------------------------------------- four --
+]
+
+FINANCE_STEPS = [
+    # ------------------------------------------------------------------ one --
     {
-        "act": ("PART FOUR", "The same story in a second organisation",
-                "Nothing here is specific to hospitals. In the Finance organisation, the Fraud Operations "
-                "department owns card transactions that name the account holders, and an analyst makes a new "
-                "dataset in just the same way."),
-        "kind": "code", "source": "finance", "scenes": [5], "actor": "omar",
-        "title": "Omar, an analyst, asks for a plan",
+        "act": ("PART ONE", "A closed table, and a request for access",
+                "The Fraud Operations department of a finance organisation owns a dataset of card "
+                "transactions. Every record names the account holder and the last four digits of the card, so "
+                "the dataset is closed to most people. An analyst wants to review it. This part shows the "
+                "analyst being stopped, asking for access, and being answered by a different person."),
+        "kind": "code", "source": "finance", "scenes": [1], "actor": "omar",
+        "title": "Omar connects an analysis tool and sees only the open table",
         "screen": SESSION,
-        "text": "Marcus is the custodian of the Fraud Operations department, and has approved a lease for "
-                "Omar on the transactions. Omar writes a query that joins them with a public list of "
-                "merchants and keeps large payments made outside the home country, and asks the platform to "
-                "plan it.",
-        "note": "<code>amount</code> and <code>category</code> are <strong>none</strong>. "
-                "<code>country</code>, <code>occurred_at</code> and <code>flagged</code> are "
-                "<strong>quasi</strong>. The new dataset would be <strong>RAW</strong>.",
+        "text": "Omar is an analyst in the Finance organisation. To start, Omar asks the platform for a token, "
+                "which is a short-lived password that also says why Omar wants to read, here a cross-border "
+                "fraud review. Omar then connects DuckDB, a free tool for analysing tables, to the platform's "
+                "catalog, which is the list of tables the platform offers, and asks what is in it. DuckDB runs "
+                "inside Omar's own Python session and reads the tables from the platform.",
+        "note": "Only one dataset is listed, <code>merchants</code>, a public list of merchants and their "
+                "categories. The transactions dataset does not appear at all, because Omar may not read it.",
     },
     {
-        "kind": "code", "source": "finance", "scenes": [7, 8], "actor": "omar",
-        "title": "The query runs, and the new dataset opens",
+        "kind": "shot", "file": "01-sam-finds-the-open-lookup.png", "actor": "omar",
+        "title": "The console shows why that table is open",
+        "screen": CONSOLE + " &middot; Datasets",
+        "text": "The console is the platform's web page for people. Signed in as Omar, the datasets list shows "
+                "<code>merchants</code>, the public list of merchants, which the Risk and Compliance "
+                "department owns.",
+        "note": "The <strong>You can read</strong> column says <strong>1 of 1</strong>, and the access level is "
+                "<strong>Published</strong>, the most open level. Omar may read this dataset without asking "
+                "anybody.",
+    },
+    {
+        "kind": "code", "source": "finance", "scenes": [2], "actor": "omar",
+        "title": "The restricted table is closed, and the platform says why",
         "screen": SESSION,
-        "text": "Omar confirms. The platform runs the query in its isolated container, seals the result, and "
-                "Omar opens the new table.",
-        "note": "The second answer counts the matching transactions and adds up their amounts, from a dataset "
-                "that holds no account holder names.",
+        "text": "The transactions dataset is at the Raw access level, the most restricted one. Nobody may read "
+                "it without a lease, which is permission from the owning department's custodian to read it for "
+                "one stated purpose and for a limited time. Omar tries to read it anyway.",
+        "note": "The refusal ends with <code>no role reaches class RAW</code>. Omar's role, analyst, reaches "
+                "the Published level and nothing above it. The platform gives the reason instead of a bare "
+                "error. The line also names one lease that was revoked earlier, because this example was "
+                "recorded more than once on the same data and the platform remembers Omar's earlier lease. "
+                "Only the most recent revoked lease is named, however many there have been.",
+    },
+    {
+        "kind": "shot", "file": "02-sam-finds-admissions-closed.png", "actor": "omar",
+        "title": "The console shows the same closed table",
+        "screen": CONSOLE + " &middot; Datasets",
+        "text": "The same datasets list in the console now shows the transactions dataset, which the Fraud "
+                "Operations department owns and which holds the card transactions. The list also holds "
+                "<code>high-value-foreign-transactions</code>, a dataset made from these transactions in an "
+                "earlier recording of this walkthrough.",
+        "note": "The <strong>You can read</strong> column says <strong>0 of 1</strong> on both rows, and the "
+                "access level is <strong>Raw</strong>. Each dataset has one version, and Omar may read none "
+                "of either.",
+    },
+    {
+        "kind": "shot", "file": "03-sam-fills-in-the-request.png", "actor": "omar",
+        "title": "Omar asks the Fraud Operations custodian for access",
+        "screen": CONSOLE + " &middot; A dataset's page",
+        "text": "On the dataset's page, Omar writes what the data will be used for, why something less "
+                "sensitive would not do, and for how long access is needed. The request goes to Marcus, the "
+                "custodian of the Fraud Operations department, because Fraud Operations owns the data.",
+        "note": "The line above the form reads <strong>Your access ended</strong>, with the date it was "
+                "withdrawn. It is history from an earlier recording of this page, and the platform keeps it "
+                "in view whenever somebody asks again.",
+    },
+    {
+        "kind": "shot", "file": "05-hartley-sees-the-request.png", "actor": "marcus",
+        "title": "Marcus sees the request in the Fraud Operations queue",
+        "screen": CONSOLE + " &middot; The custodian's home page",
+        "text": "Marcus's home page lists the requests to read Fraud Operations' data. Nobody else can decide "
+                "this one, and Omar cannot approve a request made under Omar's own name.",
+        "note": "The first card reads <strong>Omar (Analyst) wants to read transactions v1</strong>, followed by "
+                "Omar's reason and two buttons, <strong>Grant access</strong> and <strong>Refuse</strong>. The "
+                "small text under them says what granting means: a fixed time, this purpose only, and it ends "
+                "by itself. The counter says 2 because the queue also holds a request from Omar for a "
+                "different dataset, <code>card-transaction-log</code>, which this walkthrough does not touch.",
+    },
+    {
+        "kind": "shot", "file": "06-after-granting.png", "actor": "marcus",
+        "title": "Marcus grants the request",
+        "screen": CONSOLE + " &middot; The custodian's home page",
+        "text": "Marcus chooses Grant access. The request leaves the queue, and a lease now exists that lets "
+                "Omar read this one dataset for the stated purpose.",
+        "note": "A notice at the bottom right reads <strong>Access granted to Omar (Analyst)</strong>, and the "
+                "box <strong>Currently granted</strong> now counts one. The newest entry under <strong>What "
+                "you have decided</strong> says <strong>Granted</strong>, shows when the lease runs out, and "
+                "offers a <strong>Revoke</strong> link, which Marcus uses at the end of this walkthrough.",
+    },
+    {
+        "kind": "code", "source": "finance", "scenes": [4], "actor": "omar",
+        "title": "With the lease, the restricted table opens",
+        "screen": SESSION,
+        "text": "Back in Omar's Python session, the kind of question that was refused a moment ago now works. "
+                "Every name in the table is invented for this example.",
+        "note": "Real rows come back, including <code>account_holder</code> and <code>card_last4</code>, which "
+                "identify a person and a card. That is why the dataset is restricted, and why anything made "
+                "from it has to stay just as careful.",
+    },
+    # ------------------------------------------------------------------ two --
+    {
+        "act": ("PART TWO", "Making a new dataset from a query",
+                "Omar only needs the large payments made outside the home country. Munitas lets a person make "
+                "a new dataset by writing a query over datasets the person may already read. The platform runs "
+                "the query itself, not the person's computer, and holds the new dataset to the same rules as "
+                "the data it came from."),
+        "kind": "code", "source": "finance", "scenes": [5], "actor": "omar",
+        "title": "The platform shows its plan before anything runs",
+        "screen": SESSION,
+        "text": "Omar writes a query that joins the restricted transactions with the public list of "
+                "merchants and keeps payments over 300 made outside the United States, then asks the platform "
+                "to plan it. Nothing runs yet. The platform replies with the columns the new dataset would "
+                "have, and the sensitivity label each one must carry: <code>none</code> for a column that does "
+                "not identify anybody, and <code>quasi</code> for a detail that could help identify a person "
+                "when combined with others.",
+        "note": "<code>category</code> and <code>high_risk</code>, which come from the public list of "
+                "merchants, are <strong>none</strong>. <code>country</code>, <code>occurred_at</code> and "
+                "<code>flagged</code>, which come from the transactions, are <strong>quasi</strong>. The last "
+                "line says the new dataset would be <strong>RAW</strong>, because it takes the strictest level "
+                "among its inputs.",
+    },
+    {
+        "kind": "code", "source": "finance", "scenes": [6], "actor": "omar",
+        "title": "A label cannot be lowered by the person who wrote the query",
+        "screen": SESSION,
+        "text": "A label can be raised but not lowered. Lowering one would claim that the data is safer than "
+                "the data it came from, and that claim needs somebody other than the person who wrote the "
+                "query. Omar tries to mark the country column as <code>none</code> anyway.",
+        "note": "The platform refuses and explains: country is computed from a field marked <code>quasi</code>, "
+                "so it cannot be marked <code>none</code>.",
+    },
+    {
+        "kind": "code", "source": "finance", "scenes": [7], "actor": "omar",
+        "title": "Omar confirms, and the platform runs the query in an isolated container",
+        "screen": SESSION,
+        "text": "After Omar confirms, the platform copies the input files into a sandbox, an isolated container "
+                "with no network connection and no passwords. The query runs there, and the platform checks "
+                "every row of the result against the plan. The query never runs on Omar's computer. Omar's "
+                "session only waits for the answer.",
+        "note": "The status is <strong>succeeded</strong>, and the new dataset is <strong>RAW</strong> again. "
+                "Omar did not choose that level: it follows from the datasets the query read.",
+    },
+    {
+        "kind": "shot", "file": "07-sam-finds-the-new-dataset.png", "actor": "omar",
+        "title": "The new dataset appears in the console, owned by Fraud Operations",
+        "screen": CONSOLE + " &middot; Datasets",
+        "text": "The new dataset belongs to the same department as the data it came from, so Marcus is still "
+                "the person who decides who may read it. Omar made it, so Omar can read it straight away "
+                "without asking anybody.",
+        "note": "The <strong>You can read</strong> column says <strong>1 of 1</strong>, and the access level "
+                "is still <strong>Raw</strong>. The name ends in a number only so that this example can be "
+                "recorded again.",
+    },
+    {
+        "kind": "code", "source": "finance", "scenes": [8], "actor": "omar",
+        "title": "The new dataset opens like any other table",
+        "screen": SESSION,
+        "text": "The platform sealed the result, which means it is finished and closed for good, so it can "
+                "never be edited. It is also an Iceberg table, an open way of storing a table that tools such "
+                "as DuckDB read directly. Omar queries it.",
+        "note": "The first answer lists the five largest payments, all above 300 and none in the United "
+                "States. The second answer counts the matching transactions and adds up their amounts, from a "
+                "dataset that holds no account holder names.",
+    },
+    {
+        "kind": "shot", "file": "08-where-it-came-from.png", "actor": "omar",
+        "title": "The console records where the new dataset came from",
+        "screen": CONSOLE + " &middot; A dataset's page",
+        "text": "Every version of a dataset records what produced it: the step, who ran it, and the exact "
+                "versions of the datasets it was made from.",
+        "note": "<strong>Your access</strong> reads <em>You can read this until</em> a date, for the stated "
+                "purpose. <strong>Where this came from</strong> shows the step <strong>derive</strong> and two "
+                "<strong>Made from</strong> versions, one for the transactions and one for the merchants.",
+    },
+    {
+        "kind": "code", "source": "finance", "scenes": [9], "actor": "omar",
+        "title": "The query is kept exactly as written",
+        "screen": SESSION,
+        "text": "Anybody auditing the new dataset can follow it back. The platform keeps the purpose, the "
+                "datasets and versions it was made from, and the text of the query.",
+        "note": "The inputs line names <strong>transactions version 1 (RAW)</strong> and "
+                "<strong>merchants version 1 (PUBLISHED)</strong>, which are the most restricted and the "
+                "most open access levels. The query appears word for word.",
+    },
+    # ---------------------------------------------------------------- three --
+    {
+        "act": ("PART THREE", "The rules hold",
+                "A new dataset is only safe if nobody can use it to get around the rules. This part tests that "
+                "with a colleague, with a query that reaches too far, and with the custodian taking the access "
+                "back."),
+        "kind": "code", "source": "finance", "scenes": [10], "actor": "lena",
+        "title": "A colleague without access is refused",
+        "screen": SESSION,
+        "text": "Lena is a pipeline engineer in the same organisation, with no lease on the new dataset. The "
+                "new dataset is as restricted as the data it came from, so Lena cannot open it.",
+        "note": "The reason is the same as before: <code>no role reaches class RAW</code>. Working in the same "
+                "organisation is not enough.",
+    },
+    {
+        "kind": "code", "source": "finance", "scenes": [11], "actor": "omar",
+        "title": "A query that reaches outside its inputs is stopped before it runs",
+        "screen": SESSION,
+        "text": "A query may read the datasets it names and nothing else. Omar tries one that reads a file from "
+                "the machine instead.",
+        "note": "The platform refuses with <strong>that query reaches outside the datasets it "
+                "declared</strong>. Nothing ran.",
+    },
+    {
+        "kind": "shot", "file": "09-the-decision-log.png", "actor": "marcus",
+        "title": "Every refusal is on record, with the reason",
+        "screen": CONSOLE + " &middot; Who accessed what",
+        "text": "The decision log lists every request to read data. Each request is recorded twice: once for "
+                "whether it was allowed, and once for whether access was actually given. Here the log is "
+                "filtered to the requests that were refused.",
+        "note": "Every row says <strong>no</strong>, and the last column gives the reason, such as <code>no "
+                "role reaches class RAW</code> and the names of the revoked leases. The rows for Lena, whose "
+                "stated purpose is <strong>curiosity</strong>, show only the role reason, because Lena never "
+                "held a lease.",
     },
     {
         "kind": "code", "source": "finance", "scenes": [12], "actor": "marcus",
-        "title": "Marcus withdraws the lease, and both tables close",
+        "title": "Marcus withdraws the lease, and everything built on it closes",
         "screen": SESSION,
-        "text": "Marcus ends the lease. Omar loses the transactions and the new dataset made from them.",
-        "note": "Both tables report <strong>refused</strong>, exactly as in the Health organisation.",
+        "text": "Marcus ends the lease. Omar immediately loses the transactions dataset, and the new dataset "
+                "too, because Omar's access to the new dataset rested on the same lease.",
+        "note": "Both tables report <strong>refused</strong>, and the reasons name the revoked leases.",
+    },
+    {
+        "kind": "shot", "file": "10-sam-after-the-lease-is-withdrawn.png", "actor": "omar",
+        "title": "The console agrees",
+        "screen": CONSOLE + " &middot; Datasets",
+        "text": "The new dataset is still listed, so Omar can still know that it exists, but Omar can no longer "
+                "read it.",
+        "note": "The <strong>You can read</strong> column now says <strong>0 of 1</strong>, where it said "
+                "<strong>1 of 1</strong> earlier.",
     },
 ]
 
@@ -397,6 +614,7 @@ EXTRA_CSS = """
   :root {
     --sam: #6a4c9c; --sam-bg: #efe9f7; --sam-line: #d8c9ee;
     --omar: #2a7d6a; --omar-bg: #e3f3ee; --omar-line: #bfe3d8;
+    --lena: #3949e0; --lena-bg: #edeefc; --lena-line: #c7caf5;
     --marcus: #a4562a; --marcus-bg: #fbeee4; --marcus-line: #edcdb4;
     --note: #9a6b00; --note-bg: #fdf3d9; --note-line: #f0dea3;
     --term-bg: #0f172a; --term-ink: #e2e8f0; --term-out: #94a3b8; --term-line: #1e293b;
@@ -405,6 +623,7 @@ EXTRA_CSS = """
     @media (prefers-color-scheme: dark) {
       --sam: #c3a8ec; --sam-bg: #2c2340; --sam-line: #473465;
       --omar: #7fd1ba; --omar-bg: #14302a; --omar-line: #24574a;
+      --lena: #8b93f7; --lena-bg: #23264a; --lena-line: #3a3e78;
       --marcus: #f0a771; --marcus-bg: #3a2415; --marcus-line: #5e3c22;
       --note: #e0b64c; --note-bg: #3a2f0c; --note-line: #5c4b16;
     }
@@ -412,18 +631,22 @@ EXTRA_CSS = """
   :root[data-theme="dark"] {
     --sam: #c3a8ec; --sam-bg: #2c2340; --sam-line: #473465;
     --omar: #7fd1ba; --omar-bg: #14302a; --omar-line: #24574a;
+    --lena: #8b93f7; --lena-bg: #23264a; --lena-line: #3a3e78;
     --marcus: #f0a771; --marcus-bg: #3a2415; --marcus-line: #5e3c22;
     --note: #e0b64c; --note-bg: #3a2f0c; --note-line: #5c4b16;
   }
   .cast .dot.sam { background: var(--sam); }
   .cast .dot.omar { background: var(--omar); }
   .cast .dot.marcus { background: var(--marcus); }
+  .cast .dot.lena { background: var(--lena); }
   .actor-chip.sam { background: var(--sam-bg); border-color: var(--sam-line); color: var(--sam); }
   .actor-chip.sam .dot { background: var(--sam); }
   .actor-chip.omar { background: var(--omar-bg); border-color: var(--omar-line); color: var(--omar); }
   .actor-chip.omar .dot { background: var(--omar); }
   .actor-chip.marcus { background: var(--marcus-bg); border-color: var(--marcus-line); color: var(--marcus); }
   .actor-chip.marcus .dot { background: var(--marcus); }
+  .actor-chip.lena { background: var(--lena-bg); border-color: var(--lena-line); color: var(--lena); }
+  .actor-chip.lena .dot { background: var(--lena); }
   .cast-title { margin-top: 28px; font-weight: 600; color: var(--ink-soft); }
 
   .before {
@@ -476,9 +699,10 @@ FOOTER_TEMPLATE = """
 <footer>
   The Python session steps are the real code and output from one recorded run of
   <code>scripts/demo/derive-demo.py</code>. The console screens were captured live against
-  the <code>health</code> organisation by <code>web/walkthroughs/derive.spec.ts</code>. Both
+  the <code>__TENANT__</code> organisation by <code>web/walkthroughs/derive.spec.ts</code>. Both
   are rendered by <code>docs/tools/build_derive_walkthrough.py</code>. Run all three again
   when the flow changes. Every person, patient and card holder in the example data is invented.
+  <a href="feature-walkthrough.html">All walkthroughs</a>.
   <p class="updated">Last updated __UPDATED__.</p>
 </footer>
 
@@ -506,19 +730,20 @@ FOOTER_TEMPLATE = """
 
 
 # A screenshot of a short list is mostly empty page. These keep only the part of the
-# screen that holds the list, cut from the same pixels with nothing redrawn.
-CROPS = {name: (330, 0, 1600, 330) for name in (
-    "01-sam-finds-the-open-lookup.png",
-    "02-sam-finds-admissions-closed.png",
-    "07-sam-finds-the-new-dataset.png",
-    "10-sam-after-the-lease-is-withdrawn.png",
-)}
-# The custodian's home page continues below Sam's request with other waiting requests and the
-# history of past decisions. This step is about the request, so it keeps the top of the page.
-CROPS["05-hartley-sees-the-request.png"] = (330, 0, 1600, 540)
-# The decision log is newest first, and older rows keep the long lists of leases they were
-# recorded with, because the log is never rewritten. This step is about the newest rows.
-CROPS["09-the-decision-log.png"] = (330, 0, 1600, 545)
+# screen that holds the list, cut from the same pixels with nothing redrawn. The custodian's
+# home page continues below the request with other waiting requests and the history of past
+# decisions, and the decision log is newest first with older rows holding the long lists of
+# leases they were recorded with, so those two keep only the top.
+def _crops(home_height: int) -> dict:
+    crops = {name: (330, 0, 1600, 330) for name in (
+        "01-sam-finds-the-open-lookup.png",
+        "02-sam-finds-admissions-closed.png",
+        "07-sam-finds-the-new-dataset.png",
+        "10-sam-after-the-lease-is-withdrawn.png",
+    )}
+    crops["05-hartley-sees-the-request.png"] = (330, 0, 1600, home_height)
+    crops["09-the-decision-log.png"] = (330, 0, 1600, 545)
+    return crops
 
 
 def encoded(path: Path) -> str:
@@ -679,19 +904,18 @@ def terminal(step: dict) -> str:
 
 
 def hero() -> str:
+    config = ORGS[ORG]
     cards = "\n".join(
         f'    <div class="card">\n      <span class="dot {key}"></span>\n      <div>\n'
         f'        <div class="name">{name}</div>\n        <div class="role">{role}</div>\n      </div>\n    </div>'
         for key, (name, role) in ACTORS.items())
     return f"""
 <header class="hero">
-  <div class="eyebrow">Munitas &middot; Health and Finance organisations &middot; Governed datasets</div>
+  <div class="eyebrow">Munitas &middot; {config["eyebrow"]} &middot; Governed datasets</div>
   <h1>Making a new dataset from a query, without loosening any rule</h1>
   <p class="lede">
     Munitas is a governance platform: it decides who may read which piece of data, and it keeps a
-    permanent record of every decision. This walkthrough follows a researcher in a hospital group
-    who is stopped at a restricted table of patient admissions, asks for access, and is answered by
-    the custodian of the department that owns it. The researcher then makes a new dataset from a
+    permanent record of every decision. {config["lede"]} That person then makes a new dataset from a
     query. The platform runs the query itself, checks the result, and keeps the new dataset exactly
     as restricted as the data it came from. When the custodian withdraws the access, the new dataset
     closes too. Every name in the example data is invented.
@@ -730,7 +954,8 @@ def before_you_start() -> str:
 
 
 def build() -> str:
-    parts = ["<title>Making a new dataset from a query: a walkthrough</title>", stylesheet(), hero(), '<div class="wrap">',
+    parts = [f"<title>Making a new dataset from a query, {ORGS[ORG]['label']}: a walkthrough</title>", stylesheet(), hero(),
+             '<div class="wrap">',
              before_you_start()]
     contents = "\n".join(
         f'    <li><a href="#s{i}">{strip_tags(step["title"])}</a></li>' for i, step in enumerate(STEPS, start=1))
@@ -762,16 +987,51 @@ def build() -> str:
     if open_act:
         parts.append("</section>")
     parts.append("</div>")
-    parts.append(FOOTER_TEMPLATE.replace("__UPDATED__", date.today().isoformat()))
+    parts.append(FOOTER_TEMPLATE.replace("__UPDATED__", date.today().isoformat()).replace("__TENANT__", ORG))
     return "\n".join(parts) + "\n"
 
 
+HEALTH_ACTORS = {
+    "sam": ("Sam", "Researcher, Health organisation"),
+    "hartley": ("Hartley", "Data custodian for the Cardiology department"),
+    "devi": ("Devi", "Pipeline engineer, Health organisation"),
+}
+FINANCE_ACTORS = {
+    "omar": ("Omar", "Analyst, Finance organisation"),
+    "marcus": ("Marcus", "Data custodian for the Fraud Operations department"),
+    "lena": ("Lena", "Pipeline engineer, Finance organisation"),
+}
+
+ORGS = {
+    "health": {
+        "label": "Health organisation", "eyebrow": "Health organisation",
+        "steps": HEALTH_STEPS, "actors": HEALTH_ACTORS, "crops": _crops(540),
+        "out": OUT_DIR / "derive-health-walkthrough.html",
+        "lede": "This walkthrough follows a researcher in a hospital group who is stopped at a restricted "
+                "table of patient admissions, asks for access, and is answered by the custodian of the "
+                "department that owns it.",
+    },
+    "finance": {
+        "label": "Finance organisation", "eyebrow": "Finance organisation",
+        "steps": FINANCE_STEPS, "actors": FINANCE_ACTORS, "crops": _crops(700),
+        "out": OUT_DIR / "derive-finance-walkthrough.html",
+        "lede": "This walkthrough follows an analyst in a finance organisation who is stopped at a restricted "
+                "table of card transactions, asks for access, and is answered by the custodian of the "
+                "department that owns it.",
+    },
+}
+# The finance page keeps the two waiting requests visible, so its custodian crop is taller.
+ORGS["finance"]["crops"]["02-sam-finds-admissions-closed.png"] = (330, 0, 1600, 380)
+
+
 if __name__ == "__main__":
-    needed = [s["file"] for s in STEPS if s["kind"] == "shot"]
-    missing = [f for f in needed if not (SHOTS / f).exists()]
-    if missing:
-        raise SystemExit("No screenshot for: " + ", ".join(missing) +
-                         "\nRun the capture first: cd web && npx playwright test "
-                         "--config=walkthroughs/playwright.config.ts derive")
-    OUT.write_text(build(), encoding="utf-8")
-    print(f"wrote {OUT} ({OUT.stat().st_size // 1024} KB, {len(STEPS)} steps)")
+    for org, config in ORGS.items():
+        use(org)
+        needed = [s["file"] for s in STEPS if s["kind"] == "shot"]
+        missing = [f for f in needed if not (SHOTS / f).exists()]
+        if missing:
+            raise SystemExit(f"No screenshot for {org}: " + ", ".join(missing) +
+                             "\nRun the capture first: cd web && npx playwright test "
+                             "--config=walkthroughs/playwright.config.ts derive")
+        config["out"].write_text(build(), encoding="utf-8")
+        print(f"wrote {config['out']} ({config['out'].stat().st_size // 1024} KB, {len(STEPS)} steps)")

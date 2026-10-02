@@ -1130,6 +1130,7 @@
     unedited screenshot from an actual session, step by step, following one story from
     sign-in to a finished, governed run.
   </p>
+  <h3 class="measure" style="margin-top:1.5rem">Health organisation</h3>
   <div class="grid grid-3">
     <div class="card">
       <span class="tag">HEALTHCARE &middot; EXAMPLE ORGANISATION</span>
@@ -1138,14 +1139,6 @@
       human reviewer's gate decision, a researcher's access request, and an AI agent that has to
       ask for access the same way a person would. 31 steps.</p>
       <p><a href="healthcare-walkthrough.html">Open the healthcare walkthrough &rarr;</a></p>
-    </div>
-    <div class="card">
-      <span class="tag">FINANCE &middot; FINANCE ORGANISATION</span>
-      <h4>Card transactions, scored for fraud</h4>
-      <p>A fraud operations team registers a transaction batch, seals it, and lets a scoring
-      agent work the raw data under a request its own department's custodian decides on, with a
-      second custodian's queue kept completely separate. 13 steps.</p>
-      <p><a href="finance-walkthrough.html">Open the finance walkthrough &rarr;</a></p>
     </div>
     <div class="card">
       <span class="tag">CUSTOM PIPELINE &middot; EXAMPLE ORGANISATION</span>
@@ -1165,14 +1158,35 @@
       <p><a href="people-administration-walkthrough.html">Open the role administration walkthrough &rarr;</a></p>
     </div>
     <div class="card">
-      <span class="tag">DERIVED DATASETS &middot; HEALTH AND FINANCE ORGANISATIONS</span>
+      <span class="tag">DERIVED DATASETS &middot; HEALTH ORGANISATION</span>
       <h4>A new dataset from a query, under the same rules</h4>
       <p>A researcher is stopped at a restricted table of patient admissions, asks the owning
       department's custodian for access, and then makes a new dataset from a query. The platform
       runs the query in an isolated container, keeps the result as restricted as its inputs, and
-      closes it again the moment the custodian withdraws the access. The same story is repeated
-      for card transactions. 23 steps, with the Python steps shown as the real code and output.</p>
-      <p><a href="derive-walkthrough.html">Open the derived datasets walkthrough &rarr;</a></p>
+      closes it again the moment the custodian withdraws the access. 20 steps, with the Python
+      steps shown as the real code and output.</p>
+      <p><a href="derive-health-walkthrough.html">Open the health derived datasets walkthrough &rarr;</a></p>
+    </div>
+  </div>
+  <h3 class="measure" style="margin-top:2rem">Finance organisation</h3>
+  <div class="grid grid-3">
+    <div class="card">
+      <span class="tag">FINANCE &middot; FINANCE ORGANISATION</span>
+      <h4>Card transactions, scored for fraud</h4>
+      <p>A fraud operations team registers a transaction batch, seals it, and lets a scoring
+      agent work the raw data under a request its own department's custodian decides on, with a
+      second custodian's queue kept completely separate. 13 steps.</p>
+      <p><a href="finance-walkthrough.html">Open the finance walkthrough &rarr;</a></p>
+    </div>
+    <div class="card">
+      <span class="tag">DERIVED DATASETS &middot; FINANCE ORGANISATION</span>
+      <h4>A new dataset from a query, over card transactions</h4>
+      <p>An analyst is stopped at a restricted table of card transactions that name the account
+      holders, asks the Fraud Operations custodian for access, and makes a new dataset of large
+      payments made abroad. The new dataset stays as restricted as the transactions, and closes
+      when the custodian withdraws the access. 20 steps, with the Python steps shown as the real
+      code and output.</p>
+      <p><a href="derive-finance-walkthrough.html">Open the finance derived datasets walkthrough &rarr;</a></p>
     </div>
   </div>
   <p class="measure" style="margin-top:2.25rem">

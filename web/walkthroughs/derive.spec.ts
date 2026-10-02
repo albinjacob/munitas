@@ -1,8 +1,10 @@
 /**
- * Captures the console screenshots behind docs/public/walkthroughs/derive-walkthrough.html.
+ * Captures the console screenshots behind the derivation walkthroughs
+ * (docs/public/walkthroughs/derive-health-walkthrough.html and
+ * derive-finance-walkthrough.html), one organisation per run.
  *
- * Drives the real console against the live stack as the health organisation's
- * own people. Nothing here is mocked: if a step cannot be reached, this fails
+ * Drives the real console against the live stack as that organisation's own
+ * people. DERIVE_TENANT picks the organisation (health by default). Nothing here is mocked: if a step cannot be reached, this fails
  * rather than producing a picture of something that did not happen.
  *
  * The notebook half of the story (a person querying with DuckDB, making the new
@@ -16,11 +18,12 @@
  *
  *   .venv\Scripts\python.exe scripts\seed\seed-derive-demo-data.py
  *
- * Writes into walkthroughs/shots/derive/, which is gitignored with the rest of
+ * Writes into walkthroughs/shots/derive-<organisation>/, which is gitignored with the rest of
  * shots/. The HTML page carries the images inline, so the page is the committed
  * artefact and these files are scratch.
  *
  *   npx playwright test --config=walkthroughs/playwright.config.ts derive
+ *   $env:DERIVE_TENANT = "finance"; npx playwright test --config=walkthroughs/playwright.config.ts derive
  */
 
 import { mkdirSync } from "node:fs";
@@ -29,14 +32,44 @@ import { expect, test, type Page } from "@playwright/test";
 import { bearerFor, loginAs } from "../tests/auth-helpers";
 import { API_BASE } from "../config/ports";
 
-const SHOTS = join(process.cwd(), "walkthroughs", "shots", "derive");
 const API = API_BASE;
 
-const RESEARCHER = "sam-researcher";
-const CUSTODIAN = "cust-hartley";
+// Each organisation's story: the same flow over its own people and datasets, matching
+// the scenarios in scripts/demo/derive-demo.py.
+const STORIES = {
+  health: {
+    shots: "derive-health",
+    researcher: "sam-researcher", custodian: "cust-hartley",
+    raw: "admissions", lookup: "diagnosis_codes",
+    purpose: "readmission study, live walkthrough capture",
+    justification: "Compare readmission rates for older patients with a chronic heart condition.",
+    inputs: [{ dataset: "admissions", alias: "a" }, { dataset: "diagnosis_codes", alias: "d" }],
+    sql: "SELECT a.admission_id, a.age, a.diagnosis_code, d.description, d.chronic, " +
+      "a.length_of_stay_days, a.readmitted_30d FROM a JOIN d ON d.code = a.diagnosis_code " +
+      "WHERE a.age > 65 AND d.chronic",
+    key: "admission_id", prefix: "older-chronic-patients",
+  },
+  finance: {
+    shots: "derive-finance",
+    researcher: "ana-omar", custodian: "cust-marcus",
+    raw: "transactions", lookup: "merchants",
+    purpose: "cross-border fraud review, live walkthrough capture",
+    justification: "Review large transactions made outside the home country at risky merchants.",
+    inputs: [{ dataset: "transactions", alias: "t" }, { dataset: "merchants", alias: "m" }],
+    sql: "SELECT t.txn_id, t.amount, t.country, t.occurred_at, m.category, m.high_risk, t.flagged " +
+      "FROM t JOIN m ON m.merchant_id = t.merchant_id WHERE t.amount > 300 AND t.country <> 'US'",
+    key: "txn_id", prefix: "large-foreign-transfers",
+  },
+} as const;
+const STORY = STORIES[(process.env.DERIVE_TENANT ?? "health") as keyof typeof STORIES];
+if (!STORY) throw new Error("DERIVE_TENANT must be health or finance");
 
-const PURPOSE = "readmission study, live walkthrough capture";
-const NEW_NAME = `older-chronic-patients-${new Date().toISOString().slice(5, 16).replace(/[-:T]/g, "")}`;
+const SHOTS = join(process.cwd(), "walkthroughs", "shots", STORY.shots);
+const RESEARCHER = STORY.researcher;
+const CUSTODIAN = STORY.custodian;
+
+const PURPOSE = STORY.purpose;
+const NEW_NAME = `${STORY.prefix}-${new Date().toISOString().slice(5, 16).replace(/[-:T]/g, "")}`;
 
 let step = 0;
 
@@ -74,7 +107,7 @@ test("a person makes a new dataset from a query, and the custodian stays in char
   mkdirSync(SHOTS, { recursive: true });
 
   // Clear any access left by an earlier run, so the closed table is really closed.
-  const raw = await versionIdOf(CUSTODIAN, "admissions");
+  const raw = await versionIdOf(CUSTODIAN, STORY.raw);
   const leases = await api(`/leases?principal=${RESEARCHER}&active_only=true`, CUSTODIAN);
   for (const l of leases.leases ?? []) {
     if (l.dataset_version_id === raw) await api(`/leases/${l.id}/revoke`, CUSTODIAN, { method: "POST" });
@@ -105,16 +138,16 @@ test("a person makes a new dataset from a query, and the custodian stays in char
   // ---- Act one: a closed table, and a request for access ----------------
   await loginAs(page, RESEARCHER);
   // First the table that is open to every signed-in person, to contrast with the closed one.
-  await searchDatasets(page, "diagnosis_codes");
+  await searchDatasets(page, STORY.lookup);
   await shot(page, "sam-finds-the-open-lookup");
-  await searchDatasets(page, "admissions");
+  await searchDatasets(page, STORY.raw);
   await shot(page, "sam-finds-admissions-closed");
 
   await page.goto(`/versions/${raw}`);
   await expect(page.getByTestId("request-access")).toBeVisible();
   await page.getByTestId("request-purpose").fill(PURPOSE);
   await page.getByTestId("request-justification").fill(
-    "Compare readmission rates for older patients with a chronic heart condition.",
+    STORY.justification,
   );
   await shot(page, "sam-fills-in-the-request");
   await page.getByTestId("request-submit").click();
@@ -135,11 +168,8 @@ test("a person makes a new dataset from a query, and the custodian stays in char
   const draft = await api("/derivations", RESEARCHER, {
     method: "POST",
     body: JSON.stringify({
-      inputs: [{ dataset: "admissions", alias: "a" }, { dataset: "diagnosis_codes", alias: "d" }],
-      sql: "SELECT a.admission_id, a.age, a.diagnosis_code, d.description, d.chronic, " +
-        "a.length_of_stay_days, a.readmitted_30d FROM a JOIN d ON d.code = a.diagnosis_code " +
-        "WHERE a.age > 65 AND d.chronic",
-      target_name: NEW_NAME, primary_key: ["admission_id"], purpose: PURPOSE,
+      inputs: STORY.inputs, sql: STORY.sql,
+      target_name: NEW_NAME, primary_key: [STORY.key], purpose: PURPOSE,
     }),
   });
   const confirmed = await api(`/derivations/${draft.id}/confirm`, RESEARCHER, { method: "POST", body: "{}" });
