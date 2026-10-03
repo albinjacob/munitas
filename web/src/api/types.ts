@@ -53,6 +53,13 @@ export interface DatasetRow {
   modality: string[] | null;
   provenance: string;
   department_id: string | null;
+  /** How many versions are also stored as a table, and how many were meant to be and are not. */
+  tabled_versions?: number;
+  untabled_versions?: number;
+  /** True when at least one version is a table, or was meant to be. */
+  is_table?: boolean;
+  /** True when a table dataset has a version with no table copy, which cannot be filtered or read as a table. */
+  table_missing?: boolean;
   /** What a HuggingFace fetch found; null for anything uploaded by hand. */
   license_tag: string | null;
   license_export_unmodified: boolean | null;
@@ -99,6 +106,21 @@ export interface VersionRow {
    * this would offer to open something that is no longer there.
    */
   reclaimed_at?: string | null;
+}
+
+/** Whether one version is also stored as a table, and if not, why. What `GET /dataset-versions/{id}/table` returns. */
+export interface VersionTable {
+  projected: boolean;
+  /** projected, not_requested (it is files), skipped, failed, or unrecorded (sealed before the platform wrote reasons down). */
+  outcome: "projected" | "not_requested" | "skipped" | "failed" | "unrecorded";
+  reason: string | null;
+  /** True when a legal export can hand over only the rows for named people. */
+  filterable: boolean;
+  table?: string;
+  rows?: number;
+  snapshot_id?: number;
+  format_version?: number;
+  projected_at?: string;
 }
 
 export interface Transition {

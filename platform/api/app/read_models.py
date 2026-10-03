@@ -74,6 +74,8 @@ def list_datasets(
                  d.provenance_registered_as, d.provenance_overridden_at,
                  count(vc.dataset_version_id) as version_count,
                  max(vc.version) as latest_version,
+                 count(r.dataset_version_id) as tabled_versions,
+                 count(n.dataset_version_id) filter (where n.outcome in ('skipped', 'failed')) as untabled_versions,
                  array_agg(vc.current_class order by
                       case vc.current_class
                           when 'PUBLISHED' then 0 when 'OPEN_FOR_TRAINING' then 1
@@ -82,6 +84,8 @@ def list_datasets(
                    filter (where vc.current_class is not null) as classes
           from dataset d
           left join version_class vc on vc.dataset_id = d.id
+          left join iceberg_table_ref r on r.dataset_version_id = vc.dataset_version_id
+          left join iceberg_projection_note n on n.dataset_version_id = vc.dataset_version_id
           where d.tenant_id = %(tenant)s
           group by d.id, d.name, d.tenant_id, d.created_at, d.modality,
                    d.provenance, d.department_id,
@@ -91,6 +95,9 @@ def list_datasets(
         filtered as (
           select id, name, tenant_id, created_at, modality, provenance,
                  department_id, version_count, latest_version,
+                 tabled_versions, untabled_versions,
+                 (tabled_versions + untabled_versions > 0) as is_table,
+                 (tabled_versions + untabled_versions > 0 and tabled_versions < version_count) as table_missing,
                  license_tag, license_export_unmodified, license_export_modified,
                  provenance_registered_as, provenance_overridden_at,
                  classes[1] as widest_class
@@ -134,7 +141,8 @@ def list_dataset_versions(
     refusing, for the reason given on `get_version` in `main.py`.
     """
     sql = """
-        select vc.*, dv.content_hash, dv.record_count, dv.created_at, dv.sealed
+        select vc.*, dv.content_hash, dv.record_count, dv.created_at, dv.sealed,
+               exists (select 1 from iceberg_table_ref r where r.dataset_version_id = dv.id) as table_copy
         from version_class vc
         join dataset_version dv on dv.id = vc.dataset_version_id
         where vc.dataset_id = %s
@@ -170,6 +178,34 @@ def list_versions(
     return _jsonable(db.all_rows(
         sql, (identity["tenant_id"], current_class, current_class, limit)
     ))
+
+
+@router.get("/dataset-versions/{version_id}/table")
+def version_table(version_id: str, identity: dict = Depends(auth.current_session)) -> dict:
+    """Whether this version is also stored as a table, and if it is not, why.
+
+    A table copy is what lets a standard tool read the rows, and what a legal export needs to hand over only the rows
+    for named people. Narrowed to the caller's own organisation, answering 404 for anything else, as the other reads of
+    one version do.
+    """
+    version = db.one("select id, tenant_id from dataset_version where id = %s", (version_id,))
+    if not version or version["tenant_id"] != identity["tenant_id"]:
+        raise HTTPException(404, "no such version")
+    ref = db.one(
+        """select namespace, table_name, snapshot_id, format_version, record_count, projected_at
+             from iceberg_table_ref where dataset_version_id = %s""", (version_id,))
+    if ref:
+        return _jsonable({"projected": True, "outcome": "projected", "table": f"{ref['namespace']}.{ref['table_name']}",
+                          "rows": ref["record_count"], "snapshot_id": ref["snapshot_id"],
+                          "format_version": ref["format_version"], "projected_at": ref["projected_at"],
+                          "filterable": True, "reason": None})
+    note = db.one("select outcome, reason, noted_at from iceberg_projection_note where dataset_version_id = %s", (version_id,))
+    if note:
+        return _jsonable({"projected": False, "outcome": note["outcome"], "reason": note["reason"],
+                          "filterable": False, "noted_at": note["noted_at"]})
+    return {"projected": False, "outcome": "unrecorded", "filterable": False,
+            "reason": "This version was sealed before the platform recorded whether a table was written for it, so "
+                      "it cannot say."}
 
 
 @router.get("/dataset-versions/{version_id}/transitions")

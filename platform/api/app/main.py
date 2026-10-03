@@ -447,10 +447,11 @@ def create_version(body: models.DatasetVersionIn) -> dict:
     version_id = _uuid()
     manifest = list(body.object_manifest)
     projection = None
+    why = iceberg.NOT_REQUESTED
     if body.records_key:
         dataset = db.one("select name from dataset where id = %s", (body.dataset_id,))
         if dataset:
-            projection = iceberg.try_project(
+            projection, why = iceberg.try_project(
                 tenant_id=body.tenant_id, backend=body.storage_backend,
                 dataset_id=body.dataset_id, dataset_name=dataset["name"],
                 version_id=version_id, version=version, prefix=prefix,
@@ -478,6 +479,8 @@ def create_version(body: models.DatasetVersionIn) -> dict:
     version_id = str(row["id"])
     if projection:
         iceberg.record(version_id, body.tenant_id, body.dataset_id, projection)
+    elif why:
+        iceberg.record_note(version_id, body.tenant_id, why)
 
     if body.produced_by_run:
         db.execute(

@@ -3124,6 +3124,50 @@
         "summary": "Promote"
       }
     },
+    "/dataset-versions/{version_id}/table": {
+      "get": {
+        "description": "Whether this version is also stored as a table, and if it is not, why.\n\nA table copy is what lets a standard tool read the rows, and what a legal export needs to hand over only the rows\nfor named people. Narrowed to the caller's own organisation, answering 404 for anything else, as the other reads of\none version do.",
+        "operationId": "version_table_dataset_versions__version_id__table_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Version Table Dataset Versions  Version Id  Table Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Version Table",
+        "tags": [
+          "read"
+        ]
+      }
+    },
     "/dataset-versions/{version_id}/transitions": {
       "get": {
         "description": "The class history of one version.\n\nThis is what makes a promotion legible: which class it moved from and to,\nwho decided, and the evidence they pointed at. A version with no transitions\nhas never been promoted, and an empty list is the correct answer rather than\na 404.\n\n`class_transition` carries no tenant of its own, so the version is joined for\nthe check rather than the column being copied onto it. Two places recording\nwhich organisation something belongs to is two places that can disagree.",

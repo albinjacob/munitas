@@ -300,17 +300,32 @@ def record(version_id: str, tenant_id: str, dataset_id: str, projection: Project
     )
 
 
-def try_project(**kwargs) -> Projection | None:
+def try_project(**kwargs) -> tuple[Projection | None, tuple[str, str] | None]:
     """project(), but a version that cannot be written as a table is still
-    sealed. The reason is logged as identifiers and a kind of error only,
-    never contents: a library's message can quote a value from a row."""
+    sealed. Returns the projection, or None and the outcome and reason to be
+    written down beside the version (record_note), so the console can say why.
+    The reason is a sentence of ours and a kind of error only, never contents:
+    a library's message can quote a value from a row."""
     where = {"tenant_id": kwargs.get("tenant_id"),
              "dataset_version_id": kwargs.get("version_id")}
     try:
-        return project(**kwargs)
+        return project(**kwargs), None
     except Skipped as why:
         log.info("version not written as an Iceberg table", extra={**where, "reason": str(why)})
+        return None, ("skipped", f"The table was not written: {why}.")
     except Exception as exc:  # a storage or library failure must never block a seal
         log.error("writing a version as an Iceberg table failed; sealing without it",
                   extra={**where, "error_type": type(exc).__name__})
-    return None
+        return None, ("failed", f"Writing the table failed ({type(exc).__name__}), so the version was sealed without it.")
+
+
+NOT_REQUESTED = ("not_requested",
+                 "This version was sealed as files, and no table of rows was named for it, so no table was written.")
+
+
+def record_note(version_id: str, tenant_id: str, why: tuple[str, str]) -> None:
+    """Write down why a version has no table copy. Once, straight after the version row."""
+    db.execute(
+        """insert into iceberg_projection_note (dataset_version_id, tenant_id, outcome, reason)
+           values (%s, %s, %s, %s) on conflict (dataset_version_id) do nothing returning dataset_version_id""",
+        (version_id, tenant_id, why[0], why[1]))

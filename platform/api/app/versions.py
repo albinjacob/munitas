@@ -117,10 +117,11 @@ def seal(
     version_id = str(uuid.uuid4())
     manifest = list(object_manifest)
     projection = None
+    why = iceberg.NOT_REQUESTED
     if records_key:
         dataset = db.one("select name from dataset where id = %s", (dataset_id,))
         if dataset:
-            projection = iceberg.try_project(
+            projection, why = iceberg.try_project(
                 tenant_id=tenant_id, backend=storage_backend, dataset_id=dataset_id,
                 dataset_name=dataset["name"], version_id=version_id,
                 version=reserved["version"], prefix=prefix, schema_id=schema_id,
@@ -146,6 +147,8 @@ def seal(
     version_id = str(row["id"])
     if projection:
         iceberg.record(version_id, tenant_id, dataset_id, projection)
+    elif why:
+        iceberg.record_note(version_id, tenant_id, why)
 
     if produced_by_run:
         db.execute(

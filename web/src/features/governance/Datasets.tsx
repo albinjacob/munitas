@@ -37,6 +37,28 @@ function day(timestamp: string): string {
  * at the moment the licence was read; anybody arriving later saw only the
  * corrected answer, with no sign the registration had said something else.
  */
+/**
+ * Whether this dataset is also stored as a table, which is what lets a standard tool read its rows and a legal export
+ * hand over only the rows for named people. A dataset of files shows nothing. A table dataset says so, and a table
+ * dataset with a version that has no table copy says that too, because that version cannot be filtered.
+ */
+function TableMarker({ d }: { d: DatasetRow }) {
+  if (!d.is_table) return null;
+  return d.table_missing ? (
+    <span
+      data-testid="table-missing"
+      title="Open a version to see why it has no table copy"
+      className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-normal text-amber-900"
+    >
+      a table, but not every version has a table copy
+    </span>
+  ) : (
+    <span data-testid="table-marker" className="ml-2 rounded bg-sky-100 px-1.5 py-0.5 text-xs font-normal text-sky-900">
+      a table
+    </span>
+  );
+}
+
 function Provenance({ d }: { d: DatasetRow }) {
   const licence = d.license_tag
     ? ` Licence ${d.license_tag}: ${licenceAllows(d.license_export_unmodified, d.license_export_modified)}.`
@@ -338,6 +360,7 @@ export function Datasets() {
                       <td className="px-4 py-2 font-medium">
                         {d.name}
                         <Provenance d={d} />
+                        <TableMarker d={d} />
                       </td>
                       <td className="whitespace-nowrap px-3 text-slate-600">
                         {d.modality?.length ? (
@@ -411,6 +434,7 @@ export function Datasets() {
                 <div className="font-medium">
                   {d.name}
                   <Provenance d={d} />
+                  <TableMarker d={d} />
                 </div>
                 <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
                   <dt className="text-slate-500">Kind</dt>

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
 import { useIdentity } from "../identity/IdentityContext";
 import type {
+  VersionTable,
   AccessDecision,
   AccessPreview,
   ActionRun,
@@ -150,6 +151,14 @@ export function useVersion(versionId: string | undefined) {
       api.get<VersionRow>(`/dataset-versions/${versionId}`, {
         tenant_id: tenant,
       }),
+    enabled: Boolean(versionId),
+  });
+}
+
+export function useVersionTable(versionId: string | undefined) {
+  return useQuery({
+    queryKey: ["version-table", versionId],
+    queryFn: () => api.get<VersionTable>(`/dataset-versions/${versionId}/table`),
     enabled: Boolean(versionId),
   });
 }

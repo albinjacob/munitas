@@ -2534,3 +2534,34 @@ create rule tenant_deletion_record_no_update as on update to tenant_deletion_rec
 alter table legal_export add column if not exists filters jsonb not null default '[]'::jsonb;
 alter table legal_export add column if not exists filter_values jsonb;
 alter table legal_export add column if not exists filter_results jsonb;
+
+
+-- Why a version has no table copy. A version whose rows were written as an Iceberg table has an iceberg_table_ref row.
+-- One that was not has, from now on, a row here saying why, so the console can show it and nobody has to read the log:
+-- the version named no table of rows (it is files), the writing was skipped (no schema contract, files on R2, projection
+-- switched off), or the writing failed. A version sealed before this table existed has neither row, and the console
+-- says that plainly rather than guessing. Written once, with the version it describes, and never changed.
+create table if not exists iceberg_projection_note (
+  dataset_version_id uuid primary key references dataset_version(id) on delete cascade,
+  tenant_id          text not null references tenant(id),
+  outcome            text not null check (outcome in ('not_requested', 'skipped', 'failed')),
+  reason             text not null check (reason <> ''),
+  noted_at           timestamptz not null default now()
+);
+
+create or replace function refuse_iceberg_projection_note_update() returns trigger as $$
+begin
+  raise exception 'iceberg_projection_note rows are written once, with the version they describe'
+    using errcode = 'check_violation';
+end;
+$$ language plpgsql;
+
+drop trigger if exists iceberg_projection_note_write_once on iceberg_projection_note;
+create trigger iceberg_projection_note_write_once
+  before update on iceberg_projection_note
+  for each row execute function refuse_iceberg_projection_note_update();
+
+drop trigger if exists refuse_retired_iceberg_projection_note on iceberg_projection_note;
+create trigger refuse_retired_iceberg_projection_note
+  before insert or update on iceberg_projection_note
+  for each row execute function refuse_write_to_retired_tenant();
