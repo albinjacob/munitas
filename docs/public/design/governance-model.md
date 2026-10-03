@@ -266,41 +266,41 @@ task, so what needs proving there is which human's session a read is for:
 a delegation problem, addressed separately from the spawn-time credential
 above.
 
-The pipeline worker requests one of these tokens for the one read that
-needs it. The de-identification pipeline reads and writes several
-intermediate files per run, but only the first step (`adopt_version`,
-reading a dataset version somebody else registered and sealed) touches
-classified data somebody else owns; everything after it is the pipeline
-reading its own prior-step scratch output. Because `adopt_version` opens
-no per-step run of its own, its credential is scoped to the whole pipeline
-run instead, which both workflow engines open before this step and close
-once at the end, the same way a cloud CI system scopes a short-lived
-credential to the whole job rather than to each step inside it. That scope
-resolves from the run's own declared input: its `source_version_id` column
-for a console-triggered run, or the `input_versions` array a DAG engine's
-own runs can declare several of.
+Every step of the de-identification pipeline proves itself the same way.
+Each step opens its own run, which names the versions it reads (the redact
+step names two: the result of the step before it, and the recordings it
+masks), and the platform decides each read and records it. The first step
+(`adopt_version`, reading a dataset version somebody else registered and
+sealed) has no run of its own to name, so its credential is scoped to the
+whole pipeline run instead, which both workflow engines open before this
+step and close once at the end, the same way a cloud CI system scopes a
+short-lived credential to the whole job rather than to each step inside it.
+That scope resolves from the run's own declared input: its
+`source_version_id` column for a console-triggered run, or the
+`input_versions` array a DAG engine's own runs can declare several of,
+together with the versions its own steps sealed, which the scoring step
+reads.
 
 ### Writes are justified the same way reads are
 
-`pipeline_action`'s storage role is narrowed to `[Read, List, Tagging]`.
-Write access is granted per task through a `write_grant` table
+No storage role holds standing access to a bucket. A task that reads or
+writes is given a key of its own, made for that task, and the key ends with
+it. Write access is granted per task through a `write_grant` table
 (`platform/schema.sql`), one row per task that has legitimately reserved a
 version-location, issued through `POST /write-credentials` after the same
 task-credential proof `/credentials` requires for reads, verified against
 a real `action_run`, `pipeline_run`, or `huggingface_fetch_job` row rather
-than the caller's own say-so. Holding the role's static secret is not
-enough to write anywhere without a matching grant, enforced at the
-object-storage layer, not only by the API. List and Tagging stay standing
-bucket-wide: they expose object names, not contents or the ability to
-alter them, a materially smaller blast radius than Read or Write.
+than the caller's own say-so. The key a writer receives lets it write the one
+folder reserved for its output and nothing else, enforced at the
+object-storage layer, not only by the API.
 
-A derivation run, a pipeline run that adopts a sealed version, and an agent
-run each read with a key of their own. The key lists only the input folders
-the platform has allowed that task to read, and it contains no listing and no
-write access. It is removed when the task ends or fails, and when the six-hour
-life of the task credential runs out without the task asking again. A task that
-asks again after waiting, for example an agent run that waited for a person to
-approve access, receives its key again.
+Each pipeline step, each derivation run, each pipeline run and each agent run
+reads with a key of its own. The key lists only the input folders the platform
+has allowed that task to read, and it contains no listing. It is removed when
+the task ends or fails, and when the six-hour life of the task credential runs
+out without the task asking again. A task that asks again after waiting, for
+example an agent run that waited for a person to approve access, receives its
+key again.
 
 ---
 
