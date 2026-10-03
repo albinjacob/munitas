@@ -56,6 +56,10 @@ class DatasetVersionIn(BaseModel):
     # standard tool can read it. Optional, because a version made of files has
     # no rows to put in a table, and every existing caller leaves it out.
     records_key: str | None = None
+    # Whether this version must be a table. Left out, the platform's default applies: a version that names a records
+    # file is refused when its table cannot be written because of the data or a fault, and nothing is left behind.
+    # `false` seals the files without a table and records why not.
+    table_required: bool | None = None
 
 
 class ActionRunIn(BaseModel):

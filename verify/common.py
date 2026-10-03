@@ -396,7 +396,7 @@ def fixture_tabular_version(tenant_id: str = CANARY, rows: list[dict] | None = N
                             klass: str = "RAW", dataset_name: str | None = None,
                             produced_by_run: str | None = None,
                             schema_id: str | None = None, with_records_key: bool = True,
-                            dataset_id: str | None = None) -> dict:
+                            dataset_id: str | None = None, table_required: bool | None = None) -> dict:
     """A dataset and one sealed version whose records are really in storage.
 
     The records object is written the way a producer writes it: at the prefix
@@ -433,6 +433,8 @@ def fixture_tabular_version(tenant_id: str = CANARY, rows: list[dict] | None = N
         payload["produced_by_run"] = produced_by_run
     if with_records_key:
         payload["records_key"] = key
+    if table_required is not None:
+        payload["table_required"] = table_required
     sealed = api("POST", "/dataset-versions", json=payload)
     sealed.raise_for_status()
     out = sealed.json()

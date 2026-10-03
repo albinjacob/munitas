@@ -34,8 +34,10 @@ generated, on a machine without pyarrow.
 
 from __future__ import annotations
 
+import concurrent.futures
 import hashlib
 import json
+import threading
 from dataclasses import dataclass, field
 
 from . import config, db, logs, storage
@@ -57,8 +59,30 @@ class Skipped(Exception):
     """The version is not written as a table, for a reason stated plainly.
 
     Not an error in the platform: most versions are made of files and have no
-    rows to put in a table. Callers log the reason and seal the version anyway.
+    rows to put in a table. `blocking` says whether a caller who asked for a
+    table should be refused: true for a reason about the data (an unreadable
+    records file, rows that do not fit the contract), false for a reason the
+    caller cannot fix by changing the data (projection switched off, files on
+    R2, a file over the size limit).
     """
+
+    def __init__(self, message: str, blocking: bool = True):
+        super().__init__(message)
+        self.blocking = blocking
+
+
+class Abandoned(Exception):
+    """Writing was given up on while it was running (it took too long), so what it wrote is removed."""
+
+
+class TableRequired(Exception):
+    """A version that was asked to be a table was not sealed, because its table could not be written.
+
+    Raised before anything is written to the register, so the version number is unused and a retry takes it."""
+
+    def __init__(self, outcome: str, reason: str):
+        super().__init__(reason)
+        self.outcome, self.reason = outcome, reason
 
 
 @dataclass
@@ -148,7 +172,7 @@ def _file_io(tenant_id: str, backend: str) -> dict:
     from . import grants
 
     if backend != "seaweedfs":
-        raise Skipped(f"only SeaweedFS-backed versions are written as tables so far, not {backend!r}")
+        raise Skipped(f"only SeaweedFS-backed versions are written as tables so far, not {backend!r}", blocking=False)
     # Called first for what it does on a first write: it makes the bucket and
     # activates the tenant's identity, which the keys below depend on.
     storage.admin_client_for(backend, tenant_id)
@@ -193,6 +217,7 @@ def project(
     schema_id: str,
     records_key: str,
     produced_by_run: str | None,
+    cancel: "threading.Event | None" = None,
 ) -> Projection:
     """Write one version's records as an Iceberg table under its own prefix.
 
@@ -201,7 +226,7 @@ def project(
     hash is taken. Raises Skipped when there is nothing honest to write.
     """
     if not config.ICEBERG_PROJECTION:
-        raise Skipped("projection is switched off (MUNITAS_ICEBERG_PROJECTION=off)")
+        raise Skipped("projection is switched off (MUNITAS_ICEBERG_PROJECTION=off)", blocking=False)
 
     contract = db.one(
         "select name, fields, primary_key from schema_contract where id = %s", (schema_id,))
@@ -217,8 +242,15 @@ def project(
     bucket = storage.bucket_for(backend, tenant_id)
 
     try:
-        raw = client.get_object(Bucket=bucket, Key=records_key)["Body"].read()
+        size = int(client.head_object(Bucket=bucket, Key=records_key)["ContentLength"])
     except Exception as exc:  # the object is simply not there, or not readable
+        raise Skipped(f"the records object could not be read: {type(exc).__name__}") from exc
+    if size > config.ICEBERG_MAX_BYTES:
+        raise Skipped(f"the records file is {size // (1024 * 1024)} MB, over the {config.ICEBERG_MAX_BYTES // (1024 * 1024)} MB "
+                      "that is written as a table", blocking=False)
+    try:
+        raw = client.get_object(Bucket=bucket, Key=records_key)["Body"].read()
+    except Exception as exc:  # gone between the two calls, or not readable
         raise Skipped(f"the records object could not be read: {type(exc).__name__}") from exc
     try:
         rows = json.loads(raw)
@@ -230,47 +262,76 @@ def project(
 
     schema, arrow = build(fields, primary_key, rows)
 
-    from pyiceberg.catalog.memory import InMemoryCatalog
+    folder = f"{prefix}/{TABLE_DIR}/"
 
-    location = table_location(backend, tenant_id, prefix)
-    name = table_name_for(version)
-    # A catalog that exists only for this write. The pointer that matters is the
-    # one kept in iceberg_table_ref, in the register, with the version.
-    catalog = InMemoryCatalog("munitas-writer", **props, warehouse=f"{location}/warehouse")
-    catalog.create_namespace(dataset_name)
-    table = catalog.create_table(
-        (dataset_name, name), schema=schema, location=location,
-        properties={"format-version": str(FORMAT_VERSION),
-                    **({"write.parquet.row-group-limit": str(config.ICEBERG_ROW_GROUP_ROWS)}
-                       if config.ICEBERG_ROW_GROUP_ROWS else {}),
-                    **({"write.target-file-size-bytes": str(config.ICEBERG_FILE_BYTES)}
-                       if config.ICEBERG_FILE_BYTES else {})},
-    )
-    summary = {
-        "munitas.tenant": tenant_id,
-        "munitas.dataset-id": dataset_id,
-        "munitas.dataset-version-id": version_id,
-        "munitas.version": str(version),
-        "munitas.contract": contract["name"],
-        "munitas.records-key": records_key,
-        "munitas.records-sha256": records_sha256,
-        "munitas.record-count": str(len(rows)),
-        **_provenance(produced_by_run),
-    }
-    table.append(arrow, snapshot_properties=summary)
-    snapshot = table.current_snapshot()
-    # A permanent name for this snapshot. Written now, before the version is
-    # sealed, because nothing may be written under a sealed prefix afterwards.
-    table.manage_snapshots().create_tag(snapshot.snapshot_id, table_name_for(version)).commit()
-    table = catalog.load_table((dataset_name, name))
+    def checkpoint() -> None:
+        if cancel is not None and cancel.is_set():
+            raise Abandoned("writing the table was given up on")
 
-    return Projection(
-        namespace=dataset_name, table_name=name, location=location,
-        metadata_location=table.metadata_location,
-        snapshot_id=table.current_snapshot().snapshot_id,
-        record_count=len(rows), records_sha256=records_sha256,
-        objects=_manifest_entries(client, bucket, f"{prefix}/{TABLE_DIR}/"),
-    )
+    try:
+        checkpoint()
+        from pyiceberg.catalog.memory import InMemoryCatalog
+
+        location = table_location(backend, tenant_id, prefix)
+        name = table_name_for(version)
+        # A catalog that exists only for this write. The pointer that matters is the
+        # one kept in iceberg_table_ref, in the register, with the version.
+        catalog = InMemoryCatalog("munitas-writer", **props, warehouse=f"{location}/warehouse")
+        catalog.create_namespace(dataset_name)
+        table = catalog.create_table(
+            (dataset_name, name), schema=schema, location=location,
+            properties={"format-version": str(FORMAT_VERSION),
+                        **({"write.parquet.row-group-limit": str(config.ICEBERG_ROW_GROUP_ROWS)}
+                           if config.ICEBERG_ROW_GROUP_ROWS else {}),
+                        **({"write.target-file-size-bytes": str(config.ICEBERG_FILE_BYTES)}
+                           if config.ICEBERG_FILE_BYTES else {})},
+        )
+        summary = {
+            "munitas.tenant": tenant_id,
+            "munitas.dataset-id": dataset_id,
+            "munitas.dataset-version-id": version_id,
+            "munitas.version": str(version),
+            "munitas.contract": contract["name"],
+            "munitas.records-key": records_key,
+            "munitas.records-sha256": records_sha256,
+            "munitas.record-count": str(len(rows)),
+            **_provenance(produced_by_run),
+        }
+        checkpoint()
+        table.append(arrow, snapshot_properties=summary)
+        checkpoint()
+        snapshot = table.current_snapshot()
+        # A permanent name for this snapshot. Written now, before the version is
+        # sealed, because nothing may be written under a sealed prefix afterwards.
+        table.manage_snapshots().create_tag(snapshot.snapshot_id, table_name_for(version)).commit()
+        table = catalog.load_table((dataset_name, name))
+
+        return Projection(
+            namespace=dataset_name, table_name=name, location=location,
+            metadata_location=table.metadata_location,
+            snapshot_id=table.current_snapshot().snapshot_id,
+            record_count=len(rows), records_sha256=records_sha256,
+            objects=_manifest_entries(client, bucket, f"{prefix}/{TABLE_DIR}/"),
+        )
+    except BaseException as exc:
+        # Whatever this attempt wrote is removed, so a version sealed without its table (or not sealed at all) has nothing
+        # under its prefix that its fingerprint does not cover. Anything the removal cannot reach is said so.
+        if not _remove_written(client, bucket, folder):
+            exc.cleanup_incomplete = True  # type: ignore[attr-defined]
+        raise
+
+
+def _remove_written(client, bucket: str, folder: str) -> bool:
+    """Delete everything under the table's folder. True when nothing is left."""
+    try:
+        paginator = client.get_paginator("list_objects_v2")
+        keys = [item["Key"] for page in paginator.paginate(Bucket=bucket, Prefix=folder) for item in page.get("Contents", [])]
+        for start in range(0, len(keys), 1000):
+            client.delete_objects(Bucket=bucket, Delete={"Objects": [{"Key": k} for k in keys[start:start + 1000]]})
+        return True
+    except Exception as exc:  # reported by the caller as an incomplete clean-up
+        log.error("a failed table write could not be cleaned up", extra={"error_type": type(exc).__name__, "reason": folder[:80]})
+        return False
 
 
 def _manifest_entries(client, bucket: str, key_prefix: str) -> list[dict]:
@@ -300,30 +361,54 @@ def record(version_id: str, tenant_id: str, dataset_id: str, projection: Project
     )
 
 
-def try_project(**kwargs) -> tuple[Projection | None, tuple[str, str] | None]:
-    """project(), but a version that cannot be written as a table is still
-    sealed. Returns the projection, or None and the outcome and reason to be
-    written down beside the version (record_note), so the console can say why.
-    The reason is a sentence of ours and a kind of error only, never contents:
-    a library's message can quote a value from a row."""
+def try_project(**kwargs) -> tuple[Projection | None, tuple[str, str, bool] | None]:
+    """project() under a deadline, for a version that is sealed all the same unless the caller asked for a table.
+
+    Returns the projection, or None and the outcome, the reason and whether it blocks a caller who asked for a table
+    (enforce), to be written down beside the version (record_note), so the console can say why. The reason is a
+    sentence of ours and a kind of error only, never contents: a library's message can quote a value from a row.
+    """
     where = {"tenant_id": kwargs.get("tenant_id"),
              "dataset_version_id": kwargs.get("version_id")}
+    cancel = threading.Event()
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="iceberg-write")
+    future = pool.submit(project, cancel=cancel, **kwargs)
     try:
-        return project(**kwargs), None
+        return future.result(timeout=config.ICEBERG_TIMEOUT_SECONDS), None
+    except concurrent.futures.TimeoutError:
+        # The writer cannot be killed, so it is told to stop at its next step and to remove what it wrote.
+        cancel.set()
+        log.error("writing a version as an Iceberg table took too long; giving up", extra=where)
+        return None, ("failed", f"Writing the table did not finish within {config.ICEBERG_TIMEOUT_SECONDS} seconds, so it was given up on.", True)
     except Skipped as why:
         log.info("version not written as an Iceberg table", extra={**where, "reason": str(why)})
-        return None, ("skipped", f"The table was not written: {why}.")
-    except Exception as exc:  # a storage or library failure must never block a seal
-        log.error("writing a version as an Iceberg table failed; sealing without it",
-                  extra={**where, "error_type": type(exc).__name__})
-        return None, ("failed", f"Writing the table failed ({type(exc).__name__}), so the version was sealed without it.")
+        return None, ("skipped", f"The table was not written: {why}." + _cleanup_note(why), why.blocking)
+    except Exception as exc:  # a storage or library failure
+        log.error("writing a version as an Iceberg table failed", extra={**where, "error_type": type(exc).__name__})
+        return None, ("failed", f"Writing the table failed ({type(exc).__name__})." + _cleanup_note(exc), True)
+    finally:
+        pool.shutdown(wait=False)
+
+
+def _cleanup_note(exc: BaseException) -> str:
+    return (" Some files it wrote could not be removed, and a person who runs the platform needs to look."
+            if getattr(exc, "cleanup_incomplete", False) else "")
 
 
 NOT_REQUESTED = ("not_requested",
-                 "This version was sealed as files, and no table of rows was named for it, so no table was written.")
+                 "This version was sealed as files, and no table of rows was named for it, so no table was written.", False)
 
 
-def record_note(version_id: str, tenant_id: str, why: tuple[str, str]) -> None:
+def enforce(why: tuple[str, str, bool] | None, table_required: bool | None) -> None:
+    """Refuse the seal when a table was asked for and could not be written, before anything reaches the register."""
+    if not why or not why[2]:
+        return
+    required = config.ICEBERG_FAIL_CLOSED if table_required is None else table_required
+    if required:
+        raise TableRequired(why[0], why[1])
+
+
+def record_note(version_id: str, tenant_id: str, why: tuple) -> None:
     """Write down why a version has no table copy. Once, straight after the version row."""
     db.execute(
         """insert into iceberg_projection_note (dataset_version_id, tenant_id, outcome, reason)

@@ -97,6 +97,7 @@ def seal(
     record_count: int = 0,
     produced_by_run: str | None = None,
     records_key: str | None = None,
+    table_required: bool | None = None,
 ) -> dict:
     """Create a sealed version.
 
@@ -126,6 +127,7 @@ def seal(
                 dataset_name=dataset["name"], version_id=version_id,
                 version=reserved["version"], prefix=prefix, schema_id=schema_id,
                 records_key=records_key, produced_by_run=produced_by_run)
+            iceberg.enforce(why, table_required)
             if projection:
                 manifest += projection.objects
     digest = content_hash(

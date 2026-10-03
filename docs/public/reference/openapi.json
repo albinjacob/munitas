@@ -493,6 +493,17 @@
             "title": "Storage Backend",
             "type": "string"
           },
+          "table_required": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table Required"
+          },
           "tenant_id": {
             "title": "Tenant Id",
             "type": "string"

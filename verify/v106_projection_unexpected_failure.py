@@ -45,7 +45,7 @@ def main() -> int:
         with mock.patch.object(iceberg, "project", side_effect=boom):
             sealed = versions.seal(
                 tenant_id=org.id, dataset_id=first["dataset_id"], schema_id=schema, visibility_class="RAW",
-                storage_backend="seaweedfs", object_manifest=[], record_count=1, records_key=f"{where['storage_prefix']}/records.json")
+                storage_backend="seaweedfs", object_manifest=[], record_count=1, records_key=f"{where['storage_prefix']}/records.json", table_required=False)
         check("the version is sealed all the same", bool(sealed.get("id")), str(sealed)[:80])
 
         body = api("GET", f"/dataset-versions/{sealed['id']}/table", headers=member).json()
@@ -59,11 +59,20 @@ def main() -> int:
             refs = conn.execute("select count(*) as n from iceberg_table_ref where dataset_version_id = %s", (sealed["id"],)).fetchone()["n"]
         check("one note was written, and no pointer to a table that is not there", notes == 1 and refs == 0, f"{notes} note, {refs} pointer")
 
+        heading("A failure raises an alert on the housekeeping screen")
+        wide = api("GET", "/housekeeping/storage", headers=bearer_for("ops-priya")).json()["table_copies"]
+        check("the platform-wide view counts it as failed and raises the alert",
+              wide["alert"] is True and any(l["dataset_version_id"] == sealed["id"] and l["outcome"] == "failed" for l in wide["lacking"]),
+              f"{wide['failed']} failed")
+        mine = api("GET", "/housekeeping/storage", params={"tenant_id": org.id}, headers=org.bearer("dpo")).json()["table_copies"]
+        check("the organisation's own view names the dataset and the version",
+              any(l["dataset_name"] == "a-table" and l["version"] == 2 for l in mine["lacking"]), str(mine["lacking"])[:120])
+
         heading("The log says the same, and no more")
         with mock.patch.object(iceberg, "project", side_effect=boom), mock.patch.object(iceberg.log, "error") as logged:
             again = versions.seal(
                 tenant_id=org.id, dataset_id=first["dataset_id"], schema_id=schema, visibility_class="RAW",
-                storage_backend="seaweedfs", object_manifest=[], record_count=1, records_key=f"{where['storage_prefix']}/records.json")
+                storage_backend="seaweedfs", object_manifest=[], record_count=1, records_key=f"{where['storage_prefix']}/records.json", table_required=False)
         check("a second version sealed the same way is sealed too", bool(again.get("id")) and again["id"] != sealed["id"])
         text = str(logged.call_args)
         check("the log entry names the error kind and the identifiers, and quotes no value",

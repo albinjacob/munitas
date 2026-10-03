@@ -128,6 +128,18 @@ app.include_router(legal_export.router)
 app.add_exception_handler(iceberg_catalog.CatalogError, iceberg_catalog.handle_error)
 
 
+@app.exception_handler(iceberg.TableRequired)
+def table_required(request, exc: iceberg.TableRequired):
+    """A version that had to be a table was not sealed. Its number is unused and nothing was left behind."""
+    return JSONResponse(
+        status_code=422 if exc.outcome == "skipped" else 503,
+        content={"detail": {"reasons": [
+            exc.reason,
+            "The version was not sealed and its number is unused. Fix that and seal it again, or seal it with "
+            "table_required set to false to keep the files without a table."], "table_outcome": exc.outcome}},
+    )
+
+
 @app.exception_handler(pg_errors.ReadOnlySqlTransaction)
 def closed_tenant(request, exc: pg_errors.ReadOnlySqlTransaction):
     """A write to a retired tenant, refused by the database.
@@ -457,6 +469,7 @@ def create_version(body: models.DatasetVersionIn) -> dict:
                 version_id=version_id, version=version, prefix=prefix,
                 schema_id=body.schema_id, records_key=body.records_key,
                 produced_by_run=body.produced_by_run)
+            iceberg.enforce(why, body.table_required)
             if projection:
                 manifest += projection.objects
     content_hash = _hash(

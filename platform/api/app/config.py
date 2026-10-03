@@ -209,3 +209,17 @@ LEGAL_EXPORT_LINK_USES = int(os.environ.get("MUNITAS_LEGAL_EXPORT_LINK_USES", "3
 LEGAL_EXPORT_LINK_DAYS = int(os.environ.get("MUNITAS_LEGAL_EXPORT_LINK_DAYS", "7"))
 # The most a package may hold. Phase one builds it on local disk, so this is a safety limit and not a design goal.
 LEGAL_EXPORT_MAX_BYTES = int(os.environ.get("MUNITAS_LEGAL_EXPORT_MAX_BYTES", str(2 * 1024 ** 3)))
+
+# Writing a version's rows as a table (iceberg.py), and what happens when that cannot be done.
+#
+# A caller who names a records file is asking for a table. By default a version is then NOT sealed without one when the
+# table cannot be written for a reason about the data or a fault in writing it: the seal is refused with the reason, its
+# version number stays unused, and nothing is left behind. A producer that would rather keep the files without a table
+# says so for one seal (`table_required: false`). A table that cannot be written because the platform was told not to
+# (projection switched off) or cannot yet (files on R2, a file too large) never blocks a seal.
+ICEBERG_FAIL_CLOSED = os.environ.get("MUNITAS_ICEBERG_FAIL_CLOSED", "on").lower() != "off"
+# The largest records file written as a table. Reading it takes it into memory, and a file too large would stop the API
+# for everybody, which is worse than a version without a table.
+ICEBERG_MAX_BYTES = int(os.environ.get("MUNITAS_ICEBERG_MAX_BYTES", str(256 * 1024 * 1024)))
+# How long writing one table may take before it is given up. Every call that leaves this process needs a deadline.
+ICEBERG_TIMEOUT_SECONDS = int(os.environ.get("MUNITAS_ICEBERG_TIMEOUT_SECONDS", "300"))

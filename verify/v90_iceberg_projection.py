@@ -192,8 +192,10 @@ def main() -> int:
     check("and its snapshot id is empty", flagless["iceberg_snapshot_id"] is None,
           str(flagless["iceberg_snapshot_id"]))
 
+    # Sealed without a table when the producer says it does not need one. By default such a version is refused (U107).
     broken = fixture_tabular_version(
-        tenant, rows=[{"record_id": None, "transcript": "no key"}, {"record_id": "x", "transcript": "ok"}])
+        tenant, rows=[{"record_id": None, "transcript": "no key"}, {"record_id": "x", "transcript": "ok"}],
+        table_required=False)
     with db() as conn:
         b = conn.execute("select sealed, iceberg_snapshot_id from dataset_version where id = %s",
                          (broken["id"],)).fetchone()
@@ -206,7 +208,7 @@ def main() -> int:
     missing = api("POST", "/dataset-versions", json={
         "tenant_id": tenant, "dataset_id": plain["dataset_id"], "schema_id": version["schema_id"],
         "visibility_class": "RAW", "object_manifest": [], "record_count": 1,
-        "records_key": f"{prefix}/does-not-exist.json",
+        "records_key": f"{prefix}/does-not-exist.json", "table_required": False,
     })
     check("a records key that names no object still seals", missing.status_code == 201,
           f"HTTP {missing.status_code}")

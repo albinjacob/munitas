@@ -42,7 +42,8 @@ def main() -> int:
 
         broken = api("POST", "/dataset-versions", json={
             "tenant_id": org.id, "dataset_id": table["dataset_id"], "schema_id": schema, "visibility_class": "RAW",
-            "object_manifest": [], "record_count": 1, "records_key": f"{org.id}/no/such/records.json"})
+            "object_manifest": [], "record_count": 1, "records_key": f"{org.id}/no/such/records.json",
+            "table_required": False})
         check("a version whose rows cannot be read is still sealed", broken.status_code == 201, str(broken.status_code))
         body = api("GET", f"/dataset-versions/{broken.json()['id']}/table", headers=member).json()
         check("and says the table was not written and why, in a sentence that quotes no row",
@@ -63,13 +64,25 @@ def main() -> int:
         torn = api("POST", "/dataset-versions", json={
             "tenant_id": org.id, "dataset_id": table["dataset_id"], "schema_id": schema, "visibility_class": "RAW",
             "object_manifest": [{"key": key, "bytes": len(payload), "sha256": hashlib.sha256(payload).hexdigest()}],
-            "record_count": len(bad_rows), "records_key": key})
+            "record_count": len(bad_rows), "records_key": key, "table_required": False})
         check("rows the real library cannot write do not stop the seal", torn.status_code == 201, str(torn.status_code))
         body = api("GET", f"/dataset-versions/{torn.json()['id']}/table", headers=member).json()
         check("the note names the kind of error the library raised, and quotes no value",
               body["outcome"] == "skipped" and not body["projected"] and "ArrowInvalid" in body["reason"]
               and "not a number" not in body["reason"], f"{body['outcome']}: {body['reason'][:150]}")
 
+        heading("The housekeeping screen counts them")
+        mine = api("GET", "/housekeeping/storage", params={"tenant_id": org.id}, headers=org.bearer("dpo")).json()["table_copies"]
+        check("an organisation's own view counts what was written, what was skipped and what is files",
+              mine["projected"] == 1 and mine["skipped"] == 2 and mine["failed"] == 0 and mine["files"] == 1 and mine["alert"] is False,
+              str({k: mine[k] for k in ("projected", "skipped", "failed", "files", "alert")}))
+        check("it names the datasets that lack a table copy, and says why",
+              {(l["dataset_name"], l["version"]) for l in mine["lacking"]} == {("a-table", 2), ("a-table", 3)}
+              and all(l["reason"] for l in mine["lacking"]))
+        wide = api("GET", "/housekeeping/storage", headers=bearer_for("ops-priya")).json()["table_copies"]
+        ours = [l for l in wide["lacking"] if l["tenant_id"] == org.id]
+        check("the platform-wide view lists the same two by organisation and never by dataset name",
+              len(ours) == 2 and all("dataset_name" not in l for l in ours))
         with db() as conn:
             conn.execute("delete from iceberg_projection_note where dataset_version_id = %s", (files["version_id"],))
         body = api("GET", f"/dataset-versions/{files['version_id']}/table", headers=member).json()
