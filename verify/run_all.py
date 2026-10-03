@@ -77,6 +77,7 @@ SCRIPTS = [
     ("U103 a legal export is built, signed, delivered and opened, and cannot be altered or opened wrongly", "v103_legal_export_package.py"),
     ("U104 a table is handed over as the rows for people the custodian names, never whole", "v104_legal_export_filter.py"),
     ("U105 whether a version is also stored as a table, and why not, is on record and readable", "v105_table_copy_visible.py"),
+    ("U106 an unexpected error while writing a table never stops a seal and never quotes a value", "v106_projection_unexpected_failure.py"),
 ]
 
 here = Path(__file__).parent
