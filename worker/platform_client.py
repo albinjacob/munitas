@@ -103,7 +103,7 @@ def s3_scoped(task_credential: str, dataset_version_id: str, tenant_id: str,
         "roles": [config.PIPELINE_ROLE], "tenant_id": tenant_id,
         "dataset_version_id": dataset_version_id, "purpose": purpose,
         "task_credential": task_credential,
-    }, timeout=30.0, verify=config.api_verify())
+    }, timeout=30.0, headers={"x-worker-token": config.WORKER_TOKEN}, verify=config.api_verify())
 
     if response.status_code == 202:
         raise CredentialPending(
@@ -156,7 +156,7 @@ def s3_scoped_write(task_credential: str, dataset_id: str, tenant_id: str,
         "roles": [config.PIPELINE_ROLE], "tenant_id": tenant_id,
         "dataset_id": dataset_id, "purpose": purpose,
         "task_credential": task_credential,
-    }, timeout=30.0, verify=config.api_verify())
+    }, timeout=30.0, headers={"x-worker-token": config.WORKER_TOKEN}, verify=config.api_verify())
 
     if response.status_code == 202:
         raise CredentialPending(
@@ -208,7 +208,7 @@ def next_location(dataset_id: str, tenant_id: str | None = None) -> dict:
     response = httpx.get(
         f"{config.API}/datasets/{dataset_id}/next-version",
         params={"tenant_id": tenant_id or config.TENANT}, timeout=15.0,
-        verify=config.api_verify(),
+        headers={"x-worker-token": config.WORKER_TOKEN}, verify=config.api_verify(),
     )
     if response.status_code >= 400:
         raise ControlPlaneError(f"next-version returned {response.status_code}")

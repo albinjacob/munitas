@@ -6,16 +6,16 @@
  * here rather than found.
  */
 import { expect, test } from "@playwright/test";
-import { bearerFor, loginAs } from "./auth-helpers";
+import { actingHeaders, bearerFor, loginAs } from "./auth-helpers";
 import { API_BASE } from "../config/ports";
 
 const API = API_BASE;
 const CANARY = "canary";
 
-async function post<T>(path: string, body: unknown, headers: Record<string, string> = {}): Promise<T> {
+async function post<T>(path: string, body: unknown, headers?: Record<string, string>): Promise<T> {
   const r = await fetch(API + path, {
     method: "POST",
-    headers: { "content-type": "application/json", ...headers },
+    headers: { "content-type": "application/json", ...(headers ?? (await actingHeaders("POST", path, body))) },
     body: JSON.stringify(body),
   });
   if (!r.ok) throw new Error(`${path} returned ${r.status}: ${await r.text()}`);
@@ -38,9 +38,10 @@ async function ownedRawVersion(name: string): Promise<{ datasetId: string; versi
   });
   const form = new FormData();
   form.append("file", new Blob([new Uint8Array([1, 2, 3, 4, 5])]), "probe.bin");
-  const uploaded = await fetch(`${API}/datasets/${dataset.id}/files`, { method: "POST", body: form });
+  const owner = await bearerFor("canary-engineer");
+  const uploaded = await fetch(`${API}/datasets/${dataset.id}/files`, { method: "POST", body: form, headers: owner });
   if (!uploaded.ok) throw new Error(`upload returned ${uploaded.status}: ${await uploaded.text()}`);
-  const sealed = await post<{ id: string }>(`/datasets/${dataset.id}/seal`, {});
+  const sealed = await post<{ id: string }>(`/datasets/${dataset.id}/seal`, {}, owner);
   return { datasetId: dataset.id, versionId: sealed.id };
 }
 

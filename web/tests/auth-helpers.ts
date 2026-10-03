@@ -108,3 +108,34 @@ export async function loginAs(page: Page, directoryId: string): Promise<void> {
   // real backend load rather than actually broken.
   await expect(page.getByTestId("current-persona")).toBeVisible({ timeout: 15000 });
 }
+
+
+/**
+ * How a setup call made directly against the API authenticates, by route (the same rule as verify/common.py). The routes the
+ * platform's own workers use take the worker token; the ones a person uses take that person's session, and the person is the one
+ * the request names (registered_by, confirmed_by, fetched_by), because the platform acts as the signed-in person and refuses a
+ * name that is not theirs.
+ */
+const WORKER_TOKEN = process.env.MUNITAS_WORKER_TOKEN ?? "dev-worker-token-not-for-production";
+const WORKER_ROUTES: Array<[string, RegExp]> = [
+  ["POST", /^\/schema-contracts$/], ["POST", /^\/datasets$/], ["POST", /^\/action-runs$/], ["POST", /^\/pipeline-runs$/],
+  ["POST", /^\/write-credentials$/], ["POST", /^\/credentials$/], ["POST", /^\/dataset-versions$/],
+];
+const PERSON_ROUTES: Array<[string, RegExp, string]> = [
+  ["POST", /^\/datasets\/register$/, "registered_by"], ["POST", /^\/agents\/register$/, "registered_by"],
+  ["POST", /^\/pipelines\/register$/, "registered_by"], ["POST", /^\/datasets\/[^/]+\/confirm-classification$/, "confirmed_by"],
+  ["POST", /^\/datasets\/[^/]+\/fetch-huggingface$/, "fetched_by"],
+];
+
+export async function actingHeaders(method: string, path: string, body: unknown): Promise<Record<string, string>> {
+  for (const [verb, pattern] of WORKER_ROUTES) {
+    if (method === verb && pattern.test(path)) return { "x-worker-token": WORKER_TOKEN };
+  }
+  for (const [verb, pattern, field] of PERSON_ROUTES) {
+    if (method === verb && pattern.test(path)) {
+      const person = (body as Record<string, string> | null)?.[field];
+      if (person) return bearerFor(person);
+    }
+  }
+  return {};
+}

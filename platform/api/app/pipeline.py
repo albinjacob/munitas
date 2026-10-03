@@ -109,7 +109,7 @@ async def _pipeline_worker_pollers() -> int:
     return len(response.pollers)
 
 
-@router.get("/pipeline/served-backends")
+@router.get("/pipeline/served-backends", dependencies=[Depends(auth.person_or_worker)])
 def served_backends() -> dict:
     """Which object-storage backends the pipeline can read and write.
 
@@ -193,7 +193,7 @@ def _record_ending(run_id, ending) -> None:
     )
 
 
-@router.get("/pipeline/kinds")
+@router.get("/pipeline/kinds", dependencies=[Depends(auth.person_or_worker)])
 def pipeline_kinds() -> dict:
     """Which pipeline kinds this process knows how to start.
 

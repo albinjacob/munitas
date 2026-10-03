@@ -68,7 +68,7 @@ def seed_table(session: dict, department: str) -> None:
     import boto3
     from botocore.config import Config
 
-    contract = httpx.post(f"{API}/schema-contracts", timeout=30.0, json={
+    contract = httpx.post(f"{API}/schema-contracts", timeout=30.0, headers=WORKER_HEADERS, json={
         "tenant_id": TENANT, "name": "appointment",
         "fields": [
             {"name": "appointment_id", "type": "string", "sensitivity": "none", "added_by": "seed"},
@@ -79,7 +79,7 @@ def seed_table(session: dict, department: str) -> None:
         ],
         "primary_key": ["appointment_id"]})
     expect(contract, 201, doing="registering the appointment contract")
-    registered = httpx.post(f"{API}/datasets/register", timeout=30.0, json={
+    registered = httpx.post(f"{API}/datasets/register", timeout=30.0, headers=bearer_for(CUSTODIAN), json={
         "tenant_id": TENANT, "name": "appointments", "department_id": department, "registered_by": CUSTODIAN,
         "provenance": "internal_regulated", "declared_class": "RAW", "source_kind": "upload", "modality": ["tabular"]})
     expect(registered, 201, doing="registering appointments")
@@ -132,7 +132,7 @@ def history(session: dict) -> None:
     # The platform records every decision it makes, refusals and the like included. Quinn is a person, and people are
     # not handed a storage credential directly, so the platform answers that it permits the access but issues no
     # credential, and records that. The answer is the demonstration, so it is not treated as a failure.
-    attempt = httpx.post(f"{API}/credentials", timeout=30.0, json={
+    attempt = httpx.post(f"{API}/credentials", timeout=30.0, headers=WORKER_HEADERS, json={
         "principal": ANALYST, "principal_kind": "human", "roles": ["analyst"], "tenant_id": TENANT,
         "dataset_version_id": first_version, "purpose": "checking that reminder letters were sent"})
     if attempt.status_code not in (200, 503):
@@ -156,7 +156,7 @@ def main() -> int:
     department = department_id(session)
     print(f"Seeding {TENANT}")
     for name, files in LETTERS.items():
-        registered = httpx.post(f"{API}/datasets/register", timeout=30.0, json={
+        registered = httpx.post(f"{API}/datasets/register", timeout=30.0, headers=bearer_for(CUSTODIAN), json={
             "tenant_id": TENANT, "name": name, "department_id": department, "registered_by": CUSTODIAN,
             "provenance": "internal_regulated", "declared_class": "RAW", "source_kind": "upload",
             "modality": ["text"],

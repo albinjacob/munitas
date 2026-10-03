@@ -322,7 +322,7 @@ def _open(principal: dict, ref: dict) -> dict:
         dataset_version_id=ref["version_id"], purpose=principal["purpose"], decide_only=True,
     )
     try:
-        grant = platform.request_credential(request)
+        grant = platform.decide_credential(request)
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, dict) else {}
         reasons = "; ".join(detail.get("reasons") or [str(exc.detail)])

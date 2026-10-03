@@ -36,7 +36,7 @@ from pathlib import Path
 
 import httpx
 
-from seed_common import bearer_for, expect
+from seed_common import acting_headers, bearer_for, expect
 # seed_common's own import above already inserted the repo root onto sys.path.
 from ports_config import PORTS  # noqa: E402
 
@@ -76,10 +76,14 @@ TRAINER = "svc-trainer"
 
 
 def post(path: str, **kwargs) -> httpx.Response:
+    if "headers" not in kwargs and (found := acting_headers("POST", path, kwargs)):
+        kwargs["headers"] = found
     return httpx.post(f"{API}{path}", timeout=30.0, **kwargs)
 
 
 def get(path: str, **kwargs) -> httpx.Response:
+    if "headers" not in kwargs and (found := acting_headers("GET", path, kwargs)):
+        kwargs["headers"] = found
     return httpx.get(f"{API}{path}", timeout=30.0, **kwargs)
 
 

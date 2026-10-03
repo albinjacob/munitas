@@ -32,7 +32,7 @@ from datetime import date, timedelta
 
 import httpx
 
-from seed_common import bearer_for, expect
+from seed_common import acting_headers, bearer_for, expect
 from ports_config import PORTS  # noqa: E402
 
 API = f"http://localhost:{PORTS['munitas_api_http']}"
@@ -40,10 +40,14 @@ WORKER_HEADERS = {"x-worker-token": os.environ.get("MUNITAS_WORKER_TOKEN", "dev-
 
 
 def post(path: str, **kwargs) -> httpx.Response:
+    if "headers" not in kwargs and (found := acting_headers("POST", path, kwargs)):
+        kwargs["headers"] = found
     return httpx.post(f"{API}{path}", timeout=60.0, **kwargs)
 
 
 def get(path: str, **kwargs) -> httpx.Response:
+    if "headers" not in kwargs and (found := acting_headers("GET", path, kwargs)):
+        kwargs["headers"] = found
     return httpx.get(f"{API}{path}", timeout=30.0, **kwargs)
 
 

@@ -328,6 +328,7 @@ def _egress_status(ctx: ToolContext) -> tuple[set[str], str | None]:
     try:
         response = httpx.get(
             f"{API}/agent-versions/{ctx.identity.agent_version_id}/egress-status",
+            headers={"x-task-credential": ctx.identity.run_secret} if ctx.identity.run_secret else {},
             timeout=10.0,
         )
         response.raise_for_status()

@@ -20,7 +20,7 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from psycopg import errors as pg_errors
@@ -189,7 +189,7 @@ def health() -> dict:
 
 
 @app.post("/schema-contracts", status_code=201)
-def register_contract(body: models.SchemaContractIn) -> dict:
+def register_contract(body: models.SchemaContractIn, _worker: None = Depends(auth.worker_only)) -> dict:
     """Register a schema contract.
 
     Contracts are content addressed and never edited. Registering the same
@@ -212,7 +212,7 @@ def register_contract(body: models.SchemaContractIn) -> dict:
 
 
 @app.post("/datasets", status_code=201)
-def create_dataset(body: models.DatasetIn) -> dict:
+def create_dataset(body: models.DatasetIn, _worker: None = Depends(auth.worker_only)) -> dict:
     existing = db.one(
         "select id from dataset where tenant_id = %s and name = %s",
         (body.tenant_id, body.name),
@@ -227,7 +227,7 @@ def create_dataset(body: models.DatasetIn) -> dict:
 
 
 @app.post("/action-runs", status_code=201)
-def start_run(body: models.ActionRunIn) -> dict:
+def start_run(body: models.ActionRunIn, _worker: None = Depends(auth.worker_only)) -> dict:
     """Start an action run, keyed by an idempotency key.
 
     Re-submitting the same key returns the original run instead of starting a
@@ -303,7 +303,7 @@ def start_run(body: models.ActionRunIn) -> dict:
 
 
 @app.post("/pipeline-runs", status_code=201)
-def start_pipeline_run(body: models.PipelineRunIn) -> dict:
+def start_pipeline_run(body: models.PipelineRunIn, _worker: None = Depends(auth.worker_only)) -> dict:
     """Open one pipeline run, so its steps can be found together later.
 
     Every action_run the pipeline produces carries this id, and so does any
@@ -349,7 +349,7 @@ def start_pipeline_run(body: models.PipelineRunIn) -> dict:
 
 
 @app.post("/pipeline-runs/{run_id}/end")
-def end_pipeline_run(run_id: str, body: models.EndPipelineRun) -> dict:
+def end_pipeline_run(run_id: str, body: models.EndPipelineRun, _worker: None = Depends(auth.worker_only)) -> dict:
     """Mark a pipeline run finished, and record how it ended.
 
     Called by the workflow itself as it finishes. The outcome is kept here,
@@ -377,7 +377,7 @@ def end_pipeline_run(run_id: str, body: models.EndPipelineRun) -> dict:
 
 
 @app.get("/datasets/{dataset_id}/next-version")
-def next_version(dataset_id: str, tenant_id: str) -> dict:
+def next_version(dataset_id: str, tenant_id: str, scope: str | None = Depends(auth.organisation_scope)) -> dict:
     """Tell a producer where the next version's objects must be written.
 
     A pipeline has to write its objects before it can seal a version, but the
@@ -401,6 +401,10 @@ def next_version(dataset_id: str, tenant_id: str) -> dict:
     shared bucket hides it, which is why it went unnoticed until a tenant with
     its own provisioned bucket was asked the question.
     """
+    # Where the next version's objects go names an organisation's bucket and folder: a producer is told its own, and an
+    # organisation's name in the URL is not a way to ask for another's.
+    if scope is not None and tenant_id != scope:
+        raise HTTPException(404, "no such dataset")
     version = versions.next_version(tenant_id, dataset_id)["version"]
 
     dataset = db.one(
@@ -961,8 +965,31 @@ def _resolve_pipeline_task(
     return claim, run, input_versions
 
 
+def _authenticate_credential_request(body: models.CredentialRequest, request: Request, x_worker_token: str | None) -> None:
+    """Who is asking, before what they ask for is decided.
+
+    The decision below is made for a principal NAMED in the body, so without this anybody could name any principal. A request
+    is accepted from the platform's own worker (a workspace or a worker acting for the principal), from a task that holds the
+    signed credential minted for it and names itself, or from the signed-in person it is for. Each of those is still decided
+    afterwards: the worker token says who is calling, and does not say the principal may read."""
+    if config.WORKER_TOKEN and x_worker_token == config.WORKER_TOKEN:
+        return
+    proof = body.run_secret or body.task_credential
+    if proof:
+        try:
+            claim = task_credential.verify(proof)
+        except task_credential.InvalidTaskCredential as exc:
+            raise HTTPException(403, {"allowed": False, "reasons": [f"task credential rejected: {exc}"]}) from exc
+        if claim.principal != body.principal:
+            raise HTTPException(403, {"allowed": False, "reasons": ["this credential is not for the principal that is asking"]})
+        return
+    caller = auth.current_session(request)
+    if body.principal_kind != "human" or caller["id"] != body.principal:
+        raise HTTPException(403, {"allowed": False, "reasons": ["you can only ask for a credential as yourself"]})
+
+
 @app.post("/credentials")
-def request_credential(body: models.CredentialRequest):
+def request_credential(body: models.CredentialRequest, request: Request, x_worker_token: str | None = Header(default=None)):
     """Mint a prefix-scoped credential, or refuse and say why.
 
     The order of operations matters and is not negotiable: decide, record the
@@ -974,6 +1001,16 @@ def request_credential(body: models.CredentialRequest):
     permissions could not be updated yet. A 202 is never a refusal: the
     activator finishes the job and resumes a run that parked on it.
     """
+    _authenticate_credential_request(body, request, x_worker_token)
+    return decide_credential(body)
+
+
+def decide_credential(body: models.CredentialRequest):
+    """The decision behind POST /credentials, for a caller that has already been authenticated.
+
+    The route authenticates (who is asking), and this decides (may they read), records the decision and mints the key. The Iceberg
+    catalog calls this directly: the person is already known to it from the token they presented, so it has no request of its
+    own to authenticate and must not be made to pretend it has."""
     version = db.one(
         "select * from version_class where dataset_version_id = %s",
         (body.dataset_version_id,),
@@ -1258,7 +1295,7 @@ def request_credential(body: models.CredentialRequest):
 
 
 @app.post("/write-credentials")
-def request_write_credential(body: models.WriteCredentialRequest):
+def request_write_credential(body: models.WriteCredentialRequest, _worker: None = Depends(auth.worker_only)):
     """Mint a prefix-scoped write credential for a real pipeline task, or
     refuse and say why.
 
@@ -1529,7 +1566,7 @@ def _perform_promotion(version_id: str, to_class: str, decided_by: str,
 
 
 @app.post("/dataset-versions/{version_id}/promote")
-def promote(version_id: str, body: models.PromotionIn) -> dict:
+def promote(version_id: str, body: models.PromotionIn, _worker: None = Depends(auth.worker_only)) -> dict:
     """Promote a version to a less restricted class.
 
     This is the workload-triggered path, and it still trusts the identity its
@@ -1549,7 +1586,7 @@ def promote(version_id: str, body: models.PromotionIn) -> dict:
 
 
 @app.post("/records", status_code=201)
-def seal_record(body: models.RecordSealIn) -> dict:
+def seal_record(body: models.RecordSealIn, _worker: None = Depends(auth.worker_only)) -> dict:
     """Encrypt a record and store its wrapped key.
 
     The ciphertext is returned rather than stored. The control plane holds keys
@@ -1570,7 +1607,7 @@ def seal_record(body: models.RecordSealIn) -> dict:
 
 
 @app.post("/records/{record_id}/open")
-def open_record(record_id: str, ciphertext_b64: str) -> dict:
+def open_record(record_id: str, ciphertext_b64: str, _worker: None = Depends(auth.worker_only)) -> dict:
     row = db.one(
         "select tenant_id, wrapped_key, destroyed_at from record_key where record_id = %s",
         (record_id,),
@@ -1590,7 +1627,7 @@ def open_record(record_id: str, ciphertext_b64: str) -> dict:
 
 
 @app.delete("/records/{record_id}")
-def destroy_record(record_id: str, body: models.RecordDestroyIn) -> dict:
+def destroy_record(record_id: str, body: models.RecordDestroyIn, caller: dict = Depends(auth.person_or_worker)) -> dict:
     """Delete a record by destroying its key.
 
     Nothing is overwritten. The ciphertext stays in every sealed version that
@@ -1604,6 +1641,9 @@ def destroy_record(record_id: str, body: models.RecordDestroyIn) -> dict:
     """
     owner = db.one("select tenant_id from record_key where record_id = %s", (record_id,))
     tenant_of = owner["tenant_id"] if owner else body.tenant_id
+    # Destroying a key cannot be undone. A person may do it for their own organisation's record and as themselves; which
+    # roles may is a policy decision that has not been made, so any signed-in person of the organisation can for now.
+    auth.must_be(caller, tenant_id=tenant_of, person=body.requested_by)
     held = db.one("select tenant_hold_state(%s) as state", (tenant_of,))["state"]
     if held != "none":
         db.execute(

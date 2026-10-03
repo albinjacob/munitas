@@ -63,7 +63,8 @@ export function useUploadFile() {
       form.append("file", file);
       const response = await fetch(
         `${API_BASE}/datasets/${datasetId}/files`,
-        { method: "POST", body: form },
+        // Sent with the session: this is a person acting, and the platform acts as the signed-in person.
+        { method: "POST", body: form, credentials: "include" },
       );
       const text = await response.text();
       const body = text ? JSON.parse(text) : null;

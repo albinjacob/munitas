@@ -26,10 +26,10 @@ import json
 import uuid
 import zipfile
 
-from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
-from . import config, db, seaweed
+from . import auth, config, db, seaweed
 from .agents import _agent, file_egress_approval
 
 router = APIRouter(tags=["agents"])
@@ -54,6 +54,7 @@ async def upload_version(
     data_access: str = Form("none"),
     requested_hosts: str = Form(""),
     registered_by: str = Form(...),
+    identity: dict = Depends(auth.current_session),
 ) -> dict:
     """Upload a project as this agent's next version, sealed on arrival.
 
@@ -66,6 +67,9 @@ async def upload_version(
     sending them.
     """
     agent = _agent(agent_id)
+    if agent["tenant_id"] != identity["tenant_id"]:
+        raise HTTPException(404, "no such agent")
+    auth.must_be(identity, person=registered_by)
 
     if not db.one(
         "select id from directory where id = %s and tenant_id = %s",

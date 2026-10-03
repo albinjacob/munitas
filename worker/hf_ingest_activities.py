@@ -178,7 +178,7 @@ def prepare_fetch(params: dict) -> dict:
     resp = httpx.get(
         f"{config.API}/datasets/{dataset_id}/next-version",
         params={"tenant_id": params["tenant_id"]}, timeout=15.0,
-        verify=config.api_verify(),
+        headers={"x-worker-token": config.WORKER_TOKEN}, verify=config.api_verify(),
     )
     resp.raise_for_status()
     where = resp.json()

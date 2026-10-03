@@ -148,11 +148,63 @@ def bucket_for(tenant_id: str, backend: str = "seaweedfs") -> str:
 WORKER_HEADERS = {"x-worker-token": os.environ.get("MUNITAS_WORKER_TOKEN", "dev-worker-token-not-for-production")}
 
 
+# How a script authenticates, by route. The platform closed these routes to anonymous callers: the ones the platform's own workers
+# use take the worker token, and the ones a person uses take that person's session, and the person is the one the request names
+# (registered_by, confirmed_by, fetched_by), because the platform acts as the signed-in person and refuses a name that is not theirs.
+# A script that wants to prove a refusal passes its own headers (even an empty set) and is left alone.
+WORKER_ROUTES = (
+    ("POST", r"/schema-contracts"), ("POST", r"/datasets"), ("POST", r"/action-runs"), ("POST", r"/pipeline-runs"),
+    ("POST", r"/pipeline-runs/[^/]+/end"), ("POST", r"/write-credentials"), ("POST", r"/credentials"),
+    ("POST", r"/dataset-versions"), ("POST", r"/dataset-versions/[^/]+/promote"), ("POST", r"/records"),
+    ("POST", r"/records/[^/]+/open"), ("DELETE", r"/records/[^/]+"), ("GET", r"/policy/roles"),
+    ("GET", r"/pipeline/(kinds|served-backends)"), ("GET", r"/datasets/[^/]+/next-version"),
+    ("GET", r"/agent-versions/[^/]+/egress-status"),
+)
+PERSON_ROUTES = (
+    ("POST", r"/datasets/register", "registered_by"), ("POST", r"/agents/register", "registered_by"),
+    ("POST", r"/agents/[^/]+/versions", "registered_by"), ("POST", r"/agents/[^/]+/versions/upload", "registered_by"),
+    ("POST", r"/pipelines/register", "registered_by"), ("POST", r"/pipelines/[^/]+/versions/upload", "registered_by"),
+    ("POST", r"/datasets/[^/]+/confirm-classification", "confirmed_by"),
+    ("POST", r"/datasets/[^/]+/fetch-huggingface", "fetched_by"),
+)
+
+_sessions: dict[str, dict[str, str]] = {}
+
+
+def _session_for(person: str) -> dict[str, str]:
+    """A signed-in session for a seeded person, kept for the run: a check that acts as somebody many times logs in once."""
+    if person not in _sessions:
+        _sessions[person] = bearer_for(person)
+    return _sessions[person]
+
+
+def acting_headers(method: str, path: str, kwargs: dict) -> dict[str, str] | None:
+    import re
+
+    for verb, pattern in WORKER_ROUTES:
+        if method == verb and re.fullmatch(pattern, path):
+            return WORKER_HEADERS
+    for verb, pattern, field in PERSON_ROUTES:
+        if method == verb and re.fullmatch(pattern, path):
+            body = kwargs.get("json") if isinstance(kwargs.get("json"), dict) else kwargs.get("data")
+            if isinstance(body, dict) and body.get(field):
+                return _session_for(body[field])
+            return None
+    # An upload, a seal or a cancel on a dataset is done by the person who registered it.
+    m = re.fullmatch(r"/datasets/([^/]+)/(files|seal|seal-audio|huggingface-fetch-jobs/[^/]+/cancel)", path)
+    if method == "POST" and m:
+        with db() as conn:
+            row = conn.execute("select registered_by from dataset where id = %s", (m.group(1),)).fetchone()
+        if row and row["registered_by"]:
+            return _session_for(row["registered_by"])
+    return None
+
+
 def api(method: str, path: str, **kwargs) -> httpx.Response:
-    # Sealing a version is the platform's own workers' act and takes the worker token. The checks that seal fixtures act as the
-    # worker; a check of the refusal itself passes its own headers (even an empty set) and is left alone.
-    if method == "POST" and path == "/dataset-versions" and "headers" not in kwargs:
-        kwargs["headers"] = WORKER_HEADERS
+    if "headers" not in kwargs:
+        found = acting_headers(method, path, kwargs)
+        if found:
+            kwargs["headers"] = found
     return httpx.request(method, f"{API}{path}", timeout=15.0, **kwargs)
 
 

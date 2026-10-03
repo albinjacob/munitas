@@ -19,6 +19,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from . import config, db, seaweed
+from . import auth
 from .auth import current_session
 from .pipeline_dag import DagConfigError, parse_dag_config, validate_dag
 
@@ -53,11 +54,12 @@ def _code_prefix(tenant_id: str, pipeline_id: str, version: int) -> str:
 
 
 @router.post("/pipelines/register", status_code=201)
-def register(body: RegisterPipeline) -> dict:
+def register(body: RegisterPipeline, identity: dict = Depends(current_session)) -> dict:
     """Register a pipeline. No version yet, so nothing about it can run
     until one is sealed, the same rule an agent's registration already
     follows.
     """
+    auth.must_be(identity, tenant_id=body.tenant_id, person=body.registered_by)
     if not db.one(
         "select id from directory where id = %s and tenant_id = %s",
         (body.registered_by, body.tenant_id),
@@ -91,13 +93,15 @@ async def upload_version(
     config_file: UploadFile = File(...),
     scripts: UploadFile = File(...),
     registered_by: str = Form(...),
+    identity: dict = Depends(current_session),
 ) -> dict:
     """Upload a version: one YAML file naming the steps, one zip holding every
     script those steps reference. Sealed on arrival, the same as an agent
     version: this platform never lets a version be edited after the fact,
     only superseded by the next one.
     """
-    pipeline = _pipeline(pipeline_id)
+    pipeline = _pipeline(pipeline_id, identity["tenant_id"])
+    auth.must_be(identity, person=registered_by)
 
     if not db.one(
         "select id from directory where id = %s and tenant_id = %s",

@@ -58,7 +58,9 @@ def _get(path: str) -> dict:
     return r.json()
 
 
-def _post(path: str, body: dict, *, worker: bool = False) -> httpx.Response:
+def _post(path: str, body: dict, *, worker: bool = True) -> httpx.Response:
+    # Every call this worker makes is the platform's own worker acting, and the routes it uses (action runs, write credentials,
+    # credentials) are closed to anybody else, so the token goes with all of them.
     return httpx.post(f"{config.API}{path}", json=body, timeout=30.0, verify=config.api_verify(),
                       headers=_headers() if worker else None)
 

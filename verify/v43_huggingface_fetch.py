@@ -231,6 +231,8 @@ def main() -> int:
     bad_caller = api(
         "POST", f"/datasets/{unregistered.json()['id']}/fetch-huggingface",
         json={"fetched_by": "nobody-registered-under-this-name", "repo_id": REPO, "path": PATH},
+        # Signed in as a real person, naming somebody who is not them: the platform acts as the signed-in person only.
+        headers=bearer_for(ENGINEER),
     )
     check("an unregistered fetched_by is refused before anything starts",
           bad_caller.status_code == 403, f"HTTP {bad_caller.status_code}")

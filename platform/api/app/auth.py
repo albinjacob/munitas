@@ -218,6 +218,29 @@ def worker_only(x_worker_token: str | None = Header(default=None)) -> None:
         raise HTTPException(403, {"reasons": ["only the platform's own workers may call this"]})
 
 
+def person_or_worker(request: Request, x_worker_token: str | None = Header(default=None)) -> dict:
+    """Who is calling: the platform's own worker, or a signed-in person.
+
+    For an endpoint that a person uses through the console and a worker or a script uses on the platform's behalf. A worker is
+    not narrowed (the token already says it is the platform); a person is, and `must_be` is what narrows them."""
+    if config.WORKER_TOKEN and x_worker_token == config.WORKER_TOKEN:
+        return {"worker": True, "id": None, "tenant_id": None, "roles": []}
+    return {**current_session(request), "worker": False}
+
+
+def must_be(caller: dict, *, tenant_id: str | None = None, person: str | None = None) -> None:
+    """A person acts in their own organisation, and as themselves, and never as somebody else.
+
+    The identity an endpoint acts on comes from the session. A name in the request body is only a claim, and an endpoint that
+    believed it let anybody register, confirm or erase as anybody."""
+    if caller.get("worker"):
+        return
+    if tenant_id is not None and caller["tenant_id"] != tenant_id:
+        raise HTTPException(403, {"reasons": ["you can only act in your own organisation"]})
+    if person is not None and caller["id"] != person:
+        raise HTTPException(403, {"reasons": ["you can only act as yourself"]})
+
+
 def organisation_scope(
     request: Request,
     tenant_id: str | None = Query(default=None),

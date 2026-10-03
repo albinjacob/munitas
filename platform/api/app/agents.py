@@ -218,7 +218,7 @@ def _slugify(name: str) -> str:
 
 
 @router.post("/agents/register", status_code=201)
-def register(body: RegisterAgent) -> dict:
+def register(body: RegisterAgent, identity: dict = Depends(auth.current_session)) -> dict:
     """Register an agent, and its own runtime identity along with it.
 
     No version yet, so nothing can run as this agent until one is
@@ -235,6 +235,7 @@ def register(body: RegisterAgent) -> dict:
     closes. It means their tool calls cannot be told apart in the audit log,
     and a lease granted for one silently covers the other too.
     """
+    auth.must_be(identity, tenant_id=body.tenant_id, person=body.registered_by)
     if not db.one(
         "select id from directory where id = %s and tenant_id = %s",
         (body.registered_by, body.tenant_id),
@@ -277,7 +278,7 @@ def register(body: RegisterAgent) -> dict:
 
 
 @router.post("/agents/{agent_id}/versions", status_code=201)
-def register_version(agent_id: str, body: RegisterAgentVersion) -> dict:
+def register_version(agent_id: str, body: RegisterAgentVersion, identity: dict = Depends(auth.current_session)) -> dict:
     """Register and seal a version in one call.
 
     Sealed on creation, the same as a dataset version, and for the same
@@ -285,6 +286,9 @@ def register_version(agent_id: str, body: RegisterAgentVersion) -> dict:
     could edit after the fact proves nothing about what actually ran.
     """
     agent = _agent(agent_id)
+    if agent["tenant_id"] != identity["tenant_id"]:
+        raise HTTPException(404, "no such agent")
+    auth.must_be(identity, person=body.registered_by)
 
     if not db.one(
         "select id from directory where id = %s and tenant_id = %s",
@@ -470,7 +474,7 @@ def refuse_egress_hosts(approval_id: str, body: EgressDecisionIn,
 
 
 @router.get("/agent-versions/{version_id}/egress-status")
-def egress_status(version_id: str) -> dict:
+def egress_status(version_id: str, scope: str | None = Depends(auth.organisation_scope)) -> dict:
     """What this version may call, and whether that has been approved.
 
     Called by the agent's own runtime (`agent/tools.py`'s `fetch_url`), a
@@ -488,10 +492,12 @@ def egress_status(version_id: str) -> dict:
     defensive read `deploy` above and `_pending_gate` elsewhere both make.
     """
     version = db.one(
-        "select requested_hosts from agent_version where id = %s",
+        "select requested_hosts, tenant_id from agent_version where id = %s",
         (version_id,),
     )
-    if not version:
+    # Answered to the agent's own run credential (it names the organisation), a session, or a worker, and a version of
+    # another organisation is not found rather than refused.
+    if not version or (scope is not None and version["tenant_id"] != scope):
         raise HTTPException(404, "no such agent version")
 
     approval = db.one(

@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -93,7 +94,13 @@ def main() -> int:
                         help="repeatable; every tool this version may call")
     parser.add_argument("--image-digest", default="native:host-venv")
     parser.add_argument("--api", default=API)
+    parser.add_argument("--session-token", default=os.environ.get("MUNITAS_SESSION_TOKEN"),
+                        help="the signed-in session token of --registered-by (or set MUNITAS_SESSION_TOKEN). A version is "
+                             "registered as the person who is signed in, and the platform refuses a name that is not theirs")
     args = parser.parse_args()
+    if not args.session_token:
+        print("a session token is needed: sign in as --registered-by and pass --session-token, or set MUNITAS_SESSION_TOKEN")
+        return 2
 
     body = {
         "code_hash": code_hash(Path(args.hash_root)),
@@ -105,7 +112,7 @@ def main() -> int:
     }
 
     response = httpx.post(f"{args.api}/agents/{args.agent_id}/versions",
-                          json=body, timeout=20.0)
+                          json=body, timeout=20.0, headers={"Authorization": f"Bearer {args.session_token}"})
     if response.status_code != 201:
         print(f"could not register the version: HTTP {response.status_code}: "
               f"{response.text[:300]}")

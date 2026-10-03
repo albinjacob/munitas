@@ -83,6 +83,7 @@ SCRIPTS = [
     ("U109 a large table is written by a worker in a job, and the platform seals the version when the worker reports", "v109_table_jobs.py"),
     ("U111 sealing a version is the platform's own workers' act, and nobody else can do it", "v111_seal_requires_worker.py"),
     ("U112 no storage key opens more than one organisation's data, and the pipeline's is one key per organisation", "v112_pipeline_key_per_organisation.py"),
+    ("U113 every route knows who is calling, and the ones that act for a person act as that person", "v113_every_route_has_a_caller.py"),
 ]
 
 here = Path(__file__).parent

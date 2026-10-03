@@ -12,7 +12,7 @@
  */
 
 import { expect, test } from "@playwright/test";
-import { bearerFor, loginAs } from "./auth-helpers";
+import { actingHeaders, bearerFor, loginAs } from "./auth-helpers";
 import { CLASS_LABEL } from "../src/api/types";
 import { API_BASE } from "../config/ports";
 
@@ -72,7 +72,7 @@ async function api<T>(path: string, headers?: Record<string, string>): Promise<T
 async function post<T>(path: string, body: unknown, headers?: Record<string, string>): Promise<T> {
   const response = await fetch(API + path, {
     method: "POST",
-    headers: { "content-type": "application/json", ...(headers ?? {}) },
+    headers: { "content-type": "application/json", ...(headers ?? (await actingHeaders("POST", path, body))) },
     body: JSON.stringify(body),
   });
   if (!response.ok) {
