@@ -472,8 +472,15 @@ step, and the tool prints `[guard ok]` for the first three:
 | G7 | the number of rows every other tenant has in the tables touched is the same before and after, or the whole batch is rolled back |
 | G8 | every stored object is in canary's bucket under `canary/<a verified dataset>/` before it is deleted |
 
-Check U119 proves each guard refuses, and that a canary dataset is deleted while a second organisation's
-dataset, version and object are untouched.
+| G9 | an agent is taken only when it, its versions, runs and deployments are all old; its stored code is taken only from `canary/agents/<a verified agent>/`; the immutability rules on agent versions are off only inside the deleting transaction and are on again before it commits |
+| G10 | a person is taken only when they have no login, are not one of the identities `infra/postgres/seed-canary.sql` creates (read from that file; the tool refuses to go on if it finds fewer than 11), and no row refers to them |
+
+The tool works in three stages, in this order: old datasets, then old agents (the checks register agents, and registering one
+creates a directory identity for its runtime), then the invented identities nothing refers to any more. The seeded people
+and anyone with a login always stay. The caps are `--max-datasets` (3000), `--max-agents` (3000) and `--max-people` (5000).
+
+Check U119 proves each guard refuses, and that canary datasets, agents and identities are deleted while a second
+organisation's dataset, version, object, agent and identity are untouched.
 
 ```bash
 # What would go. Changes nothing.

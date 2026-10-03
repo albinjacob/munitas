@@ -38,11 +38,14 @@ def problems_with(live: dict[str, set[str]], want: dict[str, set[str]], existing
     """R1 to R4. Pure, so a check can prove each one refuses."""
     found: list[str] = []
     for name, actions in live.items():
+        vanishing = name not in want and name.startswith(DISAPPEARING_OK)
         for action in sorted(actions - want.get(name, set())):
             verb, _, rest = action.partition(":")
             bucket, _, path = rest.partition("/")
             if bucket != CANARY_BUCKET:
                 found.append(f"R1 {name}: {action} is not in {CANARY_BUCKET}")
+            elif vanishing:
+                continue  # a whole lease, catalog, task or table job key going away with its row: its grants go with it
             elif not path:
                 found.append(f"R2 {name}: {action} is a bucket-wide grant")
             else:

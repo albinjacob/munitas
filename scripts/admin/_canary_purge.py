@@ -27,7 +27,9 @@ separate function so that a check (verify/v119_canary_tidy_is_canary_only.py) ca
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import psycopg
 from psycopg.rows import dict_row
@@ -49,7 +51,7 @@ PROTECTED_RULES = [("dataset_version", "dataset_version_no_update"), ("dataset_v
 WATCHED = ("dataset", "dataset_version", "action_run", "access_lease", "lease_request", "agent_run", "pipeline_run",
            "derivation", "gate_decision", "access_decision", "storage_identity", "task_read_grant", "class_transition",
            "storage_reclamation", "catalog_key", "table_job", "huggingface_fetch_job", "dataset_source", "iceberg_table_ref",
-           "write_grant")
+           "write_grant", "agent", "agent_version", "agent_deployment", "agent_egress_approval", "directory")
 
 
 class NotCanary(Exception):
@@ -408,3 +410,185 @@ def purge(conn, plan: Plan, client=None) -> tuple[dict[str, int], list[str]]:
         removed = keys
         plan.guards.append(f"G8 all {len(keys)} object(s) were under canary/<dataset>/ in {BUCKET!r}")
     return deleted, removed
+
+
+# ----------------------------------------------------------------------------------------- the second stage: agents, then people
+#
+# The checks register agents in the canary tenant, and registering an agent makes a directory identity for its runtime. Neither is ever
+# removed, so canary collected hundreds of invented identities. Agents go first (they hold the identities), then the identities that
+# nothing refers to any more. Every guard above applies again, and these add three of their own:
+#
+#  G9   an agent is only taken when it, its versions, runs and deployments are all older than the cutoff, and the agent's stored code is only
+#       taken from canary/agents/<a verified agent>/;
+#  G10  a person is only taken when they have no login, are not one of the identities the seed file creates (read from the file, and the
+#       tool refuses to go on if it finds fewer than expected), are canary's, and nothing refers to them;
+#  G11  the immutability rules on agent versions are switched off only inside the transaction that deletes them and are switched on again
+#       before it commits; a rollback restores them.
+
+_HERE = Path(__file__).resolve()
+# The repository root when run from a checkout, and the filesystem root in the API container, where the seed file is mounted at /infra.
+SEED_FILE = (_HERE.parents[2] if len(_HERE.parents) > 2 else Path("/")) / "infra" / "postgres" / "seed-canary.sql"
+MIN_SEEDED = 11  # seven people and four workloads in the seed file
+AGENT_PREFIX_ROOT = f"{TENANT}/agents/"
+AGENT_RULES = [("agent_version", "agent_version_no_update"), ("agent_version", "agent_version_no_delete")]
+
+
+def seeded_ids() -> set[str]:
+    """The identities the canary seed file creates, read from the file so a newly seeded one is protected without editing this."""
+    text = SEED_FILE.read_text(encoding="utf-8")
+    return set(re.findall(r"\(\s*'(canary-[a-z0-9-]+)'\s*,\s*'canary'", text))
+
+
+def check_protected(protected: set[str]) -> None:
+    """G10. Refuse to go on without the protected set: an empty or short one would mean the seed file was not read."""
+    if len(protected) < MIN_SEEDED:
+        raise NotCanary(f"G10: only {len(protected)} seeded identities were found in {SEED_FILE.name}, expected at least {MIN_SEEDED}. "
+                        "Refusing to delete any person without knowing who must stay")
+
+
+def check_agents_are_canary(asked: list[str], found: list[dict]) -> None:
+    """G4 and G5 for agents."""
+    if any(a["tenant_id"] != TENANT for a in found):
+        raise NotCanary("G4/G5: an agent is not canary's. Nothing was changed")
+    if {str(a["id"]) for a in found} != set(asked):
+        raise NotCanary("G4/G5: some agents asked for do not exist, or are not in the canary tenant. Nothing was changed")
+
+
+def check_agent_keys(keys: list[str], agent_ids: list[str], bucket: str) -> None:
+    """G8 for agents' stored code."""
+    if bucket != BUCKET:
+        raise NotCanary(f"G8: the bucket is {bucket!r}, not {BUCKET!r}")
+    allowed = tuple(f"{AGENT_PREFIX_ROOT}{a}/" for a in agent_ids)
+    stray = [k for k in keys if not k.startswith(allowed)]
+    if stray:
+        raise NotCanary(f"G8: {len(stray)} object(s) are not under a verified canary agent, first {stray[0]!r}. No object was deleted")
+
+
+def check_people(asked: list[str], found: list[dict], protected: set[str]) -> None:
+    """G10."""
+    check_protected(protected)
+    if {str(p["id"]) for p in found} != set(asked):
+        raise NotCanary("G10: some people asked for do not exist. Nothing was changed")
+    for p in found:
+        if p["tenant_id"] != TENANT:
+            raise NotCanary(f"G10: {p['id']!r} is not canary's. Nothing was changed")
+        if p["kratos_identity_id"]:
+            raise NotCanary(f"G10: {p['id']!r} has a login. Nothing was changed")
+        if p["id"] in protected:
+            raise NotCanary(f"G10: {p['id']!r} is created by the seed file and must stay. Nothing was changed")
+
+
+def select_old_agents(conn, older_than_hours: float) -> list[str]:
+    """Canary agents that are old, and whose versions, runs and deployments are all old too (G9)."""
+    cutoff = conn.execute("select now() - make_interval(secs => %s) as c", (int(older_than_hours * 3600),)).fetchone()["c"]
+    rows = conn.execute(
+        """select a.id from agent a
+            where a.tenant_id = %s and a.created_at < %s
+              and not exists (select 1 from agent_version v where v.agent_id = a.id and v.created_at >= %s)
+              and not exists (select 1 from agent_run r where r.agent_id = a.id and r.started_at >= %s)
+              and not exists (select 1 from agent_deployment d where d.agent_id = a.id and d.deployed_at >= %s)
+            order by a.created_at""", (TENANT, cutoff, cutoff, cutoff, cutoff)).fetchall()
+    return [str(r["id"]) for r in rows]
+
+
+def purge_agents(conn, agent_ids: list[str], client=None) -> tuple[dict[str, int], list[str]]:
+    """Delete canary agents, their versions, deployments, runs and approvals, and their stored code."""
+    verify_canary(conn)
+    locked = conn.execute("select id, tenant_id from agent where id = any(%s) for update", (agent_ids,)).fetchall()
+    check_agents_are_canary(agent_ids, locked)
+    for table in ("agent_version", "agent_run"):
+        if conn.execute(f'select 1 from "{table}" where agent_id = any(%s) and tenant_id <> %s limit 1', (agent_ids, TENANT)).fetchone():
+            raise NotCanary(f"G5: a row of {table} for these agents is not canary's. Nothing was changed")
+    before = snapshot(conn)
+    runs = [str(r["id"]) for r in conn.execute("select id from agent_run where agent_id = any(%s)", (agent_ids,)).fetchall()]
+    deleted: dict[str, int] = {}
+    try:
+        for k, v in run_passes(conn, [("task_read_grant", "agent_run_id", runs), ("storage_identity", "agent_run_id", runs),
+                                      ("agent_run_attempt", "run_id", runs)]).items():
+            deleted[k] = deleted.get(k, 0) + v
+        for table, rule in AGENT_RULES:  # G11
+            conn.execute(f'alter table "{table}" disable rule "{rule}"')
+        for k, v in run_passes(conn, [("agent_run", "agent_id", agent_ids), ("agent_deployment", "agent_id", agent_ids),
+                                      ("agent_egress_approval", "agent_id", agent_ids), ("agent_version", "agent_id", agent_ids),
+                                      ("agent", "id", agent_ids)]).items():
+            deleted[k] = deleted.get(k, 0) + v
+        conn.execute("set constraints all immediate")
+        for table, rule in AGENT_RULES:
+            conn.execute(f'alter table "{table}" enable rule "{rule}"')
+        check_snapshot(before, snapshot(conn))  # G7
+        if conn.execute("select count(*) as n from agent where id = any(%s)", (agent_ids,)).fetchone()["n"]:
+            raise RuntimeError("agents are still there after the delete. Rolling back")
+    except Exception:
+        conn.rollback()
+        raise
+    conn.commit()
+    removed: list[str] = []
+    if client is not None:
+        keys: list[str] = []
+        for agent_id in agent_ids:
+            prefix = f"{AGENT_PREFIX_ROOT}{agent_id}/"
+            token = None
+            while True:
+                kwargs = {"Bucket": BUCKET, "Prefix": prefix}
+                if token:
+                    kwargs["ContinuationToken"] = token
+                page = client.list_objects_v2(**kwargs)
+                keys.extend(o["Key"] for o in page.get("Contents", []))
+                if not page.get("IsTruncated"):
+                    break
+                token = page.get("NextContinuationToken")
+        check_agent_keys(keys, agent_ids, BUCKET)  # G8
+        for start in range(0, len(keys), 1000):
+            client.delete_objects(Bucket=BUCKET, Delete={"Objects": [{"Key": k} for k in keys[start:start + 1000]]})
+        removed = keys
+    return deleted, removed
+
+
+def referenced_people(conn, ids: list[str]) -> set[str]:
+    """Which of these directory ids some row still points at, through any foreign key to the directory."""
+    held: set[str] = set()
+    refs = conn.execute(
+        """select c.conrelid::regclass::text as tbl, a.attname as col from pg_constraint c
+             join pg_attribute a on a.attrelid = c.conrelid and a.attnum = any(c.conkey)
+            where c.contype = 'f' and c.confrelid = 'public.directory'::regclass""").fetchall()
+    for r in refs:
+        for row in conn.execute(f'select distinct "{r["col"]}" as v from {r["tbl"]} where "{r["col"]}" = any(%s)', (ids,)).fetchall():
+            held.add(row["v"])
+    return held
+
+
+def select_old_people(conn, older_than_hours: float) -> list[str]:
+    """Canary identities that are old, have no login, are not seeded, and that nothing refers to (G10)."""
+    protected = seeded_ids()
+    check_protected(protected)
+    cutoff = conn.execute("select now() - make_interval(secs => %s) as c", (int(older_than_hours * 3600),)).fetchone()["c"]
+    rows = conn.execute(
+        """select id from directory where tenant_id = %s and kratos_identity_id is null and created_at < %s and not (id = any(%s))""",
+        (TENANT, cutoff, list(protected))).fetchall()
+    ids = [r["id"] for r in rows]
+    if not ids:
+        return []
+    held = referenced_people(conn, ids)
+    return [i for i in ids if i not in held]
+
+
+def purge_people(conn, ids: list[str]) -> int:
+    """Delete canary identities that were selected by select_old_people, with every check made again inside the transaction."""
+    protected = seeded_ids()
+    check_protected(protected)
+    verify_canary(conn)
+    locked = conn.execute("select id, tenant_id, kratos_identity_id from directory where id = any(%s) for update", (ids,)).fetchall()
+    check_people(ids, locked, protected)
+    before = snapshot(conn)
+    try:
+        cur = conn.execute(
+            """delete from directory where id = any(%s) and tenant_id = %s and kratos_identity_id is null and not (id = any(%s))""",
+            (ids, TENANT, list(protected)))
+        if cur.rowcount != len(ids):
+            raise RuntimeError(f"{cur.rowcount} identities were deleted where {len(ids)} were expected. Rolling back")
+        check_snapshot(before, snapshot(conn))  # G7
+    except Exception:
+        conn.rollback()
+        raise
+    conn.commit()
+    return len(ids)
