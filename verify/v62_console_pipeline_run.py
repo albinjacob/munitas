@@ -34,7 +34,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from common import (CANARY, ENGINEER, REVIEWER, api, bearer_for, check, db,
+from common import (CANARY, ENGINEER, REVIEWER, api, bearer_for, bucket_for, check, db,
                     heading, require_api, summary)
 
 TENANT = CANARY
@@ -275,7 +275,7 @@ def main() -> int:
         prefix = redacted["storage_prefix"]
         rows: list = []
         try:
-            rows = cp.get_json(f"{prefix}/detected.json")
+            rows = cp.get_json(f"{prefix}/detected.json", bucket_for(TENANT), TENANT)
             found: object = len(rows)
         except Exception as exc:  # noqa: BLE001 - reported as a failed check
             found = f"unreadable: {exc}"

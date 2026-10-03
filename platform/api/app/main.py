@@ -858,22 +858,31 @@ def _record_decision(
     )
 
 
-def _derivation_run(claim) -> str | None:
-    """The action run behind a verified task credential, when it is a derivation's run that is still running; otherwise None.
+def _live_task(pipeline_claim, agent_claim) -> tuple[str, str] | None:
+    """The task behind a verified task credential, when it is one that reads with a key of its own and is still alive; otherwise None.
 
-    A derivation is the one task whose staging reads each input by an exact key from its manifest and never lists, which is what a
-    key limited to folders allows (storage authorises a listing on the whole bucket only). Other pipeline tasks keep the role's key
-    until they are moved over.
+    Three kinds: a derivation's action run (the one action run whose staging reads each input by an exact key from its manifest), the
+    pipeline run that adopts a sealed version, and an agent run. None of them lists, which is what a key limited to folders needs, since
+    storage authorises a listing on the whole bucket only. Any other pipeline task keeps the role's key until it is moved over.
     """
-    if not claim or claim.task_kind != "action_run":
+    if agent_claim and agent_claim.task_kind == "agent_run":
+        row = db.one("select id::text as id from agent_run where id = %s and status = any(%s)",
+                     (agent_claim.task_id, list(grants.LIVE_AGENT_STATUSES)))
+        return ("agent_run", row["id"]) if row else None
+    if not pipeline_claim:
         return None
-    row = db.one(
-        """select ar.id::text as id from action_run ar
-             join derivation d on d.action_run_id = ar.id
-            where ar.id = %s and ar.status = 'running'""",
-        (claim.task_id,),
-    )
-    return row["id"] if row else None
+    if pipeline_claim.task_kind == "pipeline_run":
+        row = db.one("select id::text as id from pipeline_run where id = %s and ended_at is null", (pipeline_claim.task_id,))
+        return ("pipeline_run", row["id"]) if row else None
+    if pipeline_claim.task_kind == "action_run":
+        row = db.one(
+            """select ar.id::text as id from action_run ar
+                 join derivation d on d.action_run_id = ar.id
+                where ar.id = %s and ar.status = 'running'""",
+            (pipeline_claim.task_id,),
+        )
+        return ("action_run", row["id"]) if row else None
+    return None
 
 
 def _granting_lease(principal: str, version_id: str, purpose: str) -> str | None:
@@ -1091,6 +1100,7 @@ def decide_credential(body: models.CredentialRequest):
     # before this change. That is real, and separate, larger work -- the
     # same shape of fix as this one, generalized to a kind of task this
     # platform does not yet spawn with anything to check a claim against.
+    agent_claim = None
     if registered and "agent_runtime" in (registered["roles"] or []):
         # Naming a real run is not proof of being its code: anything that
         # could read or guess a run id could otherwise ask for that run's
@@ -1140,6 +1150,7 @@ def decide_credential(body: models.CredentialRequest):
             reasons = ["dataset version is outside the scope this run was launched for"]
             _record_decision(body, version, "policy", False, reasons)
             raise HTTPException(403, {"allowed": False, "reasons": reasons})
+        agent_claim = claim
 
     # `pipeline_action`'s equivalent of the block above: a registered
     # workload naming this role must present the task_credential.py token
@@ -1265,19 +1276,23 @@ def decide_credential(body: models.CredentialRequest):
     # emits its identity in the same pass. SeaweedFS only: R2 already mints a
     # scoped credential that expires by itself, so it needs none of this.
     lease_id = None
-    run_id = None
+    task = None
     if version["storage_backend"] == "seaweedfs":
-        # A derivation run reads with a key of its own, which opens only the inputs the platform has allowed that run, and not with
-        # the pipeline role's key, which opens the organisation's whole bucket. The grant is recorded before the key is handed back,
-        # in the order a lease and a write grant keep, and the print below compiles it.
-        run_id = _derivation_run(pipeline_claim)
-        if run_id:
+        # A derivation run, a pipeline run and an agent run each read with a key of their own, which opens only the inputs the platform has
+        # allowed that task, and not with the role's key, which opens the organisation's whole bucket. The grant is recorded before the key
+        # is handed back, in the order a lease and a write grant keep, and the print below compiles it.
+        task = _live_task(pipeline_claim, agent_claim)
+        if task:
+            kind, task_id = task
+            column = grants.TASK_COLUMNS[kind]  # a fixed set of names, never anything a caller supplied
             db.execute(
-                """insert into task_read_grant (id, tenant_id, action_run_id, dataset_version_id)
-                   values (%s, %s, %s, %s) on conflict (action_run_id, dataset_version_id) do nothing""",
-                (_uuid(), acting_tenant, run_id, body.dataset_version_id),
+                f"""insert into task_read_grant (id, tenant_id, {column}, dataset_version_id)
+                   values (%s, %s, %s, %s)
+                   on conflict ({column}, dataset_version_id) where {column} is not null
+                   do update set renewed_at = now()""",
+                (_uuid(), acting_tenant, task_id, body.dataset_version_id),
             )
-            own = grants.identity_for_task(run_id, acting_tenant)
+            own = grants.identity_for_task(kind, task_id, acting_tenant)
             creds = {**creds, "access_key": own["access_key"], "secret_key": own["secret_key"]}
         else:
             lease_id = _granting_lease(body.principal, body.dataset_version_id, body.purpose)
@@ -1285,7 +1300,7 @@ def decide_credential(body: models.CredentialRequest):
                 leased = grants.identity_for_lease(lease_id, acting_tenant)
                 creds = {**creds, "access_key": leased["access_key"],
                          "secret_key": leased["secret_key"]}
-    creds["identity"] = "task" if run_id else "lease" if lease_id else "role"
+    creds["identity"] = "task" if task else "lease" if lease_id else "role"
 
     # The grant exists only once the document is compiled with this decision
     # in the register: nothing else writes it. So the key is handed back only

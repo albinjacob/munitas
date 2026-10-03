@@ -85,6 +85,7 @@ SCRIPTS = [
     ("U112 no storage key opens more than one organisation's data, and the pipeline's is one key per organisation", "v112_pipeline_key_per_organisation.py"),
     ("U113 every route knows who is calling, and the ones that act for a person act as that person", "v113_every_route_has_a_caller.py"),
     ("U114 a derivation run reads with a key of its own, which opens only its inputs and ends with the run", "v114_task_read_keys.py"),
+    ("U116 a pipeline run and an agent run read with a key of their own, which opens only what was allowed and ends with the task", "v116_pipeline_and_agent_read_keys.py"),
 ]
 
 here = Path(__file__).parent

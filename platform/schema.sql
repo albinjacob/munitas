@@ -1777,11 +1777,8 @@ create unique index if not exists storage_identity_one_per_action_run
   on storage_identity (action_run_id) where action_run_id is not null;
 
 -- The standing ingest key is the one identity with no subject but its organisation, so a run's key must be excluded from that
--- uniqueness or the second run of an organisation would be refused.
-drop index if exists storage_identity_one_ingest_per_tenant;
-create unique index if not exists storage_identity_one_ingest_per_tenant
-  on storage_identity (tenant_id, backend)
-  where lease_id is null and agent_run_id is null and action_run_id is null;
+-- uniqueness or the second run of an organisation would be refused. The index is redefined once, below, when every kind of run
+-- has its column.
 
 create table if not exists task_read_grant (
   id                 uuid primary key,
@@ -1797,6 +1794,33 @@ drop trigger if exists refuse_retired_task_read_grant on task_read_grant;
 create trigger refuse_retired_task_read_grant
   before insert or update on task_read_grant
   for each row execute function refuse_write_to_retired_tenant();
+
+-- The same key for the other two kinds of task that read through POST /credentials: a pipeline run (the step that adopts a sealed
+-- version) and an agent run. A grant names exactly one task. `renewed_at` is the last time the task asked: a pipeline run or an agent
+-- run can wait a long time for a person and still be alive, and many of them never record an end, so their key is compiled only
+-- while the run has not ended AND it has asked within the task credential's lifetime, the same rule a write grant follows.
+alter table task_read_grant alter column action_run_id drop not null;
+alter table task_read_grant add column if not exists pipeline_run_id uuid references pipeline_run(id);
+alter table task_read_grant add column if not exists agent_run_id uuid references agent_run(id);
+alter table task_read_grant add column if not exists renewed_at timestamptz not null default now();
+alter table task_read_grant drop constraint if exists task_read_grant_one_task;
+alter table task_read_grant add constraint task_read_grant_one_task
+  check (num_nonnulls(action_run_id, pipeline_run_id, agent_run_id) = 1);
+create unique index if not exists task_read_grant_pipeline_run_uq
+  on task_read_grant (pipeline_run_id, dataset_version_id) where pipeline_run_id is not null;
+create unique index if not exists task_read_grant_agent_run_uq
+  on task_read_grant (agent_run_id, dataset_version_id) where agent_run_id is not null;
+
+alter table storage_identity add column if not exists pipeline_run_id uuid references pipeline_run(id);
+create unique index if not exists storage_identity_one_per_pipeline_run
+  on storage_identity (pipeline_run_id) where pipeline_run_id is not null;
+create unique index if not exists storage_identity_one_per_agent_run
+  on storage_identity (agent_run_id) where agent_run_id is not null;
+
+drop index if exists storage_identity_one_ingest_per_tenant;
+create unique index if not exists storage_identity_one_ingest_per_tenant
+  on storage_identity (tenant_id, backend)
+  where lease_id is null and agent_run_id is null and action_run_id is null and pipeline_run_id is null;
 
 -- A closed organisation grants no roles, takes no new asks, and gains no
 -- pipelines. Guarded the same way every other tenant-scoped table is, so
