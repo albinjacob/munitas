@@ -207,6 +207,17 @@ def identity_for(person_id: str) -> dict | None:
     return person
 
 
+def worker_only(x_worker_token: str | None = Header(default=None)) -> None:
+    """The platform's own workers, and nobody else.
+
+    For the endpoints a person never calls: they seal a version or open a run on the platform's behalf, and a caller that can
+    reach one can write state for any organisation it names in the body. The token is the one the workers already send
+    (MUNITAS_WORKER_TOKEN). If none is configured, nobody is let in: an unset token must close the endpoint, not open it.
+    """
+    if not config.WORKER_TOKEN or x_worker_token != config.WORKER_TOKEN:
+        raise HTTPException(403, {"reasons": ["only the platform's own workers may call this"]})
+
+
 def organisation_scope(
     request: Request,
     tenant_id: str | None = Query(default=None),

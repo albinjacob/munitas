@@ -149,6 +149,10 @@ WORKER_HEADERS = {"x-worker-token": os.environ.get("MUNITAS_WORKER_TOKEN", "dev-
 
 
 def api(method: str, path: str, **kwargs) -> httpx.Response:
+    # Sealing a version is the platform's own workers' act and takes the worker token. The checks that seal fixtures act as the
+    # worker; a check of the refusal itself passes its own headers (even an empty set) and is left alone.
+    if method == "POST" and path == "/dataset-versions" and "headers" not in kwargs:
+        kwargs["headers"] = WORKER_HEADERS
     return httpx.request(method, f"{API}{path}", timeout=15.0, **kwargs)
 
 

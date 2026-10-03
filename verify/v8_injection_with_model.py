@@ -21,6 +21,7 @@ verdict is printed whatever it says.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import uuid
 from pathlib import Path
@@ -38,6 +39,7 @@ from agent.tools import ToolContext  # noqa: E402
 from ports_config import PORTS  # noqa: E402
 
 API = f"http://localhost:{PORTS['munitas_api_http']}"
+WORKER_HEADERS = {"x-worker-token": os.environ.get("MUNITAS_WORKER_TOKEN", "dev-worker-token-not-for-production")}
 PG_DSN = f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform"
 
 # The canary tenant, seeded by infra/postgres/seed-canary.sql.
@@ -68,7 +70,7 @@ def fixture() -> tuple[str, str]:
         dataset = httpx.post(f"{API}/datasets", json={
             "tenant_id": TENANT, "name": f"inj-{uuid.uuid4().hex[:8]}",
         }, timeout=20.0).json()["id"]
-        return httpx.post(f"{API}/dataset-versions", json={
+        return httpx.post(f"{API}/dataset-versions", headers=WORKER_HEADERS, json={
             "tenant_id": TENANT, "dataset_id": dataset, "schema_id": contract,
             "visibility_class": klass, "record_count": 1,
         }, timeout=20.0).json()["id"]

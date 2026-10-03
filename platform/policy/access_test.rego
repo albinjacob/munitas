@@ -1306,3 +1306,18 @@ test_an_organisations_own_people_may_not_give_themselves_a_table_worker if {
 	r.reasons == ["an organisation's own table worker is given by a platform administrator"]
 	not access.may_set_table_worker with input as {"viewer": {"id": "x", "roles": [], "tenant_id": "harbour"}, "tenant_id": "harbour"}
 }
+
+# Standing access to a whole bucket is held in the role's own organisation only. A role that holds any must say so, so that a
+# new one cannot be cross-organisation by leaving the word out, and the pipeline's is exactly that.
+test_standing_bucket_access_is_held_only_in_the_roles_own_organisation if {
+	violators := {role |
+		some role, spec in access.storage_roles
+		count(spec.every_bucket) > 0
+		not spec.scope == "own_tenant"
+	}
+	count(violators) == 0
+}
+
+test_the_pipeline_holds_its_standing_access_in_its_own_organisation if {
+	access.storage_roles.pipeline_action.scope == "own_tenant"
+}

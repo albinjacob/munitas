@@ -26,6 +26,7 @@ from seed_common import bearer_for, expect
 from ports_config import PORTS  # noqa: E402
 
 API = f"http://localhost:{PORTS['munitas_api_http']}"
+WORKER_HEADERS = {"x-worker-token": os.environ.get("MUNITAS_WORKER_TOKEN", "dev-worker-token-not-for-production")}
 TENANT = "harbour"
 DEPARTMENT = "Patient Records"
 CUSTODIAN = "cust-dunmore"
@@ -92,7 +93,7 @@ def seed_table(session: dict, department: str) -> None:
                          aws_secret_access_key=os.environ.get("S3_ADMIN_SECRET") or "munitas-admin-secret",
                          config=Config(signature_version="s3v4"), region_name="us-east-1")
     store.put_object(Bucket=f"munitas-{TENANT}", Key=key, Body=body)
-    sealed = httpx.post(f"{API}/dataset-versions", timeout=60.0, json={
+    sealed = httpx.post(f"{API}/dataset-versions", timeout=60.0, headers=WORKER_HEADERS, json={
         "tenant_id": TENANT, "dataset_id": dataset_id, "schema_id": contract.json()["id"], "visibility_class": "RAW",
         "object_manifest": [{"key": key, "bytes": len(body), "sha256": hashlib.sha256(body).hexdigest()}],
         "record_count": len(APPOINTMENTS), "records_key": key})

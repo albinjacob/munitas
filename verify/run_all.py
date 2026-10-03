@@ -81,6 +81,8 @@ SCRIPTS = [
     ("U107 a version that must be a table is refused when its table cannot be written, and nothing is left behind", "v107_table_required.py"),
     ("U108 a large table is read in batches and written a file at a time, from lines of JSON or from Parquet", "v108_large_tables.py"),
     ("U109 a large table is written by a worker in a job, and the platform seals the version when the worker reports", "v109_table_jobs.py"),
+    ("U111 sealing a version is the platform's own workers' act, and nobody else can do it", "v111_seal_requires_worker.py"),
+    ("U112 no storage key opens more than one organisation's data, and the pipeline's is one key per organisation", "v112_pipeline_key_per_organisation.py"),
 ]
 
 here = Path(__file__).parent

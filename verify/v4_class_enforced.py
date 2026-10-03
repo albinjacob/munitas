@@ -96,7 +96,12 @@ def main() -> int:
 
     # The API said no. The question now is whether the storage layer would have
     # said no too, which is what makes the boundary real rather than advisory.
-    trainer = s3_client("training-job", "training-job-secret")
+    sys.path.insert(0, "/app")
+    from app import grants as app_grants
+
+    # The training role's key in this organisation. (The key every organisation used to share no longer exists, and a refusal
+    # from a key that does not exist would say nothing about the class.)
+    trainer = s3_client(*app_grants.tenant_role_key("training_job", tenant))
     try:
         trainer.get_object(Bucket=bucket, Key=f"{prefix}/part-0.json")
         check("refused role cannot read the object from S3", False, "the read succeeded")

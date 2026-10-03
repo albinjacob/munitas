@@ -528,6 +528,12 @@ create table if not exists write_grant (
 
 create index if not exists write_grant_role_idx on write_grant (role, bucket, storage_prefix);
 
+-- A write grant is a key to a folder, so it lasts as long as the task that asked for it keeps asking, and then ends. It used
+-- to last for ever, on the argument that the folder becomes a sealed version's and is write-once; but the KEY would still open
+-- it, so a key that held every grant ever made could write into every sealed folder. `renewed_at` is the last time the task
+-- asked, and the permissions are compiled only from grants renewed within WRITE_GRANT_ACTIVE_SECONDS.
+alter table write_grant add column if not exists renewed_at timestamptz not null default now();
+
 -- huggingface_fetch_job added after this table's first release: a HuggingFace
 -- fetch job proves itself the same way an action_run or pipeline_run does
 -- (task_credential.py), so its write into the dataset it names goes through

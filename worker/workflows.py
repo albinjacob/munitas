@@ -314,6 +314,7 @@ class DeidentificationPipeline:
                 # control plane changed its prefix layout.
                 "truth_prefix": ingested["prefix"],
                 "bucket": ingested["bucket"],
+                "tenant": tenant,
                 "idempotency_key": _idem(run_key, "verify"),
             },
             start_to_close_timeout=_budget(n, 5, 5),

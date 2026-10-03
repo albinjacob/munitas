@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import random
 import sys
 from datetime import date, timedelta
@@ -35,6 +36,7 @@ from seed_common import bearer_for, expect
 from ports_config import PORTS  # noqa: E402
 
 API = f"http://localhost:{PORTS['munitas_api_http']}"
+WORKER_HEADERS = {"x-worker-token": os.environ.get("MUNITAS_WORKER_TOKEN", "dev-worker-token-not-for-production")}
 
 
 def post(path: str, **kwargs) -> httpx.Response:
@@ -184,7 +186,7 @@ def seed(*, tenant: str, engineer: str, custodian: str, dept: str, name: str, co
     where = get(f"/datasets/{dataset_id}/next-version", params={"tenant_id": tenant}).json()
     key = f"{where['storage_prefix']}/records.json"
 
-    sealed = post("/dataset-versions", json={
+    sealed = post("/dataset-versions", headers=WORKER_HEADERS, json={
         "tenant_id": tenant, "dataset_id": dataset_id, "schema_id": contract.json()["id"],
         "visibility_class": klass, "record_count": len(rows), "records_key": key,
         "object_manifest": [{"key": key, "bytes": len(body), "sha256": hashlib.sha256(body).hexdigest()}]})

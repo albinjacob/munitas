@@ -192,7 +192,9 @@ def justified_write_pairs() -> set[tuple[str, str, str]]:
     withdraws it. Every row still deserves a grant, always, for as long as
     it exists.
     """
-    rows = db.all_rows("select distinct role, bucket, storage_prefix from write_grant")
+    rows = db.all_rows(
+        "select distinct role, bucket, storage_prefix from write_grant "
+        "where renewed_at > now() - make_interval(secs => %s)", (config.WRITE_GRANT_ACTIVE_SECONDS,))
     return {(r["role"], r["bucket"], r["storage_prefix"]) for r in rows}
 
 
@@ -481,9 +483,43 @@ def storage_roles() -> dict:
     return roles
 
 
+def per_tenant(role: str, roles: dict | None = None) -> bool:
+    """Whether the policy gives this role one key per organisation, each opening that organisation's bucket only."""
+    return ((roles if roles is not None else storage_roles()).get(role) or {}).get("scope") == "own_tenant"
+
+
+def tenant_identity_name(role: str, tenant_id: str) -> str:
+    return f"{role}~{tenant_id}"
+
+
+def tenant_role_key(role: str, tenant_id: str) -> tuple[str, str]:
+    """The key a per-organisation role holds in one organisation. Derived, so nothing is stored and it is the same on every print:
+    the secret is an HMAC of the role and the organisation under a key made from the storage administrator's own secret, with a
+    label of its own, so it cannot be mistaken for, or computed from, any other kind of key here."""
+    import hashlib
+    import hmac
+
+    root_key = hmac.new(config.STORAGE_ADMIN[1].encode("utf-8"), b"munitas tenant role keys v1", hashlib.sha256).digest()
+    secret = hmac.new(root_key, f"{role}|{tenant_id}".encode("utf-8"), hashlib.sha256).hexdigest()
+    return f"{role}--{tenant_id}", secret
+
+
+def _tenant_buckets() -> dict[str, list[str]]:
+    rows = db.all_rows("select tenant_id, bucket from tenant_storage_provision where backend = 'seaweedfs'")
+    out: dict[str, list[str]] = {}
+    for r in rows:
+        out.setdefault(r["tenant_id"], []).append(r["bucket"])
+    return {t: sorted(set(b)) for t, b in out.items()}
+
+
 def identity_names() -> set[str]:
     """The identities that exist without a storage_identity row."""
-    return {ADMIN_IDENTITY} | set(storage_roles())
+    roles = storage_roles()
+    names = {ADMIN_IDENTITY} | {r for r in roles if not per_tenant(r, roles)}
+    for role in roles:
+        if per_tenant(role, roles):
+            names |= {tenant_identity_name(role, t) for t in _tenant_buckets()}
+    return names
 
 
 def desired_document(*, as_of=None) -> dict:
@@ -520,8 +556,22 @@ def desired_document(*, as_of=None) -> dict:
         "credentials": [{"accessKey": admin_key, "secretKey": admin_secret}],
         "actions": list(ADMIN_ACTIONS),
     }]
+    tenant_buckets = _tenant_buckets()
     for role in sorted(roles):
         verbs = roles[role].get("every_bucket") or []
+        if per_tenant(role, roles):
+            # One key per organisation, each opening that organisation's bucket and what the register justifies in it, and
+            # nothing of any other. The shared key this replaces could read every organisation's bucket.
+            for tenant, owned in sorted(tenant_buckets.items()):
+                actions = [f"{verb}:{bucket}" for verb in verbs for bucket in owned]
+                actions += [a for held_by, bucket, prefix in keep if held_by == role and bucket in owned
+                            for a in _prefix_actions(bucket, prefix)]
+                actions += [a for held_by, bucket, prefix in write_keep if held_by == role and bucket in owned
+                            for a in _write_prefix_actions(bucket, prefix)]
+                key, secret = tenant_role_key(role, tenant)
+                identities.append({"name": tenant_identity_name(role, tenant), "credentials": [{"accessKey": key, "secretKey": secret}],
+                                   "actions": sorted(set(actions))})
+            continue
         actions = [f"{verb}:{bucket}" for verb in verbs for bucket in buckets]
         for held_by, bucket, prefix in keep:
             if held_by == role:

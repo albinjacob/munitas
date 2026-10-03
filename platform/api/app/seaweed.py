@@ -349,7 +349,13 @@ def credentials_for(role: str, tenant_id: str) -> dict:
     """
     if role not in config.ROLE_STORAGE_KEYS:
         raise StorageUnavailable(_no_identity_message(role))
-    access_key, secret_key = config.ROLE_STORAGE_KEYS[role]
+    from . import grants
+
+    # A role the policy limits to its own organisation gets that organisation's key, derived, and never a key that opens another's.
+    if grants.per_tenant(role):
+        access_key, secret_key = grants.tenant_role_key(role, tenant_id)
+    else:
+        access_key, secret_key = config.ROLE_STORAGE_KEYS[role]
     return {
         "endpoint": config.S3_ENDPOINT,
         "access_key": access_key,

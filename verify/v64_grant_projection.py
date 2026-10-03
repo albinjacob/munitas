@@ -238,7 +238,7 @@ def main() -> int:
     check("both concurrent grants return 200", codes == [200, 200], str(codes))
 
     doc = app_seaweed.load_identities()
-    nb = next((i for i in doc["identities"] if i["name"] == "notebook_explore"), {})
+    nb = next((i for i in doc["identities"] if i["name"] == app_grants.tenant_identity_name("notebook_explore", tenant)), {})
     nb_actions = set(nb.get("actions", []))
     present = sum(
         1 for v in versions_c if f"Read:{bucket}/{v['storage_prefix']}/*" in nb_actions
@@ -268,7 +268,15 @@ def main() -> int:
     doc = app_seaweed.load_identities()
     by_name = {i["name"]: set(i.get("actions", [])) for i in doc["identities"]}
     buckets = app_grants._buckets()
-    pipeline = by_name.get("pipeline_action", set())
+    owned = app_grants._tenant_buckets()
+    # The pipeline no longer holds one key that opens every bucket. Each organisation has a key of its own, and it opens that
+    # organisation's bucket and no other (the policy's `scope: own_tenant`).
+    check("there is no key shared by every organisation: no identity is named for the bare pipeline role",
+          "pipeline_action" not in by_name, sorted(n for n in by_name if n.startswith("pipeline_action")))
+    pipelines = {n: a for n, a in by_name.items() if n.startswith("pipeline_action~")}
+    check("every organisation with a bucket has a pipeline key of its own",
+          set(pipelines) == {f"pipeline_action~{t}" for t in owned}, f"{len(pipelines)} keys, {len(owned)} organisations")
+    pipeline = set().union(*pipelines.values()) if pipelines else set()
     # Write dropped from this list deliberately (item: the write-credential
     # compiler, docs/internal/design/write-credential-rationale.md): pipeline_action
     # no longer holds standing Write on any bucket, only the three verbs a
@@ -279,8 +287,12 @@ def main() -> int:
         for verb in ("Read", "List", "Tagging")
         for bucket in buckets
     )
-    check("pipeline_action keeps Read/List/Tagging on every bucket",
+    check("the pipeline's keys together keep Read/List/Tagging on every bucket",
           structural_ok, f"{len(buckets)} buckets")
+    crossing = [(n, b) for n, a in pipelines.items() for t, bs in owned.items() if n != f"pipeline_action~{t}"
+                for b in bs if any(x.endswith(f":{b}") or f":{b}/" in x for x in a)]
+    check("and no organisation's pipeline key reaches another organisation's bucket, whole or in part",
+          not crossing, f"{len(crossing)} crossings, first {crossing[:1]}")
     no_standing_write = not any(a.startswith("Write:") and "/" not in a for a in pipeline)
     check("and holds no standing, bucket-wide Write anywhere",
           no_standing_write, sorted(a for a in pipeline if a.startswith("Write:") and "/" not in a))
@@ -368,7 +380,7 @@ def main() -> int:
     # now proves instead.
     fresh = fixture_tenant(f"storage-probe-{uuid.uuid4().hex[:8]}")
     fresh_bucket = app_seaweed.bucket(fresh)
-    pipe_key, pipe_secret = app_grants.config.ROLE_STORAGE_KEYS["pipeline_action"]
+    pipe_key, pipe_secret = app_grants.tenant_role_key("pipeline_action", fresh)
     pipe = s3_client(pipe_key, pipe_secret)
     listed = None
     for _ in range(40):
@@ -380,10 +392,10 @@ def main() -> int:
             listed = exc
             import time
             time.sleep(0.25)
-    check("a bucket provisioned mid-run takes the pipeline's standing List/Read straight away",
+    check("a bucket provisioned mid-run takes its organisation's pipeline List/Read straight away",
           listed is True, f"{listed!r}"[:160])
 
-    # And the write side of the same claim: pipeline_action's static key
+    # And the write side of the same claim: the organisation's pipeline key
     # alone still cannot write to a bucket it was never issued a write_grant
     # prefix in, freshly provisioned or not.
     denied = None
@@ -392,7 +404,7 @@ def main() -> int:
         denied = False
     except Exception as exc:  # noqa: BLE001 - the refusal itself is the assertion
         denied = "AccessDenied" in str(exc) or "403" in str(exc)
-    check("but the same static key still cannot write with no write_grant",
+    check("but the same key still cannot write with no write_grant",
           denied is True, f"denied={denied!r}")
 
     # Writers that overlap cannot leave the document wrong: several reconciles

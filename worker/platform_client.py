@@ -28,7 +28,7 @@ class ControlPlaneError(Exception):
 
 def _post(path: str, payload: dict) -> dict:
     response = httpx.post(f"{config.API}{path}", json=payload, timeout=30.0,
-                          verify=config.api_verify())
+                          headers={"x-worker-token": config.WORKER_TOKEN}, verify=config.api_verify())
     if response.status_code >= 400:
         raise ControlPlaneError(f"{path} returned {response.status_code}: {response.text[:300]}")
     return response.json()
@@ -36,7 +36,7 @@ def _post(path: str, payload: dict) -> dict:
 
 # The object-storage backends this worker can actually talk to.
 #
-# One, and `s3()` below is why: it builds a SeaweedFS client from SeaweedFS
+# One, and `pipeline_s3()` below is why: it builds a SeaweedFS client from SeaweedFS
 # credentials at a SeaweedFS endpoint, with nothing anywhere that would build
 # an R2 client instead. A dataset can already be marked `r2`, so this is a real
 # gap rather than a hypothetical, and naming it here is what lets the run be
@@ -45,12 +45,31 @@ def _post(path: str, payload: dict) -> dict:
 SERVED_BACKENDS = ("seaweedfs",)
 
 
-def s3():
+# The storage key for reading what the pipeline wrote earlier in its own run. One per organisation, asked of the control plane
+# (POST /storage-keys/pipeline) and kept for as long as this process runs, since it does not change. It used to be one static key
+# from this process's environment, the same for every organisation, which could read every organisation's bucket. A task that
+# has its credential passes it, so the control plane gives it the key of the organisation that credential names and no other.
+_organisation_keys: dict[str, dict] = {}
+
+
+def pipeline_s3(tenant_id: str, task_credential: str | None = None) -> "boto3.client":
+    key = _organisation_keys.get(tenant_id)
+    if key is None:
+        headers = {"x-worker-token": config.WORKER_TOKEN}
+        if task_credential:
+            headers["x-task-credential"] = task_credential
+        response = httpx.post(f"{config.API}/storage-keys/pipeline", params={"tenant_id": tenant_id}, headers=headers,
+                              timeout=30.0, verify=config.api_verify())
+        if response.status_code == 202:
+            raise CredentialPending(f"the storage key for {tenant_id} is not active yet: {response.json()}")
+        if response.status_code >= 400:
+            raise ControlPlaneError(f"/storage-keys/pipeline returned {response.status_code}: {response.text[:300]}")
+        key = _organisation_keys[tenant_id] = response.json()
     return boto3.client(
         "s3",
         endpoint_url=config.S3_ENDPOINT,
-        aws_access_key_id=config.PIPELINE_KEY,
-        aws_secret_access_key=config.PIPELINE_SECRET,
+        aws_access_key_id=key["access_key"],
+        aws_secret_access_key=key["secret_key"],
         config=Config(signature_version="s3v4"),
         region_name="us-east-1",
     )
@@ -103,7 +122,7 @@ def s3_scoped(task_credential: str, dataset_version_id: str, tenant_id: str,
     # reachable from inside the containers it runs among), and this worker
     # runs on the host, which reaches the same SeaweedFS through a published
     # port on localhost instead -- config.S3_ENDPOINT already knows which of
-    # those it is, the same way s3() above never trusts a caller-supplied
+    # those it is, the same way pipeline_s3() above never trusts a caller-supplied
     # endpoint either.
     return boto3.client(
         "s3",
@@ -160,20 +179,6 @@ def s3_scoped_write(task_credential: str, dataset_id: str, tenant_id: str,
         config=Config(signature_version="s3v4"),
         region_name="us-east-1",
     )
-
-
-def ensure_bucket(bucket: str) -> None:
-    """Create the bucket if it is missing.
-
-    A convenience for the corpus path against a development stack. A real
-    tenant's bucket is provisioned by the control plane when the tenant is
-    created, not by whatever happens to write first.
-    """
-    client = s3()
-    try:
-        client.create_bucket(Bucket=bucket)
-    except Exception:
-        pass
 
 
 def register_contract(contract: Contract, tenant_id: str | None = None) -> str:
@@ -361,7 +366,7 @@ def promote(version_id: str, to_class: str, evidence: dict, grant_roles: list[st
 # now fails at the call rather than writing somewhere plausible.
 #
 # Both now take the client to write with, rather than reaching for the
-# module's own static s3(). pipeline_action's storage identity no longer
+# module's own pipeline_s3(). pipeline_action's storage identity no longer
 # holds standing Write (see docs/internal/design/write-credential-rationale.md), so
 # there is no default client left here that could still write anything;
 # every caller passes the s3_scoped_write() client it minted for its own
@@ -380,9 +385,9 @@ def put_file(client, key: str, path: Path, bucket: str) -> dict:
     return {"key": key, "bytes": len(body), "sha256": hashlib.sha256(body).hexdigest()}
 
 
-def get_json(key: str, bucket: str) -> object:
+def get_json(key: str, bucket: str, tenant_id: str) -> object:
     return json.loads(
-        s3().get_object(Bucket=bucket, Key=key)["Body"].read()
+        pipeline_s3(tenant_id).get_object(Bucket=bucket, Key=key)["Body"].read()
     )
 
 

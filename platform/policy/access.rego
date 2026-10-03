@@ -44,6 +44,14 @@ role_floor := {
 # buckets. Everyone else reads through a per-version grant that the register
 # justifies, so an empty list is a decision, not an omission.
 #
+# "Whole buckets" means the whole bucket of the ORGANISATION the key is made for, and never another's. `scope` says so:
+# "own_tenant" makes the platform issue one key per role per organisation, each opening that organisation's bucket (or, for a
+# role with no standing access, only the folders the register justifies there) and nothing of any other organisation
+# (grants.desired_document). It used to be one key per role, the same for every organisation: the pipeline's could read every
+# bucket, and the others carried the folder grants of every organisation at once. Every role has the scope, and a role that holds
+# standing bucket access must (test_standing_bucket_access_is_held_only_in_the_roles_own_organisation), so that a new one cannot
+# be cross-organisation by leaving the word out.
+#
 # `pipeline_action` no longer holds standing Write here. Reading anything was
 # already made request-justified (task_credential.py, item 65); writing was
 # the one verb still trusted on the static key alone, the only role and only
@@ -56,11 +64,11 @@ role_floor := {
 # smaller blast radius than Read or Write, so narrowing them the same way was
 # asked about and deliberately deferred.
 storage_roles := {
-	"pipeline_action": {"every_bucket": ["Read", "List", "Tagging"]},
-	"training_job": {"every_bucket": []},
-	"annotation_tool": {"every_bucket": []},
-	"notebook_explore": {"every_bucket": []},
-	"agent_runtime": {"every_bucket": []},
+	"pipeline_action": {"every_bucket": ["Read", "List", "Tagging"], "scope": "own_tenant"},
+	"training_job": {"every_bucket": [], "scope": "own_tenant"},
+	"annotation_tool": {"every_bucket": [], "scope": "own_tenant"},
+	"notebook_explore": {"every_bucket": [], "scope": "own_tenant"},
+	"agent_runtime": {"every_bucket": [], "scope": "own_tenant"},
 }
 
 # Roles that may approve somebody else's lease.

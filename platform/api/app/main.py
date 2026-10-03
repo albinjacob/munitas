@@ -29,7 +29,7 @@ from crypto import DestroyedKeyError, EnvelopeCrypto
 
 from . import (access_preview, activation, agent_upload, agents, auth, config,
               dag_pipelines, db, derivations, external_accounts, grants, housekeeping, iceberg,
-              iceberg_catalog, ingest, legal_export, lifecycle, logs, models, opa, people, pipeline, r2,
+              iceberg_catalog, ingest, legal_export, lifecycle, logs, models, opa, people, pipeline, pipeline_keys, r2,
               read_models, seaweed, storage, table_jobs, task_credential, temporal_client,
               versions)
 
@@ -126,6 +126,7 @@ app.include_router(derivations.router)
 app.include_router(lifecycle.router)
 app.include_router(legal_export.router)
 app.include_router(table_jobs.router)
+app.include_router(pipeline_keys.router)
 # The catalog answers in the shape Iceberg clients read, not FastAPI's default.
 app.add_exception_handler(iceberg_catalog.CatalogError, iceberg_catalog.handle_error)
 
@@ -435,7 +436,7 @@ def next_version(dataset_id: str, tenant_id: str) -> dict:
 
 
 @app.post("/dataset-versions", status_code=201)
-def create_version(body: models.DatasetVersionIn):
+def create_version(body: models.DatasetVersionIn, _worker: None = Depends(auth.worker_only)):
     """Seal a new dataset version.
 
     Sealed on creation, which is why there is no update endpoint anywhere in
@@ -446,6 +447,11 @@ def create_version(body: models.DatasetVersionIn):
     written while this request waits. A large one is written by a worker, in a job (table_jobs.py): the answer is then
     202 with the job, the version number and folder are reserved, and the version is sealed, with its table inside it,
     when the job finishes. `table_mode` chooses; left out, the size of the records file does.
+
+    Only the platform's own workers may call this (the worker token). It names the organisation in its body and writes a
+    version into it, so a caller that could reach it without proving what it is could seal a version into any organisation,
+    and start table jobs that hold a version number and a storage key. A person's data arrives through the upload endpoint,
+    which seals in-process under their session.
     """
     started = table_jobs.maybe_start(body)
     if started is not None:
@@ -1313,7 +1319,7 @@ def request_write_credential(body: models.WriteCredentialRequest):
         """insert into write_grant
              (id, tenant_id, role, bucket, storage_prefix, task_kind, task_id, principal)
            values (%s, %s, %s, %s, %s, %s, %s, %s)
-           on conflict (tenant_id, task_kind, task_id, storage_prefix) do nothing""",
+           on conflict (tenant_id, task_kind, task_id, storage_prefix) do update set renewed_at = now()""",
         (_uuid(), acting_tenant, role, bucket, reserved["storage_prefix"],
          claim.task_kind, claim.task_id, body.principal),
     )

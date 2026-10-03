@@ -29,6 +29,7 @@ they are already there.
 
 from __future__ import annotations
 
+import os
 import sys
 
 import httpx
@@ -38,6 +39,7 @@ from seed_common import bearer_for, expect
 from ports_config import PORTS  # noqa: E402
 
 API = f"http://localhost:{PORTS['munitas_api_http']}"
+WORKER_HEADERS = {"x-worker-token": os.environ.get("MUNITAS_WORKER_TOKEN", "dev-worker-token-not-for-production")}
 TENANT = "finance"
 
 FRAUD_OPS = "Fraud Operations"
@@ -141,7 +143,7 @@ def dataset(name: str, department_id: str, modality: list[str]) -> str:
 
 
 def version(dataset_id: str, schema_id: str, klass: str, records: int) -> str:
-    r = post("/dataset-versions", json={
+    r = post("/dataset-versions", headers=WORKER_HEADERS, json={
         "tenant_id": TENANT,
         "dataset_id": dataset_id,
         "schema_id": schema_id,

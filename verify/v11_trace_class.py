@@ -16,6 +16,7 @@ with different controls, and the class label is then decoration.
 
 from __future__ import annotations
 
+import os
 import sys
 import time
 import uuid
@@ -32,6 +33,7 @@ from agent.tools import ToolContext  # noqa: E402
 from ports_config import PORTS  # noqa: E402
 
 API = f"http://localhost:{PORTS['munitas_api_http']}"
+WORKER_HEADERS = {"x-worker-token": os.environ.get("MUNITAS_WORKER_TOKEN", "dev-worker-token-not-for-production")}
 JAEGER = f"http://localhost:{PORTS['jaeger_ui']}"
 PG_DSN = f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform"
 
@@ -67,7 +69,7 @@ def fixture() -> tuple[str, str]:
         dataset = httpx.post(f"{API}/datasets", json={
             "tenant_id": TENANT, "name": f"trace-{uuid.uuid4().hex[:8]}",
         }, timeout=20.0).json()["id"]
-        return httpx.post(f"{API}/dataset-versions", json={
+        return httpx.post(f"{API}/dataset-versions", headers=WORKER_HEADERS, json={
             "tenant_id": TENANT, "dataset_id": dataset, "schema_id": contract,
             "visibility_class": klass, "record_count": 1,
         }, timeout=20.0).json()["id"]

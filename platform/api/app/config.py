@@ -244,6 +244,10 @@ ICEBERG_PARQUET_THRIFT_CONTAINER_ITEMS = int(os.environ.get("MUNITAS_ICEBERG_PAR
 # How long writing one table may take before it is given up. Every call that leaves this process needs a deadline.
 ICEBERG_TIMEOUT_SECONDS = int(os.environ.get("MUNITAS_ICEBERG_TIMEOUT_SECONDS", "300"))
 
+# How long a write grant keeps its key after the task last asked for it (grants.justified_write_pairs). A task asks again at
+# every step and every retry, so this has to outlast the longest gap between two asks and not the length of a run.
+WRITE_GRANT_ACTIVE_SECONDS = int(os.environ.get("MUNITAS_WRITE_GRANT_ACTIVE_SECONDS", str(24 * 3600)))
+
 # Table jobs (table_jobs.py). A table that is large is written by a worker, in a job, and not while a request waits.
 # A seal that names a records file bigger than TABLE_JOB_INLINE_BYTES becomes a job (a caller can also ask for one, or
 # refuse one, with table_mode). The limits a job works within are sent to the worker by the platform, so they are
@@ -257,3 +261,18 @@ TABLE_JOB_TTL_SECONDS = int(os.environ.get("MUNITAS_TABLE_JOB_TTL_SECONDS", str(
 TABLE_JOB_STALL_SECONDS = int(os.environ.get("MUNITAS_TABLE_JOB_STALL_SECONDS", "600"))
 TABLE_JOB_DISPATCH_SECONDS = int(os.environ.get("MUNITAS_TABLE_JOB_DISPATCH_SECONDS", "3"))
 TABLE_SHARED_QUEUE = "munitas-table-write"
+
+
+# A production start refuses the secrets this repository publishes. The storage keys the platform hands out (one per organisation, one per
+# job, the catalog's rolling keys) are DERIVED from the storage administrator's secret, and the worker token is what lets a caller seal a
+# version and run the platform's own endpoints. Both have a development value in this repository and in docker-compose.yml, which is
+# right for a laptop and means that anybody who has read the source can compute every key if it is left in place. Set MUNITAS_ENV to
+# production and the platform will not start until both are replaced. (It names the variables, never the values.)
+if os.environ.get("MUNITAS_ENV", "").strip().lower() == "production":
+    _published = [name for name, weak in (
+        ("S3_ADMIN_SECRET", STORAGE_ADMIN[1] == "munitas-admin-secret"),
+        ("MUNITAS_WORKER_TOKEN", not WORKER_TOKEN or WORKER_TOKEN == "dev-worker-token-not-for-production"),
+    ) if weak]
+    if _published:
+        raise RuntimeError("MUNITAS_ENV is production, and these still hold the value published in this repository: "
+                           + ", ".join(_published) + ". Set each to a secret of your own.")

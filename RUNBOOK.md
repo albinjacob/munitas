@@ -925,6 +925,23 @@ For each job it is given one key, made for that job, which reads and writes the 
 folder the version will have and lists object names in the organisation's own
 bucket. It stops working when the job ends.
 
+## Secrets before a real deployment
+
+Two values have a development default in this repository and in `docker-compose.yml`:
+the storage administrator's secret (`S3_ADMIN_SECRET`) and the worker token
+(`MUNITAS_WORKER_TOKEN`). Both matter more than they look. Every storage key the
+platform issues (one per role per organisation, one per table job, the catalog's
+rolling keys) is derived from the administrator's secret, so anybody who has read
+the source can compute them all if it is left in place. The worker token is what lets
+a caller seal a version and run the platform's own endpoints.
+
+Set `MUNITAS_ENV=production` and the control plane refuses to start while either still
+holds the published value, naming the variable and never printing the value. On a
+laptop leave it unset and the defaults work. Changing the administrator's secret later
+changes every derived key at the next print of the storage permissions (the control plane
+prints at start-up), so restart the workers afterwards: a worker keeps the key it was given
+for as long as it runs.
+
 ## Local HTTPS between the worker and the API
 
 **When to use it:** the worker (`worker/main.py`) needs to reach the API
