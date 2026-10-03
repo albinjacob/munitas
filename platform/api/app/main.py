@@ -1017,7 +1017,7 @@ def _authenticate_credential_request(body: models.CredentialRequest, request: Re
 
 @app.post("/credentials")
 def request_credential(body: models.CredentialRequest, request: Request, x_worker_token: str | None = Header(default=None)):
-    """Mint a prefix-scoped credential, or refuse and say why.
+    """Mint a storage credential for one dataset version, or refuse and say why.
 
     The order of operations matters and is not negotiable: decide, record the
     decision, then act on it. Recording after acting would lose the audit trail

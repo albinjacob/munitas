@@ -294,6 +294,14 @@ object-storage layer, not only by the API. List and Tagging stay standing
 bucket-wide: they expose object names, not contents or the ability to
 alter them, a materially smaller blast radius than Read or Write.
 
+A derivation run, a pipeline run that adopts a sealed version, and an agent
+run each read with a key of their own. The key lists only the input folders
+the platform has allowed that task to read, and it contains no listing and no
+write access. It is removed when the task ends or fails, and when the six-hour
+life of the task credential runs out without the task asking again. A task that
+asks again after waiting, for example an agent run that waited for a person to
+approve access, receives its key again.
+
 ---
 
 ## 5. Schema implications

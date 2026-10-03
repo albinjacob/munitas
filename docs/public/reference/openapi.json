@@ -3030,7 +3030,7 @@
     },
     "/credentials": {
       "post": {
-        "description": "Mint a prefix-scoped credential, or refuse and say why.\n\nThe order of operations matters and is not negotiable: decide, record the\ndecision, then act on it. Recording after acting would lose the audit trail\nfor exactly the requests that fail partway.\n\nThree outcomes: 200 with the key when access is allowed and in effect,\n403 when it is refused, and 202 when it is allowed but the storage\npermissions could not be updated yet. A 202 is never a refusal: the\nactivator finishes the job and resumes a run that parked on it.",
+        "description": "Mint a storage credential for one dataset version, or refuse and say why.\n\nThe order of operations matters and is not negotiable: decide, record the\ndecision, then act on it. Recording after acting would lose the audit trail\nfor exactly the requests that fail partway.\n\nThree outcomes: 200 with the key when access is allowed and in effect,\n403 when it is refused, and 202 when it is allowed but the storage\npermissions could not be updated yet. A 202 is never a refusal: the\nactivator finishes the job and resumes a run that parked on it.",
         "operationId": "request_credential_credentials_post",
         "parameters": [
           {

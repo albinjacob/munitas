@@ -713,7 +713,7 @@
     </div>
     <div class="card">
       <h4>A leaked storage credential does not become a breach of every customer</h4>
-      <p>Storage credentials are scoped to one organisation's bucket and expire quickly, rather than being one static key shared across every customer. Losing one credential exposes the blast radius it was scoped to, not the whole platform.</p>
+      <p>Storage credentials are scoped to one organisation's bucket, rather than being one key shared across every customer. A credential that rests on an approved lease, or that is issued to a single derivation run, pipeline run or agent run, opens only the dataset versions that were allowed and ends with the lease or the task. On Cloudflare R2 every credential is short-lived. Losing one credential exposes the blast radius it was scoped to, not the whole platform.</p>
     </div>
     <div class="card">
       <h4>No licence cost, and no vendor to leave</h4>
@@ -885,7 +885,7 @@
         <li data-n="1">Requests access to one specific dataset version, stating what the work is for and why it needs that data. Blanket requests for a whole department are not possible.</li>
         <li data-n="2">Waits for the custodian of the department that owns the data, who is the only person able to approve it.</li>
         <li data-n="3">Asks the system for access once approved. It checks whether the role already allows this, and if not, whether an approved and still-valid grant covers it.</li>
-        <li data-n="4">Receives a credential limited to that dataset alone, and only after the decision has been written to the audit record.</li>
+        <li data-n="4">Receives a credential for its own organisation's storage only, and only after the decision has been written to the audit record. A credential that rests on an approved lease opens that one dataset version and stops working when the lease ends.</li>
       </ol>
       <div class="without"><strong>Without this:</strong> finding out who can currently read a dataset means asking everyone who might hold a key, and access granted for a short project quietly continues working long after the project ends.</div>
     </div>
