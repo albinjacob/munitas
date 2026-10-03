@@ -244,7 +244,7 @@ ICEBERG_PARQUET_THRIFT_CONTAINER_ITEMS = int(os.environ.get("MUNITAS_ICEBERG_PAR
 # How long writing one table may take before it is given up. Every call that leaves this process needs a deadline.
 ICEBERG_TIMEOUT_SECONDS = int(os.environ.get("MUNITAS_ICEBERG_TIMEOUT_SECONDS", "300"))
 
-# How long a write grant keeps its key after the task last asked for it (grants.justified_write_pairs). A task asks again at
+# How long a write grant keeps its key after the task last asked for it (grants._minted_identities). A task asks again at
 # every step and every retry, so this has to outlast the longest gap between two asks and not the length of a run.
 WRITE_GRANT_ACTIVE_SECONDS = int(os.environ.get("MUNITAS_WRITE_GRANT_ACTIVE_SECONDS", str(24 * 3600)))
 

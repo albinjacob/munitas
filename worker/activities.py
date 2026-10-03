@@ -366,7 +366,6 @@ def transcribe(params: dict) -> dict:
     Metal-accelerated one for Apple Silicon, say) can be added there without
     touching this function -- see that module's own docstring.
     """
-    rows = cp.get_json(params["records_key"], params["bucket"], _tenant(params))
 
     schema_id = cp.register_contract(contracts.TRANSCRIBED, _tenant(params))
     dataset_id = cp.ensure_dataset(params["dataset"], _tenant(params))
@@ -380,6 +379,10 @@ def transcribe(params: dict) -> dict:
         tenant_id=_tenant(params),
     )
     run_id = run["id"]
+    reader = cp.step_reader(
+        run["task_credential"], [params["input_version"]], _tenant(params),
+        _pipeline_principal(_tenant(params)), "transcribe: read this run's declared input")
+    rows = cp.read_json(reader, params["bucket"], params["records_key"])
     where = _location(params, dataset_id)
     params = {**params, "prefix": where["prefix"], "bucket": where["bucket"],
               "backend": where["backend"]}
@@ -416,7 +419,7 @@ def transcribe(params: dict) -> dict:
 
         local = config.WORK / row["audio_key"].replace("/", "_")
         local.parent.mkdir(parents=True, exist_ok=True)
-        cp.pipeline_s3(_tenant(params)).download_file(params["bucket"], row["audio_key"], str(local))
+        reader.download_file(params["bucket"], row["audio_key"], str(local))
 
         segments = backend.transcribe(local)
         words, pieces = [], []
@@ -467,7 +470,6 @@ def detect(params: dict) -> dict:
     """
     from .detect import Ensemble
 
-    rows = cp.get_json(params["records_key"], params["bucket"], _tenant(params))
     ensemble = Ensemble()
     ensemble.load()
 
@@ -483,6 +485,10 @@ def detect(params: dict) -> dict:
         tenant_id=_tenant(params),
     )
     run_id = run["id"]
+    reader = cp.step_reader(
+        run["task_credential"], [params["input_version"]], _tenant(params),
+        _pipeline_principal(_tenant(params)), "detect: read this run's declared input")
+    rows = cp.read_json(reader, params["bucket"], params["records_key"])
     where = _location(params, dataset_id)
     params = {**params, "prefix": where["prefix"], "bucket": where["bucket"],
               "backend": where["backend"]}
@@ -545,7 +551,6 @@ def handoff(params: dict) -> dict:
     holding PHI has to sit inside the class system, or the class system is
     describing only the parts of the pipeline that were convenient.
     """
-    rows = cp.get_json(params["records_key"], params["bucket"], _tenant(params))
     schema_id = cp.register_contract(contracts.DETECTED, _tenant(params))
     dataset_id = cp.ensure_dataset(params["dataset"], _tenant(params))
     run = cp.start_run(
@@ -558,6 +563,10 @@ def handoff(params: dict) -> dict:
         tenant_id=_tenant(params),
     )
     run_id = run["id"]
+    reader = cp.step_reader(
+        run["task_credential"], [params["input_version"]], _tenant(params),
+        _pipeline_principal(_tenant(params)), "handoff: read this run's declared input")
+    rows = cp.read_json(reader, params["bucket"], params["records_key"])
     where = _location(params, dataset_id)
     params = {**params, "prefix": where["prefix"], "bucket": where["bucket"],
               "backend": where["backend"]}
@@ -617,11 +626,10 @@ def redact(params: dict) -> dict:
 
     from .redact import redact_audio, redact_text
 
-    rows = cp.get_json(params["records_key"], params["bucket"], _tenant(params))
     schema_id = cp.register_contract(contracts.REDACTED, _tenant(params))
     dataset_id = cp.ensure_dataset(params["dataset"], _tenant(params))
     run = cp.start_run(
-        params["action_id"], params["idempotency_key"], [params["input_version"]], params,
+        params["action_id"], params["idempotency_key"], [params["input_version"], params["source_version"]], params,
         operator=_pipeline_principal(_tenant(params)),
         trigger_kind=params.get("trigger_kind", "manual"),
         triggered_by=params.get("triggered_by"),
@@ -630,6 +638,10 @@ def redact(params: dict) -> dict:
         tenant_id=_tenant(params),
     )
     run_id = run["id"]
+    reader = cp.step_reader(
+        run["task_credential"], [params["input_version"], params["source_version"]], _tenant(params),
+        _pipeline_principal(_tenant(params)), "redact: read this run's declared input")
+    rows = cp.read_json(reader, params["bucket"], params["records_key"])
     where = _location(params, dataset_id)
     params = {**params, "prefix": where["prefix"], "bucket": where["bucket"],
               "backend": where["backend"]}
@@ -651,7 +663,7 @@ def redact(params: dict) -> dict:
 
         time_spans = _spans_to_time(accepted, row["words"], row["transcript"])
         source_key = next(
-            (r["audio_key"] for r in cp.get_json(params["audio_index_key"], params["bucket"], _tenant(params))
+            (r["audio_key"] for r in cp.read_json(reader, params["bucket"], params["audio_index_key"])
              if r["record_id"] == row["record_id"]), None
         )
 
@@ -659,7 +671,7 @@ def redact(params: dict) -> dict:
         if source_key:
             local = config.WORK / source_key.replace("/", "_")
             local.parent.mkdir(parents=True, exist_ok=True)
-            cp.pipeline_s3(_tenant(params)).download_file(params["bucket"], source_key, str(local))
+            reader.download_file(params["bucket"], source_key, str(local))
             audio, rate = sf.read(str(local), dtype="int16")
             masked = redact_audio(np.asarray(audio), rate, time_spans)
             out_path = config.WORK / f"redacted_{row['record_id']}.wav"
@@ -750,15 +762,19 @@ def verify(params: dict) -> dict:
     from .align import Alignment
     from .scoring import ScoreCard, pseudonymised, score_record
 
-    detected = cp.get_json(params["detected_key"], params["bucket"], _tenant(params))
+    # This step opens no action run of its own, so it proves who it is with the pipeline run's credential, and reads exactly the
+    # versions named for it: the result of the steps before it, and the version the truth files were written beside.
+    reader = cp.step_reader(
+        params["task_credential"], params["versions"], _tenant(params),
+        _pipeline_principal(_tenant(params)), "verify: read the result of the steps before it")
+    detected = cp.read_json(reader, params["bucket"], params["detected_key"])
     truth_prefix = params["truth_prefix"]
 
     card = ScoreCard()
     similarities: list[float] = []
 
     for row in detected:
-        truth = cp.get_json(
-            f"{truth_prefix}/{row['record_id']}.truth.json", params["bucket"], _tenant(params))
+        truth = cp.read_json(reader, params["bucket"], f"{truth_prefix}/{row['record_id']}.truth.json")
         reference = truth["reference_transcript"]
         similarities.append(Alignment(reference, row["transcript"]).similarity())
         score_record(card, reference, row["transcript"], truth["spans"],
@@ -827,7 +843,7 @@ def open_pipeline_run(params: dict) -> dict:
         triggered_by=params.get("triggered_by"),
         schedule_id=params.get("schedule_id"),
         input_versions=[source_version_id] if source_version_id else [],
-        principal=_pipeline_principal(_tenant(params)) if source_version_id else None,
+        principal=_pipeline_principal(_tenant(params)),
     )
     return {"pipeline_run_id": result["pipeline_run_id"],
             "task_credential": result.get("task_credential")}

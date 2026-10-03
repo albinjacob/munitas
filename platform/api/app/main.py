@@ -29,7 +29,7 @@ from crypto import DestroyedKeyError, EnvelopeCrypto
 
 from . import (access_preview, activation, agent_upload, agents, auth, config,
               dag_pipelines, db, derivations, external_accounts, grants, housekeeping, iceberg,
-              iceberg_catalog, ingest, legal_export, lifecycle, logs, models, opa, people, pipeline, pipeline_keys, r2,
+              iceberg_catalog, ingest, legal_export, lifecycle, logs, models, opa, people, pipeline, r2,
               read_models, seaweed, storage, table_jobs, task_credential, temporal_client,
               versions)
 
@@ -126,7 +126,6 @@ app.include_router(derivations.router)
 app.include_router(lifecycle.router)
 app.include_router(legal_export.router)
 app.include_router(table_jobs.router)
-app.include_router(pipeline_keys.router)
 # The catalog answers in the shape Iceberg clients read, not FastAPI's default.
 app.add_exception_handler(iceberg_catalog.CatalogError, iceberg_catalog.handle_error)
 
@@ -858,12 +857,23 @@ def _record_decision(
     )
 
 
+def _task_is_running(kind: str, task_id: str) -> bool:
+    """Whether the task a credential names is still going: an action run that is running, a pipeline run that has not ended, or a
+    Hugging Face fetch job that is running."""
+    sql = {
+        "action_run": "select 1 as x from action_run where id = %s and status = 'running'",
+        "pipeline_run": "select 1 as x from pipeline_run where id = %s and ended_at is null",
+        "huggingface_fetch_job": "select 1 as x from huggingface_fetch_job where id = %s and status = 'running'",
+    }.get(kind)
+    return bool(sql and db.one(sql, (task_id,)))
+
+
 def _live_task(pipeline_claim, agent_claim) -> tuple[str, str] | None:
     """The task behind a verified task credential, when it is one that reads with a key of its own and is still alive; otherwise None.
 
-    Three kinds: a derivation's action run (the one action run whose staging reads each input by an exact key from its manifest), the
-    pipeline run that adopts a sealed version, and an agent run. None of them lists, which is what a key limited to folders needs, since
-    storage authorises a listing on the whole bucket only. Any other pipeline task keeps the role's key until it is moved over.
+    Three kinds: a running action run (a derivation, or a step of a pipeline), a pipeline run, and an agent run. None of them lists,
+    which is what a key limited to folders needs, since storage authorises a listing on the whole bucket only: each reads an object by
+    its exact key.
     """
     if agent_claim and agent_claim.task_kind == "agent_run":
         row = db.one("select id::text as id from agent_run where id = %s and status = any(%s)",
@@ -875,12 +885,7 @@ def _live_task(pipeline_claim, agent_claim) -> tuple[str, str] | None:
         row = db.one("select id::text as id from pipeline_run where id = %s and ended_at is null", (pipeline_claim.task_id,))
         return ("pipeline_run", row["id"]) if row else None
     if pipeline_claim.task_kind == "action_run":
-        row = db.one(
-            """select ar.id::text as id from action_run ar
-                 join derivation d on d.action_run_id = ar.id
-                where ar.id = %s and ar.status = 'running'""",
-            (pipeline_claim.task_id,),
-        )
+        row = db.one("select id::text as id from action_run where id = %s and status = 'running'", (pipeline_claim.task_id,))
         return ("action_run", row["id"]) if row else None
     return None
 
@@ -969,6 +974,11 @@ def _resolve_pipeline_task(
             if run["source_version_id"]:
                 input_versions.add(str(run["source_version_id"]))
             input_versions |= {str(v) for v in (run["input_versions"] or [])}
+            # And the versions its own steps sealed: the step that scores the result reads the output of the steps before it, which
+            # are not inputs the run began with. They are the run's own work, found from the runs that carry its id.
+            input_versions |= {str(r["id"]) for r in db.all_rows(
+                """select dv.id from dataset_version dv join action_run ar on ar.id = dv.produced_by_run
+                    where ar.pipeline_run_id = %s""", (claim.task_id,))}
     else:
         # huggingface_fetch_job carries no dataset version at all -- it
         # writes new files in, never reads one -- so input_versions stays
@@ -1236,6 +1246,15 @@ def decide_credential(body: models.CredentialRequest):
         # and it writes the grant row when it has.
         return {"allowed": True, "decide_only": True, "class": version["current_class"]}
 
+    # The pipeline role's and the agent role's own keys open nothing: their reads are served by the key of the task that asks. So a
+    # caller acting as either role without a running task has nothing to be given, and is told so, instead of being handed a key that
+    # fails at storage. This also ends a claim of the role by a caller the directory does not know as that kind of workload.
+    if (any(role in grants.TASK_KEYED_ROLES for role in effective_roles) and version["storage_backend"] == "seaweedfs"
+            and not _live_task(pipeline_claim, agent_claim)):
+        reasons = ["the task this credential was requested for is no longer running, or none was named"]
+        _record_decision(body, version, "grant", False, reasons)
+        raise HTTPException(403, {"allowed": False, "reasons": reasons})
+
     # Policy said yes. Whether the grant can actually be applied is a separate
     # question with a separate answer, and it gets its own audit row either way.
     #
@@ -1421,6 +1440,18 @@ def request_write_credential(body: models.WriteCredentialRequest, _worker: None 
                 "role, so nothing was granted. Both facts are in the audit log."
             ),
         }) from exc
+
+    # On SeaweedFS the writer receives a key of its own for this task: Write on the one folder reserved above, and nothing else. It is
+    # not the pipeline role's key, which opens the organisation's whole bucket for reading. The key lives while the task does and while
+    # the task keeps asking (see grants._minted_identities), so a task that is already over is refused here and not handed a key that
+    # opens nothing.
+    if backend == "seaweedfs":
+        if not _task_is_running(claim.task_kind, claim.task_id):
+            raise HTTPException(403, {"allowed": False, "reasons": [
+                "the task this credential was requested for is no longer running"]})
+        own = grants.identity_for_task(claim.task_kind, claim.task_id, acting_tenant)
+        creds = {**creds, "access_key": own["access_key"], "secret_key": own["secret_key"]}
+    creds["identity"] = "task" if backend == "seaweedfs" else "role"
 
     if backend == "seaweedfs":
         try:

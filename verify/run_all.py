@@ -86,6 +86,7 @@ SCRIPTS = [
     ("U113 every route knows who is calling, and the ones that act for a person act as that person", "v113_every_route_has_a_caller.py"),
     ("U114 a derivation run reads with a key of its own, which opens only its inputs and ends with the run", "v114_task_read_keys.py"),
     ("U116 a pipeline run and an agent run read with a key of their own, which opens only what was allowed and ends with the task", "v116_pipeline_and_agent_read_keys.py"),
+    ("U117 a writer is handed a key for its one output folder, and not the pipeline role's key", "v117_writer_keys.py"),
 ]
 
 here = Path(__file__).parent

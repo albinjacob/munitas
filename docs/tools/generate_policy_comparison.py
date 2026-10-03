@@ -32,23 +32,28 @@ from app import grants, db
 db.pool.open(wait=True)
 doc = grants.desired_document()
 identities = [{"name": i["name"], "actions": i["actions"]} for i in doc["identities"]]
-# A table job's key, built by the two functions that build it for a real job, for the next folder of a real dataset.
+# A table job's key, built by the two functions that build it for a real job, for the next folder of a real dataset. The real folder is
+# taken from any role key that holds folder entries (the pipeline role holds none now), preferring the health organisation.
 sample = None
-for i in sorted(identities, key=lambda i: i["name"] != "pipeline_action~health"):
-    if i["name"].startswith("pipeline_action~") and i["actions"]:
-        first = next((a for a in i["actions"] if a.startswith("Write:") and a.endswith("/*")), None)
-        if first:
-            bucket, _, rest = first[len("Write:"):].partition("/")
-            prefix = rest[:-2]
-            nxt = prefix.rsplit("/v", 1)[0] + "/v" + str(int(prefix.rsplit("/v", 1)[1]) + 1)
-            sample = {"bucket": bucket, "prefix": nxt,
-                      "actions": sorted(set(grants._prefix_actions(bucket, nxt) + grants._write_prefix_actions(bucket, nxt) + ["List:" + bucket]))}
-            # A derivation run's key, by the function that builds it, for the first two folders this organisation's role already reads.
-            reads = sorted({a[len("Read:"):].split("/", 1)[1][:-2] for a in i["actions"]
-                            if a.startswith("Read:" + bucket + "/") and a.endswith("/*")})[:2]
-            sample["run_inputs"] = reads
-            sample["run_actions"] = sorted(set(sum((grants._read_prefix_actions(bucket, p) for p in reads), [])))
-            break
+holders = [i for i in identities if "~" in i["name"] and any(x.startswith("Read:") and x.endswith("/*") and "/" in x.split(":", 1)[1] for x in i["actions"])]
+holders.sort(key=lambda i: ("munitas-health" not in " ".join(i["actions"]), i["name"]))
+for i in holders:
+    first = next((a for a in i["actions"] if a.startswith("Read:") and a.endswith("/*")), None)
+    if first:
+        bucket, _, rest = first[len("Read:"):].partition("/")
+        prefix = rest[:-2]
+        if "/v" not in prefix:
+            continue
+        nxt = prefix.rsplit("/v", 1)[0] + "/v" + str(int(prefix.rsplit("/v", 1)[1]) + 1)
+        sample = {"bucket": bucket, "prefix": nxt,
+                  "actions": sorted(set(grants._prefix_actions(bucket, nxt) + grants._write_prefix_actions(bucket, nxt) + ["List:" + bucket]))}
+        # A task's own key, by the function that builds it, for the first two folders of this organisation that a role key reads.
+        reads = sorted({a[len("Read:"):].split("/", 1)[1][:-2] for a in i["actions"]
+                        if a.startswith("Read:" + bucket + "/") and a.endswith("/*")})[:2]
+        sample["run_inputs"] = reads
+        sample["run_actions"] = sorted(set(sum((grants._read_prefix_actions(bucket, p) for p in reads), [])))
+        sample["write_actions"] = sorted(set(grants._write_prefix_actions(bucket, nxt)))
+        break
 print("@@LIVE@@" + json.dumps({"identities": identities, "table_job": sample}))
 '''
 
@@ -121,9 +126,13 @@ def build(data: dict) -> str:
             return fallback
         raise SystemExit(f"no live identity starting with {prefix}")
 
-    role_name = "pipeline_action~health" if by.get("pipeline_action~health") else first("pipeline_action~")
+    candidates = [n for n in by if n.split("~")[0] in ("agent_runtime", "training_job", "annotation_tool") and by[n]]
+    candidates.sort(key=lambda n: ("munitas-health" not in " ".join(by[n]), -len(by[n])))
+    role_name = candidates[0]
     role_actions = by[role_name]
     organisation_bucket = role_actions[0].split(":")[1].split("/")[0]
+    organisation = organisation_bucket.removeprefix("munitas-")
+    pipeline_name = f"pipeline_action~{organisation}" if f"pipeline_action~{organisation}" in by else first("pipeline_action~", with_actions=False)
     wide = [a for a in role_actions if "/" not in a]
     narrow = [a for a in role_actions if "/" in a]
     counts: dict[str, int] = {}
@@ -150,7 +159,7 @@ def build(data: dict) -> str:
     keys_total = len(by)
     keys_empty = sum(1 for a in by.values() if not a)
 
-    role_sample = [a for a in narrow if a.startswith("Write:")][:2] + [a for a in narrow if a.startswith("Read:")][:2] + [a for a in narrow if a.startswith("List:")][:2]
+    role_sample = [a for a in narrow if a.startswith("Read:")][:2] + [a for a in narrow if a.startswith("List:")][:2]
 
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -243,10 +252,13 @@ so this is not read from the live document. The real thing is checked by verific
 Below are real examples of each kind. Only names and lists are read; no secret is.</p>
 
 <h3>1. A role's key for one organisation: <code>{html.escape(role_name)}</code> <span class="tag">standing, one per role and organisation</span></h3>
-<p>This is the key the pipeline worker uses for the organisation named after the tilde. It holds {len(role_actions)} actions: {", ".join(f"{n} {k}" for k, n in sorted(counts.items()))}.
-The bucket-wide entries come from the policy, and the per-folder entries are added one dataset version at a time, as the platform justifies them.</p>
-{block(wide, note="Bucket-wide: the role's standing reach inside its own organisation's bucket. No other organisation's bucket appears in this list.")}
-{block(role_sample, note=f"A sample of the {len(narrow)} per-folder entries. A write entry appears when a pipeline task asks for write access (POST /write-credentials) and expires unless renewed.")}
+<p>This key belongs to a role (here an agent or training role) for the organisation named after the tilde. It holds {len(role_actions)} actions: {", ".join(f"{n} {k}" for k, n in sorted(counts.items()))}.
+Every one of them is for one dataset version's folder, added when the platform justifies a read of that version. It has {len(wide)} entries for a whole bucket: no role holds standing access to a bucket.</p>
+{block(role_sample, note=f"A sample of the {len(narrow)} folder entries.")}
+
+<h3>1a. The pipeline role's key: <code>{html.escape(pipeline_name)}</code> <span class="tag">standing, and it opens nothing</span></h3>
+<p>The pipeline's reads and writes are served entirely by the keys of the tasks that ask (lists 5, 5a and 5b), so the role's own key has no entry at all. It stays in the document so that an organisation's pipeline identity exists from the moment its bucket does.</p>
+{block(by[pipeline_name] or ["(empty list: opens nothing)"])}
 
 <h3>2. A lease's key: <code>{html.escape(lease_name)}</code> <span class="tag">temporary, one per approved lease</span></h3>
 <p>A lease is extra, time-limited access that a second person approved. Its key opens one dataset version, for reading and listing, and nothing else. It is removed from the document when the lease ends or is revoked.</p>
@@ -263,11 +275,14 @@ The bucket-wide entries come from the policy, and the per-folder entries are add
 <h3>5. A table job's key <span class="tag">temporary, one per job</span></h3>
 <p>This key is shown in the previous section. It holds read and write access to one folder, plus a bucket-wide listing, and it exists only while the job is pending or running.</p>
 
-<h3>5a. A task's own key: a derivation run, a pipeline run or an agent run <span class="tag">temporary, one per task</span></h3>
-<p>A derivation is a query that makes a new dataset from existing ones. Each run of a derivation, each pipeline run that adopts a sealed version, and each agent run reads its inputs with a key of its own. The key lists only the input folders that the platform has allowed that task to read, and it contains
-no listing and no write access. It exists only while the task is alive. A derivation run is alive while it is running and for no longer than the six-hour life of its task credential. A pipeline run or an agent run is alive until it ends, but only while it keeps asking: if it has not asked for six hours, its key is removed, and asking again brings the key back. This is how an agent run that has waited a long time for a person can resume.</p>
+<h3>5a. A task's own key: a pipeline step, a derivation run, a pipeline run or an agent run <span class="tag">temporary, one per task</span></h3>
+<p>Each step of a pipeline (a running action run, which includes every derivation), each pipeline run, and each agent run reads its inputs with a key of its own. The key lists only the input folders that the platform has allowed that task to read, and it contains
+no listing. It exists only while the task is alive. A derivation run is alive while it is running and for no longer than the six-hour life of its task credential. A pipeline run or an agent run is alive until it ends, but only while it keeps asking: if it has not asked for six hours, its key is removed, and asking again brings the key back. This is how an agent run that has waited a long time for a person can resume.</p>
 {block(["identity: run-<first twelve characters of the run's identifier>"] + ["actions:  " + a if n == 0 else "          " + a for n, a in enumerate(job["run_actions"])])}
-<p class="note">This list is produced by the function that builds a task's key, for two folders that this organisation's role can already read. No such task is in progress at the moment, so it is not read from the live document. Verifications U114 and U116 read the real key of a real task of each kind and check that it opens its allowed inputs and nothing else.</p>
+<h3 id="writer">5b. A writer's key <span class="tag">temporary, the same key as the task's</span></h3>
+<p>A task that writes receives the same key, with one more entry: a write of the one folder that the platform reserved for its output. A writer does not need to read what it wrote, and the key does not allow it. A Hugging Face fetch job, which only writes, has a key with that entry alone. The key ends with the task.</p>
+{block(["identity: run-<first twelve characters of the task's identifier>"] + ["actions:  " + a if n == 0 else "          " + a for n, a in enumerate(job["run_actions"] + job["write_actions"])])}
+<p class="note">These lists are produced by the functions that build a task's key, for real folders of this organisation. No such task is in progress at the moment, so they are not read from the live document. Verifications U114, U116 and U117 read the real key of a real task of each kind and check that it opens what it was allowed and nothing else.</p>
 
 <h3>6. A researcher's workspace role: <code>{html.escape(person_name)}</code> <span class="tag">held by the workspace, not by a person</span></h3>
 <p>A person never holds a storage key. A researcher reaches data through a workspace that holds this key on their behalf. This list is empty because nothing in that organisation has justified a read for the role yet.
@@ -292,11 +307,11 @@ For comparison, the same role in another organisation, <code>{html.escape(busies
 <tr><td><b>4. Ask to read.</b> <code>POST /credentials</code> with the principal, its roles, the organisation, the dataset version and a purpose.</td>
 <td>The worker token, or a task credential for the same principal, or the signed-in person for themselves. The platform then looks up the roles the principal really holds, not the roles it claims.</td>
 <td><b>OPA decides.</b> It receives the principal, its roles and any active leases, the dataset's organisation, version and class, and the purpose. It answers allow or deny with reasons, and either answer is written to the audit log. If OPA cannot be reached, the answer is deny.</td>
-<td>When the answer is allow, the platform records the decision as the justification and then recompiles the document. Which key the caller receives depends on the caller. A derivation run, a pipeline run or an agent run receives its own key (list 5a), which gains a read of this one folder. A caller whose read was justified by a lease receives that lease's key (list 2). Any other caller receives the role's key (list 1), which gains <code>Read:</code> and <code>List:</code> for this folder. The key is returned only after the new document is in place.</td></tr>
+<td>When the answer is allow, the platform records the decision as the justification and then recompiles the document. Which key the caller receives depends on the caller. A derivation run, a pipeline run or an agent run receives its own key (list 5a), which gains a read of this one folder. A caller whose read was justified by a lease receives that lease's key (list 2). Any other caller, for example a workspace role, receives the role's key (list 1), which gains <code>Read:</code> and <code>List:</code> for this folder. A caller that acts as the pipeline without a running task is refused. The key is returned only after the new document is in place.</td></tr>
 <tr><td><b>5. Ask to write.</b> <code>POST /write-credentials</code> by a pipeline task.</td>
 <td>The worker token and the task's signed credential.</td>
 <td>The platform reserves the next version's folder and records a write grant.</td>
-<td>The role's list gains <code>Write:</code> for that one folder. The entry lapses unless renewed.</td></tr>
+<td>The task's own key (list 5b) gains <code>Write:</code> for that one folder. The entry lapses unless renewed, and the key ends with the task.</td></tr>
 <tr><td><b>6. The grant ends.</b> A lease expires or is revoked, a job finishes, or a write grant stops being renewed.</td>
 <td>Nobody calls anything.</td>
 <td>The platform recomputes the whole document from its records. Whatever is no longer justified is not in it.</td>
@@ -331,7 +346,7 @@ For comparison, the same role in another organisation, <code>{html.escape(busies
 <li><b>Two layers here, one layer in OCI.</b> OPA answers "may this caller have access". SeaweedFS answers "does this key's list include this path". A mistake in the platform's list would be trusted by SeaweedFS, which is why verification compares the live document with what it should be, and checks that no key names two organisations' buckets.</li>
 <li><b>Timing.</b> OCI reacts to a changed statement at once. In Munitas a key can outlive its job until the next compile of the document, which the platform triggers when the job, lease, run or grant ends. A derivation run that never finishes is marked as failed after six hours, and a pipeline run or an agent run that stops asking loses its key after six hours. In both cases the key is removed at the next compile.</li>
 <li><b>Listing is wider than a folder.</b> SeaweedFS authorises a listing on the whole bucket and never on a folder inside it, so a job's key carries a bucket-wide <code>List:</code>. A listing shows names, not contents. Reading and writing stay on the one folder. Whether OCI can restrict a listing to a folder was not checked.</li>
-<li><b>Standing reach inside one organisation.</b> The pipeline role's key holds bucket-wide <code>Read:</code> and <code>List:</code> on its own organisation's bucket (list 1). Derivation runs, pipeline runs and agent runs no longer use that key, because each receives a key of its own (list 5a). The worker's own reads of its earlier steps' output, the staging of uploaded files, and the workspace roles still use the role's key, so those can read the whole of their organisation's bucket.</li>
+<li><b>Standing reach inside one organisation.</b> No role holds a bucket-wide verb. Every pipeline step, derivation run, pipeline run, agent run and writer receives a key of its own (lists 5a and 5b), and the pipeline role's own key opens nothing (list 1a). Two things still hold bucket-wide access inside one organisation: the organisation's upload key, which only the platform uses to put uploaded files in the bucket, and the listing that a table job needs to write a table, for as long as the job runs.</li>
 </ul>
 
 <h2 id="sources">Sources and what was not verified</h2>

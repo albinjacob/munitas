@@ -277,18 +277,12 @@ def main() -> int:
     check("every organisation with a bucket has a pipeline key of its own",
           set(pipelines) == {f"pipeline_action~{t}" for t in owned}, f"{len(pipelines)} keys, {len(owned)} organisations")
     pipeline = set().union(*pipelines.values()) if pipelines else set()
-    # Write dropped from this list deliberately (item: the write-credential
-    # compiler, docs/internal/design/write-credential-rationale.md): pipeline_action
-    # no longer holds standing Write on any bucket, only the three verbs a
-    # real task never has to prove anything to earn. A Write grant now
-    # exists only per prefix, from write_grant, checked separately below.
-    structural_ok = all(
-        f"{verb}:{bucket}" in pipeline
-        for verb in ("Read", "List", "Tagging")
-        for bucket in buckets
-    )
-    check("the pipeline's keys together keep Read/List/Tagging on every bucket",
-          structural_ok, f"{len(buckets)} buckets")
+    # No bucket-wide verb at all, and no folder either: what a pipeline task may read or write is in the key of that task, which is made for
+    # it and ends with it (U114, U116, U117). The role's own key opens nothing by itself.
+    wide = sorted(a for a in pipeline if "/" not in a)
+    check("the pipeline's keys hold no bucket-wide verb: they open nothing by themselves", not wide, str(wide[:3]))
+    folders = sorted(a for a in pipeline if "/" in a)
+    check("and no folder either: what a task may read or write is in the task's own key", not folders, str(folders[:2]))
     crossing = [(n, b) for n, a in pipelines.items() for t, bs in owned.items() if n != f"pipeline_action~{t}"
                 for b in bs if any(x.endswith(f":{b}") or f":{b}/" in x for x in a)]
     check("and no organisation's pipeline key reaches another organisation's bucket, whole or in part",
@@ -370,30 +364,29 @@ def main() -> int:
     check("and gives the same document without it, which is the fresh-install path",
           not read_back and shape(blind) == shape(compiled))
 
-    # A bucket provisioned now gets the pipeline's standing access at once,
-    # from the policy rather than from a copy, and the pipeline's own key
-    # can read it immediately. Probed with a list/get, not a put: Write is
-    # no longer standing for pipeline_action (the write-credential
-    # compiler, docs/internal/design/write-credential-rationale.md), so "the
-    # pipeline's writes" is no longer a claim this role's static key can
-    # make on its own -- List/Read are what stayed standing, and what this
-    # now proves instead.
+    # A bucket provisioned now is closed to the organisation's pipeline key from the first moment: the key is in the document at once, from
+    # the policy rather than from a copy, and it opens nothing, because no role holds standing access to a bucket. Probed with a list,
+    # which is what the pipeline used to be able to do on every bucket.
     fresh = fixture_tenant(f"storage-probe-{uuid.uuid4().hex[:8]}")
     fresh_bucket = app_seaweed.bucket(fresh)
     pipe_key, pipe_secret = app_grants.tenant_role_key("pipeline_action", fresh)
     pipe = s3_client(pipe_key, pipe_secret)
-    listed = None
+    import time
+    present = False
     for _ in range(40):
-        try:
-            pipe.list_objects_v2(Bucket=fresh_bucket, MaxKeys=1)
-            listed = True
+        live_names = {i["name"] for i in app_seaweed.load_identities().get("identities", [])}
+        if f"pipeline_action~{fresh}" in live_names:
+            present = True
             break
-        except Exception as exc:  # noqa: BLE001 - retried until the gateway agrees, bounded
-            listed = exc
-            import time
-            time.sleep(0.25)
-    check("a bucket provisioned mid-run takes its organisation's pipeline List/Read straight away",
-          listed is True, f"{listed!r}"[:160])
+        time.sleep(0.25)
+    time.sleep(1)
+    try:
+        pipe.list_objects_v2(Bucket=fresh_bucket, MaxKeys=1)
+        listed = "allowed"
+    except Exception as exc:  # noqa: BLE001
+        listed = getattr(exc, "response", {}).get("Error", {}).get("Code", type(exc).__name__)
+    check("a bucket provisioned mid-run has its organisation's pipeline key in the document at once, and the key opens nothing",
+          present and listed == "AccessDenied", f"present={present} list={listed}")
 
     # And the write side of the same claim: the organisation's pipeline key
     # alone still cannot write to a bucket it was never issued a write_grant

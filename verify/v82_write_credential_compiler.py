@@ -201,13 +201,14 @@ def main() -> int:
         check("the scoped credential cannot write outside its own granted prefix",
               blocked, "" if blocked else "the write outside the granted prefix succeeded")
 
-        heading("U85: the credential is the organisation's own key, and ends when the task stops asking")
+        heading("U85: the credential is the task's own key, and ends when the task stops asking")
 
         from app import grants as app_grants
 
         mine = app_grants.tenant_role_key("pipeline_action", tenant)
-        check("the key handed out is this organisation's pipeline key, not a key shared by every organisation",
-              (body["access_key"], body["secret_key"]) == mine, body["access_key"])
+        check("the key handed out is the task's own, not the organisation's pipeline key and not a key shared by every organisation",
+              body.get("identity") == "task" and body["access_key"].startswith("run-") and body["access_key"] != mine[0],
+              f"{body.get('identity')} {body['access_key']}")
         # A grant lasts as long as its task keeps asking. Here the task is taken to have stopped asking a day and an hour ago.
         from common import db as database
         with database() as conn:
@@ -221,7 +222,8 @@ def main() -> int:
         try:
             scoped_client.put_object(Bucket=body["bucket"], Key=f"{body['prefix']}/after-the-grant-ended.json", Body=b"{}")
         except Exception as exc:  # noqa: BLE001
-            still = False if ("AccessDenied" in str(exc) or "403" in str(exc)) else exc
+            # The key is removed from storage altogether once the grant has lapsed, which is stricter than a refusal.
+            still = False if ("AccessDenied" in str(exc) or "403" in str(exc) or "InvalidAccessKeyId" in str(exc)) else exc
         check("once the task has stopped asking, the key can no longer write into the folder it was granted", still is False, repr(still)[:120])
         again = api("POST", "/write-credentials", json={
             "principal": PIPELINE, "principal_kind": "workload", "roles": ["pipeline_action"], "tenant_id": tenant,

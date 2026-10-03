@@ -656,6 +656,15 @@ platform is still retrying.
 wsl -d Ubuntu-20.04 -- docker exec munitas-munitas-api-1 python /app/reconcile-grants.py
 ```
 
+  If the guard refused because the change is deliberate (for example the first
+  print after a release that stops a role holding standing storage access, which
+  can remove more than 40% of the prefix grants at once), read the numbers in the
+  refusal, and when they are what the release intended, print it with:
+
+```bash
+wsl -d Ubuntu-20.04 -- docker exec munitas-munitas-api-1 python /app/reconcile-grants.py --allow-shrink
+```
+
 The banner clears on the next successful print and waiting runs resume
 within 10 seconds. The history of every print is in
 `storage_permission_print`.

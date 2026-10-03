@@ -116,7 +116,6 @@ OPEN_ON_PURPOSE = {
 }
 SPECIAL = {
     ("POST", "/credentials"): "The worker token, or a task credential for the same principal that is asking, or a signed-in person asking for themselves",
-    ("POST", "/storage-keys/pipeline"): "A task credential (it gets its own organisation's key only), or the worker token with the organisation named",
     ("POST", "/dataset-versions"): "Worker token only. No person can call it, not even an administrator.",
 }
 # (dependency name, what it means in plain words, kind used by the filter)

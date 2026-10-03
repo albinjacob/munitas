@@ -135,8 +135,8 @@ def main() -> int:
               all(attempt(lambda b=b, k=k: s3_client(*ADMIN).get_object(Bucket=b, Key=k)["Body"].read(5)) == "allowed"
                   for b, k in ((bucket, v2["records_key"]), (bucket, v3["records_key"]), (their_bucket, theirs["records_key"]))))
         control = s3_client(grants.tenant_role_key("pipeline_action", org.id)[0], grants.tenant_role_key("pipeline_action", org.id)[1])
-        check("control: the organisation's role key does read the sibling, which is what the run's key replaces",
-              eventually(lambda: read(control, v3), "allowed") == "allowed")
+        check("the organisation's role key opens nothing of its bucket, so the run's key replaced no standing reach",
+              read(control, v3) == "AccessDenied")
 
         heading("The platform's own decisions still stand")
         check("a version that is not one of the run's inputs is refused by the platform", ask(run, v3).status_code == 403)
@@ -189,12 +189,18 @@ def main() -> int:
         check("the reason names the limit", "6 hours" in (row["failure_reason"] or ""), str(row))
         check("and its key stops working", eventually(lambda: "refused" if read(stuck_client, v1) in ("AccessDenied", "InvalidAccessKeyId") else "open", "refused") == "refused")
 
-        heading("Limited to derivations, and honest about it")
+        heading("Every running action run has a key of its own, and a caller with no running task has none")
         plain = new_run([v1["id"]], derivation=False)
         answer = ask(plain, v1)
-        check("a task that is not a derivation still gets the organisation's role key",
-              answer.status_code == 200 and answer.json().get("identity") == "role" and answer.json()["access_key"] == role_access,
+        check("an action run that is not a derivation also gets a key of its own, not the organisation's",
+              answer.status_code == 200 and answer.json().get("identity") == "task" and answer.json()["access_key"] != role_access,
               f"{answer.status_code} {answer.json().get('identity') if answer.status_code == 200 else ''}")
+        over = new_run([v1["id"]], derivation=False)
+        with db() as conn:
+            conn.execute("update action_run set status = 'failed', ended_at = now() where id = %s", (over["id"],))
+        late = ask(over, v1)
+        check("a run that is already over is refused, and told why, not handed a key that fails at storage",
+              late.status_code == 403 and "no longer running" in str(late.json()), f"{late.status_code} {late.text[:140]}")
     finally:
         priya, ravi = bearer_for(ADMIN_A), bearer_for(ADMIN_B)
         for o in (org, other):

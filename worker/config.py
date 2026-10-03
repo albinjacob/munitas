@@ -264,9 +264,8 @@ def require_corpus_dir() -> Path:
 # The pipeline runs inside the boundary, so it holds the one role whose floor
 # reaches RAW. Nothing else in the system does.
 PIPELINE_ROLE = "pipeline_action"
-# No storage key here. The pipeline reads what it wrote earlier with a key the control plane gives it for the organisation it is
-# working for (platform_client.pipeline_s3), one per organisation, and not one set in this process's environment that opened
-# every organisation's bucket.
+# No storage key here. Every task reads and writes with a key the control plane gives it for that task alone (platform_client.step_reader
+# and s3_scoped_write), and not one set in this process's environment that opened a whole bucket.
 # No PIPELINE_PRINCIPAL constant. One worker process serves every tenant's
 # runs (TASK_QUEUE above is one shared queue, not one per tenant), so a
 # single config value naming the workload to assert would claim whichever

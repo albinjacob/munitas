@@ -139,8 +139,17 @@ def main() -> int:
     check("the credential's own bucket field matches too", creds["bucket"] == resolved)
 
     reader = s3_client(creds["access_key"], creds["secret_key"], endpoint=creds["endpoint"])
-    got = reader.get_object(Bucket=resolved, Key="v56-probe/hello.txt")["Body"].read()
-    check("that credential can read the object back", got == b"hello", got)
+    # The role's own key opens nothing: no role holds standing access to a bucket, and a task reads with a key made for it. Nothing in
+    # the register justifies a read of this probe object, so the role's key is refused it even in the tenant's own bucket, while the
+    # tenant's administrator key (which wrote it) reads it back.
+    try:
+        reader.get_object(Bucket=resolved, Key="v56-probe/hello.txt")
+        refused = "allowed"
+    except Exception as exc:  # noqa: BLE001
+        refused = getattr(exc, "response", {}).get("Error", {}).get("Code", type(exc).__name__)
+    check("that credential, held by a role, opens nothing of the tenant's own bucket", refused == "AccessDenied", refused)
+    got = client.get_object(Bucket=resolved, Key="v56-probe/hello.txt")["Body"].read()
+    check("control: the tenant's administrator key reads the object back, so that refusal is the role key's own", got == b"hello", got)
 
     heading("U56: the answer comes from the row, not from what the tenant holds")
 

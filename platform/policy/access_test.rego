@@ -844,23 +844,19 @@ test_nobody_confirms_their_own_role if {
 	}
 }
 
-# Standing access to whole buckets is held only inside the boundary. A role
-# that reads data (a person, a training job, an agent) must go through a
-# per-version grant the register justifies, never a bucket-wide one.
-test_only_the_pipeline_holds_bucket_wide_access if {
+# No role holds standing access to a whole bucket. A role that reads or writes data (a person, a training job, an agent, the
+# pipeline) goes through a grant the register justifies for one version or one folder, and a task is given a key of its own for it.
+test_no_role_holds_bucket_wide_access if {
 	holders := {role | some role, spec in access.storage_roles; count(spec.every_bucket) > 0}
-	holders == {"pipeline_action"}
+	count(holders) == 0
 }
 
-test_pipeline_bucket_wide_access_is_exactly_read_list_tagging if {
-	{verb | some verb in access.storage_roles.pipeline_action.every_bucket} == {"Read", "List", "Tagging"}
-}
-
-# Writing is not standing access any more. It is granted per task and per prefix,
-# on the same proof reading needs (POST /write-credentials), so Write must never
-# come back into the bucket-wide list.
-test_pipeline_has_no_standing_write if {
-	not "Write" in access.storage_roles.pipeline_action.every_bucket
+# Writing is granted per task and per prefix, on the same proof reading needs (POST /write-credentials), so Write must never come
+# back into any role's bucket-wide list.
+test_no_role_has_standing_write if {
+	every _, spec in access.storage_roles {
+		not "Write" in spec.every_bucket
+	}
 }
 
 # Every role that holds a storage key is a role the policy already knows, so a

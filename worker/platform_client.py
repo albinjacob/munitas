@@ -36,43 +36,13 @@ def _post(path: str, payload: dict) -> dict:
 
 # The object-storage backends this worker can actually talk to.
 #
-# One, and `pipeline_s3()` below is why: it builds a SeaweedFS client from SeaweedFS
+# One, and the readers and writers below are why: each builds a SeaweedFS client from SeaweedFS
 # credentials at a SeaweedFS endpoint, with nothing anywhere that would build
 # an R2 client instead. A dataset can already be marked `r2`, so this is a real
 # gap rather than a hypothetical, and naming it here is what lets the run be
 # refused instead of writing an R2-backed version's objects into SeaweedFS
 # under the R2 bucket's name and sealing a version that says seaweedfs.
 SERVED_BACKENDS = ("seaweedfs",)
-
-
-# The storage key for reading what the pipeline wrote earlier in its own run. One per organisation, asked of the control plane
-# (POST /storage-keys/pipeline) and kept for as long as this process runs, since it does not change. It used to be one static key
-# from this process's environment, the same for every organisation, which could read every organisation's bucket. A task that
-# has its credential passes it, so the control plane gives it the key of the organisation that credential names and no other.
-_organisation_keys: dict[str, dict] = {}
-
-
-def pipeline_s3(tenant_id: str, task_credential: str | None = None) -> "boto3.client":
-    key = _organisation_keys.get(tenant_id)
-    if key is None:
-        headers = {"x-worker-token": config.WORKER_TOKEN}
-        if task_credential:
-            headers["x-task-credential"] = task_credential
-        response = httpx.post(f"{config.API}/storage-keys/pipeline", params={"tenant_id": tenant_id}, headers=headers,
-                              timeout=30.0, verify=config.api_verify())
-        if response.status_code == 202:
-            raise CredentialPending(f"the storage key for {tenant_id} is not active yet: {response.json()}")
-        if response.status_code >= 400:
-            raise ControlPlaneError(f"/storage-keys/pipeline returned {response.status_code}: {response.text[:300]}")
-        key = _organisation_keys[tenant_id] = response.json()
-    return boto3.client(
-        "s3",
-        endpoint_url=config.S3_ENDPOINT,
-        aws_access_key_id=key["access_key"],
-        aws_secret_access_key=key["secret_key"],
-        config=Config(signature_version="s3v4"),
-        region_name="us-east-1",
-    )
 
 
 class CredentialPending(Exception):
@@ -125,7 +95,7 @@ def s3_scoped(task_credential: str, dataset_version_id: str, tenant_id: str,
     # reachable from inside the containers it runs among), and this worker
     # runs on the host, which reaches the same SeaweedFS through a published
     # port on localhost instead -- config.S3_ENDPOINT already knows which of
-    # those it is, the same way pipeline_s3() above never trusts a caller-supplied
+    # those it is, the same way the writer below never trusts a caller-supplied
     # endpoint either.
     return boto3.client(
         "s3",
@@ -368,12 +338,9 @@ def promote(version_id: str, to_class: str, evidence: dict, grant_roles: list[st
 # arguments are what stop that recurring, since a caller that forgets one
 # now fails at the call rather than writing somewhere plausible.
 #
-# Both now take the client to write with, rather than reaching for the
-# module's own pipeline_s3(). pipeline_action's storage identity no longer
-# holds standing Write (see docs/internal/design/write-credential-rationale.md), so
-# there is no default client left here that could still write anything;
-# every caller passes the s3_scoped_write() client it minted for its own
-# action_run or pipeline_run.
+# Both take the client to write with. No role holds standing storage access (see access.rego), so there is no default client
+# here that could write or read anything; every caller passes the client minted for its own task: s3_scoped_write() for a write,
+# step_reader() or s3_scoped() for a read.
 
 
 def put_json(client, key: str, payload: object, bucket: str) -> dict:
@@ -388,10 +355,23 @@ def put_file(client, key: str, path: Path, bucket: str) -> dict:
     return {"key": key, "bytes": len(body), "sha256": hashlib.sha256(body).hexdigest()}
 
 
-def get_json(key: str, bucket: str, tenant_id: str) -> object:
-    return json.loads(
-        pipeline_s3(tenant_id).get_object(Bucket=bucket, Key=key)["Body"].read()
-    )
+def step_reader(task_credential: str, version_ids: list[str], tenant_id: str, principal: str, purpose: str) -> "boto3.client":
+    """A read-only client for the versions a task declared as its inputs, and no others.
+
+    Asks the platform once for each version, in order. Every answer is the same key, the task's own, and each answer adds one
+    version's folder to what it opens, so the client returned opens exactly the versions asked for. The platform decides each one
+    (and records it): a version the task did not declare is refused.
+    """
+    client = None
+    for version_id in dict.fromkeys(version_ids):
+        client = s3_scoped(task_credential, version_id, tenant_id, principal, purpose)
+    if client is None:
+        raise ValueError("a step that reads must name at least one input version")
+    return client
+
+
+def read_json(client, bucket: str, key: str) -> object:
+    return json.loads(client.get_object(Bucket=bucket, Key=key)["Body"].read())
 
 
 _code_hash: str | None = None

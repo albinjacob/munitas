@@ -180,24 +180,6 @@ def justified_pairs(*, as_of=None) -> set[tuple[str, str, str]]:
     return keep
 
 
-def justified_write_pairs() -> set[tuple[str, str, str]]:
-    """Every (role, bucket, storage_prefix) a real task has legitimately
-    reserved to write into.
-
-    The write-side counterpart to justified_pairs() above, and simpler: a
-    write_grant row is monotonic (see its own comment in schema.sql), so
-    unlike a lease there is no expiry or revocation to filter on here --
-    once a real task proved itself and was granted a prefix, that grant
-    never needs to be measured against `as_of` either, because nothing ever
-    withdraws it. Every row still deserves a grant, always, for as long as
-    it exists.
-    """
-    rows = db.all_rows(
-        "select distinct role, bucket, storage_prefix from write_grant "
-        "where renewed_at > now() - make_interval(secs => %s)", (config.WRITE_GRANT_ACTIVE_SECONDS,))
-    return {(r["role"], r["bucket"], r["storage_prefix"]) for r in rows}
-
-
 def _write_prefix_actions(bucket: str, prefix: str) -> list[str]:
     """The two strings one write grant needs: Write on the objects
     themselves, and on the bare prefix.
@@ -217,7 +199,15 @@ def _write_prefix_actions(bucket: str, prefix: str) -> list[str]:
 # and one that waits for a person is still alive, so its key follows when it last asked (task_read_grant.renewed_at) as well.
 LIVE_AGENT_STATUSES = ("running", "awaiting_access", "awaiting_approval", "awaiting_activation")
 _LIVE_AGENT_STATUSES = "(" + ", ".join(f"'{status}'" for status in LIVE_AGENT_STATUSES) + ")"
-TASK_COLUMNS = {"action_run": "action_run_id", "pipeline_run": "pipeline_run_id", "agent_run": "agent_run_id"}
+# Roles whose reads are served by the key of a task and by nothing else: what the register justifies for them is compiled into a
+# task's key, never into the role's own, so the role's key opens nothing.
+TASK_KEYED_ROLES = ("pipeline_action", "agent_runtime")
+TASK_COLUMNS = {"action_run": "action_run_id", "pipeline_run": "pipeline_run_id", "agent_run": "agent_run_id",
+                "huggingface_fetch_job": "huggingface_fetch_job_id"}
+# What each kind of task may be given: a read of its inputs, a write to its output folder, or both. An agent run only reads; a
+# Hugging Face fetch job only writes.
+TASK_READS = ("action_run", "pipeline_run", "agent_run")
+TASK_WRITES = ("action_run", "pipeline_run", "huggingface_fetch_job")
 
 
 def _task_kinds(ttl: int) -> dict[str, dict]:
@@ -236,15 +226,21 @@ def _task_kinds(ttl: int) -> dict[str, dict]:
         },
         "pipeline_run": {
             "table": "pipeline_run", "column": "pipeline_run_id",
-            "live": f"r.ended_at is null and g.renewed_at > now() - {ask}",
+            "live": f"r.ended_at is null and {{asked}} > now() - {ask}",
             "over": f"(r.ended_at is not null or l.last <= now() - {ask})",
             "moment": f"case when r.ended_at is not null then r.ended_at else l.last + {ask} end",
         },
         "agent_run": {
             "table": "agent_run", "column": "agent_run_id",
-            "live": f"r.status in {_LIVE_AGENT_STATUSES} and g.renewed_at > now() - {ask}",
+            "live": f"r.status in {_LIVE_AGENT_STATUSES} and {{asked}} > now() - {ask}",
             "over": f"(r.status not in {_LIVE_AGENT_STATUSES} or l.last <= now() - {ask})",
             "moment": f"case when r.status not in {_LIVE_AGENT_STATUSES} then coalesce(r.ended_at, l.last) else l.last + {ask} end",
+        },
+        "huggingface_fetch_job": {
+            "table": "huggingface_fetch_job", "column": "huggingface_fetch_job_id",
+            "live": f"r.status = 'running' and r.started_at > now() - {ask}",
+            "over": f"(r.status <> 'running' or r.started_at <= now() - {ask})",
+            "moment": f"coalesce(r.ended_at, r.started_at + {ask})",
         },
     }
 
@@ -334,6 +330,7 @@ def _minted_identities(*, as_of=None) -> list[dict]:
              join tenant_storage_provision p
                     on p.tenant_id = si.tenant_id and p.backend = 'seaweedfs'
             where si.lease_id is null and si.agent_run_id is null and si.action_run_id is null and si.pipeline_run_id is null
+              and si.huggingface_fetch_job_id is null
               and si.backend = 'seaweedfs'
               and si.ended_at is null""",
     ):
@@ -378,19 +375,15 @@ def _minted_identities(*, as_of=None) -> list[dict]:
     # lapses drops out of the next print, and the key stops working then.
     from . import task_credential
 
-    for kind, spec in _task_kinds(task_credential.DEFAULT_TTL_SECONDS).items():
+    #
+    # The same key serves a task's writes: the folder a write grant reserved for it, for as long as the grant is renewed (the task keeps
+    # asking) and the task is alive. A writer's key opens that one folder for writing and nothing else, so a writer no longer holds the
+    # role's bucket-wide read.
+    kinds = _task_kinds(task_credential.DEFAULT_TTL_SECONDS)
+    for kind, spec in kinds.items():
         runs: dict[str, dict] = {}
-        for row in db.all_rows(
-            f"""select si.identity_name, si.access_key_id, si.tenant_id,
-                      si.secret_ciphertext, si.secret_wrapped_key,
-                      v.storage_prefix, p.bucket
-                 from storage_identity si
-                 join {spec["table"]} r on r.id = si.{spec["column"]}
-                 join task_read_grant g on g.{spec["column"]} = r.id
-                 join dataset_version v on v.id = g.dataset_version_id
-                 join tenant_storage_provision p
-                        on p.tenant_id = v.tenant_id and p.backend = 'seaweedfs'
-                where si.ended_at is null and {spec["live"]}"""):
+
+        def entry_for(row: dict) -> dict:
             entry = runs.get(row["identity_name"])
             if entry is None:
                 secret = crypto.open(
@@ -402,7 +395,33 @@ def _minted_identities(*, as_of=None) -> list[dict]:
                     "credentials": [{"accessKey": row["access_key_id"], "secretKey": secret.decode("utf-8")}],
                     "actions": [],
                 }
-            entry["actions"] += _read_prefix_actions(row["bucket"], row["storage_prefix"])
+            return entry
+
+        if kind in TASK_READS:
+            for row in db.all_rows(
+                f"""select si.identity_name, si.access_key_id, si.tenant_id,
+                          si.secret_ciphertext, si.secret_wrapped_key,
+                          v.storage_prefix, p.bucket
+                     from storage_identity si
+                     join {spec["table"]} r on r.id = si.{spec["column"]}
+                     join task_read_grant g on g.{spec["column"]} = r.id
+                     join dataset_version v on v.id = g.dataset_version_id
+                     join tenant_storage_provision p
+                            on p.tenant_id = v.tenant_id and p.backend = 'seaweedfs'
+                    where si.ended_at is null and {spec["live"].format(asked="g.renewed_at")}"""):
+                entry_for(row)["actions"] += _read_prefix_actions(row["bucket"], row["storage_prefix"])
+        if kind in TASK_WRITES:
+            for row in db.all_rows(
+                f"""select si.identity_name, si.access_key_id, si.tenant_id,
+                          si.secret_ciphertext, si.secret_wrapped_key,
+                          w.storage_prefix, w.bucket
+                     from storage_identity si
+                     join {spec["table"]} r on r.id = si.{spec["column"]}
+                     join write_grant w on w.task_kind = %s and w.task_id = r.id
+                    where si.ended_at is null and {spec["live"].format(asked="w.renewed_at")}
+                      and w.renewed_at > now() - make_interval(secs => %s)""",
+                (kind, config.WRITE_GRANT_ACTIVE_SECONDS)):
+                entry_for(row)["actions"] += _write_prefix_actions(row["bucket"], row["storage_prefix"])
         for entry in runs.values():
             entry["actions"] = sorted(set(entry["actions"]))
             identities.append(entry)
@@ -628,10 +647,6 @@ def desired_document(*, as_of=None) -> dict:
         )
     buckets = _buckets()
     keep = justified_pairs(as_of=as_of)
-    # Not measured against `as_of`: see justified_write_pairs()'s own
-    # docstring for why a write grant needs no time-bounded replay the way a
-    # lease-derived read does.
-    write_keep = justified_write_pairs()
 
     admin_key, admin_secret = config.STORAGE_ADMIN
     identities = [{
@@ -647,21 +662,16 @@ def desired_document(*, as_of=None) -> dict:
             # nothing of any other. The shared key this replaces could read every organisation's bucket.
             for tenant, owned in sorted(tenant_buckets.items()):
                 actions = [f"{verb}:{bucket}" for verb in verbs for bucket in owned]
-                actions += [a for held_by, bucket, prefix in keep if held_by == role and bucket in owned
+                actions += [a for held_by, bucket, prefix in keep if held_by == role and bucket in owned and role not in TASK_KEYED_ROLES
                             for a in _prefix_actions(bucket, prefix)]
-                actions += [a for held_by, bucket, prefix in write_keep if held_by == role and bucket in owned
-                            for a in _write_prefix_actions(bucket, prefix)]
                 key, secret = tenant_role_key(role, tenant)
                 identities.append({"name": tenant_identity_name(role, tenant), "credentials": [{"accessKey": key, "secretKey": secret}],
                                    "actions": sorted(set(actions))})
             continue
         actions = [f"{verb}:{bucket}" for verb in verbs for bucket in buckets]
         for held_by, bucket, prefix in keep:
-            if held_by == role:
+            if held_by == role and role not in TASK_KEYED_ROLES:
                 actions.extend(_prefix_actions(bucket, prefix))
-        for held_by, bucket, prefix in write_keep:
-            if held_by == role:
-                actions.extend(_write_prefix_actions(bucket, prefix))
         key, secret = config.ROLE_STORAGE_KEYS[role]
         identities.append({
             "name": role,
@@ -695,7 +705,7 @@ def identity_for_tenant_ingest(tenant_id: str) -> dict:
         "select identity_name, access_key_id, secret_ciphertext, "
         "secret_wrapped_key from storage_identity "
         "where tenant_id = %s and lease_id is null and agent_run_id is null "
-        "and action_run_id is null and pipeline_run_id is null and backend = 'seaweedfs'",
+        "and action_run_id is null and pipeline_run_id is null and huggingface_fetch_job_id is null and backend = 'seaweedfs'",
         (tenant_id,),
     )
     if row:
@@ -994,7 +1004,8 @@ def ingest_is_active(tenant_id: str) -> bool:
              join tenant_storage_provision p
                on p.tenant_id = i.tenant_id and p.backend = 'seaweedfs'
             where i.tenant_id = %s and i.lease_id is null
-              and i.agent_run_id is null and i.action_run_id is null and i.pipeline_run_id is null and i.backend = 'seaweedfs'""",
+              and i.agent_run_id is null and i.action_run_id is null and i.pipeline_run_id is null
+              and i.huggingface_fetch_job_id is null and i.backend = 'seaweedfs'""",
         (tenant_id,),
     )
     return bool(row) and is_active(row["since"])
@@ -1082,12 +1093,15 @@ def activation_status() -> dict:
     # successful print still has its key in the live document, so it is counted here and the next tick drops the key.
     from . import task_credential
     ended_runs = 0
-    for spec in _task_kinds(task_credential.DEFAULT_TTL_SECONDS).values():
+    for kind, spec in _task_kinds(task_credential.DEFAULT_TTL_SECONDS).items():
+        # A task that only writes (a Hugging Face fetch job) has no read grants; `l.last` is then empty and its "over" never uses it.
+        last = (f"select max(g.renewed_at) as last from task_read_grant g where g.{spec['column']} = r.id"
+                if kind in TASK_READS else "select null::timestamptz as last")
         ended_runs += db.one(
             f"""select count(*) as n
                  from storage_identity si
                  join {spec["table"]} r on r.id = si.{spec["column"]}
-                 left join lateral (select max(g.renewed_at) as last from task_read_grant g where g.{spec["column"]} = r.id) l on true
+                 left join lateral ({last}) l on true
                 where si.ended_at is null and {spec["over"]}
                   and (%s::timestamptz is null or {spec["moment"]} >= %s)""",
             (since, since))["n"]

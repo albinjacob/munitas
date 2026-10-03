@@ -52,19 +52,12 @@ role_floor := {
 # standing bucket access must (test_standing_bucket_access_is_held_only_in_the_roles_own_organisation), so that a new one cannot
 # be cross-organisation by leaving the word out.
 #
-# `pipeline_action` no longer holds standing Write here. Reading anything was
-# already made request-justified (task_credential.py, item 65); writing was
-# the one verb still trusted on the static key alone, the only role and only
-# verb still running on "just trust the password" (see
-# docs/internal/design/write-credential-rationale.md). A task now proves itself the
-# same way for a write as for a read, and platform/api/app/grants.py adds
-# whatever write_grant actually justifies from that proof -- see
-# justified_write_pairs() there. List/Tagging stay standing: they expose
-# object names, not contents or the ability to alter them, a materially
-# smaller blast radius than Read or Write, so narrowing them the same way was
-# asked about and deliberately deferred.
+# No role holds a bucket-wide verb. A task that reads or writes is given a key of its own, made for that task and ending with
+# it (platform/api/app/grants.py, _minted_identities): a read of the folders of the versions it was allowed, and a write of the one
+# folder reserved for it. The pipeline was the last role to hold standing bucket access (Read, List, Tagging); its steps, its
+# derivations and its writers now each have a key of their own, so its role key opens nothing by itself.
 storage_roles := {
-	"pipeline_action": {"every_bucket": ["Read", "List", "Tagging"], "scope": "own_tenant"},
+	"pipeline_action": {"every_bucket": [], "scope": "own_tenant"},
 	"training_job": {"every_bucket": [], "scope": "own_tenant"},
 	"annotation_tool": {"every_bucket": [], "scope": "own_tenant"},
 	"notebook_explore": {"every_bucket": [], "scope": "own_tenant"},

@@ -1,15 +1,16 @@
-"""U112: no storage key opens more than one organisation's data, and the pipeline's is one key per organisation.
+"""U112: no storage key opens more than one organisation's data, and no role's own key opens any.
 
 The pipeline used to hold one key, set in configuration, the same for every organisation, and the policy gave it Read and List on
-every bucket. Anyone who held it, and the worker did, could read every organisation's data, and the "scoped" credentials the
-platform handed out were that same key with one folder added. It is now one key per organisation (`scope: own_tenant` in the
-policy), each opening that organisation's bucket and what the register justifies in it. This checks the property that matters, on
-the live permissions and with real requests, and not a list of keys:
+every bucket. Anyone who held it, and the worker did, could read every organisation's data. It became one key per organisation, and
+then, once every task had a key of its own (U114, U116, U117), the role's key was left with nothing to open. This checks the property
+that matters, on the live permissions and with real requests, and not a list of keys:
 
-  * the invariant: in the permissions storage actually holds, no identity but the platform administrator's names the bucket of
-    more than one organisation, whatever its role;
-  * the old shared key is gone, and an organisation's key reads its own bucket and nothing of another's;
-  * the endpoint that hands a worker its key gives a task the key of its own organisation only.
+  * the invariant: in the permissions storage actually holds, no identity but the platform administrator's names the bucket of more
+    than one organisation, whatever its role;
+  * the invariant: no identity holds a bucket-wide verb except the administrator's, an organisation's own upload key, and the listing a
+    table job needs to write a table (names only, for the life of the job);
+  * the old shared key is gone, and an organisation's pipeline key opens nothing at all;
+  * the endpoint that used to hand a worker the organisation's key no longer exists.
 
     docker compose exec -T munitas-api python /verify/v112_pipeline_key_per_organisation.py
 """
@@ -54,6 +55,12 @@ def main() -> int:
                 wide.append((identity["name"], sorted(reached)[:3]))
         check(f"of {len(live)} identities in the live permissions, none but the administrator's names more than one organisation's bucket",
               not wide, str(wide[:2]))
+        bucket_wide = sorted((i["name"], a) for i in live for a in i.get("actions", [])
+                             if ":" in a and "/" not in a.split(":", 1)[1] and not (
+                                 i["name"] == grants.ADMIN_IDENTITY or i["name"].startswith("ingest-")
+                                 or (i["name"].startswith("tj-") and a.startswith("List:"))))
+        check("no identity holds a bucket-wide verb except the administrator's, an organisation's upload key, and a table job's listing",
+              not bucket_wide, str(bucket_wide[:3]))
         check("the pipeline has no key shared by every organisation: no identity is the bare role",
               "pipeline_action" not in {i["name"] for i in live}, sorted(i["name"] for i in live if i["name"].startswith("pipeline"))[:3])
         names = {i["name"] for i in live}
@@ -76,43 +83,21 @@ def main() -> int:
         access, secret = grants.tenant_role_key("pipeline_action", one.id)
         mine = s3_client(access, secret)
         import time
-        for _ in range(20):  # storage reads its permissions a moment after they are printed
-            if attempt(lambda: mine.get_object(Bucket=bucket_one, Key=first["records_key"])["Body"].read(5)) == "allowed":
-                break
-            time.sleep(1)
-        check("an organisation's key reads its own bucket", attempt(lambda: mine.get_object(Bucket=bucket_one, Key=first["records_key"])["Body"].read(5)) == "allowed"
-              and attempt(lambda: mine.list_objects_v2(Bucket=bucket_one)) == "allowed")
-        check("and reads nothing of another organisation's: not an object, not a listing",
+        time.sleep(3)  # storage reads its permissions a moment after they are printed
+        check("an organisation's pipeline key opens nothing of its own bucket: not an object, not a listing, not a write",
+              attempt(lambda: mine.get_object(Bucket=bucket_one, Key=first["records_key"])) == "AccessDenied"
+              and attempt(lambda: mine.list_objects_v2(Bucket=bucket_one)) == "AccessDenied"
+              and attempt(lambda: mine.put_object(Bucket=bucket_one, Key=f"{one.id}/stray.txt", Body=b"x")) == "AccessDenied")
+        check("nor anything of another organisation's",
               attempt(lambda: mine.get_object(Bucket=bucket_two, Key=theirs["records_key"])) == "AccessDenied"
-              and attempt(lambda: mine.list_objects_v2(Bucket=bucket_two)) == "AccessDenied")
-        check("and writes nowhere without a write grant, its own bucket included",
-              attempt(lambda: mine.put_object(Bucket=bucket_one, Key=f"{one.id}/stray.txt", Body=b"x")) == "AccessDenied"
+              and attempt(lambda: mine.list_objects_v2(Bucket=bucket_two)) == "AccessDenied"
               and attempt(lambda: mine.put_object(Bucket=bucket_two, Key="stray.txt", Body=b"x")) == "AccessDenied")
-        check("control: the platform administrator's key reads the other organisation's object, so these refusals are the key's own",
-              attempt(lambda: s3_client(*ADMIN).get_object(Bucket=bucket_two, Key=theirs["records_key"])["Body"].read(5)) == "allowed")
+        check("control: the platform administrator's key reads both objects, so these refusals are the key's own",
+              attempt(lambda: s3_client(*ADMIN).get_object(Bucket=bucket_two, Key=theirs["records_key"])["Body"].read(5)) == "allowed"
+              and attempt(lambda: s3_client(*ADMIN).get_object(Bucket=bucket_one, Key=first["records_key"])["Body"].read(5)) == "allowed")
 
-        heading("The endpoint that gives a worker its key")
-
-        def ask(headers: dict, tenant: str | None = None):
-            return httpx.post(f"{API}/storage-keys/pipeline", params={"tenant_id": tenant} if tenant else None, headers=headers, timeout=60)
-
-        def token(kind: str, tenant: str) -> dict:
-            return {"X-Task-Credential": task_credential.mint(principal="x", task_kind=kind, task_id=str(uuid.uuid4()), tenant_id=tenant)}
-
-        check("no credential is refused", ask({}).status_code == 403)
-        check("the worker token without an organisation is refused", ask(WORKER_HEADERS).status_code == 403)
-        check("a made-up task credential is refused", ask({"X-Task-Credential": "not.a.credential"}).status_code == 403)
-        r = ask(token("pipeline_run", one.id))
-        check("a pipeline task is given the key of its own organisation", r.status_code == 200
-              and (r.json()["access_key"], r.json()["secret_key"]) == (access, secret) and r.json()["bucket"] == bucket_one, f"{r.status_code}")
-        check("an action run is given it too", ask(token("action_run", one.id)).status_code == 200)
-        check("a task cannot ask for another organisation's key", ask(token("pipeline_run", one.id), two.id).status_code == 403)
-        check("a table job's credential is not a pipeline task's", ask(token("table_write_job", one.id)).status_code == 403)
-        check("nor is an agent run's", ask(token("agent_run", one.id)).status_code == 403)
-        r = ask(WORKER_HEADERS, two.id)
-        check("the worker token with an organisation named is given that organisation's key (what the worker could always do)",
-              r.status_code == 200 and r.json()["access_key"] == grants.tenant_role_key("pipeline_action", two.id)[0])
-        check("an organisation with no storage has no key to give", ask(WORKER_HEADERS, f"nobody-{uuid.uuid4().hex[:8]}").status_code == 404)
+        heading("The endpoint that used to give a worker the organisation's key")
+        check("it no longer exists", httpx.post(f"{API}/storage-keys/pipeline", params={"tenant_id": one.id}, headers=WORKER_HEADERS, timeout=60).status_code in (404, 405))
 
         heading("A production start refuses the secrets this repository publishes")
         import os

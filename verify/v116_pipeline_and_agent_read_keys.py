@@ -102,8 +102,8 @@ def main() -> int:
         heading("Controls: the refusals below are the key's own")
         check("the administrator's key reads the sibling and the other organisation's object",
               read(admin_client, v3) == "allowed" and attempt(lambda: admin_client.get_object(Bucket=their_bucket, Key=theirs["records_key"])["Body"].read(5)) == "allowed")
-        check("the organisation's role key reads the sibling too, which is what a task's own key replaces",
-              eventually(lambda: read(role_client, v3), "allowed") == "allowed")
+        check("the organisation's role key opens nothing of its bucket, so a task's own key replaced no standing reach",
+              read(role_client, v3) == "AccessDenied")
 
         # -------------------------------------------------------------------------------------------------- a pipeline run
         heading("A pipeline run adopts a sealed version")
@@ -181,8 +181,16 @@ def main() -> int:
         check("and the key works again, which is how a run that waited resumes", eventually(lambda: read(waiting_client, v1), "allowed") == "allowed")
         check("still not the sibling", read(waiting_client, v3) == "AccessDenied")
 
-        heading("The role's own key is untouched")
-        check("the organisation's role key still reads its input (other callers still use it)", read(role_client, v1) == "allowed")
+        heading("The roles' own keys open nothing")
+        check("the organisation's pipeline role key cannot read the input", read(role_client, v1) == "AccessDenied")
+        agent_role_client = s3_client(*grants.tenant_role_key("agent_runtime", org.id))
+        check("nor can the organisation's agent role key, whatever the platform has allowed the agent runs", eventually(lambda: read(agent_role_client, v1), "AccessDenied") == "AccessDenied")
+        check("and the agent role's key carries no entry at all", live_actions(f"agent_runtime~{org.id}") == [], str(live_actions(f"agent_runtime~{org.id}"))[:120])
+        no_task = api("POST", "/credentials", json={
+            "principal": agent_principal, "principal_kind": "workload", "roles": ["agent_runtime"], "tenant_id": org.id,
+            "dataset_version_id": v1["id"], "purpose": "verification", "agent_run_id": run["id"], "run_secret": run["token"]})
+        check("an agent whose run has ended is refused, and told why, not handed a key that fails at storage",
+              no_task.status_code == 403, f"{no_task.status_code} {no_task.text[:140]}")
     finally:
         priya, ravi = bearer_for(ADMIN_A), bearer_for(ADMIN_B)
         for o in (org, other):

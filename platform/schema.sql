@@ -1812,6 +1812,10 @@ create unique index if not exists task_read_grant_agent_run_uq
   on task_read_grant (agent_run_id, dataset_version_id) where agent_run_id is not null;
 
 alter table storage_identity add column if not exists pipeline_run_id uuid references pipeline_run(id);
+-- A Hugging Face fetch job writes the files it fetches, so it too has a key of its own: Write on the one folder it was given.
+alter table storage_identity add column if not exists huggingface_fetch_job_id uuid references huggingface_fetch_job(id);
+create unique index if not exists storage_identity_one_per_hf_job
+  on storage_identity (huggingface_fetch_job_id) where huggingface_fetch_job_id is not null;
 create unique index if not exists storage_identity_one_per_pipeline_run
   on storage_identity (pipeline_run_id) where pipeline_run_id is not null;
 create unique index if not exists storage_identity_one_per_agent_run
@@ -1820,7 +1824,8 @@ create unique index if not exists storage_identity_one_per_agent_run
 drop index if exists storage_identity_one_ingest_per_tenant;
 create unique index if not exists storage_identity_one_ingest_per_tenant
   on storage_identity (tenant_id, backend)
-  where lease_id is null and agent_run_id is null and action_run_id is null and pipeline_run_id is null;
+  where lease_id is null and agent_run_id is null and action_run_id is null and pipeline_run_id is null
+    and huggingface_fetch_job_id is null;
 
 -- A closed organisation grants no roles, takes no new asks, and gains no
 -- pipelines. Guarded the same way every other tenant-scoped table is, so
