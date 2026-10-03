@@ -253,6 +253,23 @@ def main() -> int:
     check("the reviewer can see it in their queue", gate["id"] in ids,
           f"{len(ids)} decision(s) listed")
 
+    heading("U62g: what the steps made belongs to the department of what they read")
+
+    with db() as conn:
+        owners = conn.execute(
+            """select act.name as step, d.department_id::text as department
+                 from action_run a
+                 join dataset_action act on act.id = a.action_id
+                 join dataset_version dv on dv.id = a.output_version
+                 join dataset d on d.id = dv.dataset_id
+                where a.pipeline_run_id = %s order by a.started_at""",
+            (run_id,),
+        ).fetchall()
+    wanted = str(department("Verification"))
+    check(f"all {len(owners)} steps' datasets belong to the department of the recordings they started from",
+          len(owners) == 4 and all(o["department"] == wanted for o in owners),
+          str([(o["step"], o["department"]) for o in owners]))
+
     heading("U62f: the artefacts v14_aligned has been waiting for exist")
 
     with db() as conn:

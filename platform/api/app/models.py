@@ -35,6 +35,9 @@ class SchemaContractIn(BaseModel):
 class DatasetIn(BaseModel):
     tenant_id: str
     name: str
+    # The version this dataset is made from, when it is the output of a step that read one. The dataset then belongs to the same
+    # department as the dataset that version belongs to: a dataset with no owning department is one nobody can approve access to.
+    derived_from_version_id: str | None = None
 
 
 class DatasetVersionIn(BaseModel):

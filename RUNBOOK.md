@@ -446,6 +446,71 @@ temporal schedule describe nightly-tidy-probes
 
 ---
 
+## Clearing the canary tenant's old fixtures
+
+**Script:** `scripts/admin/tidy-canary.py`, run automatically at the end of `run-verification.ps1`
+(skip it with `-NoTidyCanary`; change the age with `-TidyCanaryOlderThanHours`, default 2).
+
+**Why:** the verification suite writes its fixtures into the `canary` tenant. A sealed version cannot be
+deleted through the platform (check V1 proves it), so those rows used to pile up for ever, thousands of
+them, and they show in screens: a custodian's queue that lists the oldest 100 arrivals stops showing new
+ones once the suite has left 100 behind. `reclaim-storage.py` frees the files and keeps the rows; this
+removes the rows and the files of canary datasets that are old enough. It is test-harness housekeeping, not
+platform behaviour: nothing in the API calls it.
+
+**It works on the canary tenant and on nothing else.** It takes no tenant argument (`--tenant` is
+refused), and the tenant is a constant in `scripts/admin/_canary_purge.py`. The guards are checked at every
+step, and the tool prints `[guard ok]` for the first three:
+
+| Guard | What is checked |
+|---|---|
+| G1 | the tenant is the constant `canary`, never read from an argument or the environment |
+| G2 | the database row has the id `canary` and the purpose `canary` |
+| G3 | the storage binding is SeaweedFS and the bucket is exactly `munitas-canary` |
+| G4, G5 | every dataset is read back from the database and belongs to canary, then locked and checked again inside the transaction that deletes it |
+| G6 | every delete statement is scoped to canary in its own SQL wherever the table has a tenant column |
+| G7 | the number of rows every other tenant has in the tables touched is the same before and after, or the whole batch is rolled back |
+| G8 | every stored object is in canary's bucket under `canary/<a verified dataset>/` before it is deleted |
+
+Check U119 proves each guard refuses, and that a canary dataset is deleted while a second organisation's
+dataset, version and object are untouched.
+
+```bash
+# What would go. Changes nothing.
+python scripts/admin/tidy-canary.py
+
+# Delete what is older than 2 hours.
+python scripts/admin/tidy-canary.py --apply
+
+# A first clearing of a large backlog (the default cap is 3000 datasets).
+python scripts/admin/tidy-canary.py --apply --max-datasets 6000
+```
+
+- Only datasets older than `--older-than-hours` go, so the run just made is still there to look at when it fails.
+- Datasets that cannot be deleted without each other (a pipeline run's source and the outputs of its steps)
+  are deleted together, and only when every one of them is old enough. A group with a young member is left whole.
+- It leaves alone the three canary datasets whose files were freed most recently, and the oldest dataset that has a sealed
+  version and has not been freed yet, so that the console's "the files were freed" screen (test U32) always has a version to
+  look at once one exists. Files are freed a day after a version is made, so that test skips until the first one is.
+- `--max-datasets` (default 3000) is a circuit breaker: a selection bigger than it is refused outright, so a
+  mistake in the age calculation cannot turn into a mass delete. It is not a platform limit.
+- Exit codes: 0 done or nothing to do, 1 a batch failed (nothing in that batch was changed), 2 a guard refused.
+
+**The storage permissions.** Deleting a dataset removes its rows at once, but the permissions document in
+storage keeps its folder grants until it is printed again, and the platform's safety guard refuses a print
+that removes more than 40% of them (a print that is refused also leaves new keys unable to activate, which
+shows as 503 errors). So after every batch the tool runs `scripts/admin/_canary_reprint.py` inside the API
+container. That relaxes the guard only when it can prove that everything the print removes is a folder grant,
+in canary's bucket, of a dataset that no longer exists, and that every identity that disappears is a lease,
+catalog, task or table job key. If any of that fails, nothing is printed and it names what it found. If
+`/health` shows `storage_permissions` failing after a canary clear, run it by hand:
+
+```bash
+wsl -d Ubuntu-20.04 -- docker exec munitas-munitas-api-1 python /scripts-admin/_canary_reprint.py
+```
+
+---
+
 ## Closing a tenant
 
 **Script:** `scripts/admin/retire-tenant.py`

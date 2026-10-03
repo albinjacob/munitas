@@ -160,10 +160,13 @@ def register_contract(contract: Contract, tenant_id: str | None = None) -> str:
     )["id"]
 
 
-def ensure_dataset(name: str, tenant_id: str | None = None) -> str:
-    return _post(
-        "/datasets", {"tenant_id": tenant_id or config.TENANT, "name": name}
-    )["id"]
+def ensure_dataset(name: str, tenant_id: str | None = None, derived_from: str | None = None) -> str:
+    """The dataset of this name, made if it does not exist. `derived_from` is the version a step reads, and the dataset then takes the
+    department of the dataset that version is in; a step with no input version (the corpus ingest) has none to name."""
+    body = {"tenant_id": tenant_id or config.TENANT, "name": name}
+    if derived_from:
+        body["derived_from_version_id"] = derived_from
+    return _post("/datasets", body)["id"]
 
 
 def next_location(dataset_id: str, tenant_id: str | None = None) -> dict:

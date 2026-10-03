@@ -218,9 +218,19 @@ def create_dataset(body: models.DatasetIn, _worker: None = Depends(auth.worker_o
     )
     if existing:
         return {"id": str(existing["id"]), "created": False}
+    # A dataset made from a version belongs to the department of the dataset that version is in, so whoever is accountable for the
+    # input is accountable for what is made from it, and access to it can be approved. The version must be one of this organisation's.
+    department_id = None
+    if body.derived_from_version_id:
+        source = db.one(
+            """select d.department_id, v.tenant_id from dataset_version v join dataset d on d.id = v.dataset_id
+                where v.id = %s""", (body.derived_from_version_id,))
+        if not source or source["tenant_id"] != body.tenant_id:
+            raise HTTPException(422, {"reasons": ["the version this dataset is made from does not exist in this organisation"]})
+        department_id = source["department_id"]
     row = db.execute(
-        "insert into dataset (id, tenant_id, name) values (%s, %s, %s) returning id",
-        (_uuid(), body.tenant_id, body.name),
+        "insert into dataset (id, tenant_id, name, department_id) values (%s, %s, %s, %s) returning id",
+        (_uuid(), body.tenant_id, body.name, department_id),
     )
     return {"id": str(row["id"]), "created": True}
 

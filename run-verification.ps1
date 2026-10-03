@@ -17,11 +17,17 @@
 #
 # Pass -ReclaimOlderThanDays 0 to sweep everything eligible right now, or
 # -NoReclaim to record the run and free nothing.
+#
+# A fourth step removes the canary tenant's old fixtures, rows and files, with scripts/admin/tidy-canary.py. It is test-harness
+# housekeeping for the one tenant the suite writes into, guarded at every point to touch that tenant and nothing else, and it only
+# removes what is older than -TidyCanaryOlderThanHours (2), so the run just made is still there to look at. -NoTidyCanary skips it.
 
 param(
     [string]$WslDistro = "Ubuntu-20.04",
     [int]$ReclaimOlderThanDays = 1,
-    [switch]$NoReclaim
+    [switch]$NoReclaim,
+    [int]$TidyCanaryOlderThanHours = 2,
+    [switch]$NoTidyCanary
 )
 
 $ErrorActionPreference = "Stop"
@@ -75,6 +81,17 @@ if (-not $NoReclaim) {
     & $venvPython (Join-Path $PSScriptRoot "scripts\admin\reclaim-storage.py") `
         --older-than $ReclaimOlderThanDays `
         --reason "canary verification leftovers, reclaimed by run-verification.ps1"
+}
+
+# The canary tenant's old fixtures. After the record was kept, like the reclaim above, and for the same reason. A failure here is
+# reported and does not change the suite's own result: the suite passed or failed on its checks, and housekeeping is not one of them.
+if (-not $NoTidyCanary) {
+    Write-Host ""
+    Write-Host "Removing canary fixtures older than $TidyCanaryOlderThanHours hour(s)..."
+    & $venvPython (Join-Path $PSScriptRoot "scripts\admin\tidy-canary.py") --apply --older-than-hours $TidyCanaryOlderThanHours
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "The canary tidy did not finish (exit $LASTEXITCODE). The suite's result is unchanged; the output above says why." -ForegroundColor Yellow
+    }
 }
 
 # The probe tenants this run minted, and their buckets. Here rather than left

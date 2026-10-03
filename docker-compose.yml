@@ -334,6 +334,8 @@ services:
       - ./verify:/verify:ro
       # The tool a recipient uses to open a legal export, so a check can use the real one.
       - ./scripts/client:/client:ro
+      # The canary-only tidy, so a check can prove it refuses everything that is not the canary tenant.
+      - ./scripts/admin:/scripts-admin:ro
       # verify/common.py's own sys.path.insert reaches for
       # Path(__file__).resolve().parent.parent to import ports_config --
       # /verify's parent is container root, so these two land exactly where

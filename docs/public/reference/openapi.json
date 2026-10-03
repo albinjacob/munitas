@@ -424,6 +424,17 @@
       },
       "DatasetIn": {
         "properties": {
+          "derived_from_version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Derived From Version Id"
+          },
           "name": {
             "title": "Name",
             "type": "string"

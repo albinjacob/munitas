@@ -87,6 +87,8 @@ SCRIPTS = [
     ("U114 a derivation run reads with a key of its own, which opens only its inputs and ends with the run", "v114_task_read_keys.py"),
     ("U116 a pipeline run and an agent run read with a key of their own, which opens only what was allowed and ends with the task", "v116_pipeline_and_agent_read_keys.py"),
     ("U117 a writer is handed a key for its one output folder, and not the pipeline role's key", "v117_writer_keys.py"),
+    ("U118 a dataset made from a version belongs to the department of the dataset that version is in", "v118_outputs_take_the_inputs_department.py"),
+    ("U119 the canary tidy works on the canary tenant and refuses everything else, at every point", "v119_canary_tidy_is_canary_only.py"),
 ]
 
 here = Path(__file__).parent

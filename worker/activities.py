@@ -368,7 +368,7 @@ def transcribe(params: dict) -> dict:
     """
 
     schema_id = cp.register_contract(contracts.TRANSCRIBED, _tenant(params))
-    dataset_id = cp.ensure_dataset(params["dataset"], _tenant(params))
+    dataset_id = cp.ensure_dataset(params["dataset"], _tenant(params), derived_from=params["input_version"])
     run = cp.start_run(
         params["action_id"], params["idempotency_key"], [params["input_version"]], params,
         operator=_pipeline_principal(_tenant(params)),
@@ -474,7 +474,7 @@ def detect(params: dict) -> dict:
     ensemble.load()
 
     schema_id = cp.register_contract(contracts.DETECTED, _tenant(params))
-    dataset_id = cp.ensure_dataset(params["dataset"], _tenant(params))
+    dataset_id = cp.ensure_dataset(params["dataset"], _tenant(params), derived_from=params["input_version"])
     run = cp.start_run(
         params["action_id"], params["idempotency_key"], [params["input_version"]], params,
         operator=_pipeline_principal(_tenant(params)),
@@ -552,7 +552,7 @@ def handoff(params: dict) -> dict:
     describing only the parts of the pipeline that were convenient.
     """
     schema_id = cp.register_contract(contracts.DETECTED, _tenant(params))
-    dataset_id = cp.ensure_dataset(params["dataset"], _tenant(params))
+    dataset_id = cp.ensure_dataset(params["dataset"], _tenant(params), derived_from=params["input_version"])
     run = cp.start_run(
         params["action_id"], params["idempotency_key"], [params["input_version"]], params,
         operator=_pipeline_principal(_tenant(params)),
@@ -627,7 +627,7 @@ def redact(params: dict) -> dict:
     from .redact import redact_audio, redact_text
 
     schema_id = cp.register_contract(contracts.REDACTED, _tenant(params))
-    dataset_id = cp.ensure_dataset(params["dataset"], _tenant(params))
+    dataset_id = cp.ensure_dataset(params["dataset"], _tenant(params), derived_from=params["input_version"])
     run = cp.start_run(
         params["action_id"], params["idempotency_key"], [params["input_version"], params["source_version"]], params,
         operator=_pipeline_principal(_tenant(params)),
