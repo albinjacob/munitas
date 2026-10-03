@@ -80,6 +80,7 @@ SCRIPTS = [
     ("U106 an unexpected error while writing a table never stops a seal and never quotes a value", "v106_projection_unexpected_failure.py"),
     ("U107 a version that must be a table is refused when its table cannot be written, and nothing is left behind", "v107_table_required.py"),
     ("U108 a large table is read in batches and written a file at a time, from lines of JSON or from Parquet", "v108_large_tables.py"),
+    ("U109 a large table is written by a worker in a job, and the platform seals the version when the worker reports", "v109_table_jobs.py"),
 ]
 
 here = Path(__file__).parent

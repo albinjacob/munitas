@@ -69,9 +69,14 @@ def next_version(tenant_id: str, dataset_id: str) -> dict:
     be told the same answer and one would lose. Single producer per dataset is
     the assumption, and a real deployment needs an allocation that takes a lock.
     """
+    # A table job that is waiting or running has reserved a number it has not yet used, so that counts too: without it a
+    # second seal of the same dataset would be given the same folder as the job still writing into it.
     row = db.one(
-        "select coalesce(max(version), 0) as v from dataset_version where dataset_id = %s",
-        (dataset_id,),
+        """select greatest(
+                    (select coalesce(max(version), 0) from dataset_version where dataset_id = %s),
+                    (select coalesce(max(version), 0) from table_job
+                      where dataset_id = %s and status in ('pending', 'running'))) as v""",
+        (dataset_id, dataset_id),
     )
     version = row["v"] + 1
     return {
@@ -130,6 +135,34 @@ def seal(
             iceberg.enforce(why, table_required)
             if projection:
                 manifest += projection.objects
+    return insert_sealed(
+        version_id=version_id, tenant_id=tenant_id, dataset_id=dataset_id, version=reserved["version"], prefix=prefix,
+        storage_backend=storage_backend, visibility_class=visibility_class, manifest=manifest, schema_id=schema_id,
+        produced_by_run=produced_by_run, record_count=record_count, projection=projection, why=why)
+
+
+def insert_sealed(
+    *,
+    version_id: str,
+    tenant_id: str,
+    dataset_id: str,
+    version: int,
+    prefix: str,
+    storage_backend: str,
+    visibility_class: str,
+    manifest: list[dict],
+    schema_id: str,
+    produced_by_run: str | None,
+    record_count: int,
+    projection,
+    why,
+) -> dict:
+    """Write the sealed version, and beside it the pointer to its table or the reason it has none.
+
+    The one place a version row is made, for a seal in a request and for a seal finished after a table job. The manifest
+    is complete when this is called, the table's files included, because the content hash is taken over it here and
+    nothing may be written under the folder afterwards.
+    """
     digest = content_hash(
         {"manifest": manifest, "count": record_count, "prefix": prefix}
     )
@@ -141,7 +174,7 @@ def seal(
               produced_by_run, record_count, content_hash, iceberg_snapshot_id, sealed)
            values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, true)
            returning id""",
-        (version_id, tenant_id, dataset_id, reserved["version"],
+        (version_id, tenant_id, dataset_id, version,
          visibility_class, prefix, storage_backend, json.dumps(manifest),
          schema_id, produced_by_run, record_count, digest,
          projection.snapshot_id if projection else None),
@@ -161,7 +194,7 @@ def seal(
 
     return {
         "id": version_id,
-        "version": reserved["version"],
+        "version": version,
         "storage_prefix": prefix,
         "content_hash": digest,
         "sealed": True,

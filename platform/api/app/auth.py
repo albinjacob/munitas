@@ -234,9 +234,14 @@ def organisation_scope(
         return tenant_id
     if x_task_credential:
         try:
-            return task_credential.verify(x_task_credential).tenant_id
+            claim = task_credential.verify(x_task_credential)
         except task_credential.InvalidTaskCredential as exc:
             raise HTTPException(401, {"reasons": [f"run credential rejected: {exc}"]}) from exc
+        if claim.task_kind == "table_write_job":
+            # A table worker holds this for hours and for one job. It names an organisation, but it is for that job's own
+            # endpoints (table_jobs.py), which check it themselves, and it is not a way to read that organisation's records.
+            raise HTTPException(401, {"reasons": ["a table job's credential is for its own job and cannot be used here"]})
+        return claim.tenant_id
     return current_session(request)["tenant_id"]
 
 

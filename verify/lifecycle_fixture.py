@@ -197,7 +197,7 @@ def drop_org(org: Org) -> None:
         left = conn.execute("select purged_at, purpose from tenant where id = %s", (org.id,)).fetchone()
         if left and not left["purged_at"]:
             conn.execute("update tenant set purpose = 'scratch' where id = %s", (org.id,))
-            for table in ("legal_hold", "lifecycle_event", "catalog_token", "dataset", "schema_contract",
+            for table in ("table_job", "legal_hold", "lifecycle_event", "catalog_token", "dataset", "schema_contract",
                           "directory"):
                 conn.execute(f'delete from "{table}" where tenant_id = %s', (org.id,))
             conn.execute("delete from tenant where id = %s", (org.id,))

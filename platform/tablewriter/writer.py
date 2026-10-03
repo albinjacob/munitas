@@ -400,11 +400,19 @@ def write_table(
     summary_base: dict,
     cfg: Settings,
     cancel: "threading.Event | None" = None,
+    manifest: bool = True,
+    cleanup: bool = True,
 ) -> Projection:
     """Write the records at `records_key` as an Iceberg table at `location`, which is inside `prefix`.
 
     `contract` is {"name", "fields", "primary_key"}. `summary_base` is what the caller wants on the snapshot, which the
     count, the hash and the shape of the records are added to. Raises Skipped when there is nothing honest to write.
+
+    `manifest` and `cleanup` are the two things this does that LIST the table's folder in bulk: a manifest entry for every file
+    written, and the removal of what a failed write left (which also deletes several objects in one request, a bucket-wide
+    permission). A caller whose key is limited to one folder passes False for both, and whoever holds a key that can do those
+    takes over: it lists and hashes the files, and clears the folder when the write did not finish. (Making the table itself
+    needs a list of object names, which the library does to be sure a metadata file is new.)
     """
     fields = contract["fields"]
     if isinstance(fields, str):
@@ -496,12 +504,12 @@ def write_table(
             metadata_location=table.metadata_location,
             snapshot_id=table.current_snapshot().snapshot_id,
             record_count=total, records_sha256=records_sha256,
-            objects=_manifest_entries(client, bucket, folder),
+            objects=_manifest_entries(client, bucket, folder) if manifest else [],
         )
     except BaseException as exc:
         # Whatever this attempt wrote is removed, so a version sealed without its table (or not sealed at all) has nothing
         # under its prefix that its fingerprint does not cover. Anything the removal cannot reach is said so.
-        if not _remove_written(client, bucket, folder):
+        if cleanup and not _remove_written(client, bucket, folder):
             exc.cleanup_incomplete = True  # type: ignore[attr-defined]
         raise
 

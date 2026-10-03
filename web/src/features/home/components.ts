@@ -120,4 +120,18 @@ export const COMPONENTS: Component[] = [
       "A lighter pipeline worker for a fresh install with no GPU next to it (the `quickstart` Compose profile, not the default one). The Windows/WSL2 path this platform is normally developed on already runs its own worker on the host and never starts this one.",
     ifDown: "No effect on a normal install. A quickstart install loses pipeline runs until it is back.",
   },
+  {
+    service: "table-worker",
+    label: "Table worker",
+    purpose:
+      "Writes a large table from the rows a person or a pipeline sent, so that a standard tool can read it. The control plane makes the work and checks the result before it seals the version. It holds no database and no storage key of its own: for each job it is given one key, for one folder.",
+    ifDown: "A large table waits, unsealed, until a worker is back. Small tables are written by the control plane and are not affected.",
+  },
+  {
+    service: "table-worker-dedicated",
+    label: "An organisation's own table worker",
+    purpose:
+      "The same worker, started for one organisation and serving only that organisation. It is not part of the default stack: a platform administrator starts one (scripts/admin/table-worker.py) for an organisation that has been given its own.",
+    ifDown: "That organisation's large tables wait for it, and do not move to the shared workers. The housekeeping screen says so after ten minutes.",
+  },
 ];

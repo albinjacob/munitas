@@ -200,6 +200,14 @@ def may_see_lifecycle(payload: dict) -> tuple[bool, list[str]]:
     return _ask(_SEE_LIFECYCLE_PATH, payload)
 
 
+_TABLE_WORKER_PATH = "/v1/data/munitas/access/table_worker_decision"
+
+
+def may_set_table_worker(payload: dict) -> tuple[bool, list[str]]:
+    """May this principal give an organisation a table worker of its own, or take it back?"""
+    return _ask(_TABLE_WORKER_PATH, payload)
+
+
 _EXPORT_REQUEST_PATH = "/v1/data/munitas/access/export_request_decision"
 _EXPORT_APPROVAL_PATH = "/v1/data/munitas/access/export_approval_decision"
 _EXPORT_CONFIRMATION_PATH = "/v1/data/munitas/access/export_confirmation_decision"

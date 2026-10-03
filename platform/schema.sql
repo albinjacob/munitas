@@ -2565,3 +2565,54 @@ drop trigger if exists refuse_retired_iceberg_projection_note on iceberg_project
 create trigger refuse_retired_iceberg_projection_note
   before insert or update on iceberg_projection_note
   for each row execute function refuse_write_to_retired_tenant();
+
+-- ---------------------------------------------------------------------------
+-- Table jobs.
+--
+-- A table too large to write while a request waits is written by a worker, in a job. The job reserves the
+-- version number and the folder for the version, so nothing else takes them, and the version itself does not
+-- exist until the job has finished: a version is sealed with its table inside it or not at all, and nothing is
+-- written under a sealed folder afterwards. The request that started it is kept whole, so the platform can
+-- finish the seal itself when the worker reports.
+--
+--   pending   waiting for a worker.
+--   running   a worker has asked for the work.
+--   sealed    the version exists. `outcome` says whether it has its table.
+--   refused   a table was required and could not be written. No version was made and its number is free.
+--   expired   nobody finished it in time. No version was made and its number is free.
+--
+-- `queue` is the line of work it was put on when it was made, and does not change afterwards: a job that
+-- waits for an organisation's own worker does not move to the shared pool because that worker is slow.
+-- ---------------------------------------------------------------------------
+alter table tenant add column if not exists table_queue text;
+
+create table if not exists table_job (
+  id              uuid primary key,
+  tenant_id       text not null references tenant(id),
+  dataset_id      uuid not null references dataset(id),
+  version         integer not null,
+  storage_prefix  text not null,
+  storage_backend text not null,
+  request         jsonb not null,
+  queue           text not null,
+  status          text not null check (status in ('pending', 'running', 'sealed', 'refused', 'expired')),
+  attempts        integer not null default 0,
+  created_at      timestamptz not null default now(),
+  dispatched_at   timestamptz,
+  started_at      timestamptz,
+  finished_at     timestamptz,
+  expires_at      timestamptz not null,
+  version_id      uuid,
+  outcome         text,
+  reason          text
+);
+
+-- One job at a time holds a version number of a dataset.
+create unique index if not exists table_job_reserved on table_job (dataset_id, version)
+  where status in ('pending', 'running');
+create index if not exists table_job_tenant_status on table_job (tenant_id, status);
+
+drop trigger if exists refuse_retired_table_job on table_job;
+create trigger refuse_retired_table_job
+  before insert on table_job
+  for each row execute function refuse_write_to_retired_tenant();

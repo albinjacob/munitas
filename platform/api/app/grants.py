@@ -299,6 +299,29 @@ def _minted_identities(*, as_of=None) -> list[dict]:
                         for verb in ("Read", "Write", "List", "Tagging")],
         })
 
+    # A table job's own key: read and write on the one folder the job reserved, in the one bucket of its organisation, for
+    # as long as the job is pending or running and has not expired. It is the only storage key a table worker is ever given.
+    # The secret is derived from the job's id (see table_job_secret), so nothing is stored, and the key stops working at
+    # the next print after the job ends, which the platform makes happen when it finishes the job.
+    #
+    # It can also LIST the names of objects in that one bucket, and this is the one place it is wider than its folder. Storage
+    # authorises a listing on the bucket, never on a folder inside it (a list on a prefix-limited key is refused, however the
+    # prefix is written), and PyIceberg lists before it creates a metadata file, to be sure the file is new. Without it the
+    # library cannot make a table at all. A list shows names, not contents: reading and writing stay on the one folder, and
+    # another organisation's bucket is not reachable by this key at all. verify/v109_table_jobs.py states both.
+    for row in db.all_rows(
+        """select j.id::text as id, j.storage_prefix, p.bucket
+             from table_job j
+             join tenant_storage_provision p on p.tenant_id = j.tenant_id and p.backend = 'seaweedfs'
+            where j.status in ('pending', 'running') and j.expires_at > now()"""):
+        identities.append({
+            "name": table_job_identity(row["id"]),
+            "credentials": [{"accessKey": table_job_access_key(row["id"]), "secretKey": table_job_secret(row["id"])}],
+            "actions": sorted(set(_prefix_actions(row["bucket"], row["storage_prefix"])
+                                  + _write_prefix_actions(row["bucket"], row["storage_prefix"])
+                                  + [f"List:{row['bucket']}"])),
+        })
+
     # The catalog's rolling keys. Each identity holds the keys for the previous,
     # the current and the next epoch, so a key a person was handed a moment ago,
     # or one that is about to be asked for, is always already in the document
@@ -368,6 +391,23 @@ def catalog_secret(identity_name: str, epoch: int) -> str:
                     b"munitas catalog keys v1", hashlib.sha256).digest()
     return hmac.new(root, f"{identity_name}|{epoch}".encode("utf-8"),
                     hashlib.sha256).hexdigest()
+
+
+def table_job_identity(job_id: str) -> str:
+    return f"tj-{job_id[:12]}"
+
+
+def table_job_access_key(job_id: str) -> str:
+    return f"tj-{job_id}"
+
+
+def table_job_secret(job_id: str) -> str:
+    import hashlib
+    import hmac
+    # Derived the way the catalog's secrets are, from the storage administrator's own secret under a label of its own, so
+    # no table job's key can be mistaken for, or computed from, any other kind of key.
+    root = hmac.new(config.STORAGE_ADMIN[1].encode("utf-8"), b"munitas table job keys v1", hashlib.sha256).digest()
+    return hmac.new(root, job_id.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
 def catalog_key_for(principal: str, tenant_id: str, version_id: str,

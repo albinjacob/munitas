@@ -28,6 +28,7 @@ import {
   type FreedVersion,
   type StoragePermissions,
   type TableCopies,
+  type TableJobs,
   type TenantStorage,
 } from "../../api/housekeeping";
 import { Empty, Failure, Loading, Section } from "../../components/states";
@@ -185,6 +186,81 @@ export function Housekeeping() {
  * fault, so it is counted here, and a failure the platform did not recognise raises an alert the way a stalled storage
  * permission does.
  */
+/**
+ * Large tables are written by a worker, in a job, and the version is sealed when the job finishes. A job that has waited too
+ * long for its worker is the quiet fault here: nothing is wrong with the data, and a person is waiting for a dataset. One on
+ * an organisation's own line of work waits for that organisation's worker and no other, so the line is named.
+ */
+function TableJobsSection({ jobs, named }: { jobs: TableJobs; named: boolean }) {
+  if (jobs.pending + jobs.running + jobs.sealed + jobs.refused + jobs.expired === 0) return null;
+  const minutes = Math.round(jobs.stall_seconds / 60);
+  return (
+    <Section
+      title="Tables being written"
+      description="A large table is written by a worker and its version is sealed when the worker has finished. A job that waits for a worker for longer than the limit is reported here."
+    >
+      {jobs.alert && (
+        <div
+          role="alert"
+          data-testid="table-jobs-alert"
+          className="mb-3 rounded border border-red-300 bg-red-50 p-3 text-sm text-red-900"
+        >
+          <strong className="font-semibold">
+            {jobs.stalled} {jobs.stalled === 1 ? "table has" : "tables have"} waited more than {minutes} minutes for a worker.
+          </strong>{" "}
+          The version is not sealed yet. Where the table is on an organisation's own line of work, that organisation's worker is
+          not running.
+        </div>
+      )}
+      <dl data-testid="table-jobs" className="grid grid-cols-2 gap-3 text-sm md:grid-cols-5">
+        {[
+          ["Waiting for a worker", jobs.pending],
+          ["Being written", jobs.running],
+          ["Sealed, last 7 days", jobs.sealed],
+          ["Refused, last 7 days", jobs.refused],
+          ["Ran out of time, last 7 days", jobs.expired],
+        ].map(([label, n]) => (
+          <div key={label as string} className="rounded border border-slate-200 bg-white p-3">
+            <dt className="text-xs uppercase tracking-wide text-slate-500">{label}</dt>
+            <dd className="mt-1 text-lg tabular-nums">{n}</dd>
+          </div>
+        ))}
+      </dl>
+      {jobs.waiting.length > 0 && (
+        <table data-testid="table-jobs-waiting" className="mt-4 w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
+              <th className="pb-2 pr-4">{named ? "Dataset" : "Organisation"}</th>
+              <th className="pb-2 pr-4">State</th>
+              <th className="pb-2">Waiting for</th>
+            </tr>
+          </thead>
+          <tbody>
+            {jobs.waiting.map((w) => (
+              <tr key={w.job_id} className="border-t border-slate-100 align-top">
+                <td className="py-2 pr-4">{named ? `${w.dataset_name} v${w.version}` : `${w.tenant_id} v${w.version}`}</td>
+                <td className="py-2 pr-4">
+                  <span
+                    className={`mr-2 rounded px-1.5 py-0.5 text-xs font-medium ${
+                      w.stalled ? "bg-red-100 text-red-900" : "bg-slate-100 text-slate-700"
+                    }`}
+                  >
+                    {w.status === "running" ? "Being written" : w.stalled ? "Stalled" : "Waiting"}
+                  </span>
+                  {Math.round(w.waiting_seconds / 60)} min
+                </td>
+                <td className="py-2 text-slate-600">
+                  {w.dedicated_worker ? `the organisation's own worker (${w.queue})` : "the shared workers"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </Section>
+  );
+}
+
 function TableCopiesSection({ copies, named }: { copies: TableCopies; named: boolean }) {
   return (
     <Section
@@ -296,6 +372,7 @@ function PlatformView({
       {data.storage_permissions.alert && (
         <ActivationAlert status={data.storage_permissions} />
       )}
+      <TableJobsSection jobs={data.table_jobs} named={false} />
       <TableCopiesSection copies={data.table_copies} named={false} />
       <Section
         title="Storage the engine has set aside"
@@ -554,6 +631,7 @@ function OwnOrganisation({
 }) {
   return (
     <>
+    <TableJobsSection jobs={data.table_jobs} named />
     <TableCopiesSection copies={data.table_copies} named />
     <Section
       title={`What has been freed from ${data.tenant_id}`}

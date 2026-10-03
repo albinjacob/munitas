@@ -243,3 +243,17 @@ ICEBERG_PARQUET_THRIFT_STRING_BYTES = int(os.environ.get("MUNITAS_ICEBERG_PARQUE
 ICEBERG_PARQUET_THRIFT_CONTAINER_ITEMS = int(os.environ.get("MUNITAS_ICEBERG_PARQUET_THRIFT_CONTAINER_ITEMS", "1000000"))
 # How long writing one table may take before it is given up. Every call that leaves this process needs a deadline.
 ICEBERG_TIMEOUT_SECONDS = int(os.environ.get("MUNITAS_ICEBERG_TIMEOUT_SECONDS", "300"))
+
+# Table jobs (table_jobs.py). A table that is large is written by a worker, in a job, and not while a request waits.
+# A seal that names a records file bigger than TABLE_JOB_INLINE_BYTES becomes a job (a caller can also ask for one, or
+# refuse one, with table_mode). The limits a job works within are sent to the worker by the platform, so they are
+# set here and nowhere else: a job is not tied to a request's deadline, so its size limit is far higher than the one
+# a request has, and its time limit is the lifetime of its key.
+TABLE_JOBS = os.environ.get("MUNITAS_TABLE_JOBS", "on").lower() != "off"
+TABLE_JOB_INLINE_BYTES = int(os.environ.get("MUNITAS_TABLE_JOB_INLINE_BYTES", str(32 * 1024 * 1024)))
+TABLE_JOB_MAX_BYTES = int(os.environ.get("MUNITAS_TABLE_JOB_MAX_BYTES", str(16 * 1024 ** 3)))
+TABLE_JOB_TTL_SECONDS = int(os.environ.get("MUNITAS_TABLE_JOB_TTL_SECONDS", str(4 * 3600)))
+# A job that has waited this long for a worker is reported on the housekeeping screen as stalled.
+TABLE_JOB_STALL_SECONDS = int(os.environ.get("MUNITAS_TABLE_JOB_STALL_SECONDS", "600"))
+TABLE_JOB_DISPATCH_SECONDS = int(os.environ.get("MUNITAS_TABLE_JOB_DISPATCH_SECONDS", "3"))
+TABLE_SHARED_QUEUE = "munitas-table-write"

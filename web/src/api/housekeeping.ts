@@ -81,9 +81,37 @@ export interface TableCopies {
   }[];
 }
 
+/** Large tables being written by a worker, and the ones that are not moving. */
+export interface TableJobs {
+  pending: number;
+  running: number;
+  /** The last seven days. */
+  sealed: number;
+  refused: number;
+  expired: number;
+  /** Waiting longer than `stall_seconds` for a worker. */
+  stalled: number;
+  stall_seconds: number;
+  alert: boolean;
+  waiting: {
+    job_id: string;
+    tenant_id: string;
+    /** Named only in an organisation's own view. */
+    dataset_name?: string;
+    version: number;
+    status: "pending" | "running";
+    /** True when the job is on an organisation's own line of work and waits for that organisation's worker only. */
+    dedicated_worker: boolean;
+    queue: string;
+    waiting_seconds: number;
+    stalled: boolean;
+  }[];
+}
+
 export interface PlatformHousekeeping {
   scope: "platform";
   table_copies: TableCopies;
+  table_jobs: TableJobs;
   storage_permissions: StoragePermissions;
   /** Where SeaweedFS keeps its files on the host, or "" if unstated. */
   storage_path: string;
@@ -107,6 +135,7 @@ export interface TenantHousekeeping {
   scope: "tenant";
   tenant_id: string;
   table_copies: TableCopies;
+  table_jobs: TableJobs;
   reclaimed: ReclaimedRow[];
 }
 

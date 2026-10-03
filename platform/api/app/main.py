@@ -30,7 +30,7 @@ from crypto import DestroyedKeyError, EnvelopeCrypto
 from . import (access_preview, activation, agent_upload, agents, auth, config,
               dag_pipelines, db, derivations, external_accounts, grants, housekeeping, iceberg,
               iceberg_catalog, ingest, legal_export, lifecycle, logs, models, opa, people, pipeline, r2,
-              read_models, seaweed, storage, task_credential, temporal_client,
+              read_models, seaweed, storage, table_jobs, task_credential, temporal_client,
               versions)
 
 log = logs.get_logger("main")
@@ -60,8 +60,9 @@ async def lifespan(app: FastAPI):
     await temporal_client.connect()
     activator = asyncio.create_task(activation.run_forever())
     closer = asyncio.create_task(lifecycle.run_forever())
+    dispatcher = asyncio.create_task(table_jobs.run_forever())
     yield
-    for task in (activator, closer):
+    for task in (activator, closer, dispatcher):
         task.cancel()
         try:
             await task
@@ -124,6 +125,7 @@ app.include_router(iceberg_catalog.router)
 app.include_router(derivations.router)
 app.include_router(lifecycle.router)
 app.include_router(legal_export.router)
+app.include_router(table_jobs.router)
 # The catalog answers in the shape Iceberg clients read, not FastAPI's default.
 app.add_exception_handler(iceberg_catalog.CatalogError, iceberg_catalog.handle_error)
 
@@ -398,11 +400,7 @@ def next_version(dataset_id: str, tenant_id: str) -> dict:
     shared bucket hides it, which is why it went unnoticed until a tenant with
     its own provisioned bucket was asked the question.
     """
-    row = db.one(
-        "select coalesce(max(version), 0) as v from dataset_version where dataset_id = %s",
-        (dataset_id,),
-    )
-    version = row["v"] + 1
+    version = versions.next_version(tenant_id, dataset_id)["version"]
 
     dataset = db.one(
         "select storage_backend from dataset where id = %s", (dataset_id,)
@@ -437,77 +435,26 @@ def next_version(dataset_id: str, tenant_id: str) -> dict:
 
 
 @app.post("/dataset-versions", status_code=201)
-def create_version(body: models.DatasetVersionIn) -> dict:
+def create_version(body: models.DatasetVersionIn):
     """Seal a new dataset version.
 
     Sealed on creation, which is why there is no update endpoint anywhere in
     this file. The storage prefix encodes tenant, dataset and version and never
     the class, so a later promotion changes a grant rather than moving bytes.
+
+    A version that names a records file is also written as an Iceberg table, before the row exists. A small one is
+    written while this request waits. A large one is written by a worker, in a job (table_jobs.py): the answer is then
+    202 with the job, the version number and folder are reserved, and the version is sealed, with its table inside it,
+    when the job finishes. `table_mode` chooses; left out, the size of the records file does.
     """
-    latest = db.one(
-        "select coalesce(max(version), 0) as v from dataset_version where dataset_id = %s",
-        (body.dataset_id,),
-    )
-    version = latest["v"] + 1
-    prefix = f"{body.tenant_id}/{body.dataset_id}/v{version}"
-
-    # A tabular version is also written as an Iceberg table, under its own
-    # prefix, BEFORE the row exists: nothing may be written under a sealed
-    # prefix afterwards, and the table's files belong in the manifest the
-    # content hash is taken over. A version that cannot be written as a table
-    # is sealed all the same (iceberg.try_project says why in the log).
-    version_id = _uuid()
-    manifest = list(body.object_manifest)
-    projection = None
-    why = iceberg.NOT_REQUESTED
-    if body.records_key:
-        dataset = db.one("select name from dataset where id = %s", (body.dataset_id,))
-        if dataset:
-            projection, why = iceberg.try_project(
-                tenant_id=body.tenant_id, backend=body.storage_backend,
-                dataset_id=body.dataset_id, dataset_name=dataset["name"],
-                version_id=version_id, version=version, prefix=prefix,
-                schema_id=body.schema_id, records_key=body.records_key,
-                produced_by_run=body.produced_by_run)
-            iceberg.enforce(why, body.table_required)
-            if projection:
-                manifest += projection.objects
-    content_hash = _hash(
-        {"manifest": manifest, "count": body.record_count, "prefix": prefix}
-    )
-
-    row = db.execute(
-        """insert into dataset_version
-             (id, tenant_id, dataset_id, version, visibility_class,
-              storage_prefix, storage_backend, object_manifest, schema_id,
-              produced_by_run, record_count, content_hash, iceberg_snapshot_id, sealed)
-           values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, true)
-           returning id""",
-        (version_id, body.tenant_id, body.dataset_id, version,
-         body.visibility_class, prefix, body.storage_backend,
-         json.dumps(manifest), body.schema_id, body.produced_by_run,
-         body.record_count, content_hash,
-         projection.snapshot_id if projection else None),
-    )
-    version_id = str(row["id"])
-    if projection:
-        iceberg.record(version_id, body.tenant_id, body.dataset_id, projection)
-    elif why:
-        iceberg.record_note(version_id, body.tenant_id, why)
-
-    if body.produced_by_run:
-        db.execute(
-            "update action_run set output_version = %s, status = 'succeeded', ended_at = now() where id = %s",
-            (version_id, body.produced_by_run),
-        )
-
-    return {
-        "id": version_id,
-        "version": version,
-        "storage_prefix": prefix,
-        "content_hash": content_hash,
-        "sealed": True,
-    }
+    started = table_jobs.maybe_start(body)
+    if started is not None:
+        return started
+    return versions.seal(
+        tenant_id=body.tenant_id, dataset_id=body.dataset_id, schema_id=body.schema_id,
+        visibility_class=body.visibility_class, storage_backend=body.storage_backend,
+        object_manifest=body.object_manifest, record_count=body.record_count,
+        produced_by_run=body.produced_by_run, records_key=body.records_key, table_required=body.table_required)
 
 
 @app.get("/dataset-versions/{version_id}")

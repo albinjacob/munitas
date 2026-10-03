@@ -878,6 +878,53 @@ wsl -d Ubuntu-20.04 -- bash -lc "cd /mnt/c/AIProjects/ClaudeProjects/Munitas && 
 
 ---
 
+## Writing a large table: the table worker
+
+A version whose rows are in a records file is also written as a table, so that
+a standard tool can read it. A small file is written while the request waits.
+A file over 32 MB (`MUNITAS_TABLE_JOB_INLINE_BYTES`), or a seal that sends
+`"table_mode": "background"`, becomes a **job**: the request is answered at once
+with `202` and the job, and a **table worker** writes the table. The version is
+sealed when the worker has finished, with its table inside it, and does not
+exist before. Send the records as `.parquet` or `.ndjson` (one JSON row per
+line) for anything large; a JSON list is read whole and is limited to 32 MB.
+
+**Start it.** The shared worker is part of the stack, and `docker compose up -d`
+starts it (`table-worker`, one job at a time, 1.5 GB). More work is more
+containers, not more jobs in one.
+
+**Follow a job.** The answer to the seal has `status_url`. `GET /table-jobs/<id>`
+says `pending`, `running`, `sealed` (with the version), `refused` (a table was
+required and could not be written, with the reason; the version number is free)
+or `expired` (nobody finished it in four hours). The housekeeping screen has a
+"Tables being written" section, and raises an alert when a job has waited more
+than ten minutes for a worker.
+
+**An organisation's own worker.** A platform administrator can give an
+organisation a worker that serves nobody else:
+
+```bash
+python scripts/admin/table-worker.py start harbour
+```
+
+then `PUT /tenants/harbour/table-worker` with `{"dedicated": true}`. Start the
+worker first. A job made while the organisation is on its own line waits for that
+worker however long it takes and never moves to the shared pool, so if the worker
+is not running the job is reported as stalled. `stop` removes the worker; set
+`dedicated` back to `false` to return the organisation to the shared pool (only
+jobs made afterwards use it).
+
+**If the worker dies.** Temporal notices a missing heartbeat after 90 seconds and
+hands the work out again; the platform clears what the dead attempt wrote before it
+does. A container killed by hand (`docker kill`) is not restarted by Docker's
+restart policy, so start it again; a crash is restarted. `verify/v110_table_worker_resilience.py`
+does this on purpose (host only).
+
+**What the worker holds.** No database, no master key, no standing storage key.
+For each job it is given one key, made for that job, which reads and writes the one
+folder the version will have and lists object names in the organisation's own
+bucket. It stops working when the job ends.
+
 ## Local HTTPS between the worker and the API
 
 **When to use it:** the worker (`worker/main.py`) needs to reach the API

@@ -1038,6 +1038,30 @@ see_lifecycle_decision := {
 }
 
 # ------------------------------------------------------------------
+# An organisation's own table worker.
+#
+# A large table is written by a table worker. An organisation can be given one of its own, so that its tables are written
+# by a process that serves nobody else. That is a cost the platform carries, and a promise made to the organisation, so only a
+# platform administrator may give or take it. An organisation's own people do not decide it for themselves.
+default may_set_table_worker := false
+
+may_set_table_worker if {
+	some role in input.viewer.roles
+	lifecycle_actor_roles[role]
+}
+
+table_worker_reason contains "an organisation's own table worker is given by a platform administrator" if {
+	every role in input.viewer.roles {
+		not lifecycle_actor_roles[role]
+	}
+}
+
+table_worker_decision := {
+	"allow": may_set_table_worker,
+	"reasons": [r | some r in table_worker_reason],
+}
+
+# ------------------------------------------------------------------
 # Producing an organisation's records for a legal matter.
 #
 # A legal hold keeps records. An export lets some of them leave, so it is the most sensitive thing this

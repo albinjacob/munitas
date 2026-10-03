@@ -65,6 +65,10 @@ class DatasetVersionIn(BaseModel):
     # file is refused when its table cannot be written because of the data or a fault, and nothing is left behind.
     # `false` seals the files without a table and records why not.
     table_required: bool | None = None
+    # Where the table is written. "inline" writes it while this request waits, and refuses a records file too large for
+    # that. "background" hands it to a table worker and answers 202 with a job. Left out, the platform decides by the size
+    # of the records file.
+    table_mode: Literal["inline", "background"] | None = None
 
 
 class ActionRunIn(BaseModel):

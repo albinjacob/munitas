@@ -1294,3 +1294,15 @@ test_an_export_without_filters_needs_no_values if {
 		"confirm": {"valued_datasets": []},
 	}
 }
+
+# An organisation's own table worker is given by a platform administrator and by nobody else.
+test_a_platform_administrator_may_give_an_organisation_its_own_table_worker if {
+	access.may_set_table_worker with input as {"viewer": {"id": "ops-priya", "roles": ["platform_admin"], "tenant_id": "munitas"}, "tenant_id": "harbour"}
+}
+
+test_an_organisations_own_people_may_not_give_themselves_a_table_worker if {
+	not access.may_set_table_worker with input as {"viewer": {"id": "dpo-adeyemi", "roles": ["dpo", "data_custodian"], "tenant_id": "harbour"}, "tenant_id": "harbour"}
+	r := access.table_worker_decision with input as {"viewer": {"id": "dpo-adeyemi", "roles": ["dpo"], "tenant_id": "harbour"}, "tenant_id": "harbour"}
+	r.reasons == ["an organisation's own table worker is given by a platform administrator"]
+	not access.may_set_table_worker with input as {"viewer": {"id": "x", "roles": [], "tenant_id": "harbour"}, "tenant_id": "harbour"}
+}

@@ -96,7 +96,8 @@ def storage_report(
     if tenant_id:
         return {"scope": "tenant", "tenant_id": tenant_id,
                 "reclaimed": _reclaimed_for(tenant_id),
-                "table_copies": _table_copies(tenant_id)}
+                "table_copies": _table_copies(tenant_id),
+                "table_jobs": _table_jobs(tenant_id)}
 
     return {
         "scope": "platform",
@@ -106,6 +107,7 @@ def storage_report(
         "storage_path": config.STORAGE_PATH,
         "tenants": _storage_by_tenant(),
         "table_copies": _table_copies(None),
+        "table_jobs": _table_jobs(None),
         "volumes": _volume_pool(),
         "probes_waiting": _probes_waiting(),
         # Whether allowed storage access is taking effect. The screen raises
@@ -162,6 +164,41 @@ def _storage_by_tenant() -> list[dict]:
             order by t.id""",
         (list(RECLAIMABLE_PURPOSES),),
     )
+
+
+def _table_jobs(tenant_id: str | None) -> dict:
+    """Large tables being written by a worker, and the ones that are not moving.
+
+    A job that has waited longer than `TABLE_JOB_STALL_SECONDS` for a worker is stalled, and that raises an alert: it holds a
+    version number and a storage key, and a person who is waiting for a dataset is waiting for it. A job on an organisation's
+    own line of work waits for that organisation's worker and for nobody else, so it is the case most likely to stall, and
+    the line it is waiting on is named. The platform-wide view carries organisation ids and never a dataset's name, which is
+    customer metadata; an organisation's own view names the dataset.
+    """
+    scope, args = ("and j.tenant_id = %s", (tenant_id,)) if tenant_id else ("", ())
+    counts = db.one(
+        f"""select count(*) filter (where status = 'pending') as pending,
+                   count(*) filter (where status = 'running') as running,
+                   count(*) filter (where status = 'sealed' and finished_at > now() - interval '7 days') as sealed,
+                   count(*) filter (where status = 'refused' and finished_at > now() - interval '7 days') as refused,
+                   count(*) filter (where status = 'expired' and finished_at > now() - interval '7 days') as expired,
+                   count(*) filter (where status = 'pending'
+                                    and created_at < now() - make_interval(secs => %s)) as stalled
+              from table_job j where true {scope}""", (config.TABLE_JOB_STALL_SECONDS, *args))
+    named = "d.name as dataset_name," if tenant_id else ""
+    join = "join dataset d on d.id = j.dataset_id" if tenant_id else ""
+    waiting = db.all_rows(
+        f"""select j.id::text as job_id, j.tenant_id, {named} j.version, j.status, j.queue, j.created_at,
+                   extract(epoch from now() - j.created_at)::int as seconds
+              from table_job j {join}
+             where j.status in ('pending', 'running') {scope}
+             order by j.created_at limit 50""", args)
+    shown = [{**{k: v for k, v in w.items() if k not in ("queue", "seconds")},
+              "dedicated_worker": w["queue"] != config.TABLE_SHARED_QUEUE, "queue": w["queue"],
+              "waiting_seconds": w["seconds"],
+              "stalled": w["status"] == "pending" and w["seconds"] > config.TABLE_JOB_STALL_SECONDS} for w in waiting]
+    return json.loads(json.dumps({**counts, "waiting": shown, "alert": counts["stalled"] > 0,
+                                  "stall_seconds": config.TABLE_JOB_STALL_SECONDS}, default=str))
 
 
 def _table_copies(tenant_id: str | None) -> dict:
