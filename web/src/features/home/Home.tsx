@@ -93,7 +93,8 @@ function CustodianHome({
   const decide = useDecideRequest();
   const revoke = useRevokeLease();
   const people = usePeople();
-  const arrivals = useAwaitingConfirmation(custodian);
+  const [arrivalsShown, setArrivalsShown] = useState(100);
+  const arrivals = useAwaitingConfirmation(custodian, arrivalsShown);
   const confirm = useConfirmClassification();
   // One dialog, driven by which action is pending: `window.confirm`/
   // `window.prompt` are raw browser chrome sitting inside an otherwise
@@ -156,8 +157,8 @@ function CustodianHome({
             />
             <Stat
               label="Needs your confirmation"
-              value={arrivals.data?.length ?? 0}
-              tone={arrivals.data?.length ? "warn" : "normal"}
+              value={arrivals.data?.total ?? 0}
+              tone={arrivals.data?.total ? "warn" : "normal"}
             />
             <Stat label="Currently granted" value={activeGrants} />
             <Stat label="Decided, all time" value={decided.length} />
@@ -171,13 +172,13 @@ function CustodianHome({
         This is the sensitivity itself being unagreed, which is the more basic
         question and the one blocking everything else about that dataset.
       */}
-      {Boolean(arrivals.data?.length) && (
+      {Boolean(arrivals.data?.total) && (
         <Section
           title="Arrivals waiting for your confirmation"
           description="Somebody registered these and claimed a sensitivity less restrictive than the safe default. Nothing above that claim can be granted until you agree with it."
         >
           <ul className="space-y-2" data-testid="awaiting-confirmation">
-            {(arrivals.data ?? []).map((d) => (
+            {(arrivals.data?.items ?? []).map((d) => (
               <li
                 key={d.id}
                 data-arrival={d.id}
@@ -221,6 +222,23 @@ function CustodianHome({
               </li>
             ))}
           </ul>
+          {arrivals.data && arrivals.data.total > arrivals.data.items.length && (
+            <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-slate-700">
+              <span data-testid="arrivals-count">
+                Showing {arrivals.data.items.length} of {arrivals.data.total} waiting, oldest first.
+              </span>
+              {arrivalsShown < 500 && (
+                <button
+                  type="button"
+                  data-testid="arrivals-show-more"
+                  onClick={() => setArrivalsShown((n) => Math.min(n + 100, 500))}
+                  className="rounded border border-slate-300 px-3 py-1 text-sm font-medium hover:bg-slate-100"
+                >
+                  Show 100 more
+                </button>
+              )}
+            </div>
+          )}
         </Section>
       )}
 

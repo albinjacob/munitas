@@ -3637,7 +3637,7 @@
     },
     "/datasets/awaiting-confirmation": {
       "get": {
-        "description": "Datasets whose sensitivity claim has not been agreed to yet.\n\nOnly `asserted` claims need this: the safe default carries no claim, and\n`verified_source` is already backed by something the platform fetched\nitself. Narrowed to `custodian` for the same reason `/lease-requests` is,\nso a custodian's queue lists arrivals they can actually act on.",
+        "description": "Datasets whose sensitivity claim has not been agreed to yet.\n\nOnly `asserted` claims need this: the safe default carries no claim, and\n`verified_source` is already backed by something the platform fetched\nitself. Narrowed to `custodian` for the same reason `/lease-requests` is,\nso a custodian's queue lists arrivals they can actually act on.\n\nOldest first, with the id breaking ties so two claims made at the same\nmoment never swap places between pages. `total` counts every dataset\nwaiting, not just this page, so a screen can say how many are not shown.",
         "operationId": "list_awaiting_confirmation_datasets_awaiting_confirmation_get",
         "parameters": [
           {
@@ -3663,7 +3663,19 @@
             "schema": {
               "default": 100,
               "maximum": 500,
+              "minimum": 1,
               "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
               "type": "integer"
             }
           }
@@ -3673,11 +3685,8 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "type": "object"
-                  },
                   "title": "Response List Awaiting Confirmation Datasets Awaiting Confirmation Get",
-                  "type": "array"
+                  "type": "object"
                 }
               }
             },

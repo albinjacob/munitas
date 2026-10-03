@@ -8,7 +8,7 @@
  * upload anything itself" has one file to check.
  */
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, API_BASE, ApiError } from "./client";
 import { useIdentity } from "../identity/IdentityContext";
 import type { VisibilityClass } from "./types";
@@ -295,13 +295,13 @@ export function useWithdrawUpload() {
  * one custodian can act on. Only claims need this: the safe default and a
  * verified source need no confirmation.
  */
-export function useAwaitingConfirmation(custodian: string | undefined) {
+export function useAwaitingConfirmation(custodian: string | undefined, limit = 100) {
   const tenant = useIdentity().tenant;
   return useQuery({
-    queryKey: ["awaiting-confirmation", tenant, custodian],
+    queryKey: ["awaiting-confirmation", tenant, custodian, limit],
     queryFn: () =>
-      api.get<
-        {
+      api.get<{
+        items: {
           id: string;
           name: string;
           declared_class: VisibilityClass;
@@ -310,12 +310,19 @@ export function useAwaitingConfirmation(custodian: string | undefined) {
           provenance: string;
           department_name: string | null;
           custodian: string | null;
-        }[]
-      >("/datasets/awaiting-confirmation", {
+        }[];
+        /** Every dataset waiting, not only the ones in `items`. */
+        total: number;
+        limit: number;
+        offset: number;
+      }>("/datasets/awaiting-confirmation", {
         tenant_id: tenant,
         custodian,
+        limit,
       }),
     enabled: Boolean(custodian),
+    // Showing more keeps the list on screen while the longer one loads.
+    placeholderData: keepPreviousData,
   });
 }
 

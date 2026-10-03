@@ -239,31 +239,38 @@ def list_transitions(
 @router.get("/datasets/awaiting-confirmation")
 def list_awaiting_confirmation(
     custodian: str | None = None,
-    limit: int = Query(100, le=500),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     identity: dict = Depends(auth.current_session),
-) -> list[dict]:
+) -> dict:
     """Datasets whose sensitivity claim has not been agreed to yet.
 
     Only `asserted` claims need this: the safe default carries no claim, and
     `verified_source` is already backed by something the platform fetched
     itself. Narrowed to `custodian` for the same reason `/lease-requests` is,
     so a custodian's queue lists arrivals they can actually act on.
+
+    Oldest first, with the id breaking ties so two claims made at the same
+    moment never swap places between pages. `total` counts every dataset
+    waiting, not just this page, so a screen can say how many are not shown.
     """
-    sql = """
-        select d.id, d.name, d.declared_class, d.declared_by, d.declared_at,
-               d.provenance, dept.name as department_name, dept.custodian
+    where = """
         from dataset d
         left join department dept on dept.id = d.department_id
         where d.declaration_basis = 'asserted'
           and d.classification_confirmed_by is null
           and d.tenant_id = %s
           and (%s::text is null or dept.custodian = %s)
-        order by d.declared_at asc
-        limit %s
     """
-    return _jsonable(db.all_rows(
-        sql, (identity["tenant_id"], custodian, custodian, limit)
-    ))
+    scope = (identity["tenant_id"], custodian, custodian)
+    total = db.one("select count(*) as n " + where, scope)["n"]
+    items = db.all_rows(
+        """select d.id, d.name, d.declared_class, d.declared_by, d.declared_at,
+                  d.provenance, dept.name as department_name, dept.custodian """
+        + where + " order by d.declared_at asc, d.id asc limit %s offset %s",
+        scope + (limit, offset),
+    )
+    return {"items": _jsonable(items), "total": total, "limit": limit, "offset": offset}
 
 
 @router.get("/lease-requests")

@@ -617,11 +617,64 @@ test.describe("U37: bringing data in through the console", () => {
     // Confirmed in the platform, not just off the screen. The queue endpoint
     // is the one that matters: it is what decides whether this claim still
     // blocks release, and its own query already excludes anything confirmed.
-    const stillWaiting = await api<{ id: string }[]>(
+    const stillWaiting = await api<{ items: { id: string }[] }>(
       `/datasets/awaiting-confirmation?tenant_id=${CANARY}&custodian=canary-custodian`,
       await canaryAuth(),
     );
-    expect(stillWaiting.some((d) => d.id === registered.id)).toBe(false);
+    expect(stillWaiting.items.some((d) => d.id === registered.id)).toBe(false);
+  });
+
+  test("a queue longer than a page says how many are waiting, and shows more on request", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    const department = await api<{ departments: { id: string; name: string }[] }>(
+      `/organisation?tenant_id=${CANARY}`,
+      await canaryAuth(),
+    ).then((o) => o.departments.find((d) => d.name === "Verification")!);
+    const custodianAuth = await bearerFor("canary-custodian");
+    const before = await api<{ total: number }>(
+      `/datasets/awaiting-confirmation?tenant_id=${CANARY}&custodian=canary-custodian`,
+      await canaryAuth(),
+    );
+    // Enough claims to run past the first 100, whatever is already waiting.
+    const need = Math.max(101 - before.total, 0) + 2;
+    const made: string[] = [];
+    try {
+      for (let i = 0; i < need; i++) {
+        const r = await post<{ id: string }>("/datasets/register", {
+          tenant_id: CANARY,
+          name: `console-queue-page-${Date.now()}-${i}`,
+          department_id: department.id,
+          registered_by: "canary-engineer",
+          provenance: "external_public",
+          declared_class: "PUBLISHED",
+          modality: [],
+        });
+        made.push(r.id);
+      }
+      const total = before.total + made.length;
+      expect(total).toBeGreaterThan(100);
+
+      await loginAs(page, "canary-custodian");
+      await expect(page.getByTestId("arrivals-count")).toContainText(
+        `Showing 100 of ${total} waiting`,
+      );
+      await expect(page.getByTestId("awaiting-confirmation").locator("li")).toHaveCount(100);
+
+      await page.getByTestId("arrivals-show-more").click();
+      await expect(page.getByTestId("awaiting-confirmation").locator("li")).toHaveCount(
+        Math.min(total, 200),
+      );
+      if (total <= 200) {
+        await expect(page.getByTestId("arrivals-count")).toHaveCount(0);
+      }
+    } finally {
+      // Leave the queue as it was found, so later tests see their own claim in the first page.
+      for (const id of made) {
+        await post(`/datasets/${id}/confirm-classification`, { confirmed_by: "canary-custodian" }, custodianAuth).catch(() => undefined);
+      }
+    }
   });
 
   test("selecting several files at once uploads and lists every one of them", async ({
@@ -862,10 +915,10 @@ test.describe("U42: fetching a dataset directly from HuggingFace", () => {
 
     // The claim was never asserted; it was verified by the fetch. Confirmed
     // by checking the queue it would otherwise be sitting in.
-    const waiting = await api<{ name: string }[]>(
+    const waiting = await api<{ items: { name: string }[] }>(
       `/datasets/awaiting-confirmation?tenant_id=${CANARY}&custodian=canary-custodian`,
     );
-    expect(waiting.some((d) => d.name === name)).toBe(false);
+    expect(waiting.items.some((d) => d.name === name)).toBe(false);
   });
 
   test("a repo that does not exist is refused, not a server error", async ({

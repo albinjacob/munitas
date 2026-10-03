@@ -936,11 +936,15 @@ otherwise sits in the list looking like a failure rather than an empty shelf.</p
 Only `asserted` claims need this: the safe default carries no claim, and
 `verified_source` is already backed by something the platform fetched
 itself. Narrowed to `custodian` for the same reason `/lease-requests` is,
-so a custodian&#x27;s queue lists arrivals they can actually act on.</p>
-  <div class="block-label">Parameters</div><table class="fields"><thead><tr><th>Name</th><th>In</th><th>Type</th><th>&nbsp;</th></tr></thead><tbody><tr><td class="mono">custodian</td><td>query</td><td class="mono">string | null</td><td class="req-optional">optional</td></tr><tr><td class="mono">limit</td><td>query</td><td class="mono">integer</td><td class="req-optional">optional</td></tr></tbody></table>
+so a custodian&#x27;s queue lists arrivals they can actually act on.
+
+Oldest first, with the id breaking ties so two claims made at the same
+moment never swap places between pages. `total` counts every dataset
+waiting, not just this page, so a screen can say how many are not shown.</p>
+  <div class="block-label">Parameters</div><table class="fields"><thead><tr><th>Name</th><th>In</th><th>Type</th><th>&nbsp;</th></tr></thead><tbody><tr><td class="mono">custodian</td><td>query</td><td class="mono">string | null</td><td class="req-optional">optional</td></tr><tr><td class="mono">limit</td><td>query</td><td class="mono">integer</td><td class="req-optional">optional</td></tr><tr><td class="mono">offset</td><td>query</td><td class="mono">integer</td><td class="req-optional">optional</td></tr></tbody></table>
   
   <div class="block-label">Responses</div>
-  <div class="response"><span class="status status-2xx">200</span> <span class="resp-desc">Successful Response</span> <span class="mono resp-type">&rarr; object[]</span></div><div class="response"><span class="status status-4xx">422</span> <span class="resp-desc">Validation Error</span> <span class="mono resp-type">&rarr; HTTPValidationError</span><table class="fields"><thead><tr><th>Field</th><th>Type</th><th>&nbsp;</th></tr></thead><tbody><tr><td class="mono">detail</td><td class="mono">ValidationError[]</td><td class="req-optional">optional</td></tr></tbody></table></div>
+  <div class="response"><span class="status status-2xx">200</span> <span class="resp-desc">Successful Response</span> <span class="mono resp-type">&rarr; object</span></div><div class="response"><span class="status status-4xx">422</span> <span class="resp-desc">Validation Error</span> <span class="mono resp-type">&rarr; HTTPValidationError</span><table class="fields"><thead><tr><th>Field</th><th>Type</th><th>&nbsp;</th></tr></thead><tbody><tr><td class="mono">detail</td><td class="mono">ValidationError[]</td><td class="req-optional">optional</td></tr></tbody></table></div>
 </article>
 
 <article class="op" id="get-_datasets_dataset_id_huggingface-fetch-jobs">

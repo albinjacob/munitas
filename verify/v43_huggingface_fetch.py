@@ -199,8 +199,8 @@ def main() -> int:
         headers=bearer_for(ENGINEER),
     ).json()
     check("it never sat in the custodian's confirmation queue",
-          all(d["id"] != claimed_id for d in waiting),
-          f"{len(waiting)} datasets waiting")
+          all(d["id"] != claimed_id for d in waiting["items"]),
+          f"{waiting['total']} datasets waiting")
 
     heading("U43: a repository that does not exist fails the job, not the start")
 
