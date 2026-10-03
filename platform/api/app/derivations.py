@@ -35,7 +35,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 
-from . import access_preview, auth, config, db, logs, models, versions
+from . import access_preview, auth, config, db, logs, models, task_runs, versions
 
 log = logs.get_logger("derivations")
 router = APIRouter(tags=["derivations"])
@@ -576,7 +576,12 @@ def _grant_submitter(row: dict, output_version_id: str) -> None:
 
 @router.post("/derivations/{derivation_id}/fail", dependencies=[Depends(_worker)])
 def fail(derivation_id: str, body: dict) -> dict:
-    db.execute("update derivation set status = 'failed', error = %s, ended_at = now() "
-               "where id = %s and status in ('queued', 'running')",
-               (str(body.get("reason", ""))[:500], derivation_id))
+    reason = str(body.get("reason", ""))[:500]
+    row = db.one("update derivation set status = 'failed', error = %s, ended_at = now() "
+                 "where id = %s and status in ('queued', 'running') returning action_run_id",
+                 (reason, derivation_id))
+    # The run that did the work is over too. Left running, it kept its read key until the task credential's limit, and it read as
+    # still in progress on every screen that lists runs.
+    if row and row["action_run_id"]:
+        task_runs.fail_run(str(row["action_run_id"]), reason or "the derivation failed")
     return {"status": "failed"}

@@ -89,14 +89,17 @@ class CredentialPending(Exception):
 
 def s3_scoped(task_credential: str, dataset_version_id: str, tenant_id: str,
               principal: str, purpose: str) -> "boto3.client":
-    """A read-only S3 client scoped to exactly one dataset version.
+    """A read-only S3 client for one dataset version.
 
     Requests it through the same `/credentials` every human and agent read
     goes through, presenting `task_credential` as proof this call really is
     the task it claims (an `action_run` or `pipeline_run`; see
     task_credential.py) rather than the worker's static, all-purpose key.
-    Read-only and single-version on purpose: nothing here ever writes, so
-    nothing here needs the write-wide static key at all.
+    The decision, and the audit record, are for exactly one version. The KEY is
+    narrower only for a derivation's run, which is handed a key of its own that
+    opens just the inputs it was allowed; any other task is handed the pipeline
+    role's key for its organisation, which opens that organisation's whole
+    bucket for reading.
     """
     response = httpx.post(f"{config.API}/credentials", json={
         "principal": principal, "principal_kind": "workload",

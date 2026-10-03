@@ -211,6 +211,16 @@ def _write_prefix_actions(bucket: str, prefix: str) -> list[str]:
     return [f"Write:{bucket}/{base}/*", f"Write:{bucket}/{base}"]
 
 
+def _read_prefix_actions(bucket: str, prefix: str) -> list[str]:
+    """The two strings one run's read of one version needs: Read on the objects themselves and on the bare prefix.
+
+    No List. Storage authorises a listing on the whole bucket and never on a folder, so a List here would be a string that opens
+    nothing and reads as if it did. A run reads each object by its exact key, from the version's manifest, so it never lists.
+    """
+    base = prefix.rstrip("/")
+    return [f"Read:{bucket}/{base}/*", f"Read:{bucket}/{base}"]
+
+
 def _prefix_actions(bucket: str, prefix: str) -> list[str]:
     """The four strings one prefix grant needs.
 
@@ -285,7 +295,7 @@ def _minted_identities(*, as_of=None) -> list[dict]:
              from storage_identity si
              join tenant_storage_provision p
                     on p.tenant_id = si.tenant_id and p.backend = 'seaweedfs'
-            where si.lease_id is null and si.agent_run_id is null
+            where si.lease_id is null and si.agent_run_id is null and si.action_run_id is null
               and si.backend = 'seaweedfs'
               and si.ended_at is null""",
     ):
@@ -323,6 +333,43 @@ def _minted_identities(*, as_of=None) -> list[dict]:
                                   + _write_prefix_actions(row["bucket"], row["storage_prefix"])
                                   + [f"List:{row['bucket']}"])),
         })
+
+    # A derivation run's own key: Read on the folders of the inputs the platform allowed that run to read, and nothing else, for as long
+    # as the run is running and inside its task credential's lifetime. It is the narrowest read key the platform hands out. The
+    # pipeline role's key, which this replaces for a derivation, opens the whole of the organisation's bucket for reading. A run that
+    # fails or runs past the limit drops out of the next print, and the key stops working then (task_runs.py marks it ended).
+    from . import task_credential
+
+    runs: dict[str, dict] = {}
+    for row in db.all_rows(
+        """select si.identity_name, si.access_key_id, si.tenant_id,
+                  si.secret_ciphertext, si.secret_wrapped_key,
+                  v.storage_prefix, p.bucket
+             from storage_identity si
+             join action_run ar on ar.id = si.action_run_id
+             join task_read_grant g on g.action_run_id = ar.id
+             join dataset_version v on v.id = g.dataset_version_id
+             join tenant_storage_provision p
+                    on p.tenant_id = v.tenant_id and p.backend = 'seaweedfs'
+            where si.ended_at is null and ar.status = 'running'
+              and ar.started_at > now() - make_interval(secs => %s)""",
+        (task_credential.DEFAULT_TTL_SECONDS,),
+    ):
+        entry = runs.get(row["identity_name"])
+        if entry is None:
+            secret = crypto.open(
+                row["tenant_id"], row["identity_name"],
+                bytes(row["secret_ciphertext"]), bytes(row["secret_wrapped_key"]),
+            )
+            entry = runs[row["identity_name"]] = {
+                "name": row["identity_name"],
+                "credentials": [{"accessKey": row["access_key_id"], "secretKey": secret.decode("utf-8")}],
+                "actions": [],
+            }
+        entry["actions"] += _read_prefix_actions(row["bucket"], row["storage_prefix"])
+    for entry in runs.values():
+        entry["actions"] = sorted(set(entry["actions"]))
+        identities.append(entry)
 
     # The catalog's rolling keys. Each identity holds the keys for the previous,
     # the current and the next epoch, so a key a person was handed a moment ago,
@@ -612,7 +659,7 @@ def identity_for_tenant_ingest(tenant_id: str) -> dict:
         "select identity_name, access_key_id, secret_ciphertext, "
         "secret_wrapped_key from storage_identity "
         "where tenant_id = %s and lease_id is null and agent_run_id is null "
-        "and backend = 'seaweedfs'",
+        "and action_run_id is null and backend = 'seaweedfs'",
         (tenant_id,),
     )
     if row:
@@ -638,6 +685,44 @@ def identity_for_tenant_ingest(tenant_id: str) -> dict:
     )
     return {"identity_name": name, "access_key": access_key,
             "secret_key": secret}
+
+
+def identity_for_task(action_run_id: str, tenant_id: str) -> dict:
+    """This run's own storage identity, created once and reused after, so a retried request for the same run gets the same key.
+
+    The list behind it is compiled from task_read_grant while the run is running (see _minted_identities), so a key with no grant
+    behind it opens nothing.
+    """
+    import uuid
+
+    from crypto import EnvelopeCrypto
+
+    crypto = EnvelopeCrypto()
+    row = db.one(
+        "select identity_name, access_key_id, secret_ciphertext, secret_wrapped_key from storage_identity where action_run_id = %s",
+        (action_run_id,),
+    )
+    if row:
+        secret = crypto.open(tenant_id, row["identity_name"], bytes(row["secret_ciphertext"]), bytes(row["secret_wrapped_key"]))
+        return {"identity_name": row["identity_name"], "access_key": row["access_key_id"], "secret_key": secret.decode("utf-8")}
+
+    name = f"run-{action_run_id[:12]}"
+    secret = uuid.uuid4().hex + uuid.uuid4().hex
+    sealed = crypto.seal(tenant_id, name, secret.encode("utf-8"))
+    db.execute(
+        """insert into storage_identity
+             (id, tenant_id, action_run_id, identity_name, access_key_id, secret_ciphertext, secret_wrapped_key)
+           values (%s, %s, %s, %s, %s, %s, %s)
+           on conflict (action_run_id) where action_run_id is not null do nothing""",
+        (str(uuid.uuid4()), tenant_id, action_run_id, name, name, sealed.ciphertext, sealed.wrapped_key),
+    )
+    # A concurrent request may have inserted first: whichever row is there is the one key of this run.
+    row = db.one(
+        "select identity_name, access_key_id, secret_ciphertext, secret_wrapped_key from storage_identity where action_run_id = %s",
+        (action_run_id,),
+    )
+    secret = crypto.open(tenant_id, row["identity_name"], bytes(row["secret_ciphertext"]), bytes(row["secret_wrapped_key"]))
+    return {"identity_name": row["identity_name"], "access_key": row["access_key_id"], "secret_key": secret.decode("utf-8")}
 
 
 def identity_for_lease(lease_id: str, tenant_id: str) -> dict:
@@ -880,7 +965,7 @@ def ingest_is_active(tenant_id: str) -> bool:
              join tenant_storage_provision p
                on p.tenant_id = i.tenant_id and p.backend = 'seaweedfs'
             where i.tenant_id = %s and i.lease_id is null
-              and i.agent_run_id is null and i.backend = 'seaweedfs'""",
+              and i.agent_run_id is null and i.action_run_id is null and i.backend = 'seaweedfs'""",
         (tenant_id,),
     )
     return bool(row) and is_active(row["since"])
@@ -964,6 +1049,17 @@ def activation_status() -> dict:
                or (not l.revoked and l.expires_at is not null and l.expires_at <= now()
                    and (%s::timestamptz is null or l.expires_at >= %s))""",
         (since, since, since, since))["n"]
+    # A run's key works until a print leaves it out, the same as a lease's. A run that has ended, or has run past its limit, since
+    # the last successful print still has its key in the live document, so it is counted here and the next tick drops the key.
+    from . import task_credential
+    ended_runs = db.one(
+        """select count(*) as n
+             from storage_identity si join action_run ar on ar.id = si.action_run_id
+            where si.ended_at is null
+              and (ar.status <> 'running' or ar.started_at <= now() - make_interval(secs => %s))
+              and (%s::timestamptz is null
+                   or coalesce(ar.ended_at, ar.started_at + make_interval(secs => %s)) >= %s)""",
+        (task_credential.DEFAULT_TTL_SECONDS, since, task_credential.DEFAULT_TTL_SECONDS, since))["n"]
     # The catalog's rolling keys. A new epoch needs a new document (the keys
     # for the next one, and without the oldest), and a key resting on a lease
     # that has ended needs the document rewritten without it. Neither is asked
@@ -998,7 +1094,8 @@ def activation_status() -> dict:
         "alert": alert,
         "pending_decisions": pending,
         "ended_leases": ended,
+        "ended_runs": ended_runs,
         "parked_runs": parked["n"],
         "rotation_due": rotation,
-        "unserved": pending + parked["unserved"] + ended + ended_keys + (1 if rotation else 0),
+        "unserved": pending + parked["unserved"] + ended + ended_runs + ended_keys + (1 if rotation else 0),
     }

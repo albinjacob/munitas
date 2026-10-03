@@ -1762,6 +1762,42 @@ create trigger refuse_retired_tenant_storage_identity
   before insert or update on storage_identity
   for each row execute function refuse_write_to_retired_tenant();
 
+-- One storage key per derivation run, rather than the pipeline role's key for the whole organisation.
+--
+-- A derivation reads its input tables through staging containers. Until now each was handed pipeline_action~<organisation>, a key that
+-- opens the organisation's whole bucket for reading, so storage did not repeat a decision the policy had made for one version. The key
+-- of a run opens only the folders of the inputs that run was allowed to read, and it ends with the run.
+--
+-- `task_read_grant` is to a read what write_grant is to a write: written when the platform allows a read for a task, and the source the
+-- permissions are compiled from. A grant counts only while its action run is running and inside the task credential's lifetime.
+alter table action_run add column if not exists failure_reason text;
+
+alter table storage_identity add column if not exists action_run_id uuid references action_run(id);
+create unique index if not exists storage_identity_one_per_action_run
+  on storage_identity (action_run_id) where action_run_id is not null;
+
+-- The standing ingest key is the one identity with no subject but its organisation, so a run's key must be excluded from that
+-- uniqueness or the second run of an organisation would be refused.
+drop index if exists storage_identity_one_ingest_per_tenant;
+create unique index if not exists storage_identity_one_ingest_per_tenant
+  on storage_identity (tenant_id, backend)
+  where lease_id is null and agent_run_id is null and action_run_id is null;
+
+create table if not exists task_read_grant (
+  id                 uuid primary key,
+  tenant_id          text not null references tenant(id),
+  action_run_id      uuid not null references action_run(id),
+  dataset_version_id uuid not null references dataset_version(id),
+  created_at         timestamptz not null default now(),
+  unique (action_run_id, dataset_version_id)
+);
+create index if not exists task_read_grant_run_idx on task_read_grant (action_run_id);
+
+drop trigger if exists refuse_retired_task_read_grant on task_read_grant;
+create trigger refuse_retired_task_read_grant
+  before insert or update on task_read_grant
+  for each row execute function refuse_write_to_retired_tenant();
+
 -- A closed organisation grants no roles, takes no new asks, and gains no
 -- pipelines. Guarded the same way every other tenant-scoped table is, so
 -- U33's check that each one is either guarded or named as an exception stays

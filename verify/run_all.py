@@ -84,6 +84,7 @@ SCRIPTS = [
     ("U111 sealing a version is the platform's own workers' act, and nobody else can do it", "v111_seal_requires_worker.py"),
     ("U112 no storage key opens more than one organisation's data, and the pipeline's is one key per organisation", "v112_pipeline_key_per_organisation.py"),
     ("U113 every route knows who is calling, and the ones that act for a person act as that person", "v113_every_route_has_a_caller.py"),
+    ("U114 a derivation run reads with a key of its own, which opens only its inputs and ends with the run", "v114_task_read_keys.py"),
 ]
 
 here = Path(__file__).parent
