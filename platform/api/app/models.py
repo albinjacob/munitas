@@ -50,12 +50,17 @@ class DatasetVersionIn(BaseModel):
     # unmodified, while a caller that wants a specific backend (verify's
     # own U57 checks, a future console flow) can still name one explicitly.
     storage_backend: Literal["seaweedfs", "r2"] = "seaweedfs"
-    # Which object in `object_manifest` holds this version's records, as a JSON
-    # list of rows shaped by `schema_id`'s contract. When it is given, the
-    # platform also writes the version as an Iceberg table (iceberg.py), so a
-    # standard tool can read it. Optional, because a version made of files has
-    # no rows to put in a table, and every existing caller leaves it out.
-    records_key: str | None = None
+    # Which object in `object_manifest` holds this version's records, shaped by
+    # `schema_id`'s contract. When it is given, the platform also writes the
+    # version as an Iceberg table (iceberg.py), so a standard tool can read it.
+    # Optional, because a version made of files has no rows to put in a table,
+    # and every existing caller leaves it out. The name chooses the shape.
+    records_key: str | None = Field(default=None, description=(
+        "The object in object_manifest that holds this version's rows, which the platform also writes as a table. Its name "
+        "chooses the shape: a name ending in .parquet is a Parquet file, one ending in .ndjson or .jsonl is one JSON row per "
+        "line, and any other name is a JSON list of rows. A JSON list is read whole and is limited to 32 MB; the other two are "
+        "read in batches and are limited to 2 GB, so a large table is sent as one of them. Parquet columns are matched to the "
+        "contract by name and must have a fitting type. Leave it out for a version made of files."))
     # Whether this version must be a table. Left out, the platform's default applies: a version that names a records
     # file is refused when its table cannot be written because of the data or a fault, and nothing is left behind.
     # `false` seals the files without a table and records why not.

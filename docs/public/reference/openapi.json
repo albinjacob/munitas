@@ -478,6 +478,7 @@
                 "type": "null"
               }
             ],
+            "description": "The object in object_manifest that holds this version's rows, which the platform also writes as a table. Its name chooses the shape: a name ending in .parquet is a Parquet file, one ending in .ndjson or .jsonl is one JSON row per line, and any other name is a JSON list of rows. A JSON list is read whole and is limited to 32 MB; the other two are read in batches and are limited to 2 GB, so a large table is sent as one of them. Parquet columns are matched to the contract by name and must have a fitting type. Leave it out for a version made of files.",
             "title": "Records Key"
           },
           "schema_id": {

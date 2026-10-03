@@ -166,11 +166,17 @@ CATALOG_KEY_SECONDS = max(40, int(os.environ.get("MUNITAS_CATALOG_KEY_SECONDS", 
 # own default (about a million). A reader fetches one row group at a time, so a
 # smaller group spreads a long scan over more, separate storage requests.
 ICEBERG_ROW_GROUP_ROWS = int(os.environ.get("MUNITAS_ICEBERG_ROW_GROUP_ROWS", "0"))
-# Bytes after which a table's rows continue in a new data file. 0 leaves the
-# library's own default (512 MB). A tool that reads one file at a time opens
+# Bytes after which a table's rows continue in a new data file. 0, which is what the
+# Compose file passes when nothing is set, means the platform's default below. A tool that reads one file at a time opens
 # each with the key it held when it started, so many small files spread a
 # long read over many separate key checks.
-ICEBERG_FILE_BYTES = int(os.environ.get("MUNITAS_ICEBERG_FILE_BYTES", "0"))
+#
+# The library counts this in uncompressed bytes held in memory, and holds that much
+# before it writes a file. At its own default a large table is buffered 512 MB at a
+# time, which is half of what the API process is allowed. 64 MB keeps a large write
+# within a bounded share of memory, and the files come out several times smaller
+# than this after compression.
+ICEBERG_FILE_BYTES = int(os.environ.get("MUNITAS_ICEBERG_FILE_BYTES", "0")) or 64 * 1024 * 1024
 
 # Closing an organisation (lifecycle.py, purge.py). Each organisation takes its
 # dates from these when its retirement starts, so changing them never moves a
@@ -218,8 +224,22 @@ LEGAL_EXPORT_MAX_BYTES = int(os.environ.get("MUNITAS_LEGAL_EXPORT_MAX_BYTES", st
 # says so for one seal (`table_required: false`). A table that cannot be written because the platform was told not to
 # (projection switched off) or cannot yet (files on R2, a file too large) never blocks a seal.
 ICEBERG_FAIL_CLOSED = os.environ.get("MUNITAS_ICEBERG_FAIL_CLOSED", "on").lower() != "off"
-# The largest records file written as a table. Reading it takes it into memory, and a file too large would stop the API
-# for everybody, which is worse than a version without a table.
-ICEBERG_MAX_BYTES = int(os.environ.get("MUNITAS_ICEBERG_MAX_BYTES", str(256 * 1024 * 1024)))
+# The records file comes in one of three shapes, chosen by its name: a JSON list (.json), one JSON row per line (.ndjson or
+# .jsonl) or a Parquet file (.parquet). A JSON list has to be read whole and held in memory, and measured here it takes about
+# six times its size (a 48 MB list peaked at 586 MB, a 96 MB list at 884 MB, a 193 MB list at 1087 MB, in a process that is
+# allowed 1 GB), so its limit is small. The other two are read in batches of ICEBERG_BATCH_ROWS rows and written a file at a
+# time, so the memory they take does not depend on the file: 1.3 GB of rows took 131 seconds and peaked at 542 MB, and a
+# Parquet file of 8 million rows peaked at 659 MB. Their limit is on time, at about 10 MB a second for JSON rows.
+ICEBERG_MAX_BYTES = int(os.environ.get("MUNITAS_ICEBERG_MAX_BYTES", str(32 * 1024 * 1024)))
+ICEBERG_STREAM_MAX_BYTES = int(os.environ.get("MUNITAS_ICEBERG_STREAM_MAX_BYTES", str(2 * 1024 ** 3)))
+ICEBERG_BATCH_ROWS = int(os.environ.get("MUNITAS_ICEBERG_BATCH_ROWS", "20000"))
+# One line of newline-delimited JSON may be no longer than this, so a file with no line breaks cannot fill memory.
+ICEBERG_MAX_ROW_BYTES = int(os.environ.get("MUNITAS_ICEBERG_MAX_ROW_BYTES", str(8 * 1024 * 1024)))
+# A Parquet file is read one row group at a time. A file whose row groups are larger than this (uncompressed, as its own
+# footer states) is refused, because that is the amount that has to be held at once. The footer is also read with limits,
+# since a hostile footer is the usual way to make a reader allocate without bound.
+ICEBERG_PARQUET_MAX_ROW_GROUP_BYTES = int(os.environ.get("MUNITAS_ICEBERG_PARQUET_MAX_ROW_GROUP_BYTES", str(256 * 1024 * 1024)))
+ICEBERG_PARQUET_THRIFT_STRING_BYTES = int(os.environ.get("MUNITAS_ICEBERG_PARQUET_THRIFT_STRING_BYTES", str(64 * 1024 * 1024)))
+ICEBERG_PARQUET_THRIFT_CONTAINER_ITEMS = int(os.environ.get("MUNITAS_ICEBERG_PARQUET_THRIFT_CONTAINER_ITEMS", "1000000"))
 # How long writing one table may take before it is given up. Every call that leaves this process needs a deadline.
 ICEBERG_TIMEOUT_SECONDS = int(os.environ.get("MUNITAS_ICEBERG_TIMEOUT_SECONDS", "300"))

@@ -94,7 +94,17 @@ def main() -> int:
         good_key, good_manifest = put_records(tabular_rows(4))
         prefix = next_prefix()
         count = versions_of(dataset_id)
-        with mock.patch("pyiceberg.table.Table.append", side_effect=RuntimeError("storage fault during the data write")):
+        import pyiceberg.io.pyarrow as pyiceberg_writer
+
+        real_write = pyiceberg_writer._dataframe_to_data_files
+        wrote: list[str] = []
+
+        def writes_then_fails(*args, **kwargs):
+            # The real library writes the data files for the rows it was given, and then the storage fails.
+            wrote.extend(f.file_path for f in real_write(*args, **kwargs))
+            raise RuntimeError("storage fault during the data write")
+
+        with mock.patch.object(pyiceberg_writer, "_dataframe_to_data_files", side_effect=writes_then_fails):
             refused = None
             try:
                 versions.seal(tenant_id=org.id, dataset_id=dataset_id, schema_id=schema, visibility_class="RAW", storage_backend="seaweedfs",
@@ -104,7 +114,8 @@ def main() -> int:
         check("the seal is refused as a failure, not a skip", refused is not None and refused.outcome == "failed" and "RuntimeError" in refused.reason,
               refused.reason if refused else "sealed")
         check("the message of the fault is not repeated", refused is not None and "storage fault" not in refused.reason)
-        check("the table's metadata, which the real library had already written, was removed", under(bucket, f"{prefix}/iceberg/") == [], str(under(bucket, f"{prefix}/iceberg/")))
+        check("the real library had written the table's data files and its metadata before the fault, and all of it was removed",
+              len(wrote) > 0 and under(bucket, f"{prefix}/iceberg/") == [], f"{len(wrote)} data files written, then {under(bucket, f'{prefix}/iceberg/')}")
         check("and no version was created", versions_of(dataset_id) == count)
         again = versions.seal(tenant_id=org.id, dataset_id=dataset_id, schema_id=schema, visibility_class="RAW", storage_backend="seaweedfs",
                               object_manifest=good_manifest, record_count=4, records_key=good_key)
