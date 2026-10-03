@@ -49,6 +49,27 @@ def main() -> int:
               body["outcome"] == "skipped" and not body["projected"] and "could not be read" in body["reason"]
               and "rec-" not in body["reason"], body["reason"][:140])
 
+        # A real error from the real library: a row whose count is text where the contract says integer. The records
+        # object is readable and the contract exists. The error comes out of pyarrow itself (ArrowInvalid), which the
+        # platform recognises and reports as a skip with that kind of error. A mock could only imitate that.
+        import hashlib
+        import json as _json
+        from common import ADMIN, bucket_for, s3_client
+        bad_rows = [{**row, "count": "not a number"} for row in table["rows"]]
+        again = api("GET", f"/datasets/{table['dataset_id']}/next-version", params={"tenant_id": org.id}).json()["storage_prefix"]
+        payload = _json.dumps(bad_rows).encode()
+        key = f"{again}/records.json"
+        s3_client(*ADMIN).put_object(Bucket=bucket_for(org.id), Key=key, Body=payload)
+        torn = api("POST", "/dataset-versions", json={
+            "tenant_id": org.id, "dataset_id": table["dataset_id"], "schema_id": schema, "visibility_class": "RAW",
+            "object_manifest": [{"key": key, "bytes": len(payload), "sha256": hashlib.sha256(payload).hexdigest()}],
+            "record_count": len(bad_rows), "records_key": key})
+        check("rows the real library cannot write do not stop the seal", torn.status_code == 201, str(torn.status_code))
+        body = api("GET", f"/dataset-versions/{torn.json()['id']}/table", headers=member).json()
+        check("the note names the kind of error the library raised, and quotes no value",
+              body["outcome"] == "skipped" and not body["projected"] and "ArrowInvalid" in body["reason"]
+              and "not a number" not in body["reason"], f"{body['outcome']}: {body['reason'][:150]}")
+
         with db() as conn:
             conn.execute("delete from iceberg_projection_note where dataset_version_id = %s", (files["version_id"],))
         body = api("GET", f"/dataset-versions/{files['version_id']}/table", headers=member).json()
@@ -58,13 +79,13 @@ def main() -> int:
         heading("The dataset list marks what is a table")
         listing = {d["name"]: d for d in api("GET", "/datasets", params={"tenant_id": org.id}, headers=member).json()["datasets"]}
         check("a dataset with a table version is marked as a table", listing["a-table"]["is_table"] is True)
-        check("its second version failed, so it is marked as missing a table copy",
+        check("two of its versions have no table copy, so it is marked as missing one",
               listing["a-table"]["table_missing"] is True and listing["a-table"]["tabled_versions"] == 1
-              and listing["a-table"]["untabled_versions"] == 1)
+              and listing["a-table"]["untabled_versions"] == 2)
         check("a dataset of files is not marked as a table", listing["records"]["is_table"] is False and listing["records"]["table_missing"] is False)
         versions = api("GET", f"/datasets/{table['dataset_id']}/versions", headers=member).json()
         check("each version in the list says whether it has a table copy",
-              {v["version"]: v["table_copy"] for v in versions} == {1: True, 2: False}, str([(v["version"], v["table_copy"]) for v in versions]))
+              {v["version"]: v["table_copy"] for v in versions} == {1: True, 2: False, 3: False}, str([(v["version"], v["table_copy"]) for v in versions]))
 
         heading("Only the organisation's own people can ask")
         check("another organisation's member is told there is no such version",
