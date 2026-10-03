@@ -90,6 +90,7 @@ def parquet_of(rows: int, start: int = 0, count_type=None, row_group: int | None
 
 def main() -> int:
     require_api()
+    import tablewriter.writer
     from app import config, iceberg, versions
     import pyarrow.compute as pc
     from app import db as app_db
@@ -288,7 +289,7 @@ def main() -> int:
         slow_body = ("\n".join(json.dumps(row(i)) for i in range(5000)) + "\n").encode()
         key, manifest = put(slow_body, "ndjson")
         slow_prefix, count = next_prefix(), versions_of(dataset_id)
-        original = iceberg.build
+        original = tablewriter.writer.build
 
         def slow(*a, **k):
             time.sleep(1.2)
@@ -296,7 +297,7 @@ def main() -> int:
 
         started = time.monotonic()
         with mock.patch.object(config, "ICEBERG_TIMEOUT_SECONDS", 2), mock.patch.object(config, "ICEBERG_BATCH_ROWS", 500), \
-                mock.patch.object(config, "ICEBERG_FILE_BYTES", 100 * 1024), mock.patch.object(iceberg, "build", side_effect=slow):
+                mock.patch.object(config, "ICEBERG_FILE_BYTES", 100 * 1024), mock.patch.object(tablewriter.writer, "build", side_effect=slow):
             gave_up = None
             try:
                 seal_here(key, manifest, 5000)

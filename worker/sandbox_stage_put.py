@@ -6,8 +6,9 @@ storage client of its own: the key it was handed reaches this container and
 nowhere else.
 
 Environment: MUNITAS_S3_ENDPOINT, MUNITAS_S3_ACCESS_KEY, MUNITAS_S3_SECRET_KEY,
-MUNITAS_S3_BUCKET, MUNITAS_PUT_KEY (the object to write). Reads /out/records.json
-and prints {"uploaded": <bytes>}.
+MUNITAS_S3_BUCKET, MUNITAS_PUT_KEY (the object to write), MUNITAS_PUT_FILE (the file in
+/out to read, records.json when not set). The file is uploaded in pieces, not read whole,
+because a result may be hundreds of megabytes. Prints {"uploaded": <bytes>}.
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ def main() -> int:
     import boto3
     from botocore.config import Config
 
-    body = Path("/out/records.json").read_bytes()
+    source = Path("/out") / os.environ.get("MUNITAS_PUT_FILE", "records.json")
     s3 = boto3.client(
         "s3",
         endpoint_url=os.environ["MUNITAS_S3_ENDPOINT"],
@@ -30,8 +31,8 @@ def main() -> int:
         config=Config(signature_version="s3v4", retries={"max_attempts": 2}),
         region_name="us-east-1",
     )
-    s3.put_object(Bucket=os.environ["MUNITAS_S3_BUCKET"], Key=os.environ["MUNITAS_PUT_KEY"], Body=body)
-    print(json.dumps({"uploaded": len(body)}))
+    s3.upload_file(str(source), os.environ["MUNITAS_S3_BUCKET"], os.environ["MUNITAS_PUT_KEY"])
+    print(json.dumps({"uploaded": source.stat().st_size}))
     return 0
 
 

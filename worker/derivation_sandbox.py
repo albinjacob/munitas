@@ -162,10 +162,14 @@ def run(params: dict) -> dict:
         if outcome.get("status") != "ok":
             raise DerivationFailed(outcome.get("reason") or f"the query container stopped without a result (exit={code})")
 
-        records = out_dir / "records.json"
+        records = out_dir / "records.ndjson"
         if records.stat().st_size != outcome["bytes"]:
             raise RuntimeError("the result on disk is not the size the query reported")
-        if hashlib.sha256(records.read_bytes()).hexdigest() != outcome["sha256"]:
+        digest = hashlib.sha256()
+        with records.open("rb") as handle:  # in pieces: a result may be hundreds of megabytes
+            for piece in iter(lambda: handle.read(8 * 1024 * 1024), b""):
+                digest.update(piece)
+        if digest.hexdigest() != outcome["sha256"]:
             raise RuntimeError("the result on disk is not the one the query reported")
 
         w = _post("/write-credentials", {
@@ -177,10 +181,10 @@ def run(params: dict) -> dict:
         if w.status_code != 200:
             raise DerivationFailed(f"the platform refused a write key (HTTP {w.status_code})")
         grant = w.json()
-        records_key = f"{grant['prefix']}/records.json"
+        records_key = f"{grant['prefix']}/records.ndjson"
         code, logs, timed_out = _run_and_wait(
             client, image=config.DERIVE_IMAGE, command=["python", "/stage/put.py"],
-            environment={**_s3_env(grant), "MUNITAS_PUT_KEY": records_key},
+            environment={**_s3_env(grant), "MUNITAS_PUT_KEY": records_key, "MUNITAS_PUT_FILE": "records.ndjson"},
             volumes={str(PUT): {"bind": "/stage/put.py", "mode": "ro"},
                      str(out_dir): {"bind": "/out", "mode": "ro"}},
             network=config.DATA_NETWORK, timeout=STAGE_TIMEOUT_SECONDS,

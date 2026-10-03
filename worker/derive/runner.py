@@ -102,13 +102,13 @@ def run() -> None:
 
     os.makedirs(OUT, exist_ok=True)
     digest, written, rows, seen = hashlib.sha256(), 0, 0, set()
-    with open(os.path.join(OUT, "records.json"), "wb") as out:
+    # One row per line, so the platform can read the result as a stream and write it as a table without holding it whole.
+    with open(os.path.join(OUT, "records.ndjson"), "wb") as out:
         def put(chunk: bytes) -> None:
             nonlocal written
             out.write(chunk)
             digest.update(chunk)
             written += len(chunk)
-        put(b"[")
         while True:
             batch = cursor.fetchmany(CHUNK)
             if not batch:
@@ -125,13 +125,12 @@ def run() -> None:
                     line = json.dumps(dict(zip(names, values)), ensure_ascii=False, allow_nan=False)
                 except ValueError:
                     finish("failed", reason=f"a value in row {rows + 1} is not a finite number")
-                put((b",\n" if rows else b"\n") + line.encode("utf-8"))
+                put(line.encode("utf-8") + b"\n")
                 rows += 1
                 if rows > MAX_ROWS:
                     finish("failed", reason=f"the result has more than {MAX_ROWS} rows")
                 if written > MAX_BYTES:
                     finish("failed", reason=f"the result is larger than {MAX_BYTES} bytes")
-        put(b"\n]")
     if rows == 0:
         finish("failed", reason="the query produced no rows, so there is nothing to seal")
     finish("ok", rows=rows, bytes=written, sha256=digest.hexdigest())

@@ -50,6 +50,7 @@ def under(bucket: str, prefix: str) -> list[str]:
 
 def main() -> int:
     require_api()
+    import tablewriter.writer
     from app import config, iceberg, versions
     from app import db as app_db
 
@@ -125,14 +126,14 @@ def main() -> int:
         heading("A write that takes too long is given up on")
         slow_key, slow_manifest = put_records(tabular_rows(2))
         slow_prefix, count = next_prefix(), versions_of(dataset_id)
-        original = iceberg.build
+        original = tablewriter.writer.build
 
         def slow(*a, **k):
             time.sleep(3)
             return original(*a, **k)
 
         started = time.monotonic()
-        with mock.patch.object(config, "ICEBERG_TIMEOUT_SECONDS", 1), mock.patch.object(iceberg, "build", side_effect=slow):
+        with mock.patch.object(config, "ICEBERG_TIMEOUT_SECONDS", 1), mock.patch.object(tablewriter.writer, "build", side_effect=slow):
             refused = None
             try:
                 versions.seal(tenant_id=org.id, dataset_id=dataset_id, schema_id=schema, visibility_class="RAW", storage_backend="seaweedfs",
