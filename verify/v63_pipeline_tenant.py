@@ -55,8 +55,8 @@ os.environ.setdefault("S3_ENDPOINT", f"http://localhost:{PORTS['seaweedfs_s3']}"
 
 import httpx  # noqa: E402
 
-from common import (ADMIN, api, check, db, heading, require_api,  # noqa: E402
-                    s3_client, summary)
+from common import (ADMIN, api, check, db, fixture_tenant, heading,  # noqa: E402
+                    require_api, s3_client, summary)
 from lifecycle_fixture import KRATOS_ADMIN, give_login  # noqa: E402
 
 # Sign-ins this run made for the people it acts as, removed when it ends.
@@ -88,12 +88,11 @@ def provisioned_tenant() -> tuple[str, str] | None:
     interfered.
     """
     tenant = f"pipeline-probe-{uuid.uuid4().hex[:8]}"
-    with db() as conn:
-        conn.execute(
-            """insert into tenant (id, isolation_level, key_ref, purpose)
-               values (%s, 'shared', %s, 'canary')""",
-            (tenant, f"key/{tenant}"),
-        )
+    # Declared disposable at creation, while it is empty (the `pipeline-probe-` prefix is in common.py's list, which is what
+    # `fixture_tenant` reads). Its sealed versions then delete like any other row, and the nightly sweep removes the tenant and its
+    # bucket. As `canary` it was kept for good, one more every run, because a sealed version cannot be deleted from a tenant that has
+    # not declared itself disposable and a tenant that already holds one cannot declare it now.
+    fixture_tenant(tenant)
 
     # Provisioning happens on a tenant's first write. Asking where the next
     # version goes is that first write, and it is the platform's own path

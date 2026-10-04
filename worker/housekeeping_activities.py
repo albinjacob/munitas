@@ -51,6 +51,10 @@ def sweep_stale_probes(min_age_hours: float) -> dict:
         log.info("  %s purpose=%s created=%s versions=%d -> %s",
                   c["id"], c["purpose"], c["created_at"], c["versions"],
                   "removed" if removed else "left")
+    if result["failed"]:
+        # Fails the activity, so it shows in Temporal's list of workflows instead of passing as a clean sweep. The tenants that did
+        # delete are already committed, and the others are tried again on the next run.
+        raise RuntimeError("probe sweep could not remove " + "; ".join(f"{f['id']} ({f['reason']})" for f in result["failed"]))
     return result
 
 

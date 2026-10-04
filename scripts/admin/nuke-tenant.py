@@ -232,16 +232,21 @@ def delete_all(conn, tables: list[str], tenant: str) -> dict[str, int]:
 
 
 def _delete_together(conn, tables: list[str], tenant: str) -> dict[str, int]:
-    """Delete `tenant`'s rows from every table in `tables` in one statement."""
-    parts = [
-        f'd{i} as (delete from "{t}" where {delete_clause(t)} returning 1)'
-        for i, t in enumerate(tables)
-    ]
-    counts = ", ".join(f"(select count(*) from d{i}) as n{i}" for i in range(len(tables)))
-    row = conn.execute(
-        "with " + ", ".join(parts) + " select " + counts, [tenant] * len(tables)
-    ).fetchone()
-    return {t: row[f"n{i}"] for i, t in enumerate(tables) if row[f"n{i}"]}
+    """Delete `tenant`'s rows from every table in `tables` in one statement.
+
+    The rows are counted first and the delete does not ask for them back (`returning`). PostgreSQL refuses a `delete ... returning`
+    on a table that has a conditional `do instead` rule, and `dataset_version` has one (the immutability rule, which lets a tenant
+    that declared itself disposable delete its sealed versions), so counting through `returning` failed for exactly the disposable
+    tenants whose lineage loops back on itself. A data-modifying `with` runs whether or not anything reads it."""
+    before = {
+        t: conn.execute(
+            f'select count(*) as n from "{t}" where {delete_clause(t)}', (tenant,)
+        ).fetchone()["n"]
+        for t in tables
+    }
+    parts = [f'd{i} as (delete from "{t}" where {delete_clause(t)})' for i, t in enumerate(tables)]
+    conn.execute("with " + ", ".join(parts) + " select 1", [tenant] * len(tables))
+    return {t: n for t, n in before.items() if n}
 
 
 def main() -> int:

@@ -327,7 +327,7 @@ def bearer_for(directory_id: str) -> dict[str, str]:
 # what v1_immutability.py needs its own fixture to be.
 _DISPOSABLE_PREFIXES = (
     "storage-probe-", "ingest-probe-", "legacy-probe-", "scratch-probe-",
-    "scratch-empty-", "verify-retired-",
+    "scratch-empty-", "verify-retired-", "pipeline-probe-",
 )
 
 
