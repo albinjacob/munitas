@@ -15,6 +15,7 @@
  * which refuses the same way whether or not a link was on screen.
  */
 
+import { joined } from "../../lib/joined";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -69,10 +70,10 @@ function Stat({
 /** A custodian: what is waiting for you, and what you are answerable for. */
 function CustodianHome({
   custodian,
-  department,
+  departments,
 }: {
   custodian: string;
-  department: string | null;
+  departments: string[];
 }) {
   // Narrowed to this custodian. A queue that lists requests you cannot decide
   // is worse than an empty one: it invites you to try, and the refusal comes
@@ -116,7 +117,7 @@ function CustodianHome({
   );
 
   const waiting = pending.data?.lease_requests.length ?? 0;
-  const mine = organisation.data?.departments.find((d) => d.custodian === custodian);
+  const mine = (organisation.data?.departments ?? []).filter((d) => d.approvers.some((a) => a.person_id === custodian));
 
   // Excluded server-side now (`exclude_pending`), so every row here is
   // already decided; still re-sorted by `decided_at`, a different ordering
@@ -144,7 +145,7 @@ function CustodianHome({
       {!pending.isLoading && !arrivals.isLoading && !everything.isLoading && (
         <Section
           title="At a glance"
-          description="Counted for your own department only."
+          description={departments.length > 1 ? "Counted for your own departments only." : "Counted for your own department only."}
         >
           <div
             data-testid="custodian-stats"
@@ -190,11 +191,11 @@ function CustodianHome({
                 </div>
                 <p className="mt-1 text-slate-700">
                   Claimed by {people.label(d.declared_by)} on{" "}
-                  {new Date(d.declared_at).toLocaleDateString()}.
+                  {new Date(d.declared_at).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}.
                 </p>
-                {d.declared_by === d.custodian && (
+                {d.approvers.length === 1 && d.approvers[0] === d.declared_by && (
                   <p className="mt-1 text-xs text-slate-600">
-                    The custodian of {d.department_name ?? "the owning department"} made this claim, so another data custodian confirms it.
+                    The only approver of {d.department_name ?? "the owning department"} made this claim, so another data custodian confirms it.
                   </p>
                 )}
                 <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -249,7 +250,7 @@ function CustodianHome({
 
       <Section
         title="Waiting for your decision"
-        description={`Requests to read data owned by ${department ?? "your department"}.`}
+        description={`Requests to read data owned by ${joined(departments) || "your department"}.`}
       >
         {pending.isLoading ? (
           <Loading what="requests" />
@@ -542,9 +543,11 @@ function CustodianHome({
               datasets are held in total" under a heading claiming they were
               yours, which is a lie by juxtaposition rather than by statement.
             */}
-            {mine
-              ? `${mine.datasets} ${mine.datasets === 1 ? "dataset belongs" : "datasets belong"} to ${mine.name}.`
-              : "No datasets have been assigned to your department yet."}{" "}
+            {mine.length
+              ? mine
+                  .map((d) => `${d.datasets} ${d.datasets === 1 ? "dataset belongs" : "datasets belong"} to ${d.name}`)
+                  .join(", ") + "."
+              : "No datasets have been assigned to a department you approve for yet."}{" "}
             <Link to="/datasets" className="text-sky-700 underline">
               Look through them
             </Link>
@@ -920,9 +923,9 @@ export function Home() {
       <div className="mb-6 rounded border border-slate-200 bg-white p-4">
         <h1 className="text-lg font-semibold">
           {principal.label}
-          {principal.department_name && (
+          {principal.approver_of.length > 0 && (
             <span className="ml-2 text-sm font-normal text-slate-500">
-              {principal.department_name}
+              {joined(principal.approver_of)}
             </span>
           )}
         </h1>
@@ -932,7 +935,7 @@ export function Home() {
       {mayApprove && (
         <CustodianHome
           custodian={principal.id}
-          department={principal.department_name}
+          departments={principal.approver_of}
         />
       )}
       {roles.includes("notebook_explore") && (

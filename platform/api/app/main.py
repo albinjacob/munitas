@@ -28,7 +28,7 @@ from psycopg import errors as pg_errors
 from crypto import DestroyedKeyError, EnvelopeCrypto
 
 from . import (access_preview, activation, agent_upload, agents, auth, config,
-              dag_pipelines, db, derivations, external_accounts, grants, housekeeping, iceberg,
+              dag_pipelines, db, department_approvers, derivations, external_accounts, grants, housekeeping, iceberg,
               iceberg_catalog, ingest, legal_export, lifecycle, logs, models, opa, people, pipeline, r2,
               read_models, seaweed, storage, table_jobs, task_credential, temporal_client,
               versions)
@@ -113,6 +113,7 @@ app.add_middleware(
 app.include_router(read_models.router)
 app.include_router(housekeeping.router)
 app.include_router(people.router)
+app.include_router(department_approvers.router)
 app.include_router(ingest.router)
 app.include_router(external_accounts.router)
 app.include_router(agents.router)
@@ -619,7 +620,7 @@ async def approve_lease(
 
     # Who is entitled to approve this, according to the asset's owner.
     custodian = db.one(
-        "select custodian, department_name, dataset_name from version_custodian "
+        "select approvers, department_name, dataset_name from version_custodian "
         "where dataset_version_id = %s",
         (req["dataset_version_id"],),
     ) or {}
@@ -647,7 +648,7 @@ async def approve_lease(
         },
         "asset": {
             "dataset_version": str(req["dataset_version_id"]),
-            "custodian": custodian.get("custodian"),
+            "approvers": custodian.get("approvers") or [],
         },
     })
     if not permitted:
@@ -732,7 +733,7 @@ async def reject_lease(request_id: str, body: models.LeaseRejection,
         raise HTTPException(409, f"request already {req['state']}")
 
     custodian = db.one(
-        "select custodian, department_name from version_custodian "
+        "select approvers, department_name from version_custodian "
         "where dataset_version_id = %s",
         (req["dataset_version_id"],),
     ) or {}
@@ -746,7 +747,7 @@ async def reject_lease(request_id: str, body: models.LeaseRejection,
         },
         "asset": {
             "dataset_version": str(req["dataset_version_id"]),
-            "custodian": custodian.get("custodian"),
+            "approvers": custodian.get("approvers") or [],
         },
     })
     if not permitted:
@@ -787,7 +788,7 @@ def revoke_lease(lease_id: str, identity: dict = Depends(auth.current_session)) 
         raise HTTPException(404, "no such lease")
 
     custodian = db.one(
-        "select custodian from version_custodian where dataset_version_id = %s",
+        "select approvers from version_custodian where dataset_version_id = %s",
         (lease["dataset_version_id"],),
     ) or {}
 
@@ -800,7 +801,7 @@ def revoke_lease(lease_id: str, identity: dict = Depends(auth.current_session)) 
         },
         "asset": {
             "dataset_version": str(lease["dataset_version_id"]),
-            "custodian": custodian.get("custodian"),
+            "approvers": custodian.get("approvers") or [],
         },
     })
     if not permitted:

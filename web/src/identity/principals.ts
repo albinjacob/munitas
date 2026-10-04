@@ -1,3 +1,4 @@
+import { joined } from "../lib/joined";
 /**
  * Who you can act as, and how to describe them.
  *
@@ -27,6 +28,8 @@ export interface DirectoryEntry {
   tenant_purpose: string;
   department_name: string | null;
   department_id: string | null;
+  /** Every department this person is an approver for, by name. `department_name` is the first of them. */
+  approver_of: string[];
 }
 
 export interface Principal extends DirectoryEntry {
@@ -91,10 +94,12 @@ const FALLBACK: Copy = {
 function custodianCopy(entry: DirectoryEntry): Copy | null {
   if (!entry.roles.includes("data_custodian")) return null;
 
-  if (entry.department_name) {
+  if (entry.approver_of.length) {
+    const departments = joined(entry.approver_of);
+    const plural = entry.approver_of.length > 1;
     return {
-      description: `Accountable for ${entry.department_name}'s data. Decides who may read it, and for what.`,
-      landing: `Requests waiting on your decision, and what ${entry.department_name} owns.`,
+      description: `Approver for ${departments}. Decides who may read ${plural ? "their" : "its"} data, and for what.`,
+      landing: `Requests waiting on your decision, and what ${departments} ${plural ? "own" : "owns"}.`,
     };
   }
 
@@ -123,7 +128,7 @@ function custodianCopy(entry: DirectoryEntry): Copy | null {
  */
 export function isAppointed(entry: DirectoryEntry): boolean {
   if (entry.roles.includes("data_custodian")) {
-    return Boolean(entry.department_name);
+    return entry.approver_of.length > 0;
   }
   return true;
 }

@@ -98,8 +98,10 @@ rather than department. That is the same structure with a different label on the
 box.
 
 Research-heavy organisations often replace a single custodian with a **Data
-Access Committee**. That is a custodian that happens to be a committee, and the
-model does not change: one accountable approver, which may be a group.
+Access Committee**. A department can name several approvers, so a committee is
+simply its members, and any one of them may act. The model does not change: the
+department is the accountable answer, and each decision names the person who
+made it.
 
 ---
 
@@ -109,7 +111,7 @@ Six personas, each with a reason to open the console.
 
 | Persona | Role | What they do | May approve |
 | --- | --- | --- | --- |
-| Data custodian | `data_custodian` | Approves access to their department's assets, confirms sensitivity claims, and may bring data in | **Yes**, access to their own department only |
+| Data custodian | `data_custodian` | Approves access to the departments they are an approver for, confirms sensitivity claims, and may bring data in | **Yes**, access to their own department only |
 | De-identification reviewer | `deid_reviewer` | Reads what a de-identification run left behind, and decides whether it may be promoted | **Yes**, the gate only, and never a run they triggered |
 | Data protection officer | `dpo` | Reads everything including every denial, evidences compliance, handles erasure requests | No |
 | Researcher | `notebook_explore` | Requests access under a project, consumes de-identified data | No |
@@ -134,14 +136,35 @@ version of either, belongs to the **data engineer** alone. Researchers, data
 protection officers, reviewers, network architects and the platform
 administrator do none of these, and the platform refuses them and says why.
 
-The person who makes a sensitivity claim is never the one who confirms it. The
-custodian of the department that owns the data confirms a claim made by anyone
-else. When that same custodian registered the dataset, another data custodian of
-the organisation confirms it instead, so every claim has a second pair of eyes.
+The person who makes a sensitivity claim is never the one who confirms it. Any
+one approver of the department that owns the data confirms a claim made by
+anyone else. When the person who made the claim is the department's only
+approver, another data custodian of the organisation confirms it instead, so
+every claim has a second pair of eyes.
 
 A role is held by people, not by a single seat. An organisation may have several
 custodians or several data protection officers, and each decision is checked
 against the role the person holds.
+
+### Department approvers
+
+Two things are kept apart. A **role** says what kinds of act a person may do,
+and it belongs to the person: the data custodian role is asked for by the person,
+approved by a different custodian, and confirmed from time to time. A **department
+approver** is a position: it says whose data a person answers for. A person is
+an approver of a department when they hold the data custodian role and are
+listed for that department, and not otherwise. Hartley can be an approver for
+Cardiology and not for Oncology, even though he holds the same role as the
+approver for Oncology.
+
+A department has any number of approvers, and any one of them may approve access
+or confirm a claim, so a department is never blocked by one person being away.
+Any current approver may add another or remove one, with a reason that is
+recorded with who made the change and when. The person added must already hold
+the data custodian role: adding somebody to a department never grants the role.
+Temporary cover has an end date and lapses by itself. A department always keeps
+at least one permanent approver. The record of who answered for a department is
+never edited, so who was accountable on any date can always be answered.
 
 ### The data protection officer approves nothing, deliberately
 
@@ -244,7 +267,7 @@ Three layers, all enforced.
 | Layer | Claim | Enforced by |
 | --- | --- | --- |
 | Authority | The approver is a registered custodian | Foreign key from `access_lease.approved_by` |
-| Relationship | The approver is the custodian of the department owning the asset, and is not the requester | Policy, plus a self-approval check constraint |
+| Relationship | The approver is one of the approvers of the department owning the asset, and is not the requester | Policy, plus a self-approval check constraint |
 | Identity | The caller really is that approver | Ory Kratos session, verified by `platform/api/app/auth.py` |
 
 ### Human approval is authenticated, not asserted
@@ -327,7 +350,8 @@ key again.
 
 | Table or column | Purpose |
 | --- | --- |
-| `department` table | Tenant, name, and the custodian principal |
+| `department` table | Tenant, name, and the person the department was made with |
+| `department_approver` table | Who answers for each department, since when and until when, and who changed it and why |
 | `project` table | Tenant, name, lead, declared purpose, lifespan |
 | `dataset.department_id` | Which department owns the asset |
 | `lease_request.project_id` | Which approved purpose the request is made under (nullable) |

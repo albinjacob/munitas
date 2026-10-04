@@ -92,6 +92,12 @@ SERIES = [
                 "signed, encrypted package that the recipient opens with a passphrase.",
      "you_see": "Three people each doing one step, a refusal, a passphrase shown once, a download link, and the "
                 "recipient checking the package on their own computer"},
+    {"slug": "department-approvers", "org": "health", "title": "Cover a department while its custodian is away",
+     "summary": "The custodian of Cardiology names a colleague from another department as cover. The cover confirms "
+                "a claim about Cardiology's data on their own, then the custodian ends the cover. The platform "
+                "refuses to remove the last permanent approver and keeps a record of every change.",
+     "you_see": "Adding an approver with a reason and an end date, a claim confirmed by the cover, a removal, a "
+                "refusal with its reason, and the history of who answered for the department"},
 ]
 
 
@@ -124,7 +130,13 @@ WORDS = {
                                      "its own data."),
     "department": ("Department", "A team inside an organisation that owns some of its data, such as Cardiology."),
     "dataset": ("Dataset", "A named collection of records, such as a table of patient admissions."),
-    "custodian": ("Custodian", "The person a department trusts to decide who may read its data."),
+    "custodian": ("Custodian", "A person who holds the data custodian role, which allows deciding who may read data. A "
+                               "custodian decides for the departments they are an approver for."),
+    "claim": ("Claim", "A statement, made by the person who brings a dataset in, about how sensitive it is. A "
+                       "different approver of the owning department has to confirm it."),
+    "approver": ("Department approver", "A custodian who is listed for one department and may approve access to its "
+                                        "data and confirm claims about it. A department can have several, and any one "
+                                        "of them can act on their own."),
     "access_level": ("Access level", "How restricted a dataset is. Raw is the most restricted, and nobody may read "
                                      "it without permission. Published is the most open."),
     "lease": ("Lease", "Permission, given by the custodian, to read one dataset for one stated purpose and for a "

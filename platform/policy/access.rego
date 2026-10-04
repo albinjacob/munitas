@@ -329,8 +329,9 @@ may_approve if {
 	some role in input.approver.roles
 	approver_roles[role]
 
-	# The approver is the custodian of the department owning this asset.
-	input.approver.id == input.asset.custodian
+	# The approver is one of the department approvers of the department owning this asset. Any one of them may act, so a department is
+	# never blocked by one person being away.
+	input.approver.id in input.asset.approvers
 }
 
 approve_reason contains "an approver cannot approve their own request" if {
@@ -349,15 +350,15 @@ approve_reason contains "this principal holds no role that may approve" if {
 }
 
 approve_reason contains sprintf(
-	"this asset is owned by a department whose custodian is %v",
-	[input.asset.custodian],
+	"this asset is owned by a department whose approvers are %v",
+	[concat(", ", input.asset.approvers)],
 ) if {
-	input.asset.custodian != ""
-	input.approver.id != input.asset.custodian
+	count(input.asset.approvers) > 0
+	not input.approver.id in input.asset.approvers
 }
 
-approve_reason contains "this asset has no owning department, so nobody can approve access to it" if {
-	not input.asset.custodian
+approve_reason contains "this asset has no owning department, or its department has no approver, so nobody can approve access to it" if {
+	count(object.get(input.asset, "approvers", [])) == 0
 }
 
 approval_decision := {
@@ -638,10 +639,11 @@ code_registration_decision := {
 # Somebody who registers a dataset may claim a sensitivity less restrictive than the safe default. Until a custodian agrees, the data cannot be
 # released above the class that was claimed. Only a data custodian confirms, and never the person who made the claim.
 #
-# Whose job it is: the custodian of the department that owns the dataset. When that same custodian made the claim, nobody in the department
-# can check it, so any other data custodian of the organisation may. That is the narrowest second pair of eyes available, and it applies only
-# when the owner is the maker; for a claim made by anyone else, only the owning department's custodian confirms, as before. The route has
-# already established that the dataset is in the caller's own organisation.
+# Whose job it is: any one of the department approvers of the department that owns the dataset, other than the person who made the claim.
+# When the claimant is an approver and the department has no other approver, nobody in the department can check the claim, so any other
+# data custodian of the organisation may. That is the last resort, and it exists only for a department with a single approver; as soon as
+# the department has a second approver, only the approvers confirm, as for a claim made by anyone else. The route has already established
+# that the dataset is in the caller's own organisation.
 confirmer_roles := {"data_custodian"}
 
 holds_confirmer_role if {
@@ -649,18 +651,24 @@ holds_confirmer_role if {
 	confirmer_roles[role]
 }
 
+other_approvers := {a |
+	some a in input.department.approvers
+	a != input.claim.declared_by
+}
+
 default may_confirm_classification := false
 
 may_confirm_classification if {
 	holds_confirmer_role
 	input.confirmer.id != input.claim.declared_by
-	input.confirmer.id == input.department.custodian
+	input.confirmer.id in input.department.approvers
 }
 
 may_confirm_classification if {
 	holds_confirmer_role
 	input.confirmer.id != input.claim.declared_by
-	input.claim.declared_by == input.department.custodian
+	input.claim.declared_by in input.department.approvers
+	count(other_approvers) == 0
 }
 
 confirmation_reason contains "only a data custodian may confirm a sensitivity claim" if {
@@ -674,17 +682,108 @@ confirmation_reason contains "this person made the claim, so somebody else must 
 confirmation_reason contains msg if {
 	holds_confirmer_role
 	input.confirmer.id != input.claim.declared_by
-	input.confirmer.id != input.department.custodian
-	input.claim.declared_by != input.department.custodian
+	not input.confirmer.id in input.department.approvers
+	not may_confirm_classification
 	msg := sprintf(
-		"this data is owned by %s, whose custodian is %s; only that custodian may confirm a claim made by somebody else",
-		[input.department.name, input.department.custodian],
+		"this data is owned by %s, whose approvers are %s; only a department approver may confirm a claim made by somebody else",
+		[input.department.name, concat(", ", input.department.approvers)],
 	)
 }
 
 classification_confirmation_decision := {
 	"allow": may_confirm_classification,
 	"reasons": [r | some r in confirmation_reason],
+}
+
+# ---------------------------------------------- changing a department's approvers --
+
+# Any current approver of a department may add another or remove one, and every change is recorded with who made it and why. The person
+# added must already hold the data custodian role: adding them to a department is not a way of giving them the role, which is asked for
+# by the person and approved by a different custodian. A department always keeps at least one permanent approver.
+approver_change_roles := {"data_custodian"}
+
+holds_change_role if {
+	some role in input.actor.roles
+	approver_change_roles[role]
+}
+
+default may_add_department_approver := false
+
+may_add_department_approver if {
+	holds_change_role
+	input.actor.id in input.department.approvers
+	some role in input.person.roles
+	approver_change_roles[role]
+	not input.person.id in input.department.approvers
+	count(trim_space(object.get(input, "reason", ""))) > 0
+}
+
+addition_reason contains "only a current approver of this department may add another" if {
+	not input.actor.id in input.department.approvers
+}
+
+addition_reason contains "only a data custodian may change a department's approvers" if {
+	not holds_change_role
+}
+
+addition_reason contains "this person does not hold the data custodian role, which an approver must hold; they can ask for it first" if {
+	every role in input.person.roles {
+		not approver_change_roles[role]
+	}
+}
+
+addition_reason contains "this person is already an approver of this department" if {
+	input.person.id in input.department.approvers
+}
+
+addition_reason contains "a change to a department's approvers needs a reason, which is recorded with it" if {
+	count(trim_space(object.get(input, "reason", ""))) == 0
+}
+
+approver_addition_decision := {
+	"allow": may_add_department_approver,
+	"reasons": [r | some r in addition_reason],
+}
+
+default may_remove_department_approver := false
+
+may_remove_department_approver if {
+	holds_change_role
+	input.actor.id in input.department.approvers
+	input.person.id in input.department.approvers
+	count(trim_space(object.get(input, "reason", ""))) > 0
+	not removes_last_permanent_approver
+}
+
+# `permanent_after` is how many permanent approvers would remain, counted by the route.
+removes_last_permanent_approver if {
+	input.person.permanent
+	input.department.permanent_after < 1
+}
+
+removal_reason contains "only a current approver of this department may remove one" if {
+	not input.actor.id in input.department.approvers
+}
+
+removal_reason contains "only a data custodian may change a department's approvers" if {
+	not holds_change_role
+}
+
+removal_reason contains "this person is not an approver of this department" if {
+	not input.person.id in input.department.approvers
+}
+
+removal_reason contains "a department always keeps at least one permanent approver, so this one cannot be removed until another is added" if {
+	removes_last_permanent_approver
+}
+
+removal_reason contains "a change to a department's approvers needs a reason, which is recorded with it" if {
+	count(trim_space(object.get(input, "reason", ""))) == 0
+}
+
+approver_removal_decision := {
+	"allow": may_remove_department_approver,
+	"reasons": [r | some r in removal_reason],
 }
 
 # --------------------------------------------- agent egress allowlist --

@@ -18,7 +18,7 @@ export interface RegisteredDataset {
   declared_class: VisibilityClass;
   declaration_basis: "verified_source" | "asserted" | null;
   needs_confirmation: boolean;
-  custodian: string | null;
+  approvers: string[];
   note: string;
 }
 
@@ -309,7 +309,8 @@ export function useAwaitingConfirmation(custodian: string | undefined, limit = 1
           declared_at: string;
           provenance: string;
           department_name: string | null;
-          custodian: string | null;
+          /** Everybody who may confirm a claim about this department's data. */
+          approvers: string[];
         }[];
         /** Every dataset waiting, not only the ones in `items`. */
         total: number;

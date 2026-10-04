@@ -92,7 +92,8 @@ def _require_intake_role(identity: dict) -> None:
 
 def _dataset(dataset_id: str) -> dict:
     row = db.one(
-        """select d.*, dept.custodian, dept.name as department_name
+        """select d.*, dept.custodian, dept.name as department_name,
+                  case when dept.id is null then '{}'::text[] else active_department_approvers(dept.id) end as approvers
            from dataset d
            left join department dept on dept.id = d.department_id
            where d.id = %s""",
@@ -150,7 +151,7 @@ def register(body: RegisterDataset, identity: dict = Depends(auth.current_sessio
     auth.must_be(identity, tenant_id=body.tenant_id, person=body.registered_by)
     _require_intake_role(identity)
     department = db.one(
-        "select id, custodian from department where id = %s and tenant_id = %s",
+        "select id, custodian, active_department_approvers(id) as approvers from department where id = %s and tenant_id = %s",
         (body.department_id, body.tenant_id),
     )
     if not department:
@@ -209,11 +210,11 @@ def register(body: RegisterDataset, identity: dict = Depends(auth.current_sessio
         "declared_class": body.declared_class,
         "declaration_basis": basis,
         "needs_confirmation": basis == "asserted",
-        "custodian": department["custodian"],
+        "approvers": department["approvers"],
         "note": (
             "Nothing is readable yet. It becomes readable when the data is sealed "
-            "and, if you declared it less sensitive than the default, when the "
-            "custodian agrees with you."
+            "and, if you declared it less sensitive than the default, when a "
+            "department approver agrees with you."
         ),
     }
 
@@ -754,10 +755,10 @@ def seal(dataset_id: str, identity: dict = Depends(auth.current_session)) -> dic
 def confirm(dataset_id: str, body: ConfirmClassification, identity: dict = Depends(auth.current_session)) -> dict:
     """The custodian agreeing with somebody's sensitivity claim.
 
-    Decided by the policy (`classification_confirmation_decision`): a data custodian, never the person who made the claim, and the custodian of
-    the owning department. When that custodian made the claim themselves, any other data custodian of the organisation may confirm it, so
-    a custodian who brings data in still has a second pair of eyes on the claim. The person who made it is also refused by a check constraint.
-    Until this happens the data cannot be released above the class that was claimed for it.
+    Decided by the policy (`classification_confirmation_decision`): a data custodian who is a department approver of the owning department, never the
+    person who made the claim. Any one approver may confirm. When the claimant is the department's only approver, any other data custodian of
+    the organisation may, so a custodian who brings data in still has a second pair of eyes on the claim. The person who made the claim is also
+    refused by a check constraint. Until this happens the data cannot be released above the class that was claimed for it.
     """
     dataset = _dataset(dataset_id)
     _mine(dataset, identity)
@@ -773,15 +774,15 @@ def confirm(dataset_id: str, body: ConfirmClassification, identity: dict = Depen
             ]},
         )
 
-    if not dataset["custodian"]:
+    if not dataset["approvers"]:
         raise HTTPException(
-            409, {"reasons": ["this dataset has no owning department, so nobody can confirm"]}
+            409, {"reasons": ["this dataset has no owning department, or its department has no approver, so nobody can confirm"]}
         )
 
     permitted, reasons = opa.may_confirm_classification({
         "confirmer": {"id": identity["id"], "roles": identity["roles"]},
         "claim": {"declared_by": dataset["declared_by"]},
-        "department": {"name": dataset["department_name"], "custodian": dataset["custodian"]},
+        "department": {"name": dataset["department_name"], "approvers": dataset["approvers"]},
     })
     if not permitted:
         raise HTTPException(403, {"reasons": reasons})

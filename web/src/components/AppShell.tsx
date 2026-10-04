@@ -14,6 +14,7 @@
  * between anyone and any data.
  */
 
+import { joined } from "../lib/joined";
 import type { ComponentType, ReactNode, SVGProps } from "react";
 import { useEffect, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
@@ -66,6 +67,7 @@ const GROUPS: { title: string; items: Item[] }[] = [
     title: "Data",
     items: [
       { to: "/datasets", label: "Datasets", end: true, icon: DatasetIcon },
+      { to: "/departments", label: "Departments", icon: PeopleIcon },
       {
         to: "/gates",
         label: "De-identification results",
@@ -231,10 +233,10 @@ export function AppShell({ children }: { children: ReactNode }) {
               */}
               <div data-testid="current-roles" className="mt-0.5 text-sm text-slate-500">
                 {principal.roles.map(roleLabel).join(", ")}
-                {principal.department_name && (
+                {principal.approver_of.length > 0 && (
                   <span className="text-slate-400">
                     {" "}
-                    for {principal.department_name}
+                    for {joined(principal.approver_of)}
                   </span>
                 )}
               </div>

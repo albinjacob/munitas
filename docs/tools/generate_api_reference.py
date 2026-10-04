@@ -34,6 +34,7 @@ TAG_LABELS = {
     "external-accounts": "External accounts",
     "auth": "Auth",
     "people": "People and roles",
+    "departments": "Departments and their approvers",
     "housekeeping": "Storage housekeeping",
     "derivations": "Derived datasets (a query over existing ones)",
     "lifecycle": "Closing an organisation, and legal holds",

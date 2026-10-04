@@ -317,7 +317,15 @@ export function useOrganisation() {
         departments: {
           id: string;
           name: string;
+          /** The person the department was made with. Decisions use `approvers`. */
           custodian: string;
+          approvers: {
+            person_id: string;
+            label: string;
+            added_at: string;
+            /** Set for temporary cover, which ends by itself. */
+            valid_until: string | null;
+          }[];
           datasets: number;
         }[];
         datasets_without_a_department: number;

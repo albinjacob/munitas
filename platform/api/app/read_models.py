@@ -248,10 +248,10 @@ def list_awaiting_confirmation(
     Only `asserted` claims need this: the safe default carries no claim, and
     `verified_source` is already backed by something the platform fetched
     itself. Narrowed to `custodian` for the same reason `/lease-requests` is,
-    so a custodian's queue lists arrivals they can actually act on. Those are
-    the claims made by somebody else about data their department owns, and
-    the claims the owning custodian made about their own department's data,
-    which that custodian cannot confirm and any other data custodian of the
+    so an approver's queue lists arrivals they can actually act on. Those are
+    the claims made by somebody else about data their department owns, and,
+    for a department whose only approver made the claim, that claim too: that
+    approver cannot confirm it and any other data custodian of the
     organisation can (`classification_confirmation_decision`). The second
     kind is listed only for a person asking about their own queue who holds
     the data custodian role.
@@ -269,15 +269,17 @@ def list_awaiting_confirmation(
           and d.tenant_id = %s
           and (
             %s::text is null
-            or (dept.custodian = %s and d.declared_by is distinct from %s)
-            or (%s and d.declared_by = dept.custodian and dept.custodian <> %s)
+            or (%s = any(active_department_approvers(dept.id)) and d.declared_by is distinct from %s)
+            or (%s and d.declared_by = any(active_department_approvers(dept.id))
+                   and cardinality(array_remove(active_department_approvers(dept.id), d.declared_by)) = 0
+                   and d.declared_by <> %s)
           )
     """
     scope = (identity["tenant_id"], custodian, custodian, custodian, backs_up, custodian)
     total = db.one("select count(*) as n " + where, scope)["n"]
     items = db.all_rows(
         """select d.id, d.name, d.declared_class, d.declared_by, d.declared_at,
-                  d.provenance, dept.name as department_name, dept.custodian """
+                  d.provenance, dept.name as department_name, active_department_approvers(dept.id) as approvers """
         + where + " order by d.declared_at asc, d.id asc limit %s offset %s",
         scope + (limit, offset),
     )
@@ -332,7 +334,7 @@ def list_lease_requests(
         " and (%(state)s::text is null or lr.state = %(state)s)"
         " and (not %(exclude_pending)s or lr.state <> 'pending')"
         " and (%(principal)s::text is null or lr.principal = %(principal)s)"
-        " and (%(custodian)s::text is null or dept.custodian = %(custodian)s)"
+        " and (%(custodian)s::text is null or %(custodian)s = any(active_department_approvers(dept.id)))"
     )
     params = {
         "tenant": identity["tenant_id"], "state": state,
@@ -342,7 +344,7 @@ def list_lease_requests(
     rows = db.all_rows(
         f"""
         select lr.*, d.name as dataset_name, vc.version, vc.current_class,
-               dept.name as department_name, dept.custodian,
+               dept.name as department_name, dept.custodian, active_department_approvers(dept.id) as approvers,
                req.label as requested_by_label
         from lease_request lr
         left join version_class vc on vc.dataset_version_id = lr.dataset_version_id
@@ -758,12 +760,12 @@ def list_directory(
     which meant it could offer a custodian the database had never heard of and
     every approval that person made would be refused by a foreign key.
 
-    Custodians carry the department they hold, because a custodian without a
+    Approvers carry the departments they answer for (`approver_of`, with the
+    first of them as `department_name`), because a custodian who answers for no
     department can approve nothing and the console should be able to say so.
-    The department must be in the same tenant as the person: a custodian who
-    appears in two organisations' department tables was listed twice, once per
-    department, which is how a chooser ends up offering the same person as two
-    different people.
+    A person who answers for several departments is listed once: listing them
+    once per department is how a chooser ends up offering the same person as
+    two different people.
 
     Only live tenants by default. Verification runs as its own principals in the
     canary tenant, and offering those alongside real people would put "Canary
@@ -774,12 +776,20 @@ def list_directory(
     sql = """
         select d.id, d.label, d.kind, d.roles, d.tenant_id,
                t.purpose as tenant_purpose,
-               dept.name as department_name,
-               dept.id   as department_id
+               ap.first_name as department_name,
+               ap.first_id   as department_id,
+               coalesce(ap.names, '{}'::text[]) as approver_of
         from directory d
         join tenant t on t.id = d.tenant_id
-        left join department dept
-               on dept.custodian = d.id and dept.tenant_id = d.tenant_id
+        left join lateral (
+            select array_agg(dept.name order by dept.name) as names,
+                   (array_agg(dept.name order by dept.name))[1] as first_name,
+                   (array_agg(dept.id order by dept.name))[1] as first_id
+              from department dept
+              join department_approver a on a.department_id = dept.id and a.removed_at is null
+                                        and (a.valid_until is null or a.valid_until > now())
+             where a.person_id = d.id and dept.tenant_id = d.tenant_id
+        ) ap on true
         where (%s::text is null or d.kind = %s)
           and (%s = 'all' or t.purpose = %s)
         order by d.kind, d.id
@@ -817,7 +827,7 @@ def policy_roles() -> dict:
 
 @router.get("/organisation")
 def organisation(identity: dict = Depends(auth.current_session)) -> dict:
-    """Departments, their custodians, and which datasets they own.
+    """Departments, their approvers, and which datasets they own.
 
     An unowned dataset is reported as such rather than omitted. Thirty-nine
     datasets predate the organisation model, and nobody can approve access to
@@ -826,6 +836,13 @@ def organisation(identity: dict = Depends(auth.current_session)) -> dict:
     """
     departments = db.all_rows("""
         select d.id, d.name, d.custodian, dir.label as custodian_label,
+               (select coalesce(json_agg(json_build_object(
+                          'person_id', a.person_id, 'label', p.label, 'added_at', a.added_at, 'valid_until', a.valid_until)
+                          order by a.added_at, p.label), '[]'::json)
+                  from department_approver a
+                  join directory p on p.id = a.person_id and p.ended_at is null
+                 where a.department_id = d.id and a.removed_at is null
+                   and (a.valid_until is null or a.valid_until > now())) as approvers,
                count(ds.id) as datasets
         from department d
         left join directory dir on dir.id = d.custodian

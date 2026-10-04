@@ -2714,3 +2714,117 @@ drop trigger if exists refuse_retired_table_job on table_job;
 create trigger refuse_retired_table_job
   before insert on table_job
   for each row execute function refuse_write_to_retired_tenant();
+
+-- ------------------------------------------------ department approvers --
+
+-- Who may approve access to a department's data and confirm claims about it. A department has any number of approvers, any one of whom may
+-- act, because one person on leave must not block a whole department. A person is an approver of a department when they hold the data
+-- custodian role AND are listed here for that department: the role says what they may do, this says for which department's data.
+--
+-- Rows are never edited and never deleted by the platform, so the history of who answered for a department, and when, can be asked at any
+-- date. Removing an approver sets removed_at, removed_by and the reason; the only change a row ever takes. An approver with a valid_until is
+-- temporary cover and lapses by itself when that moment passes. A department always keeps at least one permanent approver.
+--
+-- department.custodian is no longer read for any decision. It remains as the person named when the department was made, which the
+-- trigger below turns into the first approver, so every way of making a department (the onboarding script, the seed files) still works.
+create table if not exists department_approver (
+  id             uuid primary key default gen_random_uuid(),
+  tenant_id      text not null references tenant(id),
+  department_id  uuid not null references department(id),
+  person_id      text not null references directory(id),
+  added_by       text not null references directory(id),
+  added_at       timestamptz not null default now(),
+  valid_until    timestamptz,
+  reason         text not null,
+  removed_by     text references directory(id),
+  removed_at     timestamptz,
+  removal_reason text,
+  constraint department_approver_removal_complete check ((removed_at is null) = (removed_by is null)),
+  constraint department_approver_ends_after_it_starts check (valid_until is null or valid_until > added_at)
+);
+
+create unique index if not exists department_approver_one_active
+  on department_approver (department_id, person_id) where removed_at is null;
+create index if not exists department_approver_by_person
+  on department_approver (person_id) where removed_at is null;
+
+-- The approvers in force now: not removed, not lapsed, and still a person who can act.
+create or replace function active_department_approvers(dept uuid) returns text[] as $$
+  select coalesce(array_agg(a.person_id order by a.added_at, a.person_id), '{}'::text[])
+    from department_approver a
+    join directory p on p.id = a.person_id and p.ended_at is null
+   where a.department_id = dept
+     and a.removed_at is null
+     and (a.valid_until is null or a.valid_until > now());
+$$ language sql stable;
+
+-- A row takes one change only: being removed. Everything else about who answered for a department, and when, stays as it was written.
+create or replace function department_approver_guard() returns trigger as $$
+begin
+  if new.id is distinct from old.id or new.tenant_id is distinct from old.tenant_id or new.department_id is distinct from old.department_id
+     or new.person_id is distinct from old.person_id or new.added_by is distinct from old.added_by or new.added_at is distinct from old.added_at
+     or new.valid_until is distinct from old.valid_until or new.reason is distinct from old.reason then
+    raise exception 'a department approver row is never edited, only removed' using errcode = 'check_violation',
+      constraint = 'department_approver_is_history';
+  end if;
+  if old.removed_at is not null then
+    raise exception 'this approver was already removed' using errcode = 'check_violation',
+      constraint = 'department_approver_is_history';
+  end if;
+  -- Removing the last permanent approver would leave a department nobody can act for once any temporary cover ends.
+  if new.removed_at is not null and old.valid_until is null then
+    if not exists (select 1 from department_approver a
+                    where a.department_id = old.department_id and a.id <> old.id
+                      and a.removed_at is null and a.valid_until is null) then
+      raise exception 'department % must keep at least one permanent approver', old.department_id
+        using errcode = 'check_violation', constraint = 'department_keeps_a_permanent_approver';
+    end if;
+  end if;
+  return new;
+end;
+$$ language plpgsql;
+
+drop trigger if exists department_approver_guard_trg on department_approver;
+create trigger department_approver_guard_trg
+  before update on department_approver
+  for each row execute function department_approver_guard();
+
+-- Whoever a department is made with is its first approver, however it was made.
+create or replace function department_founding_approver() returns trigger as $$
+begin
+  insert into department_approver (tenant_id, department_id, person_id, added_by, reason)
+  values (new.tenant_id, new.id, new.custodian, new.custodian, 'named when the department was made');
+  return new;
+end;
+$$ language plpgsql;
+
+drop trigger if exists department_founding_approver_trg on department;
+create trigger department_founding_approver_trg
+  after insert on department
+  for each row execute function department_founding_approver();
+
+-- Departments that existed before this table: their custodian becomes their first approver. Nothing is added to one that already has an approver.
+insert into department_approver (tenant_id, department_id, person_id, added_by, reason)
+select d.tenant_id, d.id, d.custodian, d.custodian, 'carried over from the department''s custodian'
+  from department d
+ where not exists (select 1 from department_approver a where a.department_id = d.id);
+
+drop trigger if exists refuse_retired_department_approver on department_approver;
+create trigger refuse_retired_department_approver
+  before insert or update on department_approver
+  for each row execute function refuse_write_to_retired_tenant();
+
+-- The view every decision reads gains the approvers in force. `custodian` stays as the person the department was made with.
+create or replace view version_custodian as
+select
+  dv.id            as dataset_version_id,
+  dv.tenant_id,
+  d.id             as dataset_id,
+  d.name           as dataset_name,
+  dept.id          as department_id,
+  dept.name        as department_name,
+  dept.custodian   as custodian,
+  case when dept.id is null then '{}'::text[] else active_department_approvers(dept.id) end as approvers
+from dataset_version dv
+join dataset d           on d.id = dv.dataset_id
+left join department dept on dept.id = d.department_id;

@@ -153,8 +153,8 @@ def main() -> int:
         claim = register_dataset(ENGINEER, verification, claim=True).json()["id"]
         waiting.append((claim, CUSTODIAN))
         wrong = call(ELSEWHERE, "POST", f"/datasets/{claim}/confirm-classification", json={"confirmed_by": ELSEWHERE})
-        check("another department's custodian may not, and the right custodian is named",
-              wrong.status_code == 403 and any("whose custodian is canary-custodian" in x for x in reasons(wrong)), f"{wrong.status_code} {reasons(wrong)}")
+        check("another department's custodian may not, and the department approvers are named",
+              wrong.status_code == 403 and any("whose approvers are canary-custodian" in x for x in reasons(wrong)), f"{wrong.status_code} {reasons(wrong)}")
         for who in (ENGINEER, DPO, REVIEWER):
             r = call(who, "POST", f"/datasets/{claim}/confirm-classification", json={"confirmed_by": who})
             check(f"{who} may not confirm", r.status_code == 403 and "only a data custodian may confirm a sensitivity claim" in reasons(r), f"{r.status_code} {reasons(r)}")

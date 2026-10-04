@@ -138,6 +138,36 @@
         "title": "ActionRunIn",
         "type": "object"
       },
+      "AddApprover": {
+        "properties": {
+          "person_id": {
+            "title": "Person Id",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          },
+          "valid_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid Until"
+          }
+        },
+        "required": [
+          "person_id"
+        ],
+        "title": "AddApprover",
+        "type": "object"
+      },
       "Appointment": {
         "properties": {
           "ended": {
@@ -1642,6 +1672,17 @@
           "reason"
         ],
         "title": "ReleaseIn",
+        "type": "object"
+      },
+      "RemoveApprover": {
+        "properties": {
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "title": "RemoveApprover",
         "type": "object"
       },
       "RetireIn": {
@@ -3637,7 +3678,7 @@
     },
     "/datasets/awaiting-confirmation": {
       "get": {
-        "description": "Datasets whose sensitivity claim has not been agreed to yet.\n\nOnly `asserted` claims need this: the safe default carries no claim, and\n`verified_source` is already backed by something the platform fetched\nitself. Narrowed to `custodian` for the same reason `/lease-requests` is,\nso a custodian's queue lists arrivals they can actually act on. Those are\nthe claims made by somebody else about data their department owns, and\nthe claims the owning custodian made about their own department's data,\nwhich that custodian cannot confirm and any other data custodian of the\norganisation can (`classification_confirmation_decision`). The second\nkind is listed only for a person asking about their own queue who holds\nthe data custodian role.\n\nOldest first, with the id breaking ties so two claims made at the same\nmoment never swap places between pages. `total` counts every dataset\nwaiting, not just this page, so a screen can say how many are not shown.",
+        "description": "Datasets whose sensitivity claim has not been agreed to yet.\n\nOnly `asserted` claims need this: the safe default carries no claim, and\n`verified_source` is already backed by something the platform fetched\nitself. Narrowed to `custodian` for the same reason `/lease-requests` is,\nso an approver's queue lists arrivals they can actually act on. Those are\nthe claims made by somebody else about data their department owns, and,\nfor a department whose only approver made the claim, that claim too: that\napprover cannot confirm it and any other data custodian of the\norganisation can (`classification_confirmation_decision`). The second\nkind is listed only for a person asking about their own queue who holds\nthe data custodian role.\n\nOldest first, with the id breaking ties so two claims made at the same\nmoment never swap places between pages. `total` counts every dataset\nwaiting, not just this page, so a screen can say how many are not shown.",
         "operationId": "list_awaiting_confirmation_datasets_awaiting_confirmation_get",
         "parameters": [
           {
@@ -3846,7 +3887,7 @@
     },
     "/datasets/{dataset_id}/confirm-classification": {
       "post": {
-        "description": "The custodian agreeing with somebody's sensitivity claim.\n\nDecided by the policy (`classification_confirmation_decision`): a data custodian, never the person who made the claim, and the custodian of\nthe owning department. When that custodian made the claim themselves, any other data custodian of the organisation may confirm it, so\na custodian who brings data in still has a second pair of eyes on the claim. The person who made it is also refused by a check constraint.\nUntil this happens the data cannot be released above the class that was claimed for it.",
+        "description": "The custodian agreeing with somebody's sensitivity claim.\n\nDecided by the policy (`classification_confirmation_decision`): a data custodian who is a department approver of the owning department, never the\nperson who made the claim. Any one approver may confirm. When the claimant is the department's only approver, any other data custodian of\nthe organisation may, so a custodian who brings data in still has a second pair of eyes on the claim. The person who made the claim is also\nrefused by a check constraint. Until this happens the data cannot be released above the class that was claimed for it.",
         "operationId": "confirm_datasets__dataset_id__confirm_classification_post",
         "parameters": [
           {
@@ -4495,6 +4536,175 @@
         ]
       }
     },
+    "/departments/{department_id}/approvers": {
+      "get": {
+        "description": "Who answers for this department now. With `history`, everybody who ever did, and who changed it and why.\n\nAnybody of the organisation can see who to ask. The history is for the department's own approvers and the data protection officer.",
+        "operationId": "list_approvers_departments__department_id__approvers_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "department_id",
+            "required": true,
+            "schema": {
+              "title": "Department Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "history",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "History",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response List Approvers Departments  Department Id  Approvers Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Approvers",
+        "tags": [
+          "departments"
+        ]
+      },
+      "post": {
+        "description": "Add an approver to a department. By a current approver, for a person who already holds the data custodian role.",
+        "operationId": "add_approver_departments__department_id__approvers_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "department_id",
+            "required": true,
+            "schema": {
+              "title": "Department Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddApprover"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Add Approver Departments  Department Id  Approvers Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Approver",
+        "tags": [
+          "departments"
+        ]
+      }
+    },
+    "/departments/{department_id}/approvers/{person_id}/remove": {
+      "post": {
+        "description": "Remove an approver, by a current approver of the same department. Refused for the last permanent one.",
+        "operationId": "remove_approver_departments__department_id__approvers__person_id__remove_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "department_id",
+            "required": true,
+            "schema": {
+              "title": "Department Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "person_id",
+            "required": true,
+            "schema": {
+              "title": "Person Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveApprover"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Remove Approver Departments  Department Id  Approvers  Person Id  Remove Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Approver",
+        "tags": [
+          "departments"
+        ]
+      }
+    },
     "/derivations": {
       "get": {
         "operationId": "mine_derivations_get",
@@ -4928,7 +5138,7 @@
     },
     "/directory": {
       "get": {
-        "description": "The people and workloads the organisation registered.\n\nDeliberately not scoped to the caller's own tenant: `IdentityContext`'s\nown identity-resolution seam needs to find a session-resolved person in\nwhichever organisation they actually belong to, before their tenant is\nknown client-side, and every other organisation's roster is what a\ncustodian-chooser needs to render honestly (see the docstring below).\nAuthentication is still required -- only a real session may read it.\n\nThis is the answer to \"who exists\", and it is the platform's answer rather\nthan the console's. Before this endpoint the console carried its own list,\nwhich meant it could offer a custodian the database had never heard of and\nevery approval that person made would be refused by a foreign key.\n\nCustodians carry the department they hold, because a custodian without a\ndepartment can approve nothing and the console should be able to say so.\nThe department must be in the same tenant as the person: a custodian who\nappears in two organisations' department tables was listed twice, once per\ndepartment, which is how a chooser ends up offering the same person as two\ndifferent people.\n\nOnly live tenants by default. Verification runs as its own principals in the\ncanary tenant, and offering those alongside real people would put \"Canary\nengineer\" on the login screen of a customer's console. Pass `purpose=all` to\nsee every tenant, which is what an operator investigating the platform\nitself wants.",
+        "description": "The people and workloads the organisation registered.\n\nDeliberately not scoped to the caller's own tenant: `IdentityContext`'s\nown identity-resolution seam needs to find a session-resolved person in\nwhichever organisation they actually belong to, before their tenant is\nknown client-side, and every other organisation's roster is what a\ncustodian-chooser needs to render honestly (see the docstring below).\nAuthentication is still required -- only a real session may read it.\n\nThis is the answer to \"who exists\", and it is the platform's answer rather\nthan the console's. Before this endpoint the console carried its own list,\nwhich meant it could offer a custodian the database had never heard of and\nevery approval that person made would be refused by a foreign key.\n\nApprovers carry the departments they answer for (`approver_of`, with the\nfirst of them as `department_name`), because a custodian who answers for no\ndepartment can approve nothing and the console should be able to say so.\nA person who answers for several departments is listed once: listing them\nonce per department is how a chooser ends up offering the same person as\ntwo different people.\n\nOnly live tenants by default. Verification runs as its own principals in the\ncanary tenant, and offering those alongside real people would put \"Canary\nengineer\" on the login screen of a customer's console. Pass `purpose=all` to\nsee every tenant, which is what an operator investigating the platform\nitself wants.",
         "operationId": "list_directory_directory_get",
         "parameters": [
           {
@@ -7965,7 +8175,7 @@
     },
     "/organisation": {
       "get": {
-        "description": "Departments, their custodians, and which datasets they own.\n\nAn unowned dataset is reported as such rather than omitted. Thirty-nine\ndatasets predate the organisation model, and nobody can approve access to\nthem until somebody takes ownership. Hiding that would make the gap look\nlike a smaller number of datasets rather than an unanswered question.",
+        "description": "Departments, their approvers, and which datasets they own.\n\nAn unowned dataset is reported as such rather than omitted. Thirty-nine\ndatasets predate the organisation model, and nobody can approve access to\nthem until somebody takes ownership. Hiding that would make the gap look\nlike a smaller number of datasets rather than an unanswered question.",
         "operationId": "organisation_organisation_get",
         "responses": {
           "200": {

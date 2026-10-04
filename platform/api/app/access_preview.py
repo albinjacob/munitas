@@ -104,9 +104,9 @@ def access_preview(body: models.AccessPreviewIn,
         (identity["id"], ids),
     )}
     custodians = {str(r["dataset_version_id"]): r for r in db.all_rows(
-        """select vc.dataset_version_id, vc.custodian, d.label
+        """select vc.dataset_version_id, vc.approvers,
+                  (select string_agg(p.label, ', ' order by p.label) from directory p where p.id = any(vc.approvers)) as labels
              from version_custodian vc
-             left join directory d on d.id = vc.custodian
             where vc.dataset_version_id = any(%s::uuid[])""",
         (ids,),
     )}
@@ -142,8 +142,8 @@ def access_preview(body: models.AccessPreviewIn,
             answer=answer,
             pending=vid in pending,
             lease_rows=by_id,
-            decider_label=custodian.get("label") or custodian.get("custodian"),
-            has_custodian=bool(custodian.get("custodian")),
+            decider_label=custodian.get("labels") or ", ".join(custodian.get("approvers") or []) or None,
+            has_custodian=bool(custodian.get("approvers")),
         )
         marks[vid] = mark
         count = datasets.setdefault(str(v["dataset_id"]), {"readable": 0, "total": 0})

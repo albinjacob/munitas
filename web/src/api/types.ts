@@ -79,6 +79,7 @@ export interface DatasetDetail {
   department_id: string | null;
   department_name: string | null;
   custodian: string | null;
+  approvers: string[];
   provenance: string;
   declared_class: VisibilityClass;
 }

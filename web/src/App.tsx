@@ -13,6 +13,7 @@ import { useIdentity } from "./identity/IdentityContext";
 import { Login } from "./identity/Login";
 import { Home } from "./features/home/Home";
 import { Datasets } from "./features/governance/Datasets";
+import { Departments } from "./features/governance/Departments";
 import { RegisterDataset, ResumeIngest } from "./features/ingest/RegisterDataset";
 import { VersionDetail } from "./features/governance/VersionDetail";
 import { AuditLog } from "./features/governance/AuditLog";
@@ -86,6 +87,7 @@ export default function App() {
         <Route path="/" element={<Home />} />
         <Route path="/datasets" element={<Datasets />} />
         <Route path="/datasets/register" element={<RegisterDataset />} />
+        <Route path="/departments" element={<Departments />} />
         <Route path="/datasets/:datasetId/ingest" element={<ResumeIngest />} />
         <Route path="/versions/:versionId" element={<VersionDetail />} />
         <Route path="/audit" element={<AuditLog />} />

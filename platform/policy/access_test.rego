@@ -270,7 +270,7 @@ request_on_behalf_of(who, requested_by) := {
 	"requested_by": requested_by,
 }
 
-asset(custodian) := {"dataset_version": "dv-1", "custodian": custodian}
+asset(custodian) := {"dataset_version": "dv-1", "approvers": [custodian]}
 
 test_custodian_may_approve_their_own_department if {
 	access.may_approve with input as {
@@ -681,7 +681,7 @@ test_code_registration_refusal_says_why if {
 # ------------------------------------------------------------------
 # Confirming a sensitivity claim.
 
-department := {"name": "Cardiology", "custodian": "cust-a"}
+department := {"name": "Cardiology", "approvers": ["cust-a"]}
 
 test_owning_custodian_confirms_a_claim_made_by_an_engineer if {
 	access.may_confirm_classification with input as {
@@ -760,7 +760,227 @@ test_confirmation_by_the_wrong_custodian_names_the_right_one if {
 		"department": department,
 	}
 	decision.allow == false
-	"this data is owned by Cardiology, whose custodian is cust-a; only that custodian may confirm a claim made by somebody else" in decision.reasons
+	"this data is owned by Cardiology, whose approvers are cust-a; only a department approver may confirm a claim made by somebody else" in decision.reasons
+}
+
+# ------------------------------------------------------------------
+# A department with several approvers.
+
+two_approvers := {"name": "Cardiology", "approvers": ["cust-a", "cust-b"]}
+
+test_any_one_approver_confirms_a_claim_made_by_an_engineer if {
+	every approver in ["cust-a", "cust-b"] {
+		access.may_confirm_classification with input as {
+			"confirmer": {"id": approver, "roles": ["data_custodian"]},
+			"claim": {"declared_by": "eng-1"},
+			"department": two_approvers,
+		}
+	}
+}
+
+test_the_other_approver_confirms_a_claim_one_approver_made if {
+	access.may_confirm_classification with input as {
+		"confirmer": {"id": "cust-b", "roles": ["data_custodian"]},
+		"claim": {"declared_by": "cust-a"},
+		"department": two_approvers,
+	}
+}
+
+test_the_claimant_approver_may_not_confirm_even_with_another_approver if {
+	not access.may_confirm_classification with input as {
+		"confirmer": {"id": "cust-a", "roles": ["data_custodian"]},
+		"claim": {"declared_by": "cust-a"},
+		"department": two_approvers,
+	}
+}
+
+test_the_last_resort_is_closed_once_there_is_a_second_approver if {
+	not access.may_confirm_classification with input as {
+		"confirmer": {"id": "cust-c", "roles": ["data_custodian"]},
+		"claim": {"declared_by": "cust-a"},
+		"department": two_approvers,
+	}
+}
+
+test_an_approver_who_lost_the_role_may_not_confirm if {
+	not access.may_confirm_classification with input as {
+		"confirmer": {"id": "cust-b", "roles": ["analyst"]},
+		"claim": {"declared_by": "eng-1"},
+		"department": two_approvers,
+	}
+}
+
+test_a_department_with_no_approver_can_be_confirmed_by_nobody if {
+	not access.may_confirm_classification with input as {
+		"confirmer": {"id": "cust-b", "roles": ["data_custodian"]},
+		"claim": {"declared_by": "eng-1"},
+		"department": {"name": "Cardiology", "approvers": []},
+	}
+}
+
+test_any_approver_may_approve_access_to_their_department if {
+	every approver in ["cust-a", "cust-b"] {
+		access.may_approve with input as {
+			"approver": {"id": approver, "roles": ["data_custodian"]},
+			"request": {"principal": "svc-alice", "requested_by": null},
+			"asset": {"dataset_version": "dv-1", "approvers": ["cust-a", "cust-b"]},
+		}
+	}
+}
+
+test_a_non_approver_custodian_may_not_approve_access if {
+	not access.may_approve with input as {
+		"approver": {"id": "cust-c", "roles": ["data_custodian"]},
+		"request": {"principal": "svc-alice", "requested_by": null},
+		"asset": {"dataset_version": "dv-1", "approvers": ["cust-a", "cust-b"]},
+	}
+}
+
+test_approval_refusal_names_all_the_approvers if {
+	decision := access.approval_decision with input as {
+		"approver": {"id": "cust-c", "roles": ["data_custodian"]},
+		"request": {"principal": "svc-alice", "requested_by": null},
+		"asset": {"dataset_version": "dv-1", "approvers": ["cust-a", "cust-b"]},
+	}
+	"this asset is owned by a department whose approvers are cust-a, cust-b" in decision.reasons
+}
+
+# ------------------------------------------------------------------
+# Changing a department's approvers.
+
+dept_changes := {"name": "Cardiology", "approvers": ["cust-a", "cust-b"], "permanent_after": 1}
+
+test_an_approver_may_add_a_custodian_with_a_reason if {
+	access.may_add_department_approver with input as {
+		"actor": {"id": "cust-a", "roles": ["data_custodian"]},
+		"person": {"id": "cust-c", "roles": ["data_custodian"]},
+		"department": dept_changes,
+		"reason": "covers while Dr Hartley is away",
+	}
+}
+
+test_a_non_approver_may_not_add if {
+	decision := access.approver_addition_decision with input as {
+		"actor": {"id": "cust-c", "roles": ["data_custodian"]},
+		"person": {"id": "cust-d", "roles": ["data_custodian"]},
+		"department": dept_changes,
+		"reason": "x",
+	}
+	decision.allow == false
+	"only a current approver of this department may add another" in decision.reasons
+}
+
+test_the_person_added_must_hold_the_data_custodian_role if {
+	decision := access.approver_addition_decision with input as {
+		"actor": {"id": "cust-a", "roles": ["data_custodian"]},
+		"person": {"id": "tom", "roles": ["analyst"]},
+		"department": dept_changes,
+		"reason": "x",
+	}
+	decision.allow == false
+	"this person does not hold the data custodian role, which an approver must hold; they can ask for it first" in decision.reasons
+}
+
+test_an_existing_approver_cannot_be_added_again if {
+	decision := access.approver_addition_decision with input as {
+		"actor": {"id": "cust-a", "roles": ["data_custodian"]},
+		"person": {"id": "cust-b", "roles": ["data_custodian"]},
+		"department": dept_changes,
+		"reason": "x",
+	}
+	decision.allow == false
+	"this person is already an approver of this department" in decision.reasons
+}
+
+test_an_addition_needs_a_reason if {
+	decision := access.approver_addition_decision with input as {
+		"actor": {"id": "cust-a", "roles": ["data_custodian"]},
+		"person": {"id": "cust-c", "roles": ["data_custodian"]},
+		"department": dept_changes,
+		"reason": "  ",
+	}
+	decision.allow == false
+	"a change to a department's approvers needs a reason, which is recorded with it" in decision.reasons
+}
+
+test_an_actor_without_the_role_may_not_change_approvers if {
+	not access.may_add_department_approver with input as {
+		"actor": {"id": "cust-a", "roles": ["analyst"]},
+		"person": {"id": "cust-c", "roles": ["data_custodian"]},
+		"department": dept_changes,
+		"reason": "x",
+	}
+}
+
+test_an_approver_may_remove_another if {
+	access.may_remove_department_approver with input as {
+		"actor": {"id": "cust-a", "roles": ["data_custodian"]},
+		"person": {"id": "cust-b", "permanent": true},
+		"department": dept_changes,
+		"reason": "left the department",
+	}
+}
+
+test_an_approver_may_remove_themselves_when_another_permanent_remains if {
+	access.may_remove_department_approver with input as {
+		"actor": {"id": "cust-a", "roles": ["data_custodian"]},
+		"person": {"id": "cust-a", "permanent": true},
+		"department": dept_changes,
+		"reason": "moving on",
+	}
+}
+
+test_the_last_permanent_approver_cannot_be_removed if {
+	decision := access.approver_removal_decision with input as {
+		"actor": {"id": "cust-a", "roles": ["data_custodian"]},
+		"person": {"id": "cust-a", "permanent": true},
+		"department": {"name": "Cardiology", "approvers": ["cust-a"], "permanent_after": 0},
+		"reason": "moving on",
+	}
+	decision.allow == false
+	"a department always keeps at least one permanent approver, so this one cannot be removed until another is added" in decision.reasons
+}
+
+test_a_temporary_approver_may_be_removed_even_if_it_leaves_no_permanent_change if {
+	access.may_remove_department_approver with input as {
+		"actor": {"id": "cust-a", "roles": ["data_custodian"]},
+		"person": {"id": "cust-b", "permanent": false},
+		"department": {"name": "Cardiology", "approvers": ["cust-a", "cust-b"], "permanent_after": 1},
+		"reason": "cover ended early",
+	}
+}
+
+test_a_non_approver_may_not_remove if {
+	decision := access.approver_removal_decision with input as {
+		"actor": {"id": "cust-c", "roles": ["data_custodian"]},
+		"person": {"id": "cust-b", "permanent": true},
+		"department": dept_changes,
+		"reason": "x",
+	}
+	decision.allow == false
+	"only a current approver of this department may remove one" in decision.reasons
+}
+
+test_removing_somebody_who_is_not_an_approver_is_refused if {
+	decision := access.approver_removal_decision with input as {
+		"actor": {"id": "cust-a", "roles": ["data_custodian"]},
+		"person": {"id": "cust-z", "permanent": true},
+		"department": dept_changes,
+		"reason": "x",
+	}
+	decision.allow == false
+	"this person is not an approver of this department" in decision.reasons
+}
+
+test_a_removal_needs_a_reason if {
+	decision := access.approver_removal_decision with input as {
+		"actor": {"id": "cust-a", "roles": ["data_custodian"]},
+		"person": {"id": "cust-b", "permanent": true},
+		"department": dept_changes,
+		"reason": "",
+	}
+	decision.allow == false
+	"a change to a department's approvers needs a reason, which is recorded with it" in decision.reasons
 }
 
 # ------------------------------------------------------------------

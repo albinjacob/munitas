@@ -97,6 +97,22 @@ def may_confirm_classification(payload: dict) -> tuple[bool, list[str]]:
     return _ask(_CONFIRMATION_PATH, payload)
 
 
+_APPROVER_ADDITION_PATH = "/v1/data/munitas/access/approver_addition_decision"
+
+
+def may_add_department_approver(payload: dict) -> tuple[bool, list[str]]:
+    """May this person add another approver to a department? A current approver, for a person who already holds the data custodian role."""
+    return _ask(_APPROVER_ADDITION_PATH, payload)
+
+
+_APPROVER_REMOVAL_PATH = "/v1/data/munitas/access/approver_removal_decision"
+
+
+def may_remove_department_approver(payload: dict) -> tuple[bool, list[str]]:
+    """May this person remove an approver from a department? A current approver, and never the last permanent one."""
+    return _ask(_APPROVER_REMOVAL_PATH, payload)
+
+
 _EGRESS_APPROVAL_PATH = "/v1/data/munitas/access/egress_approval_decision"
 
 

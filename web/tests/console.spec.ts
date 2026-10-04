@@ -729,6 +729,56 @@ test.describe("U37: bringing data in through the console", () => {
     await expect(arrival).toHaveCount(0);
   });
 
+  test("an approver adds and removes another approver, with reasons, and the last permanent one stays", async ({ page }) => {
+    const organisation = await api<{ departments: { id: string; name: string }[] }>(
+      `/organisation?tenant_id=${CANARY}`,
+      await canaryAuth(),
+    );
+    const id = organisation.departments.find((d) => d.name === "Elsewhere")!.id;
+    const elsewhereAuth = await bearerFor("canary-elsewhere");
+    try {
+      await loginAs(page, "canary-elsewhere");
+      await page.goto("/departments");
+      await expect(page.getByTestId(`approvers-${id}`).locator('[data-approver="canary-elsewhere"]')).toContainText("permanent");
+
+      // Only people who hold the Data custodian role and are not approvers yet are offered.
+      await page.getByTestId(`add-person-${id}`).selectOption("canary-custodian");
+      await page.getByTestId(`add-reason-${id}`).fill("covers while the department's custodian is away");
+      await page.getByTestId(`add-submit-${id}`).click();
+      await expect(page.getByTestId(`approvers-${id}`).locator('[data-approver="canary-custodian"]')).toBeVisible();
+
+      await page.getByTestId(`remove-${id}-canary-custodian`).click();
+      await page.getByTestId(`remove-reason-${id}`).fill("back to one approver");
+      await page.getByTestId(`confirm-remove-${id}`).click();
+      await expect(page.getByTestId(`approvers-${id}`).locator('[data-approver="canary-custodian"]')).toHaveCount(0);
+
+      // The last permanent approver cannot be removed, and the screen says why.
+      await page.getByTestId(`remove-${id}-canary-elsewhere`).click();
+      await page.getByTestId(`remove-reason-${id}`).fill("leaving");
+      await page.getByTestId(`confirm-remove-${id}`).click();
+      await expect(page.getByTestId(`remove-error-${id}`)).toContainText("always keeps at least one permanent approver");
+      await expect(page.getByTestId(`approvers-${id}`).locator('[data-approver="canary-elsewhere"]')).toBeVisible();
+    } finally {
+      // Leave the department as it was found, whatever happened above.
+      await post(`/departments/${id}/approvers/canary-custodian/remove`, { reason: "test cleanup" }, elsewhereAuth).catch(() => undefined);
+    }
+  });
+
+  test("somebody who is not an approver cannot change the list, and the data protection officer reads its history", async ({ page }) => {
+    await loginAs(page, "canary-researcher");
+    await page.goto("/departments");
+    await expect(page.getByText("Only an approver of this department can change this list.").first()).toBeVisible();
+    await expect(page.locator('[data-testid^="add-form-"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid^="history-toggle-"]')).toHaveCount(0);
+
+    await loginAs(page, "canary-dpo");
+    await page.goto("/departments");
+    await expect(page.locator('[data-testid^="add-form-"]')).toHaveCount(0);
+    const toggle = page.locator('[data-testid^="history-toggle-"]').first();
+    await toggle.click();
+    await expect(page.locator('[data-testid^="history-"]:not([data-testid^="history-toggle-"])').first()).toContainText(/carried over from the department|named when the department was made/);
+  });
+
   test("selecting several files at once uploads and lists every one of them", async ({
     page,
   }) => {

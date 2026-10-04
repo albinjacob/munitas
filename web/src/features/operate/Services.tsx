@@ -33,8 +33,7 @@ interface OrgRow {
   departments: {
     id: string;
     name: string;
-    custodian: string;
-    custodian_label: string | null;
+    approvers: { person_id: string; label: string }[];
     datasets: number;
   }[];
   datasets_without_a_department: number;
@@ -153,7 +152,7 @@ export function Services() {
                   <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
                     <tr>
                       <th className="px-4 py-2">Department</th>
-                      <th>Custodian</th>
+                      <th>Approvers</th>
                       <th>Datasets owned</th>
                     </tr>
                   </thead>
@@ -161,7 +160,7 @@ export function Services() {
                     {org.data.departments.map((d) => (
                       <tr key={d.id} className="border-t border-slate-100 transition-colors hover:bg-slate-50">
                         <td className="px-4 py-2 font-medium">{d.name}</td>
-                        <td>{d.custodian_label ?? d.custodian}</td>
+                        <td>{d.approvers.map((a) => a.label).join(", ")}</td>
                         <td className="tabular-nums">{d.datasets}</td>
                       </tr>
                     ))}

@@ -74,17 +74,19 @@ def _access_preflight(agent: dict, dataset_version_id: str) -> dict:
     })
 
     custodian = db.one(
-        "select custodian, department_name, dataset_name from version_custodian "
+        "select approvers, department_name, dataset_name from version_custodian "
         "where dataset_version_id = %s",
         (dataset_version_id,),
     ) or {}
 
+    # Whoever may decide: every department approver, by name, since any one of them can.
     approver = None
-    if custodian.get("custodian"):
+    if custodian.get("approvers"):
         row = db.one(
-            "select label from directory where id = %s", (custodian["custodian"],)
+            "select string_agg(label, ', ' order by label) as labels from directory where id = any(%s)",
+            (custodian["approvers"],),
         )
-        approver = row["label"] if row else custodian["custodian"]
+        approver = (row or {}).get("labels") or ", ".join(custodian["approvers"])
 
     return {
         "dataset_version_id": dataset_version_id,
@@ -570,13 +572,13 @@ async def _start_waiting_on_access(agent: dict, agent_id: str, run_id: str,
     # anyway would park the run behind a decision no one can make, so this is
     # refused up front and says which thing is missing.
     custodian = db.one(
-        "select custodian from version_custodian where dataset_version_id = %s",
+        "select approvers from version_custodian where dataset_version_id = %s",
         (body.dataset_version_id,),
     ) or {}
-    if not custodian.get("custodian"):
+    if not custodian.get("approvers"):
         raise HTTPException(409, {"reasons": [
-            "that dataset has no owning department, so there is no custodian "
-            "who could grant this agent access to it"
+            "that dataset has no owning department, or its department has no approver, "
+            "so nobody could grant this agent access to it"
         ]})
 
     request_id = str(uuid.uuid4())
