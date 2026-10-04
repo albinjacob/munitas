@@ -626,10 +626,15 @@ def redact(params: dict) -> dict:
 
     from .redact import redact_audio, redact_text
 
+    # The recording the audio is read from. The fixed pipeline names it (`source_version`); a DAG that does not name it starts from
+    # the same version, which every built-in step is handed as `source_version_id`, so either reads the same recording.
+    source_version = params.get("source_version") or params.get("source_version_id")
+    if not source_version:
+        raise ValueError("redact needs the version its audio is read from: pass source_version, or start the run from a version")
     schema_id = cp.register_contract(contracts.REDACTED, _tenant(params))
     dataset_id = cp.ensure_dataset(params["dataset"], _tenant(params), derived_from=params["input_version"])
     run = cp.start_run(
-        params["action_id"], params["idempotency_key"], [params["input_version"], params["source_version"]], params,
+        params["action_id"], params["idempotency_key"], [params["input_version"], source_version], params,
         operator=_pipeline_principal(_tenant(params)),
         trigger_kind=params.get("trigger_kind", "manual"),
         triggered_by=params.get("triggered_by"),
@@ -639,7 +644,7 @@ def redact(params: dict) -> dict:
     )
     run_id = run["id"]
     reader = cp.step_reader(
-        run["task_credential"], [params["input_version"], params["source_version"]], _tenant(params),
+        run["task_credential"], [params["input_version"], source_version], _tenant(params),
         _pipeline_principal(_tenant(params)), "redact: read this run's declared input")
     rows = cp.read_json(reader, params["bucket"], params["records_key"])
     where = _location(params, dataset_id)
