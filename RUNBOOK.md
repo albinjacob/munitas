@@ -446,6 +446,21 @@ temporal schedule describe nightly-tidy-probes
 
 ---
 
+## Test tenants left behind by a verification run
+
+`run-verification.ps1` ends with `scripts/admin/check-leftover-tenants.py`, after the canary tidy and the probe sweep, so it only sees what
+no cleanup could remove. It exits 1 and names each leftover (what it holds, and why it counts) when a check made a tenant and did not remove it, and
+exits 2 when it could not look. A run whose checks all passed but that left tenants behind, or could not check, exits 3.
+
+A tenant counts when it is not one of the standing set (`STANDING` in the script: health, finance, harbour, canary, r2-probe-a, r2-probe-b) and it is
+disposable (`scratch`), a `canary` fixture, or named like a test fixture. Any other `production` tenant is never flagged. Keeping a tenant on purpose means
+adding it to `STANDING`, which is the decision that it is permanent. To clear a leftover: `scripts/admin/tidy-probes.py --apply` removes disposable
+ones; one that holds sealed versions and is not disposable needs `scripts/admin/nuke-tenant.py`, which asks for the name typed back. The fix for the
+cause is in the check that made it: create the tenant through `fixture_tenant` with a prefix listed in `common._DISPOSABLE_PREFIXES` (U124 fails if that
+list and the script's disagree), or remove it in a `finally`.
+
+---
+
 ## Pipeline runs that stopped without recording it
 
 A pipeline run's own workflow writes its ending as it finishes. A workflow killed from outside, or one whose worker

@@ -109,7 +109,19 @@ Write-Host ""
 Write-Host "Sweeping the probe tenants this run left behind..."
 & $venvPython (Join-Path $PSScriptRoot "scripts\admin\tidy-probes.py") --apply
 
+# Last, after every cleanup above, so it sees only what none of them could remove: a check that made a tenant and never cleaned it up. Finding
+# these used to be luck. A leak makes an otherwise passing run exit 3, and so does not being able to look (exit 2 from the script), because a
+# run that cannot show it left nothing behind has not shown it.
 Write-Host ""
+Write-Host "Checking that no test tenants were left behind..."
+& $venvPython (Join-Path $PSScriptRoot "scripts\admin\check-leftover-tenants.py")
+$leakExit = $LASTEXITCODE
+
+Write-Host ""
+if ($suiteExit -eq 0 -and $leakExit -ne 0) {
+    Write-Host "Every check passed, but the run left test tenants behind or could not check for them (see above). Exit 3." -ForegroundColor Red
+    exit 3
+}
 if ($suiteExit -eq 0) {
     Write-Host "Suite passed." -ForegroundColor Green
 } else {
