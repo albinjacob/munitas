@@ -1,5 +1,5 @@
 """End, with how they ended, pipeline runs that Temporal says have stopped but the register still
-shows as running, or whose outcome was never recorded (status unknown).
+shows as running.
 
 A pipeline workflow ends its own run record as it finishes, succeeded or
 failed. Two kinds of ending cannot do that: a workflow terminated from outside,
@@ -7,6 +7,10 @@ and one whose worker died. Their records stay open, and an open record stops
 the console starting that version again. The console already asks Temporal
 before refusing, one version at a time; this does the same for every open
 record at once, so the register is right before anyone asks.
+
+A record is open when it has no end time, and only then is it looked at. A run that has an end time is
+finished, even when how it ended could not be found out (status unknown, because Temporal had already
+forgotten it), and it is never looked at again, so running this twice in a row changes nothing the second time.
 
 Only Temporal's answer closes a record. A run Temporal reports as still
 running is left alone, and so is every run when Temporal cannot be reached:
@@ -82,7 +86,7 @@ async def main() -> int:
     with psycopg.connect(PG_DSN, row_factory=dict_row) as conn:
         runs = conn.execute(
             "select id, tenant_id, workflow_id, started_at from pipeline_run "
-            "where ended_at is null or status = 'unknown' order by started_at"
+            "where ended_at is null order by started_at"
         ).fetchall()
         closing = []
         for r in runs:
@@ -101,7 +105,7 @@ async def main() -> int:
             conn.execute(
                 """update pipeline_run
                       set status = %s, error = %s, ended_at = coalesce(ended_at, %s)
-                    where id = %s and (ended_at is null or status = 'unknown')""",
+                    where id = %s and ended_at is null""",
                 (status, error, when, run_id),
             )
         conn.commit()
