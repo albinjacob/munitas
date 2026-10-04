@@ -60,7 +60,7 @@ log = logging.getLogger("munitas.worker")
 # what it can run. Two constants in two processes can drift, so a verify
 # script (v63's "the two processes agree on which pipeline kinds exist"
 # section) compares them rather than trusting this comment.
-PIPELINE_KINDS = ("deidentify", "count_records")
+PIPELINE_KINDS = ("deidentify", "count_records", "dag")
 
 
 async def main() -> None:

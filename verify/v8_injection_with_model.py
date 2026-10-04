@@ -60,14 +60,14 @@ def fixture() -> tuple[str, str]:
                values (%s,'shared',%s,'canary') on conflict (id) do nothing""",
             (TENANT, f"key/{TENANT}"),
         )
-    contract = httpx.post(f"{API}/schema-contracts", json={
+    contract = httpx.post(f"{API}/schema-contracts", headers=WORKER_HEADERS, json={
         "tenant_id": TENANT, "name": "injection-fixture",
         "fields": [{"name": "record_id", "type": "string", "added_by": "verify"}],
         "primary_key": ["record_id"],
     }, timeout=20.0).json()["id"]
 
     def make(klass: str) -> str:
-        dataset = httpx.post(f"{API}/datasets", json={
+        dataset = httpx.post(f"{API}/datasets", headers=WORKER_HEADERS, json={
             "tenant_id": TENANT, "name": f"inj-{uuid.uuid4().hex[:8]}",
         }, timeout=20.0).json()["id"]
         return httpx.post(f"{API}/dataset-versions", headers=WORKER_HEADERS, json={
@@ -76,7 +76,7 @@ def fixture() -> tuple[str, str]:
         }, timeout=20.0).json()["id"]
 
     in_scope = make("UNDER_REVIEW")
-    httpx.post(f"{API}/dataset-versions/{in_scope}/promote", json={
+    httpx.post(f"{API}/dataset-versions/{in_scope}/promote", headers=WORKER_HEADERS, json={
         "to_class": "PUBLISHED", "decided_by": "verify-suite", "decided_by_kind": "workload",
         "gate_evidence": {"note": "injection fixture"}, "grant_roles": ["agent_runtime"],
     }, timeout=20.0)

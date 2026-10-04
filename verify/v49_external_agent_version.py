@@ -11,6 +11,7 @@ beside the Compose file rather than inside the API image, the same reason
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import uuid
@@ -28,10 +29,18 @@ TENANT = CANARY
 DEPARTMENT = "Verification"
 
 
-def register(*args: str) -> subprocess.CompletedProcess:
+def register(*args: str, as_person: str | None = None) -> subprocess.CompletedProcess:
+    """Run the script as a signed-in person. The platform registers a version as whoever is signed in and refuses a name that is not
+    theirs, so the script needs that person's session. It goes in the environment, not on the command line, where it would show in a process list.
+    With no person given the script gets none, which is how a check proves it refuses to run without one."""
+    env = {**os.environ}
+    env.pop("MUNITAS_SESSION_TOKEN", None)
+    if as_person:
+        env["MUNITAS_SESSION_TOKEN"] = bearer_for(as_person)["Authorization"].removeprefix("Bearer ")
+    # An empty stdin, so nothing the script might ask waits for a person.
     return subprocess.run(
         [str(PYTHON), str(SCRIPT), *args],
-        capture_output=True, text=True, cwd=str(ROOT), timeout=300,
+        capture_output=True, text=True, cwd=str(ROOT), timeout=300, env=env, stdin=subprocess.DEVNULL,
     )
 
 
@@ -70,24 +79,26 @@ def main() -> int:
 
     missing_model = register(
         "--agent-id", agent_id, "--registered-by", "canary-engineer",
-        "--tool", "search_docs",
+        "--tool", "search_docs", as_person="canary-engineer",
     )
     check("registering with no --model-id fails, rather than defaulting to one",
-          missing_model.returncode != 0, f"exit {missing_model.returncode}")
+          missing_model.returncode != 0 and "--model-id" in missing_model.stderr,
+          f"exit {missing_model.returncode} {missing_model.stderr[-160:]}")
 
     missing_tool = register(
         "--agent-id", agent_id, "--registered-by", "canary-engineer",
-        "--model-id", "gpt-4.1",
+        "--model-id", "gpt-4.1", as_person="canary-engineer",
     )
     check("registering with no --tool fails, rather than defaulting to an empty scope",
-          missing_tool.returncode != 0, f"exit {missing_tool.returncode}")
+          missing_tool.returncode != 0 and "--tool" in missing_tool.stderr,
+          f"exit {missing_tool.returncode} {missing_tool.stderr[-160:]}")
 
     heading("U49: an external location round-trips exactly as declared")
 
     run = register(
         "--agent-id", agent_id, "--registered-by", "canary-engineer",
         "--model-id", "gpt-4.1", "--tool", "search_docs", "--tool", "summarise",
-        "--source-path", fake_repo_url,
+        "--source-path", fake_repo_url, as_person="canary-engineer",
     )
     check("registering with an explicit model and tool scope succeeds",
           run.returncode == 0, run.stdout + run.stderr)
@@ -111,13 +122,20 @@ def main() -> int:
     # eng-devi is registered in `health`, not `canary`. Naming them as
     # --registered-by against an agent that lives in canary must be refused,
     # the same as register() itself refuses a cross-tenant registered_by.
+    # Signed in as that person, so the refusal is the platform's own and not just a missing session.
     cross_tenant = register(
         "--agent-id", agent_id, "--registered-by", "eng-devi",
         "--model-id", "gpt-4.1", "--tool", "search_docs",
-        "--source-path", fake_repo_url,
+        "--source-path", fake_repo_url, as_person="eng-devi",
     )
-    check("a --registered-by from a different tenant is refused",
-          cross_tenant.returncode != 0, cross_tenant.stdout + cross_tenant.stderr)
+    # A 404, not a 403: somebody from another organisation is told there is no such agent, so they cannot learn that one exists.
+    check("a --registered-by from a different tenant is refused by the platform, as if the agent did not exist",
+          cross_tenant.returncode == 1 and "HTTP 404" in cross_tenant.stdout and "no such agent" in cross_tenant.stdout,
+          cross_tenant.stdout + cross_tenant.stderr)
+    nobody = register("--agent-id", agent_id, "--registered-by", "canary-engineer", "--model-id", "gpt-4.1",
+                      "--tool", "search_docs", "--source-path", fake_repo_url)
+    check("with no signed-in session the script refuses to run at all",
+          nobody.returncode == 2 and "session token is needed" in nobody.stdout, f"exit {nobody.returncode} {nobody.stdout[:120]}")
 
     heading("U49: the script is genuinely self-contained")
 
