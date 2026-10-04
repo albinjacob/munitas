@@ -374,6 +374,7 @@ def end_pipeline_run(run_id: str, body: models.EndPipelineRun, _worker: None = D
         """update pipeline_run
               set status = case when ended_at is null then %s else status end,
                   error = case when ended_at is null then %s else error end,
+                  ended_source = coalesce(ended_source, 'workflow'),
                   ended_at = coalesce(ended_at, now())
             where id = %s
         returning ended_at, status""",

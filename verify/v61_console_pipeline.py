@@ -373,11 +373,15 @@ def main() -> int:
               f"status {after.get('status')}")
         with db() as conn:
             recorded = conn.execute(
-                "select status, error, ended_at from pipeline_run where id = %s",
+                "select status, error, ended_at, ended_source from pipeline_run where id = %s",
                 (run_id,)).fetchone()
         check("which is now recorded in the database, with why and when",
               recorded["status"] == "terminated" and recorded["error"]
               and recorded["ended_at"] is not None, f"{dict(recorded)}")
+        check("and says it came from the job runner, because the workflow never reported it",
+              recorded["ended_source"] == "job_runner", f"{recorded['ended_source']}")
+        check("the run page says the same",
+              after.get("ended_source") == "job_runner", f"{after.get('ended_source')}")
 
         heading("U61j2: a run that has stopped no longer blocks its version")
 
@@ -460,8 +464,10 @@ def main() -> int:
               f"HTTP {ended.status_code} {ended.text[:120]}")
         again = api("POST", f"/pipeline-runs/{made}/end", json={"status": "succeeded"})
         with db() as conn:
-            row = conn.execute("select status, error, ended_at from pipeline_run where id = %s",
+            row = conn.execute("select status, error, ended_at, ended_source from pipeline_run where id = %s",
                                (made,)).fetchone()
+        check("the workflow's own ending is recorded as coming from the workflow",
+              row["ended_source"] == "workflow", f"{row['ended_source']}")
         check("the outcome and the reason are recorded",
               row["status"] == "failed" and row["error"] == "u61l: the redact step ran out of disk",
               f"{dict(row)}")
@@ -496,12 +502,15 @@ def main() -> int:
     try:
         shown = api("GET", f"/pipeline-runs/{orphan}", headers=bearer_for(ENGINEER)).json()
         with db() as conn:
-            row = conn.execute("select status, error, ended_at from pipeline_run where id = %s",
+            row = conn.execute("select status, error, ended_at, ended_source from pipeline_run where id = %s",
                                (orphan,)).fetchone()
         check("a run the job runner never heard of is closed as unknown when opened",
               shown.get("status") == "unknown" and row["status"] == "unknown"
               and row["ended_at"] is not None and "no record" in (row["error"] or ""),
               f"page {shown.get('status')}, record {dict(row)}")
+        check("and says the job runner had no record, not that it reported a failure",
+              row["ended_source"] == "job_runner_no_record" and shown.get("ended_source") == "job_runner_no_record",
+              f"record {row['ended_source']}, page {shown.get('ended_source')}")
     finally:
         with db() as conn:
             conn.execute("delete from pipeline_run where id = %s", (orphan,))

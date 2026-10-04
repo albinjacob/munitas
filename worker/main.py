@@ -46,8 +46,8 @@ from .derivation_workflow import DerivationWorkflow, fail_derivation, seal_deriv
 from .hf_ingest_activities import (cancel_job, fail_job, fetch_one_file,
                                    finalize_job, prepare_fetch)
 from .hf_ingest_workflow import HuggingFaceFetchWorkflow
-from .housekeeping_activities import sweep_stale_probes
-from .housekeeping_workflow import TidyProbesWorkflow
+from .housekeeping_activities import close_stopped_pipeline_runs, sweep_stale_probes
+from .housekeeping_workflow import CloseStoppedRunsWorkflow, TidyProbesWorkflow
 from .workflows import CountRecordsPipeline, DeidentificationPipeline
 
 config.configure_logging("host-worker")
@@ -137,8 +137,8 @@ async def main() -> None:
         housekeeping_worker = Worker(
             client,
             task_queue=config.HOUSEKEEPING_TASK_QUEUE,
-            workflows=[TidyProbesWorkflow],
-            activities=[sweep_stale_probes],
+            workflows=[TidyProbesWorkflow, CloseStoppedRunsWorkflow],
+            activities=[sweep_stale_probes, close_stopped_pipeline_runs],
             activity_executor=housekeeping_pool,
             max_concurrent_activities=1,
         )

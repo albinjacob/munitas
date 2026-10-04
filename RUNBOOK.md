@@ -446,6 +446,48 @@ temporal schedule describe nightly-tidy-probes
 
 ---
 
+## Pipeline runs that stopped without recording it
+
+A pipeline run's own workflow writes its ending as it finishes. A workflow killed from outside, or one whose worker
+died, cannot, so its record stays open and the console refuses to start that version again. Temporal knows the run
+stopped, but only remembers a finished workflow for the namespace's retention period (24 hours here; check with
+`temporal operator namespace describe default`). After that it can no longer say how the run ended.
+
+**Script:** `scripts/admin/close-finished-pipeline-runs.py` (preview, then `--apply`).
+**Schedule:** `close-stopped-pipeline-runs`, every six hours, run by the housekeeping worker on the host.
+
+```bash
+# What is open and what Temporal says about each. Changes nothing.
+python scripts/admin/close-finished-pipeline-runs.py
+python scripts/admin/close-finished-pipeline-runs.py --apply
+
+# The schedule (register once; the host worker must be running the current code)
+python -m worker.schedule_close_finished_runs --schedule-id close-stopped-pipeline-runs
+temporal schedule describe --schedule-id close-stopped-pipeline-runs
+temporal schedule trigger  --schedule-id close-stopped-pipeline-runs      # run it now
+```
+
+- A run is open when it has no end time, and only then is it looked at. A run with an end time is never touched again.
+- A run Temporal reports as still running is left alone. If Temporal cannot be reached nothing is changed, and the
+  scheduled run fails visibly in Temporal's list of workflows rather than passing as a run that found nothing.
+- The interval must stay well inside the retention period. Once a day would reach a run with barely a minute to
+  spare. Check U122 after changing either: it fails if the schedule fires fewer than twice per retention period.
+- A row the database refuses to change (for example an organisation that has been retired) is reported and left
+  open, and the others still close.
+
+**Where an ending came from.** Every closed run carries `ended_source`, set by code in the same statement as the end time
+and required by the database whenever there is an end time:
+
+| `ended_source` | Meaning |
+|---|---|
+| `workflow` | the pipeline's own workflow reported it as it finished |
+| `job_runner` | the workflow never reported; Temporal's account of it was written in its place |
+| `job_runner_no_record` | Temporal had already forgotten the run, so the status is `unknown` |
+| `start_failed` | the platform could not start the workflow, so the run never began |
+| `not_recorded` | the run ended before this column existed and nothing recorded how it was found out |
+
+---
+
 ## Clearing the canary tenant's old fixtures
 
 **Script:** `scripts/admin/tidy-canary.py`, run automatically at the end of `run-verification.ps1`

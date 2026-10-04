@@ -1,8 +1,8 @@
-"""Recurring housekeeping: currently just the stale-probe-tenant sweep.
+"""Recurring housekeeping: the stale-probe-tenant sweep and the stopped-pipeline-run sweep.
 
-One workflow, one activity, on its own task queue (worker/config.py's
-HOUSEKEEPING_TASK_QUEUE). worker/schedule_tidy_probes.py registers the
-Temporal schedule that fires this.
+One workflow and one activity for each, on its own task queue (worker/config.py's
+HOUSEKEEPING_TASK_QUEUE). worker/schedule_tidy_probes.py and
+worker/schedule_close_finished_runs.py register the Temporal schedules that fire these.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from temporalio import workflow
 from temporalio.common import RetryPolicy
 
 with workflow.unsafe.imports_passed_through():
-    from .housekeeping_activities import sweep_stale_probes
+    from .housekeeping_activities import close_stopped_pipeline_runs, sweep_stale_probes
 
 # Postgres and S3 calls against a handful of rows: quick, and safe to retry
 # on a transient failure the way any other control-plane call is (see
@@ -35,5 +35,20 @@ class TidyProbesWorkflow:
             sweep_stale_probes,
             min_age_hours,
             start_to_close_timeout=timedelta(minutes=5),
+            retry_policy=CONTROL,
+        )
+
+
+@workflow.defn
+class CloseStoppedRunsWorkflow:
+    """End the pipeline runs that stopped without recording it, while Temporal still remembers how."""
+
+    @workflow.run
+    async def run(self) -> dict:
+        return await workflow.execute_activity(
+            close_stopped_pipeline_runs,
+            start_to_close_timeout=timedelta(minutes=5),
+            # An unreachable Temporal raises, and is tried again a few times, then fails visibly. Writing a close
+            # is safe to repeat: it only touches runs that are still open.
             retry_policy=CONTROL,
         )

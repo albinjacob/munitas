@@ -1706,6 +1706,33 @@ do $$ begin
     check ((status = 'running') = (ended_at is null));
 end $$;
 
+-- Where a run's recorded ending came from, set by code in the same statement that sets the end time. The status says how a run ended; this says
+-- how that was found out, which matters when the status is 'unknown' or a failure:
+--   workflow              the pipeline's own workflow reported it as it finished;
+--   job_runner            the workflow never reported (killed from outside, or its worker died), so the job runner's account was written in its place;
+--   job_runner_no_record  the job runner had already forgotten the run (it keeps a finished one for 24 hours here), so the status is 'unknown';
+--   start_failed          the workflow could not be started at all, so the run never began;
+--   not_recorded          the run ended before this column existed and nothing recorded how that was found out.
+-- Present exactly when there is an end time, so a code path that ends a run without saying how is refused by the database, not left to a free-text note.
+alter table pipeline_run add column if not exists ended_source text;
+do $$ begin
+  alter table pipeline_run disable trigger refuse_retired_pipeline_run;
+  update pipeline_run set ended_source = case
+      when status = 'unknown' and error like 'the job runner has no record%' then 'job_runner_no_record'
+      when error like 'the job runner reports it %' then 'job_runner'
+      else 'not_recorded' end
+   where ended_at is not null and ended_source is null;
+  alter table pipeline_run enable trigger refuse_retired_pipeline_run;
+end $$;
+do $$ begin
+  alter table pipeline_run drop constraint if exists pipeline_run_ended_source_valid;
+  alter table pipeline_run add constraint pipeline_run_ended_source_valid
+    check (ended_source in ('workflow', 'job_runner', 'job_runner_no_record', 'start_failed', 'not_recorded'));
+  alter table pipeline_run drop constraint if exists pipeline_run_ended_source_matches_end;
+  alter table pipeline_run add constraint pipeline_run_ended_source_matches_end
+    check ((ended_source is null) = (ended_at is null));
+end $$;
+
 -- One storage key per lease, rather than one per job title.
 --
 -- Six key pairs served the whole platform, one per role, so every researcher
