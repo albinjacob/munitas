@@ -91,6 +91,7 @@ SCRIPTS = [
     ("U119 the canary tidy works on the canary tenant and refuses everything else, at every point", "v119_canary_tidy_is_canary_only.py"),
     ("U120 the custodian's queue says how many claims are waiting and can be read page by page", "v120_custodian_queue_total_and_paging.py"),
     ("U124 the check that fails a run for leaving test tenants behind flags the right ones", "v124_leftover_tenant_check.py"),
+    ("U125 what is checked after a run's cleanup is kept on the history page as a second line tied to that run", "v125_history_keeps_after_run_results.py"),
 ]
 
 here = Path(__file__).parent

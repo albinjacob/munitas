@@ -54,6 +54,9 @@ $resultLine = $output | Where-Object { $_ -is [string] -and $_.StartsWith($marke
 
 Write-Host ""
 if ($resultLine) {
+    # The run's start time exactly as written, taken from the text and not parsed: Windows PowerShell turns an ISO date in JSON into a DateTime
+    # and would print it differently, and the check recorded after the cleanup is tied to this run by that exact string.
+    $runStartedAt = [regex]::Match($resultLine, '"started_at"\s*:\s*"([^"]+)"').Groups[1].Value
     $runJson = Join-Path ([System.IO.Path]::GetTempPath()) "munitas-verify-run.json"
     # WriteAllText, not Set-Content -Encoding utf8: Windows PowerShell's utf8
     # means utf8 with a byte order mark, and a mark at the front of a JSON file
@@ -114,12 +117,47 @@ Write-Host "Sweeping the probe tenants this run left behind..."
 # run that cannot show it left nothing behind has not shown it.
 Write-Host ""
 Write-Host "Checking that no test tenants were left behind..."
-& $venvPython (Join-Path $PSScriptRoot "scripts\admin\check-leftover-tenants.py")
+$leakTimer = [System.Diagnostics.Stopwatch]::StartNew()
+$leakOutput = @(& $venvPython (Join-Path $PSScriptRoot "scripts\admin\check-leftover-tenants.py") 2>&1 | ForEach-Object { "$_" })
 $leakExit = $LASTEXITCODE
+$leakTimer.Stop()
+$leakOutput | ForEach-Object { Write-Host $_ }
+
+# The run was recorded before any cleanup ran (cleanup deletes data, so nothing is deleted that no page can account for), which is why this result
+# cannot be in the run's own line. The record is append-only, so it goes in a second line tied to that run, and the history page shows it with the
+# run. If it cannot be recorded, that is a failure of the run in the same way an unrecorded run is: a leak the page does not show is a leak nobody sees.
+$leakOk = ($leakExit -eq 0)
+$leakDetail = if ($leakOk) { "" } elseif ($leakExit -eq 2) { "could not look for leftover tenants, so nothing is known" } else { (($leakOutput | Select-Object -First 8) -join " | ") }
+$afterRecorded = $false
+if ($runStartedAt) {
+    $afterRecord = @{
+        run_started_at = $runStartedAt
+        recorded_at    = (Get-Date).ToUniversalTime().ToString("o")
+        results        = @(@{
+            check   = "LEAK"
+            label   = "no test tenants left behind"
+            script  = "scripts/admin/check-leftover-tenants.py"
+            status  = $(if ($leakOk) { "pass" } else { "fail" })
+            passed  = $(if ($leakOk) { 1 } else { 0 })
+            failed  = $(if ($leakOk) { 0 } else { 1 })
+            skipped = 0
+            seconds = [math]::Round($leakTimer.Elapsed.TotalSeconds, 2)
+            detail  = $leakDetail
+        })
+    }
+    $afterJson = Join-Path ([System.IO.Path]::GetTempPath()) "munitas-verify-after.json"
+    [System.IO.File]::WriteAllText($afterJson, ($afterRecord | ConvertTo-Json -Depth 5 -Compress))
+    & $venvPython (Join-Path $PSScriptRoot "verify\report.py") --add-after $afterJson
+    $afterRecorded = ($LASTEXITCODE -eq 0)
+    Remove-Item $afterJson -ErrorAction SilentlyContinue
+}
+if (-not $afterRecorded) {
+    Write-Host "The leftover-tenant result could not be recorded on the history page (see above)." -ForegroundColor Yellow
+}
 
 Write-Host ""
-if ($suiteExit -eq 0 -and $leakExit -ne 0) {
-    Write-Host "Every check passed, but the run left test tenants behind or could not check for them (see above). Exit 3." -ForegroundColor Red
+if ($suiteExit -eq 0 -and (-not $leakOk -or -not $afterRecorded)) {
+    Write-Host "Every check passed, but the run left test tenants behind, could not check for them, or could not record the result (see above). Exit 3." -ForegroundColor Red
     exit 3
 }
 if ($suiteExit -eq 0) {

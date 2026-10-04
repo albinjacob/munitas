@@ -4,6 +4,7 @@ Two jobs, deliberately in one file because they share the record's shape:
 
     python verify/report.py --add run.json   append a run, then re-render
     python verify/report.py --add -          the same, reading stdin
+    python verify/report.py --add-after x.json   append what was checked after a run's cleanup, then re-render
     python verify/report.py                  re-render from what is already there
 
 The history is verify/history/runs.jsonl, one run per line, append only. The
@@ -13,19 +14,26 @@ gitignored: they are this machine's record of its own runs, not source.
 run_all.py produces the run object. It runs inside the munitas-api container
 where /verify is read-only, so it cannot append here itself; run-verification.ps1
 carries the JSON across.
+
+A run is recorded before its cleanup, because cleanup deletes data and nothing may be deleted that no page can account for. What is checked
+after the cleanup (that no test tenants were left behind) therefore cannot be in the run's own line, and the file is append-only, so it goes in a
+second line of its own: {"kind": "after_run", "run_started_at": <the run's started_at>, "results": [...]}. The loader attaches it to that run, and
+the page shows it beside the run's other results. The run's own line is never rewritten.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import statistics
 import sys
 from datetime import datetime
 from pathlib import Path
 
 HERE = Path(__file__).parent
-HISTORY_DIR = HERE / "history"
+# MUNITAS_VERIFY_HISTORY_DIR exists so a check can exercise this against a folder of its own, not this machine's real record.
+HISTORY_DIR = Path(os.environ["MUNITAS_VERIFY_HISTORY_DIR"]) if os.environ.get("MUNITAS_VERIFY_HISTORY_DIR") else HERE / "history"
 RUNS_PATH = HISTORY_DIR / "runs.jsonl"
 PAGE_PATH = HISTORY_DIR / "index.html"
 
@@ -33,18 +41,28 @@ PAGE_PATH = HISTORY_DIR / "index.html"
 def load_runs() -> list[dict]:
     if not RUNS_PATH.exists():
         return []
-    runs = []
+    runs, afters = [], []
     for line in RUNS_PATH.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line:
             continue
         try:
-            runs.append(json.loads(line))
+            record = json.loads(line)
         except json.JSONDecodeError:
             # One corrupt line must not cost the whole history. Say so rather
             # than dropping it silently, which would look like a clean read.
             print(f"skipping unreadable history line: {line[:80]}", file=sys.stderr)
+            continue
+        (afters if record.get("kind") == "after_run" else runs).append(record)
     runs.sort(key=lambda r: r.get("started_at", ""))
+    by_start = {r.get("started_at"): r for r in runs}
+    for after in afters:
+        run = by_start.get(after.get("run_started_at"))
+        if run is None:
+            # Said, not dropped: a line that names a run the file does not hold is a mistake somebody should see.
+            print(f"skipping an after-run line for a run that is not in the history: {str(after.get('run_started_at'))[:40]}", file=sys.stderr)
+            continue
+        run.setdefault("after_results", []).extend(after.get("results", []))
     return runs
 
 
@@ -61,12 +79,30 @@ def append_run(source: str) -> None:
         handle.write(json.dumps(run, separators=(",", ":")) + "\n")
 
 
+def append_after_run(source: str) -> None:
+    """Append what was checked after a run's cleanup, tied to the run by its started_at. Refused when no such run is recorded."""
+    raw = sys.stdin.read() if source == "-" else Path(source).read_text(encoding="utf-8-sig")
+    record = json.loads(raw.lstrip("﻿"))
+    if "run_started_at" not in record or not record.get("results"):
+        raise SystemExit("that JSON is not an after-run record: it needs 'run_started_at' and 'results'")
+    if not any(r.get("started_at") == record["run_started_at"] for r in load_runs()):
+        raise SystemExit(f"no recorded run started at {record['run_started_at']}, so there is nothing to attach this to")
+    record["kind"] = "after_run"
+    HISTORY_DIR.mkdir(parents=True, exist_ok=True)
+    with RUNS_PATH.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, separators=(",", ":")) + "\n")
+
+
 def flatten(runs: list[dict]) -> list[dict]:
     rows = []
     for run in runs:
-        for result in run.get("results", []):
+        # The suite's own results, then whatever was checked after its cleanup. Both belong to the run, so both carry its start time.
+        phases = (("suite", run.get("results", [])), ("after", run.get("after_results", [])))
+        for phase, result in ((phase, result) for phase, results in phases for result in results):
             rows.append(
                 {
+                    "phase": phase,
+                    "detail": result.get("detail", ""),
                     "at": run.get("started_at", ""),
                     "host": run.get("host", ""),
                     "check": result.get("check", ""),
@@ -183,6 +219,8 @@ PAGE_TEMPLATE = """<!doctype html>
   .num { text-align: right; font-variant-numeric: tabular-nums; }
   .never { color: var(--muted); }
   .empty { padding: 24px; text-align: center; color: var(--muted); }
+  .detail { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .after { color: var(--muted); font-size: 12px; }
   footer { margin-top: 32px; color: var(--muted); font-size: 12px; }
 </style>
 </head>
@@ -268,6 +306,10 @@ function cards() {
   const failing = DATA.summary.filter(s => s.latest === "fail").length;
   const neverFailed = DATA.summary.filter(s => !s.last_failed_at).length;
   const skipping = DATA.summary.filter(s => s.latest === "skip").length;
+  // What was checked after the last run's cleanup. A run recorded before that existed says "not checked", not "clean".
+  const after = last && (last.after_results || []);
+  const afterWord = !last ? "-" : !after.length ? "not checked"
+    : after.every(r => r.status === "pass") ? "clean" : "problem: see below";
   const items = [
     ["Runs recorded", runs.length],
     ["Checks tracked", DATA.summary.length],
@@ -276,6 +318,7 @@ function cards() {
     ["Never failed", neverFailed],
     ["Last run", last ? local(last.started_at) : "none"],
     ["Last run took", last ? `${last.seconds}s` : "-"],
+    ["After the last run's cleanup", afterWord],
   ];
   document.getElementById("cards").innerHTML = items
     .map(([k, v]) => `<div class="card"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div></div>`)
@@ -345,7 +388,7 @@ function drawDetail() {
   body.innerHTML = rows.map(r => `<tr>
     <td>${esc(local(r.at))}</td>
     <td>${esc(r.check)}</td>
-    <td class="wide">${esc(r.label)}</td>
+    <td class="wide">${esc(r.label)}${r.phase === "after" ? ' <span class="after">(after the cleanup)</span>' : ""}${r.detail ? `<div class="detail">${esc(r.detail)}</div>` : ""}</td>
     <td>${pill(r.status, r.skipped)}</td>
     <td class="num">${r.seconds}</td>
     <td>${esc(r.script)}</td>
@@ -374,10 +417,14 @@ drawDetail();
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--add", metavar="RUN_JSON", help="run JSON to append first, or - for stdin")
+    parser.add_argument("--add-after", metavar="AFTER_JSON",
+                        help="what was checked after a recorded run's cleanup, as a second line tied to that run, or - for stdin")
     args = parser.parse_args()
 
     if args.add:
         append_run(args.add)
+    if args.add_after:
+        append_after_run(args.add_after)
 
     runs = load_runs()
     HISTORY_DIR.mkdir(parents=True, exist_ok=True)

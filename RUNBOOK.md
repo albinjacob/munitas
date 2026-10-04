@@ -452,6 +452,10 @@ temporal schedule describe nightly-tidy-probes
 no cleanup could remove. It exits 1 and names each leftover (what it holds, and why it counts) when a check made a tenant and did not remove it, and
 exits 2 when it could not look. A run whose checks all passed but that left tenants behind, or could not check, exits 3.
 
+The result is also kept on the verification history page. The run is recorded before any cleanup (cleanup deletes data), so the result goes in a second line
+of `verify/history/runs.jsonl` tied to that run (`verify/report.py --add-after`), and the page shows it as the `LEAK` check and in the card "After the last run's cleanup".
+If that line cannot be recorded the run exits 3 as well.
+
 A tenant counts when it is not one of the standing set (`STANDING` in the script: health, finance, harbour, canary, r2-probe-a, r2-probe-b) and it is
 disposable (`scratch`), a `canary` fixture, or named like a test fixture. Any other `production` tenant is never flagged. Keeping a tenant on purpose means
 adding it to `STANDING`, which is the decision that it is permanent. To clear a leftover: `scripts/admin/tidy-probes.py --apply` removes disposable
