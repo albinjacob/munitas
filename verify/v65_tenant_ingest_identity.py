@@ -24,6 +24,12 @@ PROBE_A = f"ingest-probe-a-{uuid.uuid4().hex[:8]}"
 PROBE_B = f"ingest-probe-b-{uuid.uuid4().hex[:8]}"
 
 
+def db_purpose(tenant: str) -> str | None:
+    with db() as conn:
+        row = conn.execute("select purpose from tenant where id = %s", (tenant,)).fetchone()
+    return row["purpose"] if row else None
+
+
 def main() -> int:
     require_api()
     sys.path.insert(0, "/app")
@@ -132,6 +138,14 @@ def main() -> int:
         # `except Exception` would also catch an unrelated bug and misreport
         # it as this check passing.
         check("minting for a retired tenant is refused", True, str(exc)[:120])
+    finally:
+        # Retiring it took it out of the nightly sweep, which removes only tenants whose purpose is `scratch`, so every run
+        # left one behind for good. This one never held anything, so it can be declared disposable again (the database refuses
+        # that only for a tenant with sealed versions), and the sweep removes it like the other probes.
+        with db() as conn:
+            conn.execute("update tenant set purpose = 'scratch' where id = %s", (retired,))
+        check("the retired probe is handed back to the nightly sweep",
+              db_purpose(retired) == "scratch", str(db_purpose(retired)))
 
     heading("U65: a deleted organisation's ingest identity leaves the document")
 
