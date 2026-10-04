@@ -65,6 +65,38 @@ def may_start_pipeline(payload: dict) -> tuple[bool, list[str]]:
     return _ask(_PIPELINE_START_PATH, payload)
 
 
+_INTAKE_PATH = "/v1/data/munitas/access/intake_decision"
+
+
+def may_bring_in_data(payload: dict) -> tuple[bool, list[str]]:
+    """May this person register a dataset, put files into one, fetch one from outside, seal it or withdraw an upload?
+
+    The data engineer, whose job it is, and the data custodian, who owns the data. Not the researcher, the data protection officer, the
+    reviewer, the network architect, or the platform administrator, who holds no access to what an organisation keeps.
+    """
+    return _ask(_INTAKE_PATH, payload)
+
+
+_CODE_REGISTRATION_PATH = "/v1/data/munitas/access/code_registration_decision"
+
+
+def may_register_code(payload: dict) -> tuple[bool, list[str]]:
+    """May this person register an agent, an agent version, a pipeline or a pipeline version? The data engineer alone."""
+    return _ask(_CODE_REGISTRATION_PATH, payload)
+
+
+_CONFIRMATION_PATH = "/v1/data/munitas/access/classification_confirmation_decision"
+
+
+def may_confirm_classification(payload: dict) -> tuple[bool, list[str]]:
+    """May this person confirm somebody's sensitivity claim?
+
+    The data custodian of the owning department, never the person who made the claim. When that same custodian made it, any other data
+    custodian of the organisation may, so a custodian who brings data in still has a second pair of eyes on the claim.
+    """
+    return _ask(_CONFIRMATION_PATH, payload)
+
+
 _EGRESS_APPROVAL_PATH = "/v1/data/munitas/access/egress_approval_decision"
 
 

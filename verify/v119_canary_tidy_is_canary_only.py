@@ -131,7 +131,7 @@ def main() -> int:
     check("the tenant is a constant in the library", canary.TENANT == "canary" and canary.BUCKET == "munitas-canary")
 
     heading("On real data, beside a second organisation")
-    other = make_org()
+    other = make_org(engineer=True)  # registering an agent is a data engineer's act
     try:
         mine = fixture_tabular_version(CANARY, dataset_name=f"u119-mine-{uuid.uuid4().hex[:8]}")
         theirs = fixture_tabular_version(other.id, dataset_name="theirs", schema_id=fixture_tabular_contract(other.id))
@@ -198,7 +198,7 @@ def main() -> int:
                 return bool(conn.execute("select 1 from directory where id = %s", (person_id,)).fetchone())
 
         my_agent = register(CANARY, "canary-engineer", f"u119-agent-{uuid.uuid4().hex[:6]}")
-        their_agent = register(other.id, other.people["member"], f"u119-theirs-{uuid.uuid4().hex[:6]}")
+        their_agent = register(other.id, other.people["engineer"], f"u119-theirs-{uuid.uuid4().hex[:6]}")
         check("both agents, and the identity each made, exist", agent_exists(my_agent["id"]) and agent_exists(their_agent["id"])
               and person_exists(my_agent["principal_id"]) and person_exists(their_agent["principal_id"]))
 

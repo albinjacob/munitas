@@ -248,21 +248,32 @@ def list_awaiting_confirmation(
     Only `asserted` claims need this: the safe default carries no claim, and
     `verified_source` is already backed by something the platform fetched
     itself. Narrowed to `custodian` for the same reason `/lease-requests` is,
-    so a custodian's queue lists arrivals they can actually act on.
+    so a custodian's queue lists arrivals they can actually act on. Those are
+    the claims made by somebody else about data their department owns, and
+    the claims the owning custodian made about their own department's data,
+    which that custodian cannot confirm and any other data custodian of the
+    organisation can (`classification_confirmation_decision`). The second
+    kind is listed only for a person asking about their own queue who holds
+    the data custodian role.
 
     Oldest first, with the id breaking ties so two claims made at the same
     moment never swap places between pages. `total` counts every dataset
     waiting, not just this page, so a screen can say how many are not shown.
     """
+    backs_up = bool(custodian) and custodian == identity["id"] and "data_custodian" in identity["roles"]
     where = """
         from dataset d
         left join department dept on dept.id = d.department_id
         where d.declaration_basis = 'asserted'
           and d.classification_confirmed_by is null
           and d.tenant_id = %s
-          and (%s::text is null or dept.custodian = %s)
+          and (
+            %s::text is null
+            or (dept.custodian = %s and d.declared_by is distinct from %s)
+            or (%s and d.declared_by = dept.custodian and dept.custodian <> %s)
+          )
     """
-    scope = (identity["tenant_id"], custodian, custodian)
+    scope = (identity["tenant_id"], custodian, custodian, custodian, backs_up, custodian)
     total = db.one("select count(*) as n " + where, scope)["n"]
     items = db.all_rows(
         """select d.id, d.name, d.declared_class, d.declared_by, d.declared_at,

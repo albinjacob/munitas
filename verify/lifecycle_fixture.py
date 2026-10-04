@@ -37,6 +37,8 @@ PEOPLE = {
     "member": ("analyst", "Member"),
     "dpo": ("dpo", "Records officer"),
 }
+# Added only when asked for: registering an agent or a pipeline is a data engineer's act, and most checks never do it.
+ENGINEER = ("pipeline_operator", "Engineer")
 
 
 class Org:
@@ -67,7 +69,7 @@ def give_login(conn, person_id: str, label: str) -> str:
     return identity_id
 
 
-def make_org(prefix: str = "verify-closing-") -> Org:
+def make_org(prefix: str = "verify-closing-", engineer: bool = False) -> Org:
     org = Org(f"{prefix}{uuid.uuid4().hex[:8]}")
     with db() as conn:
         conn.execute(
@@ -75,7 +77,7 @@ def make_org(prefix: str = "verify-closing-") -> Org:
             "values (%s, 'shared', %s, 'production', 'verification organisation for closing')",
             (org.id, f"key/{org.id}"),
         )
-        for who, (role, label) in PEOPLE.items():
+        for who, (role, label) in {**PEOPLE, **({"engineer": ENGINEER} if engineer else {})}.items():
             person_id = f"{org.id}-{who}"
             conn.execute(
                 "insert into directory (id, tenant_id, label, kind, roles) values (%s, %s, %s, 'human', %s)",

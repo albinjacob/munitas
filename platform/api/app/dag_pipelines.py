@@ -60,6 +60,7 @@ def register(body: RegisterPipeline, identity: dict = Depends(current_session)) 
     follows.
     """
     auth.must_be(identity, tenant_id=body.tenant_id, person=body.registered_by)
+    auth.require_code_registration_role(identity)
     if not db.one(
         "select id from directory where id = %s and tenant_id = %s",
         (body.registered_by, body.tenant_id),
@@ -102,6 +103,7 @@ async def upload_version(
     """
     pipeline = _pipeline(pipeline_id, identity["tenant_id"])
     auth.must_be(identity, person=registered_by)
+    auth.require_code_registration_role(identity)
 
     if not db.one(
         "select id from directory where id = %s and tenant_id = %s",

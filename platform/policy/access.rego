@@ -584,6 +584,109 @@ pipeline_start_decision := {
 	"reasons": [r | some r in start_reason],
 }
 
+# ---------------------------------- bringing data in, and registering code --
+
+# Until now these acts asked only that the caller was the person they named, in their own organisation. Any signed-in person could register
+# a dataset, put files into one, or register an agent or a pipeline. Three questions, each a named decision, so the route can say why it refused.
+#
+# Bringing data in (registering a dataset, putting files into one, fetching one from outside, sealing it, withdrawing an upload) belongs to the
+# data engineer, whose job it is, and to the data custodian, who owns the data. A custodian who brings data in cannot confirm their own
+# sensitivity claim, so a second custodian confirms it (see classification_confirmation_decision below): the person who makes the claim is
+# never the one who checks it.
+#
+# Registering code (an agent, an agent version, a pipeline, a pipeline version) belongs to the data engineer alone. The platform administrator
+# has visibility without access and is absent from both, the same call the gate and the pipeline start made. A researcher reads de-identified
+# data and a data protection officer reads and decides nothing, so neither registers anything.
+intake_roles := {"pipeline_operator", "data_custodian"}
+
+default may_bring_in_data := false
+
+may_bring_in_data if {
+	some role in input.person.roles
+	intake_roles[role]
+}
+
+intake_reason contains "this person holds no role that may bring data in (a data engineer or a data custodian)" if {
+	not may_bring_in_data
+}
+
+intake_decision := {
+	"allow": may_bring_in_data,
+	"reasons": [r | some r in intake_reason],
+}
+
+code_registration_roles := {"pipeline_operator"}
+
+default may_register_code := false
+
+may_register_code if {
+	some role in input.person.roles
+	code_registration_roles[role]
+}
+
+code_registration_reason contains "this person holds no role that may register an agent or a pipeline (a data engineer)" if {
+	not may_register_code
+}
+
+code_registration_decision := {
+	"allow": may_register_code,
+	"reasons": [r | some r in code_registration_reason],
+}
+
+# ---------------------------------------- confirming a sensitivity claim --
+
+# Somebody who registers a dataset may claim a sensitivity less restrictive than the safe default. Until a custodian agrees, the data cannot be
+# released above the class that was claimed. Only a data custodian confirms, and never the person who made the claim.
+#
+# Whose job it is: the custodian of the department that owns the dataset. When that same custodian made the claim, nobody in the department
+# can check it, so any other data custodian of the organisation may. That is the narrowest second pair of eyes available, and it applies only
+# when the owner is the maker; for a claim made by anyone else, only the owning department's custodian confirms, as before. The route has
+# already established that the dataset is in the caller's own organisation.
+confirmer_roles := {"data_custodian"}
+
+holds_confirmer_role if {
+	some role in input.confirmer.roles
+	confirmer_roles[role]
+}
+
+default may_confirm_classification := false
+
+may_confirm_classification if {
+	holds_confirmer_role
+	input.confirmer.id != input.claim.declared_by
+	input.confirmer.id == input.department.custodian
+}
+
+may_confirm_classification if {
+	holds_confirmer_role
+	input.confirmer.id != input.claim.declared_by
+	input.claim.declared_by == input.department.custodian
+}
+
+confirmation_reason contains "only a data custodian may confirm a sensitivity claim" if {
+	not holds_confirmer_role
+}
+
+confirmation_reason contains "this person made the claim, so somebody else must confirm it" if {
+	input.confirmer.id == input.claim.declared_by
+}
+
+confirmation_reason contains msg if {
+	holds_confirmer_role
+	input.confirmer.id != input.claim.declared_by
+	input.confirmer.id != input.department.custodian
+	input.claim.declared_by != input.department.custodian
+	msg := sprintf(
+		"this data is owned by %s, whose custodian is %s; only that custodian may confirm a claim made by somebody else",
+		[input.department.name, input.department.custodian],
+	)
+}
+
+classification_confirmation_decision := {
+	"allow": may_confirm_classification,
+	"reasons": [r | some r in confirmation_reason],
+}
+
 # --------------------------------------------- agent egress allowlist --
 #
 # Which external hosts an agent version may call, approved before that

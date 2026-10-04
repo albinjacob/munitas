@@ -92,6 +92,7 @@ SCRIPTS = [
     ("U120 the custodian's queue says how many claims are waiting and can be read page by page", "v120_custodian_queue_total_and_paging.py"),
     ("U124 the check that fails a run for leaving test tenants behind flags the right ones", "v124_leftover_tenant_check.py"),
     ("U125 what is checked after a run's cleanup is kept on the history page as a second line tied to that run", "v125_history_keeps_after_run_results.py"),
+    ("U126 who may bring data in, register code and confirm a claim, and the second custodian when the owner made it", "v126_roles_on_person_routes.py"),
 ]
 
 here = Path(__file__).parent

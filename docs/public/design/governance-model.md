@@ -109,11 +109,11 @@ Six personas, each with a reason to open the console.
 
 | Persona | Role | What they do | May approve |
 | --- | --- | --- | --- |
-| Data custodian | `data_custodian` | Approves access to their department's assets | **Yes**, access to their own department only |
+| Data custodian | `data_custodian` | Approves access to their department's assets, confirms sensitivity claims, and may bring data in | **Yes**, access to their own department only |
 | De-identification reviewer | `deid_reviewer` | Reads what a de-identification run left behind, and decides whether it may be promoted | **Yes**, the gate only, and never a run they triggered |
 | Data protection officer | `dpo` | Reads everything including every denial, evidences compliance, handles erasure requests | No |
 | Researcher | `notebook_explore` | Requests access under a project, consumes de-identified data | No |
-| Data engineer | `pipeline_operator` | Runs pipelines, diagnoses failures | No |
+| Data engineer | `pipeline_operator` | Runs pipelines, brings data in, registers agents and pipelines, diagnoses failures | No |
 | Platform administrator | `platform_admin` | Keeps services running | No |
 
 The two approvals are different questions and are deliberately held by different
@@ -123,6 +123,25 @@ more widely at all**, which is a judgement about the data rather than about the
 requester. Giving both to the custodian would let the owner of a dataset clear
 their own department's output for wider use and then approve the requests to
 read it.
+
+### Who brings data in, and who registers code
+
+Bringing data in is the work of two roles: registering a dataset, putting files
+into it, fetching it from outside, sealing it and withdrawing an upload. The
+**data engineer** does it because it is their job, and the **data custodian**
+may do it because they own the data. Registering an agent or a pipeline, or a
+version of either, belongs to the **data engineer** alone. Researchers, data
+protection officers, reviewers, network architects and the platform
+administrator do none of these, and the platform refuses them and says why.
+
+The person who makes a sensitivity claim is never the one who confirms it. The
+custodian of the department that owns the data confirms a claim made by anyone
+else. When that same custodian registered the dataset, another data custodian of
+the organisation confirms it instead, so every claim has a second pair of eyes.
+
+A role is held by people, not by a single seat. An organisation may have several
+custodians or several data protection officers, and each decision is checked
+against the role the person holds.
 
 ### The data protection officer approves nothing, deliberately
 

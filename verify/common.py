@@ -281,6 +281,7 @@ _EMAIL_BY_DIRECTORY_ID = {
     "canary-researcher": "researcher@canary.example",
     "canary-dpo": "dpo@canary.example",
     "canary-reviewer": "reviewer@canary.example",
+    "canary-architect": "architect@canary.example",
     "rev-imani": "imani@health.example",
 }
 _PASSWORD = "dev-password-not-for-production"

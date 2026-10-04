@@ -622,6 +622,148 @@ test_pipeline_start_refusal_says_why if {
 }
 
 # ------------------------------------------------------------------
+# Bringing data in, and registering code.
+
+test_engineer_may_bring_data_in if {
+	access.may_bring_in_data with input as {"person": {"id": "canary-engineer", "roles": ["pipeline_operator"]}}
+}
+
+test_custodian_may_bring_data_in if {
+	access.may_bring_in_data with input as {"person": {"id": "canary-custodian", "roles": ["data_custodian"]}}
+}
+
+test_roles_that_may_not_bring_data_in if {
+	every role in ["notebook_explore", "analyst", "dpo", "deid_reviewer", "network_architect", "platform_admin", "hybridops", "agent_runtime", "training_job", "pipeline_action"] {
+		not access.may_bring_in_data with input as {"person": {"id": "x", "roles": [role]}}
+	}
+}
+
+test_nobody_with_no_role_may_bring_data_in if {
+	not access.may_bring_in_data with input as {"person": {"id": "x", "roles": []}}
+}
+
+test_one_allowed_role_among_others_is_enough_to_bring_data_in if {
+	access.may_bring_in_data with input as {"person": {"id": "x", "roles": ["notebook_explore", "pipeline_operator"]}}
+}
+
+test_intake_refusal_says_why if {
+	decision := access.intake_decision with input as {"person": {"id": "x", "roles": ["notebook_explore"]}}
+	decision.allow == false
+	"this person holds no role that may bring data in (a data engineer or a data custodian)" in decision.reasons
+}
+
+test_intake_allowance_has_no_reasons if {
+	decision := access.intake_decision with input as {"person": {"id": "x", "roles": ["pipeline_operator"]}}
+	decision.allow == true
+	count(decision.reasons) == 0
+}
+
+test_engineer_may_register_code if {
+	access.may_register_code with input as {"person": {"id": "canary-engineer", "roles": ["pipeline_operator"]}}
+}
+
+test_roles_that_may_not_register_code if {
+	every role in ["data_custodian", "notebook_explore", "analyst", "dpo", "deid_reviewer", "network_architect", "platform_admin", "hybridops", "agent_runtime", "training_job", "pipeline_action"] {
+		not access.may_register_code with input as {"person": {"id": "x", "roles": [role]}}
+	}
+}
+
+test_nobody_with_no_role_may_register_code if {
+	not access.may_register_code with input as {"person": {"id": "x", "roles": []}}
+}
+
+test_code_registration_refusal_says_why if {
+	decision := access.code_registration_decision with input as {"person": {"id": "x", "roles": ["platform_admin"]}}
+	decision.allow == false
+	"this person holds no role that may register an agent or a pipeline (a data engineer)" in decision.reasons
+}
+
+# ------------------------------------------------------------------
+# Confirming a sensitivity claim.
+
+department := {"name": "Cardiology", "custodian": "cust-a"}
+
+test_owning_custodian_confirms_a_claim_made_by_an_engineer if {
+	access.may_confirm_classification with input as {
+		"confirmer": {"id": "cust-a", "roles": ["data_custodian"]},
+		"claim": {"declared_by": "eng-1"},
+		"department": department,
+	}
+}
+
+test_other_custodian_may_not_confirm_a_claim_made_by_somebody_else if {
+	not access.may_confirm_classification with input as {
+		"confirmer": {"id": "cust-b", "roles": ["data_custodian"]},
+		"claim": {"declared_by": "eng-1"},
+		"department": department,
+	}
+}
+
+test_owning_custodian_may_not_confirm_their_own_claim if {
+	not access.may_confirm_classification with input as {
+		"confirmer": {"id": "cust-a", "roles": ["data_custodian"]},
+		"claim": {"declared_by": "cust-a"},
+		"department": department,
+	}
+}
+
+test_other_custodian_confirms_a_claim_the_owning_custodian_made if {
+	access.may_confirm_classification with input as {
+		"confirmer": {"id": "cust-b", "roles": ["data_custodian"]},
+		"claim": {"declared_by": "cust-a"},
+		"department": department,
+	}
+}
+
+test_non_custodian_may_not_confirm_even_a_claim_the_owner_made if {
+	not access.may_confirm_classification with input as {
+		"confirmer": {"id": "eng-1", "roles": ["pipeline_operator"]},
+		"claim": {"declared_by": "cust-a"},
+		"department": department,
+	}
+}
+
+test_dpo_and_admin_may_not_confirm if {
+	every role in ["dpo", "platform_admin", "deid_reviewer", "notebook_explore"] {
+		not access.may_confirm_classification with input as {
+			"confirmer": {"id": "x", "roles": [role]},
+			"claim": {"declared_by": "cust-a"},
+			"department": department,
+		}
+	}
+}
+
+test_confirmation_by_the_claimant_says_why if {
+	decision := access.classification_confirmation_decision with input as {
+		"confirmer": {"id": "cust-a", "roles": ["data_custodian"]},
+		"claim": {"declared_by": "cust-a"},
+		"department": department,
+	}
+	decision.allow == false
+	"this person made the claim, so somebody else must confirm it" in decision.reasons
+}
+
+test_confirmation_by_a_non_custodian_says_why if {
+	decision := access.classification_confirmation_decision with input as {
+		"confirmer": {"id": "eng-1", "roles": ["pipeline_operator"]},
+		"claim": {"declared_by": "cust-a"},
+		"department": department,
+	}
+	decision.allow == false
+	"only a data custodian may confirm a sensitivity claim" in decision.reasons
+}
+
+test_confirmation_by_the_wrong_custodian_names_the_right_one if {
+	decision := access.classification_confirmation_decision with input as {
+		"confirmer": {"id": "cust-b", "roles": ["data_custodian"]},
+		"claim": {"declared_by": "eng-1"},
+		"department": department,
+	}
+	decision.allow == false
+	"this data is owned by Cardiology, whose custodian is cust-a; only that custodian may confirm a claim made by somebody else" in decision.reasons
+}
+
+# ------------------------------------------------------------------
 # Housekeeping: who sees storage telemetry, and who may destroy bytes.
 
 test_support_sees_platform_wide_housekeeping if {

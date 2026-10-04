@@ -70,6 +70,7 @@ async def upload_version(
     if agent["tenant_id"] != identity["tenant_id"]:
         raise HTTPException(404, "no such agent")
     auth.must_be(identity, person=registered_by)
+    auth.require_code_registration_role(identity)
 
     if not db.one(
         "select id from directory where id = %s and tenant_id = %s",

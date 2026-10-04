@@ -90,7 +90,7 @@ def main() -> int:
     check("a malformed body to the credentials route is a 422 and nothing more: the shape of the request is published, and it reads and writes nothing",
           malformed.status_code == 422)
 
-    one, two = make_org(), make_org()
+    one, two = make_org(engineer=True), make_org()
     try:
         # A department in each organisation, owned by its custodian.
         with db() as conn:
@@ -100,6 +100,7 @@ def main() -> int:
                 conn.execute("insert into department (id, tenant_id, name, custodian) values (%s, %s, 'Records', %s)",
                              (dept[org.id], org.id, org.people["custodian"]))
         a_cust, a_member, b_member = one.bearer("custodian"), one.bearer("member"), two.bearer("member")
+        a_eng = one.bearer("engineer")  # registering an agent or a pipeline is a data engineer's act
         admin = bearer_for(ADMIN_A)
 
         heading("The routes only the platform's workers use refuse a person, a platform administrator included")
@@ -134,8 +135,8 @@ def main() -> int:
         check("the person who registered it uploads and seals", api("POST", f"/datasets/{dataset_id}/files", headers=a_cust, files=files).status_code == 201
               and api("POST", f"/datasets/{dataset_id}/seal", headers=a_cust).status_code == 201)
 
-        claimed = api("POST", "/datasets/register", json={**body, "name": f"c-{uuid.uuid4().hex[:6]}", "registered_by": one.people["member"], "declared_class": "UNDER_REVIEW"},
-                      headers=a_member).json()["id"]
+        claimed = api("POST", "/datasets/register", json={**body, "name": f"c-{uuid.uuid4().hex[:6]}", "registered_by": one.people["engineer"], "declared_class": "UNDER_REVIEW"},
+                      headers=a_eng).json()["id"]
         check("a person cannot confirm a claim in another organisation", api("POST", f"/datasets/{claimed}/confirm-classification", headers=b_member,
                                                                            json={"confirmed_by": two.people["member"]}).status_code == 404)
         check("nor confirm as the custodian by naming them", api("POST", f"/datasets/{claimed}/confirm-classification", headers=a_member,
@@ -143,7 +144,7 @@ def main() -> int:
         check("the custodian, signed in as themselves, confirms it", api("POST", f"/datasets/{claimed}/confirm-classification", headers=a_cust,
                                                                        json={"confirmed_by": one.people["custodian"]}).status_code == 200)
 
-        agent = api("POST", "/agents/register", headers=a_cust, json={"tenant_id": one.id, "name": "helper", "registered_by": one.people["custodian"], "purpose": "tests"})
+        agent = api("POST", "/agents/register", headers=a_eng, json={"tenant_id": one.id, "name": "helper", "registered_by": one.people["engineer"], "purpose": "tests"})
         check("a person registers an agent in their own organisation as themselves", agent.status_code == 201, f"{agent.status_code} {agent.text[:100]}")
         agent_id = agent.json().get("id")
         version = {"code_hash": "h", "source_path": "a.py", "image_digest": "native", "model_id": "m", "tool_scope": ["t"]}
@@ -151,10 +152,10 @@ def main() -> int:
                                                                    json={**version, "registered_by": two.people["member"]}).status_code == 404)
         check("a person cannot register a version as somebody else", api("POST", f"/agents/{agent_id}/versions", headers=a_member,
                                                                        json={**version, "registered_by": one.people["custodian"]}).status_code == 403)
-        check("as themselves they can", api("POST", f"/agents/{agent_id}/versions", headers=a_cust, json={**version, "registered_by": one.people["custodian"]}).status_code == 201)
+        check("as themselves they can", api("POST", f"/agents/{agent_id}/versions", headers=a_eng, json={**version, "registered_by": one.people["engineer"]}).status_code == 201)
         check("another organisation cannot register an agent here", api("POST", "/agents/register", headers=b_member,
                                                                        json={"tenant_id": one.id, "name": "x", "registered_by": two.people["member"], "purpose": "p"}).status_code == 403)
-        pipe = api("POST", "/pipelines/register", headers=a_cust, json={"tenant_id": one.id, "name": "flow", "department_id": dept[one.id], "registered_by": one.people["custodian"]})
+        pipe = api("POST", "/pipelines/register", headers=a_eng, json={"tenant_id": one.id, "name": "flow", "department_id": dept[one.id], "registered_by": one.people["engineer"]})
         check("a pipeline is registered the same way", pipe.status_code == 201, f"{pipe.status_code}")
         check("and another organisation's person cannot register one in this organisation", api("POST", "/pipelines/register", headers=b_member, json={
             "tenant_id": one.id, "name": "x", "department_id": dept[one.id], "registered_by": two.people["member"]}).status_code == 403)

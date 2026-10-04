@@ -38,7 +38,7 @@ from __future__ import annotations
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 
-from . import config, db, task_credential
+from . import config, db, opa, task_credential
 
 router = APIRouter(tags=["auth"])
 
@@ -226,6 +226,17 @@ def person_or_worker(request: Request, x_worker_token: str | None = Header(defau
     if config.WORKER_TOKEN and x_worker_token == config.WORKER_TOKEN:
         return {"worker": True, "id": None, "tenant_id": None, "roles": []}
     return {**current_session(request), "worker": False}
+
+
+def require_code_registration_role(caller: dict) -> None:
+    """Registering an agent, an agent version, a pipeline or a pipeline version is a data engineer's job, and nobody else's: refused with the reason.
+
+    The platform's own workers act without a person and are not asked."""
+    if caller.get("worker"):
+        return
+    permitted, reasons = opa.may_register_code({"person": {"id": caller["id"], "roles": caller["roles"]}})
+    if not permitted:
+        raise HTTPException(403, {"reasons": reasons})
 
 
 def must_be(caller: dict, *, tenant_id: str | None = None, person: str | None = None) -> None:

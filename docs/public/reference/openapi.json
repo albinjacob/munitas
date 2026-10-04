@@ -3637,7 +3637,7 @@
     },
     "/datasets/awaiting-confirmation": {
       "get": {
-        "description": "Datasets whose sensitivity claim has not been agreed to yet.\n\nOnly `asserted` claims need this: the safe default carries no claim, and\n`verified_source` is already backed by something the platform fetched\nitself. Narrowed to `custodian` for the same reason `/lease-requests` is,\nso a custodian's queue lists arrivals they can actually act on.\n\nOldest first, with the id breaking ties so two claims made at the same\nmoment never swap places between pages. `total` counts every dataset\nwaiting, not just this page, so a screen can say how many are not shown.",
+        "description": "Datasets whose sensitivity claim has not been agreed to yet.\n\nOnly `asserted` claims need this: the safe default carries no claim, and\n`verified_source` is already backed by something the platform fetched\nitself. Narrowed to `custodian` for the same reason `/lease-requests` is,\nso a custodian's queue lists arrivals they can actually act on. Those are\nthe claims made by somebody else about data their department owns, and\nthe claims the owning custodian made about their own department's data,\nwhich that custodian cannot confirm and any other data custodian of the\norganisation can (`classification_confirmation_decision`). The second\nkind is listed only for a person asking about their own queue who holds\nthe data custodian role.\n\nOldest first, with the id breaking ties so two claims made at the same\nmoment never swap places between pages. `total` counts every dataset\nwaiting, not just this page, so a screen can say how many are not shown.",
         "operationId": "list_awaiting_confirmation_datasets_awaiting_confirmation_get",
         "parameters": [
           {
@@ -3846,7 +3846,7 @@
     },
     "/datasets/{dataset_id}/confirm-classification": {
       "post": {
-        "description": "The custodian agreeing with somebody's sensitivity claim.\n\nRefused for anybody who is not the custodian of the owning department, and\nrefused for the person who made the claim, by a check constraint as well as\nby the branch below. Until this happens the data cannot be released above\nthe class that was claimed for it.",
+        "description": "The custodian agreeing with somebody's sensitivity claim.\n\nDecided by the policy (`classification_confirmation_decision`): a data custodian, never the person who made the claim, and the custodian of\nthe owning department. When that custodian made the claim themselves, any other data custodian of the organisation may confirm it, so\na custodian who brings data in still has a second pair of eyes on the claim. The person who made it is also refused by a check constraint.\nUntil this happens the data cannot be released above the class that was claimed for it.",
         "operationId": "confirm_datasets__dataset_id__confirm_classification_post",
         "parameters": [
           {

@@ -677,6 +677,58 @@ test.describe("U37: bringing data in through the console", () => {
     }
   });
 
+  test("each role is offered only the registration actions it may use", async ({ page }) => {
+    const cases: { person: string; datasets: boolean; agents: boolean; pipelines: boolean }[] = [
+      { person: "canary-engineer", datasets: true, agents: true, pipelines: true },
+      { person: "canary-custodian", datasets: true, agents: false, pipelines: false },
+      { person: "canary-researcher", datasets: false, agents: false, pipelines: false },
+      { person: "canary-dpo", datasets: false, agents: false, pipelines: false },
+      { person: "ops-priya", datasets: false, agents: false, pipelines: false },
+    ];
+    for (const c of cases) {
+      await loginAs(page, c.person);
+      await page.goto("/datasets");
+      await expect(page.getByRole("heading", { name: "Datasets", exact: true })).toBeVisible();
+      await expect(page.getByTestId("datasets-register-link")).toHaveCount(c.datasets ? 1 : 0);
+      await page.goto("/agents");
+      await expect(page.getByRole("heading", { name: "Agents", exact: true })).toBeVisible();
+      await expect(page.getByTestId("agents-register-link")).toHaveCount(c.agents ? 1 : 0);
+      await page.goto("/pipelines");
+      await expect(page.getByRole("heading", { name: "Pipelines", exact: true })).toBeVisible();
+      await expect(page.getByTestId("pipelines-register-link")).toHaveCount(c.pipelines ? 1 : 0);
+    }
+  });
+
+  test("a claim the owning custodian made is confirmed by another custodian, and says why", async ({ page }) => {
+    const department = await api<{ departments: { id: string; name: string }[] }>(
+      `/organisation?tenant_id=${CANARY}`,
+      await canaryAuth(),
+    ).then((o) => o.departments.find((d) => d.name === "Verification")!);
+    const name = `console-second-custodian-${Date.now()}`;
+    const registered = await post<{ id: string }>("/datasets/register", {
+      tenant_id: CANARY,
+      name,
+      department_id: department.id,
+      registered_by: "canary-custodian",
+      provenance: "external_public",
+      declared_class: "PUBLISHED",
+      modality: [],
+    });
+
+    // The maker does not see it in their own queue: they cannot confirm it.
+    await loginAs(page, "canary-custodian");
+    await expect(page.getByTestId("custodian-stats")).toBeVisible();
+    await expect(page.locator(`[data-arrival="${registered.id}"]`)).toHaveCount(0);
+
+    // Another data custodian does, with the reason, and confirming clears it.
+    await loginAs(page, "canary-elsewhere");
+    const arrival = page.getByTestId("awaiting-confirmation").locator(`[data-arrival="${registered.id}"]`);
+    await expect(arrival).toBeVisible();
+    await expect(arrival).toContainText("made this claim, so another data custodian confirms it");
+    await arrival.getByTestId(`confirm-${registered.id}`).click();
+    await expect(arrival).toHaveCount(0);
+  });
+
   test("selecting several files at once uploads and lists every one of them", async ({
     page,
   }) => {

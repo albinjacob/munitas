@@ -192,6 +192,11 @@ function CustodianHome({
                   Claimed by {people.label(d.declared_by)} on{" "}
                   {new Date(d.declared_at).toLocaleDateString()}.
                 </p>
+                {d.declared_by === d.custodian && (
+                  <p className="mt-1 text-xs text-slate-600">
+                    The custodian of {d.department_name ?? "the owning department"} made this claim, so another data custodian confirms it.
+                  </p>
+                )}
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <button
                     type="button"

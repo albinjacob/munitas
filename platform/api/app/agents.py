@@ -236,6 +236,7 @@ def register(body: RegisterAgent, identity: dict = Depends(auth.current_session)
     and a lease granted for one silently covers the other too.
     """
     auth.must_be(identity, tenant_id=body.tenant_id, person=body.registered_by)
+    auth.require_code_registration_role(identity)
     if not db.one(
         "select id from directory where id = %s and tenant_id = %s",
         (body.registered_by, body.tenant_id),
@@ -289,6 +290,7 @@ def register_version(agent_id: str, body: RegisterAgentVersion, identity: dict =
     if agent["tenant_id"] != identity["tenant_id"]:
         raise HTTPException(404, "no such agent")
     auth.must_be(identity, person=body.registered_by)
+    auth.require_code_registration_role(identity)
 
     if not db.one(
         "select id from directory where id = %s and tenant_id = %s",

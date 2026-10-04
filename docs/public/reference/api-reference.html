@@ -936,7 +936,13 @@ otherwise sits in the list looking like a failure rather than an empty shelf.</p
 Only `asserted` claims need this: the safe default carries no claim, and
 `verified_source` is already backed by something the platform fetched
 itself. Narrowed to `custodian` for the same reason `/lease-requests` is,
-so a custodian&#x27;s queue lists arrivals they can actually act on.
+so a custodian&#x27;s queue lists arrivals they can actually act on. Those are
+the claims made by somebody else about data their department owns, and
+the claims the owning custodian made about their own department&#x27;s data,
+which that custodian cannot confirm and any other data custodian of the
+organisation can (`classification_confirmation_decision`). The second
+kind is listed only for a person asking about their own queue who holds
+the data custodian role.
 
 Oldest first, with the id breaking ties so two claims made at the same
 moment never swap places between pages. `total` counts every dataset
@@ -1345,10 +1351,10 @@ detail endpoints already use.</p>
   <h3>Confirm</h3>
   <p class="op-desc">The custodian agreeing with somebody&#x27;s sensitivity claim.
 
-Refused for anybody who is not the custodian of the owning department, and
-refused for the person who made the claim, by a check constraint as well as
-by the branch below. Until this happens the data cannot be released above
-the class that was claimed for it.</p>
+Decided by the policy (`classification_confirmation_decision`): a data custodian, never the person who made the claim, and the custodian of
+the owning department. When that custodian made the claim themselves, any other data custodian of the organisation may confirm it, so
+a custodian who brings data in still has a second pair of eyes on the claim. The person who made it is also refused by a check constraint.
+Until this happens the data cannot be released above the class that was claimed for it.</p>
   <div class="block-label">Parameters</div><table class="fields"><thead><tr><th>Name</th><th>In</th><th>Type</th><th>&nbsp;</th></tr></thead><tbody><tr><td class="mono">dataset_id</td><td>path</td><td class="mono">string</td><td class="req-required">required</td></tr></tbody></table>
   <div class="block-label">Request body</div><table class="fields"><thead><tr><th>Field</th><th>Type</th><th>&nbsp;</th></tr></thead><tbody><tr><td class="mono">confirmed_by</td><td class="mono">string</td><td class="req-required">required</td></tr></tbody></table>
   <div class="block-label">Responses</div>

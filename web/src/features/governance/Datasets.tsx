@@ -11,6 +11,7 @@
  * showing the newest would understate who could have seen it.
  */
 
+import { INTAKE_ROLES, useHoldsRole } from "../../identity/mayDo";
 import { Fragment, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAccessPreview, useDatasetVersions, useDatasets } from "../../api/queries";
@@ -177,6 +178,7 @@ function useIsDesktop(): boolean {
 }
 
 export function Datasets() {
+  const mayBringIn = useHoldsRole(INTAKE_ROLES);
   const [q, setQ] = useState("");
   const [klass, setKlass] = useState("");
   const [modality, setModality] = useState("");
@@ -210,13 +212,15 @@ export function Datasets() {
       title="Datasets"
       description="The access level shown is the widest any version has reached, because that is what determines who could have seen it."
       actions={
-        <Link
-          to="/datasets/register"
-          data-testid="datasets-register-link"
-          className="rounded bg-indigo-500 hover:bg-indigo-800 px-3 py-1.5 text-sm font-medium text-white"
-        >
-          Bring a dataset in
-        </Link>
+        mayBringIn ? (
+          <Link
+            to="/datasets/register"
+            data-testid="datasets-register-link"
+            className="rounded bg-indigo-500 hover:bg-indigo-800 px-3 py-1.5 text-sm font-medium text-white"
+          >
+            Bring a dataset in
+          </Link>
+        ) : undefined
       }
     >
       <div className="mb-4 flex flex-wrap items-end gap-3 rounded border border-slate-200 bg-white p-3">

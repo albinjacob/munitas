@@ -83,6 +83,13 @@ def _mine(dataset: dict, identity: dict) -> None:
         raise HTTPException(404, "no such dataset")
 
 
+def _require_intake_role(identity: dict) -> None:
+    """Bringing data in is a data engineer's job, or a data custodian's. Anybody else is refused, with the reason."""
+    permitted, reasons = opa.may_bring_in_data({"person": {"id": identity["id"], "roles": identity["roles"]}})
+    if not permitted:
+        raise HTTPException(403, {"reasons": reasons})
+
+
 def _dataset(dataset_id: str) -> dict:
     row = db.one(
         """select d.*, dept.custodian, dept.name as department_name
@@ -141,6 +148,7 @@ def register(body: RegisterDataset, identity: dict = Depends(auth.current_sessio
     `declared_class` is provisional until a custodian confirms it.
     """
     auth.must_be(identity, tenant_id=body.tenant_id, person=body.registered_by)
+    _require_intake_role(identity)
     department = db.one(
         "select id, custodian from department where id = %s and tenant_id = %s",
         (body.department_id, body.tenant_id),
@@ -280,6 +288,7 @@ async def upload(dataset_id: str, file: UploadFile = File(...), identity: dict =
     """
     dataset = _dataset(dataset_id)
     _mine(dataset, identity)
+    _require_intake_role(identity)
     if dataset["department_id"] is None:
         raise HTTPException(400, {"reasons": ["this dataset has no owning department"]})
 
@@ -396,6 +405,8 @@ def seal_audio(dataset_id: str,
     asserting a shape nothing checked.
     """
     dataset = _dataset(dataset_id)
+    _mine(dataset, identity)
+    _require_intake_role(identity)
 
     running = db.one(
         "select id from huggingface_fetch_job where dataset_id = %s and status = 'running'",
@@ -498,6 +509,8 @@ def withdraw_upload(dataset_id: str, source_id: str,
     already satisfied.
     """
     dataset = _dataset(dataset_id)
+    _mine(dataset, identity)
+    _require_intake_role(identity)
     row = db.one(
         """select id, locator, withdrawn_at from dataset_source
            where id = %s and dataset_id = %s""",
@@ -552,6 +565,7 @@ async def fetch_huggingface(dataset_id: str, body: FetchHuggingFace, identity: d
     """
     dataset = _dataset(dataset_id)
     _mine(dataset, identity)
+    _require_intake_role(identity)
     auth.must_be(identity, person=body.fetched_by)
     if dataset["department_id"] is None:
         raise HTTPException(400, {"reasons": ["this dataset has no owning department"]})
@@ -633,6 +647,7 @@ async def cancel_huggingface_fetch(dataset_id: str, job_id: str, identity: dict 
     same repo picks up from there.
     """
     _mine(_dataset(dataset_id), identity)
+    _require_intake_role(identity)
     job = db.one(
         "select id, status, workflow_id from huggingface_fetch_job where id = %s and dataset_id = %s",
         (job_id, dataset_id),
@@ -662,6 +677,7 @@ def seal(dataset_id: str, identity: dict = Depends(auth.current_session)) -> dic
     """
     dataset = _dataset(dataset_id)
     _mine(dataset, identity)
+    _require_intake_role(identity)
 
     running = db.one(
         "select id from huggingface_fetch_job where dataset_id = %s and status = 'running'",
@@ -738,10 +754,10 @@ def seal(dataset_id: str, identity: dict = Depends(auth.current_session)) -> dic
 def confirm(dataset_id: str, body: ConfirmClassification, identity: dict = Depends(auth.current_session)) -> dict:
     """The custodian agreeing with somebody's sensitivity claim.
 
-    Refused for anybody who is not the custodian of the owning department, and
-    refused for the person who made the claim, by a check constraint as well as
-    by the branch below. Until this happens the data cannot be released above
-    the class that was claimed for it.
+    Decided by the policy (`classification_confirmation_decision`): a data custodian, never the person who made the claim, and the custodian of
+    the owning department. When that custodian made the claim themselves, any other data custodian of the organisation may confirm it, so
+    a custodian who brings data in still has a second pair of eyes on the claim. The person who made it is also refused by a check constraint.
+    Until this happens the data cannot be released above the class that was claimed for it.
     """
     dataset = _dataset(dataset_id)
     _mine(dataset, identity)
@@ -762,14 +778,13 @@ def confirm(dataset_id: str, body: ConfirmClassification, identity: dict = Depen
             409, {"reasons": ["this dataset has no owning department, so nobody can confirm"]}
         )
 
-    if body.confirmed_by != dataset["custodian"]:
-        raise HTTPException(
-            403,
-            {"reasons": [
-                f"this data is owned by {dataset['department_name']}, "
-                f"whose custodian is {dataset['custodian']}"
-            ]},
-        )
+    permitted, reasons = opa.may_confirm_classification({
+        "confirmer": {"id": identity["id"], "roles": identity["roles"]},
+        "claim": {"declared_by": dataset["declared_by"]},
+        "department": {"name": dataset["department_name"], "custodian": dataset["custodian"]},
+    })
+    if not permitted:
+        raise HTTPException(403, {"reasons": reasons})
 
     try:
         db.execute(
