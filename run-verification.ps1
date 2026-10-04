@@ -44,8 +44,14 @@ if (-not (Test-Path $venvPython)) {
 
 Write-Host "Running the verification suite inside the munitas-api container..."
 Write-Host ""
+# Anything the suite writes to stderr (a check's traceback, a library warning) must not stop this script. With the error preference at Stop and the
+# caller redirecting streams, which any automation does, one line on stderr became a terminating error here: the run was neither recorded nor
+# cleaned up, and its test tenants were left behind. The suite's own exit code is what says whether it passed.
+$previousPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
 wsl -d $WslDistro -- bash -lc "$compose exec -T munitas-api python /verify/run_all.py" | Tee-Object -Variable output
 $suiteExit = $LASTEXITCODE
+$ErrorActionPreference = $previousPreference
 
 # run_all.py prints its structured copy on one marked line, because /verify is
 # mounted read-only in that container and it cannot write the history itself.
