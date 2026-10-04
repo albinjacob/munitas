@@ -18,9 +18,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "verify"))
 
-from common import (api, check, db, fixture_contract,  # noqa: E402
-                    fixture_tenant, fixture_version, heading, require_api,
-                    summary)
+from common import (ENGINEER, api, bearer_for, check, db,  # noqa: E402
+                    fixture_contract, fixture_tenant, fixture_version,
+                    heading, require_api, summary)
 
 SCRIPT = ROOT / "scripts" / "admin" / "cleanup-dataset.py"
 PYTHON = ROOT / ".venv" / "Scripts" / "python.exe"
@@ -30,7 +30,9 @@ DEPARTMENT = "Verification"
 def cleanup(*args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         [str(PYTHON), str(SCRIPT), *args],
-        capture_output=True, text=True, cwd=str(ROOT), timeout=300,
+        # An empty stdin, so a confirmation prompt the script asks is answered by end of input at once instead of waiting for a
+        # person (the same hang U52 had when it inherited an open stdin).
+        capture_output=True, text=True, cwd=str(ROOT), timeout=300, stdin=subprocess.DEVNULL,
     )
 
 
@@ -126,7 +128,8 @@ def main() -> int:
     check("the dataset_source row is gone", sources == 0, f"{sources} rows")
     check("the huggingface_fetch_job row is gone", jobs == 0, f"{jobs} rows")
 
-    still = api("GET", f"/datasets/{dataset_id}")
+    # A read needs a signed-in person; the canary engineer is in the canary tenant this dataset belongs to.
+    still = api("GET", f"/datasets/{dataset_id}", headers=bearer_for(ENGINEER))
     check("the dataset is still registered", still.status_code == 200,
           f"HTTP {still.status_code}")
 

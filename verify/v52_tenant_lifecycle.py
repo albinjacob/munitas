@@ -6,22 +6,39 @@ API image, the same reason v47_cleanup_dataset.py runs on the host for
 scripts/admin/cleanup-dataset.py.
 
     .venv\\Scripts\\python.exe verify\\v52_tenant_lifecycle.py
+
+It makes two tenants, `scratch-` and a random suffix each, and removes both however it ends: the first is created, retired and
+then deleted by its own cleanup, the second is deleted by the check that proves the delete. A failure part-way through still
+removes them, along with the sign-in made for the person it acts as. It removes only the tenants this run made, by the names
+it generated, and never anything else.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
 import uuid
 from pathlib import Path
 
+import httpx
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "verify"))
+sys.path.insert(0, str(ROOT))
+
+# Run from the host, so the services are on localhost. Anything already set (a different machine, a container) wins.
+from ports_config import PORTS  # noqa: E402
+
+os.environ.setdefault("PG_DSN", f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform")
+os.environ.setdefault("MUNITAS_VERIFY_KRATOS", f"http://localhost:{PORTS['kratos_public']}")
+os.environ.setdefault("MUNITAS_VERIFY_KRATOS_ADMIN", f"http://localhost:{PORTS['kratos_admin']}")
 
 from common import (api, check, db, fixture_contract, fixture_tenant,  # noqa: E402
                     fixture_version, heading, require_api, summary)
+from lifecycle_fixture import KRATOS_ADMIN, give_login  # noqa: E402
 
 PYTHON = ROOT / ".venv" / "Scripts" / "python.exe"
 CREATE = ROOT / "scripts" / "admin" / "create-tenant.py"
@@ -31,9 +48,13 @@ TEMPLATE = ROOT / "scripts" / "admin" / "onboarding-template.json"
 
 
 def run(script: Path, *args: str, input_text: str | None = None) -> subprocess.CompletedProcess:
+    # With nothing to type, the script gets an empty stdin, so a prompt it asks (a dry run without --force asks for the tenant's
+    # name) is answered by end of input at once. Left to inherit the caller's stdin it waits for a person, and an open stdin
+    # made this check hang until its timeout.
+    stdin = {"input": input_text} if input_text is not None else {"stdin": subprocess.DEVNULL}
     return subprocess.run(
         [str(PYTHON), str(script), *args],
-        capture_output=True, text=True, cwd=str(ROOT), input=input_text, timeout=300,
+        capture_output=True, text=True, cwd=str(ROOT), timeout=300, **stdin,
     )
 
 
@@ -46,7 +67,45 @@ def write_config(config: dict) -> str:
     return f.name
 
 
+def remove_what_this_run_made(made: list[str], logins: list[str]) -> list[str]:
+    """Delete the tenants this run created, and the sign-ins it made, whatever state the run reached. Returns the tenants still there.
+
+    Only names this run generated (`scratch-` and a random suffix) are touched. One that never got as far as being retired is
+    still a production tenant, which the delete refuses outright, so it is retired first. Both steps are the project's own scripts
+    with their own guards, and the delete asks for the tenant's name typed back like any other use of it."""
+    left = []
+    for tenant in made:
+        if not tenant.startswith("scratch-"):
+            left.append(tenant)
+            continue
+        with db() as conn:
+            row = conn.execute("select purpose from tenant where id = %s", (tenant,)).fetchone()
+        if not row:
+            continue
+        if row["purpose"] == "production":
+            run(RETIRE, "--tenant", tenant, "--force")
+        run(NUKE, "--tenant", tenant, "--force", input_text=f"{tenant}\n")
+        with db() as conn:
+            if conn.execute("select 1 from tenant where id = %s", (tenant,)).fetchone():
+                left.append(tenant)
+    for identity in logins:
+        httpx.delete(f"{KRATOS_ADMIN}/admin/identities/{identity}", timeout=10.0)
+    return left
+
+
 def main() -> int:
+    made: list[str] = []
+    logins: list[str] = []
+    try:
+        checks(made, logins)
+    finally:
+        left = remove_what_this_run_made(made, logins)
+    heading("U52: nothing is left behind")
+    check("the tenants this run made are all gone", not left, str(left))
+    return summary("U52")
+
+
+def checks(made: list[str], logins: list[str]) -> None:
     require_api()
 
     # --------------------------------------------------------------- U52 --
@@ -61,6 +120,7 @@ def main() -> int:
     heading("U52: scripts/admin/create-tenant.py creates a tenant from an onboarding file")
 
     tenant = f"scratch-{uuid.uuid4().hex[:8]}"
+    made.append(tenant)
     config = {
         "departments": [
             {"key": "cardiology", "name": "Cardiology", "custodian": "hartley"}
@@ -94,6 +154,12 @@ def main() -> int:
             "select name, custodian from department where tenant_id = %s and name = %s",
             (tenant, "Cardiology"),
         ).fetchone()
+
+    if hartley:
+        # The platform acts as the signed-in person and refuses a name that is not theirs, so the person this check acts
+        # as needs a real login. The onboarding script makes the directory entry; this makes the sign-in.
+        with db() as conn:
+            logins.append(give_login(conn, f"{tenant}-hartley", "Hartley"))
 
     check("the tenant row exists, defaulting to production",
           bool(trow) and trow["purpose"] == "production", str(trow))
@@ -185,8 +251,11 @@ def main() -> int:
         "tenant_id": tenant, "name": f"agent-{uuid.uuid4().hex[:8]}",
         "registered_by": f"{tenant}-hartley", "purpose": "should be refused",
     })
-    check("a write to the retired tenant is refused through the API",
-          blocked.status_code == 409, f"HTTP {blocked.status_code}")
+    # Refused before the route runs: a person of a retired organisation can do nothing in it (auth.closed_refusal), so this is a 403
+    # that says why, not the 409 an earlier version of the platform answered with.
+    check("a write to the retired tenant is refused through the API, and says the organisation is closing down",
+          blocked.status_code == 403 and "closing down" in blocked.text,
+          f"HTTP {blocked.status_code} {blocked.text[:200]}")
 
     already = run(RETIRE, "--tenant", tenant, "--force")
     check("retiring an already-retired tenant is refused",
@@ -203,6 +272,7 @@ def main() -> int:
     heading("U52: a dry run reports without changing anything")
 
     scratch = fixture_tenant(f"scratch-{uuid.uuid4().hex[:8]}")
+    made.append(scratch)
     contract = fixture_contract(scratch)
     sealed = fixture_version(scratch, contract, "RAW")
 
@@ -393,7 +463,6 @@ def main() -> int:
     check("a sealed version in an untouched tenant is still genuinely undeletable",
           bool(still_there) and still_there["sealed"] is True, str(still_there))
 
-    return summary("U52")
 
 
 if __name__ == "__main__":

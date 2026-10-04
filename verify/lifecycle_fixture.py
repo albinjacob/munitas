@@ -50,6 +50,23 @@ class Org:
         return bearer_for(self.people[who])
 
 
+def give_login(conn, person_id: str, label: str) -> str:
+    """Make a real Kratos login for a directory person that already exists, link it, and remember the email so `bearer_for` can sign them in.
+    Returns the Kratos identity id, which the caller removes when it is done (see `drop_org`)."""
+    email = f"{person_id}@verify.example"
+    made = httpx.post(
+        f"{KRATOS_ADMIN}/admin/identities",
+        json={"schema_id": "default", "traits": {"email": email, "name": label},
+              "credentials": {"password": {"config": {"password": _PASSWORD}}}},
+        timeout=10.0,
+    )
+    made.raise_for_status()
+    identity_id = made.json()["id"]
+    conn.execute("update directory set kratos_identity_id = %s where id = %s", (identity_id, person_id))
+    _EMAIL_BY_DIRECTORY_ID[person_id] = email
+    return identity_id
+
+
 def make_org(prefix: str = "verify-closing-") -> Org:
     org = Org(f"{prefix}{uuid.uuid4().hex[:8]}")
     with db() as conn:
@@ -60,23 +77,12 @@ def make_org(prefix: str = "verify-closing-") -> Org:
         )
         for who, (role, label) in PEOPLE.items():
             person_id = f"{org.id}-{who}"
-            email = f"{person_id}@verify.example"
             conn.execute(
                 "insert into directory (id, tenant_id, label, kind, roles) values (%s, %s, %s, 'human', %s)",
                 (person_id, org.id, label, [role]),
             )
-            made = httpx.post(
-                f"{KRATOS_ADMIN}/admin/identities",
-                json={"schema_id": "default", "traits": {"email": email, "name": label},
-                      "credentials": {"password": {"config": {"password": _PASSWORD}}}},
-                timeout=10.0,
-            )
-            made.raise_for_status()
-            identity_id = made.json()["id"]
-            conn.execute("update directory set kratos_identity_id = %s where id = %s", (identity_id, person_id))
-            _EMAIL_BY_DIRECTORY_ID[person_id] = email
+            org.identities.append(give_login(conn, person_id, label))
             org.people[who] = person_id
-            org.identities.append(identity_id)
     return org
 
 
