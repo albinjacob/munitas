@@ -3,19 +3,16 @@
  *
  * The real states need storage permissions failing to print, which means
  * stopping storage (verify/v76_activation_live.py does that, by hand). The
- * audit-log tests load the real page and change only the fields that say
- * whether access is in effect, as the responses arrive in the browser; the
- * parked-run test makes up the agent and its run entirely.
- * So what they prove is that each screen shows those states correctly when
+ * housekeeping tests load the real screen and change only the fields that say
+ * whether access is in effect; the parked-run and audit-log tests make up the
+ * data the page is given, so none of them depends on what the organisation
+ * holds and none can skip. So what they prove is that each screen shows those states correctly when
  * the API reports them, not that the API reports them; U75 and U76 prove
  * that half.
  */
 
 import { expect, test, type Page } from "@playwright/test";
 import { loginAs } from "./auth-helpers";
-import { API_BASE } from "../config/ports";
-
-const API = API_BASE;
 
 /** Rewrite one JSON response on its way to the page. */
 async function rewrite(page: Page, pattern: string, change: (body: any) => any) {
@@ -25,6 +22,7 @@ async function rewrite(page: Page, pattern: string, change: (body: any) => any) 
     await route.fulfill({ response, json: change(body) });
   });
 }
+
 
 function minutesAgo(n: number): string {
   return new Date(Date.now() - n * 60_000).toISOString();
@@ -156,34 +154,47 @@ test.describe("U75: a parked run says it is waiting for access, not stuck", () =
   });
 });
 
+/** A page of the audit log made up for the test: three allowed grants, of which `waiting` are not in effect yet. */
+function auditPage(waiting: number[]) {
+  const decisions = [1, 2, 3].map((id) => ({
+    id,
+    at: minutesAgo(id),
+    principal: "canary-engineer",
+    principal_kind: "human",
+    principal_roles: ["data_engineer"],
+    tenant_id: "canary",
+    dataset_version_id: null,
+    requested_class: null,
+    purpose: "a request made up for this test",
+    allowed: true,
+    reasons: [],
+    lease_id: null,
+    phase: "grant",
+    agent_run_id: null,
+    active: !waiting.includes(id),
+  }));
+  return { decisions, shown: decisions.length, total: decisions.length, limit: 15, offset: 0 };
+}
+
 test.describe("U75: the audit log says when given access is not in effect yet", () => {
+  // The rows are made up, so these tests never depend on the organisation having a grant to mark, and never skip.
   test("one allowed grant not yet active reads 'yes, taking effect', the rest 'yes'", async ({ page }) => {
     await loginAs(page, "canary-engineer");
-    let targetId: number | null = null;
-    await rewrite(page, "**/access-decisions**", (body) => {
-      const target = body.decisions.find((d: any) => d.phase === "grant" && d.allowed);
-      targetId = target ? target.id : null;
-      return {
-        ...body,
-        decisions: body.decisions.map((d: any) =>
-          d.id === targetId ? { ...d, active: false } : d.active === false ? { ...d, active: true } : d),
-      };
-    });
+    await page.route("**/access-decisions**", (route) => route.fulfill({ json: auditPage([2]) }));
     await page.goto("/audit");
     await expect(page.getByTestId("audit-rows")).toBeVisible();
-    test.skip(targetId === null, "no allowed grant in the audit log to mark");
-    await expect(page.getByTestId(`audit-result-${targetId}`)).toHaveText("yes, taking effect");
+    await expect(page.getByTestId("audit-result-2")).toHaveText("yes, taking effect");
+    await expect(page.getByTestId("audit-result-1")).toHaveText("yes");
+    await expect(page.getByTestId("audit-result-3")).toHaveText("yes");
     await expect(page.getByText("yes, taking effect", { exact: true })).toHaveCount(1);
   });
 
   test("with everything in effect nothing reads 'taking effect'", async ({ page }) => {
     await loginAs(page, "canary-engineer");
-    await rewrite(page, "**/access-decisions**", (body) => ({
-      ...body,
-      decisions: body.decisions.map((d: any) => (d.active === false ? { ...d, active: true } : d)),
-    }));
+    await page.route("**/access-decisions**", (route) => route.fulfill({ json: auditPage([]) }));
     await page.goto("/audit");
     await expect(page.getByTestId("audit-rows")).toBeVisible();
+    await expect(page.getByTestId("audit-result-1")).toHaveText("yes");
     await expect(page.getByText("yes, taking effect", { exact: true })).toHaveCount(0);
   });
 });
