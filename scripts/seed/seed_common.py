@@ -104,7 +104,7 @@ WORKER_HEADERS = {"x-worker-token": os.environ.get("MUNITAS_WORKER_TOKEN", "dev-
 _WORKER_ROUTES = (
     ("POST", r"/schema-contracts"), ("POST", r"/datasets"), ("POST", r"/action-runs"), ("POST", r"/pipeline-runs"),
     ("POST", r"/write-credentials"), ("POST", r"/credentials"), ("POST", r"/dataset-versions"),
-    ("GET", r"/policy/roles"), ("GET", r"/datasets/[^/]+/next-version"),
+    ("POST", r"/dataset-versions/[^/]+/promote"), ("GET", r"/policy/roles"), ("GET", r"/datasets/[^/]+/next-version"),
 )
 _PERSON_ROUTES = (
     ("POST", r"/datasets/register", "registered_by"), ("POST", r"/agents/register", "registered_by"),

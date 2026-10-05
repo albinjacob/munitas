@@ -42,7 +42,7 @@ export function Departments() {
       ) : organisation.error ? (
         <Failure error={organisation.error} what="departments" />
       ) : !organisation.data?.departments.length ? (
-        <Empty title="No departments yet" hint="A department is made when an organisation is set up." />
+        <Empty what="departments yet" hint="A department is made when an organisation is set up." />
       ) : (
         <div className="space-y-6">
           {organisation.data.departments.map((d) => (
