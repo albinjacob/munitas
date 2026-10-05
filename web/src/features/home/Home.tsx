@@ -193,11 +193,6 @@ function CustodianHome({
                   Claimed by {people.label(d.declared_by)} on{" "}
                   {new Date(d.declared_at).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}.
                 </p>
-                {d.approvers.length === 1 && d.approvers[0] === d.declared_by && (
-                  <p className="mt-1 text-xs text-slate-600">
-                    The only approver of {d.department_name ?? "the owning department"} made this claim, so another data custodian confirms it.
-                  </p>
-                )}
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <button
                     type="button"

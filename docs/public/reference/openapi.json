@@ -3678,7 +3678,7 @@
     },
     "/datasets/awaiting-confirmation": {
       "get": {
-        "description": "Datasets whose sensitivity claim has not been agreed to yet.\n\nOnly `asserted` claims need this: the safe default carries no claim, and\n`verified_source` is already backed by something the platform fetched\nitself. Narrowed to `custodian` for the same reason `/lease-requests` is,\nso an approver's queue lists arrivals they can actually act on. Those are\nthe claims made by somebody else about data their department owns, and,\nfor a department whose only approver made the claim, that claim too: that\napprover cannot confirm it and any other data custodian of the\norganisation can (`classification_confirmation_decision`). The second\nkind is listed only for a person asking about their own queue who holds\nthe data custodian role.\n\nOldest first, with the id breaking ties so two claims made at the same\nmoment never swap places between pages. `total` counts every dataset\nwaiting, not just this page, so a screen can say how many are not shown.",
+        "description": "Datasets whose sensitivity claim has not been agreed to yet.\n\nOnly `asserted` claims need this: the safe default carries no claim, and\n`verified_source` is already backed by something the platform fetched\nitself. Narrowed to `custodian` for the same reason `/lease-requests` is,\nso an approver's queue lists arrivals they can actually act on. Those are\nthe claims made by somebody else about data their department owns\n(`classification_confirmation_decision`). A claim made by a department's\nonly approver is in nobody's queue until the department has a second\napprover, because nobody else may confirm it.\n\nOldest first, with the id breaking ties so two claims made at the same\nmoment never swap places between pages. `total` counts every dataset\nwaiting, not just this page, so a screen can say how many are not shown.",
         "operationId": "list_awaiting_confirmation_datasets_awaiting_confirmation_get",
         "parameters": [
           {
@@ -3887,7 +3887,7 @@
     },
     "/datasets/{dataset_id}/confirm-classification": {
       "post": {
-        "description": "The custodian agreeing with somebody's sensitivity claim.\n\nDecided by the policy (`classification_confirmation_decision`): a data custodian who is a department approver of the owning department, never the\nperson who made the claim. Any one approver may confirm. When the claimant is the department's only approver, any other data custodian of\nthe organisation may, so a custodian who brings data in still has a second pair of eyes on the claim. The person who made the claim is also\nrefused by a check constraint. Until this happens the data cannot be released above the class that was claimed for it.",
+        "description": "The custodian agreeing with somebody's sensitivity claim.\n\nDecided by the policy (`classification_confirmation_decision`): a data custodian who is a department approver of the owning department, never the\nperson who made the claim. Any one approver may confirm, and nobody who is not an approver of the owning department. When the claimant is the\ndepartment's only approver, the claim waits until a second approver is added. The person who made the claim is also refused by a check\nconstraint. Until this happens the data cannot be released above the class that was claimed for it.",
         "operationId": "confirm_datasets__dataset_id__confirm_classification_post",
         "parameters": [
           {

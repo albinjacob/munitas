@@ -138,9 +138,12 @@ administrator do none of these, and the platform refuses them and says why.
 
 The person who makes a sensitivity claim is never the one who confirms it. Any
 one approver of the department that owns the data confirms a claim made by
-anyone else. When the person who made the claim is the department's only
-approver, another data custodian of the organisation confirms it instead, so
-every claim has a second pair of eyes.
+anyone else, and nobody who is not an approver of that department does. When
+the person who made the claim is the department's only approver, the claim waits
+until the department has a second approver, who is added with a recorded reason
+and then confirms it. A custodian of another department has no say over this
+department's data, so every claim is checked by somebody who answers for the
+same data.
 
 A role is held by people, not by a single seat. An organisation may have several
 custodians or several data protection officers, and each decision is checked

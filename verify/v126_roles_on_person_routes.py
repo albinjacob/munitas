@@ -1,4 +1,4 @@
-"""U126: who may bring data in, register code and confirm a sensitivity claim, and the second custodian when the owner made the claim.
+"""U126: who may bring data in, register code and confirm a sensitivity claim, and the second approver when the owner made the claim.
 
 These acts used to ask only that the caller was the person they named, in their own organisation, so a researcher could register an agent or
 a data protection officer could register a dataset. Now the policy decides, and refuses with a reason. This checks, one item at a time, with
@@ -10,8 +10,8 @@ real sign-ins as each role:
   * registering code (an agent, an agent version, an agent upload, a pipeline, a pipeline version): only a data engineer;
   * confirming a claim made by an engineer: only the owning department's custodian; another department's custodian, an engineer and a data
     protection officer are refused, each with its reason;
-  * a claim made by the owning custodian cannot be confirmed by that custodian, and can be by another data custodian of the organisation; the
-    queues show it to that second custodian and not to its maker;
+  * a claim made by the owning department's only approver cannot be confirmed by that approver, nor by a custodian of another department; it
+    waits, in nobody's queue, until the department has a second approver, who then sees it and confirms it;
   * sealing or withdrawing on another organisation's dataset is answered as if the dataset did not exist, which these two routes did not do.
 
     docker compose exec -T munitas-api python /verify/v126_roles_on_person_routes.py
@@ -79,6 +79,7 @@ def main() -> int:
     fixture_tenant(CANARY)
     verification, elsewhere = department("Verification"), department("Elsewhere")
     waiting: list[tuple[str, str]] = []  # claims left unconfirmed, cleared at the end as (dataset id, the custodian who may confirm)
+    added: list[str] = []  # people made a second approver of Verification for one check, removed again at the end
     try:
         heading("Bringing data in: registering a dataset")
         for who in (ENGINEER, CUSTODIAN):
@@ -162,7 +163,7 @@ def main() -> int:
         check("the owning department's custodian may", ok.status_code == 200, f"{ok.status_code} {ok.text[:100]}")
         waiting.pop()
 
-        heading("A claim the owning custodian made needs a second custodian")
+        heading("A claim the department's only approver made waits for a second approver")
         own = register_dataset(CUSTODIAN, verification, claim=True)
         check("a custodian registers a dataset with a claim", own.status_code == 201, f"{own.status_code} {own.text[:100]}")
         own_id = own.json()["id"]
@@ -170,15 +171,26 @@ def main() -> int:
         mine_q = call(CUSTODIAN, "GET", "/datasets/awaiting-confirmation", params={"tenant_id": CANARY, "custodian": CUSTODIAN, "limit": 500}).json()
         theirs_q = call(ELSEWHERE, "GET", "/datasets/awaiting-confirmation", params={"tenant_id": CANARY, "custodian": ELSEWHERE, "limit": 500}).json()
         check("the maker's queue does not list it", own_id not in [d["id"] for d in mine_q["items"]])
-        check("the other custodian's queue does", own_id in [d["id"] for d in theirs_q["items"]])
+        check("nor does another department's custodian's", own_id not in [d["id"] for d in theirs_q["items"]])
         self_confirm = call(CUSTODIAN, "POST", f"/datasets/{own_id}/confirm-classification", json={"confirmed_by": CUSTODIAN})
         check("the maker may not confirm it", self_confirm.status_code == 403 and "this person made the claim, so somebody else must confirm it" in reasons(self_confirm),
               f"{self_confirm.status_code} {reasons(self_confirm)}")
         not_a_custodian = call(ENGINEER, "POST", f"/datasets/{own_id}/confirm-classification", json={"confirmed_by": ENGINEER})
         check("an engineer may not confirm it either", not_a_custodian.status_code == 403, f"{not_a_custodian.status_code}")
+        outsider = call(ELSEWHERE, "POST", f"/datasets/{own_id}/confirm-classification", json={"confirmed_by": ELSEWHERE})
+        check("a custodian of another department may not, and the reason says it waits for a second approver",
+              outsider.status_code == 403 and any("waits until the department has a second approver" in x for x in reasons(outsider)), f"{outsider.status_code} {reasons(outsider)}")
+        join = call(CUSTODIAN, "POST", f"/departments/{verification}/approvers", json={"person_id": ELSEWHERE, "reason": "second approver, so claims can be checked"})
+        check("the approver adds a second approver, with a reason", join.status_code == 201, f"{join.status_code} {join.text[:100]}")
+        added.append(ELSEWHERE)
+        theirs_q = call(ELSEWHERE, "GET", "/datasets/awaiting-confirmation", params={"tenant_id": CANARY, "custodian": ELSEWHERE, "limit": 500}).json()
+        check("the second approver's queue now lists it", own_id in [d["id"] for d in theirs_q["items"]])
         second = call(ELSEWHERE, "POST", f"/datasets/{own_id}/confirm-classification", json={"confirmed_by": ELSEWHERE})
-        check("another data custodian of the organisation may", second.status_code == 200, f"{second.status_code} {second.text[:100]}")
+        check("and the second approver may confirm it", second.status_code == 200, f"{second.status_code} {second.text[:100]}")
         waiting.pop()
+        back = call(CUSTODIAN, "POST", f"/departments/{verification}/approvers/{ELSEWHERE}/remove", json={"reason": "the check is finished"})
+        check("the department goes back to one approver", back.status_code == 200, f"{back.status_code} {back.text[:100]}")
+        added.pop()
         with db() as conn:
             row = conn.execute("select declared_by, classification_confirmed_by from dataset where id = %s", (own_id,)).fetchone()
         check("and the record shows two different people", row["declared_by"] == CUSTODIAN and row["classification_confirmed_by"] == ELSEWHERE, str(dict(row)))
@@ -191,7 +203,9 @@ def main() -> int:
         check("the owning custodian sees it", again in [d["id"] for d in q_owner["items"]])
         check("another department's custodian does not", again not in [d["id"] for d in q_other["items"]])
     finally:
-        # Leave no claim waiting: the owning custodian, or the second one for a claim the owner made, confirms what is left.
+        # Leave no claim waiting and no extra approver behind.
+        for person in added:
+            call(CUSTODIAN, "POST", f"/departments/{verification}/approvers/{person}/remove", json={"reason": "the check is finished"})
         for dataset_id, confirmer in waiting:
             call(confirmer, "POST", f"/datasets/{dataset_id}/confirm-classification", json={"confirmed_by": confirmer})
     return summary("U126")

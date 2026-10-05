@@ -249,18 +249,15 @@ def list_awaiting_confirmation(
     `verified_source` is already backed by something the platform fetched
     itself. Narrowed to `custodian` for the same reason `/lease-requests` is,
     so an approver's queue lists arrivals they can actually act on. Those are
-    the claims made by somebody else about data their department owns, and,
-    for a department whose only approver made the claim, that claim too: that
-    approver cannot confirm it and any other data custodian of the
-    organisation can (`classification_confirmation_decision`). The second
-    kind is listed only for a person asking about their own queue who holds
-    the data custodian role.
+    the claims made by somebody else about data their department owns
+    (`classification_confirmation_decision`). A claim made by a department's
+    only approver is in nobody's queue until the department has a second
+    approver, because nobody else may confirm it.
 
     Oldest first, with the id breaking ties so two claims made at the same
     moment never swap places between pages. `total` counts every dataset
     waiting, not just this page, so a screen can say how many are not shown.
     """
-    backs_up = bool(custodian) and custodian == identity["id"] and "data_custodian" in identity["roles"]
     where = """
         from dataset d
         left join department dept on dept.id = d.department_id
@@ -270,12 +267,9 @@ def list_awaiting_confirmation(
           and (
             %s::text is null
             or (%s = any(active_department_approvers(dept.id)) and d.declared_by is distinct from %s)
-            or (%s and d.declared_by = any(active_department_approvers(dept.id))
-                   and cardinality(array_remove(active_department_approvers(dept.id), d.declared_by)) = 0
-                   and d.declared_by <> %s)
           )
     """
-    scope = (identity["tenant_id"], custodian, custodian, custodian, backs_up, custodian)
+    scope = (identity["tenant_id"], custodian, custodian, custodian)
     total = db.one("select count(*) as n " + where, scope)["n"]
     items = db.all_rows(
         """select d.id, d.name, d.declared_class, d.declared_by, d.declared_at,

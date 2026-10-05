@@ -937,12 +937,10 @@ Only `asserted` claims need this: the safe default carries no claim, and
 `verified_source` is already backed by something the platform fetched
 itself. Narrowed to `custodian` for the same reason `/lease-requests` is,
 so an approver&#x27;s queue lists arrivals they can actually act on. Those are
-the claims made by somebody else about data their department owns, and,
-for a department whose only approver made the claim, that claim too: that
-approver cannot confirm it and any other data custodian of the
-organisation can (`classification_confirmation_decision`). The second
-kind is listed only for a person asking about their own queue who holds
-the data custodian role.
+the claims made by somebody else about data their department owns
+(`classification_confirmation_decision`). A claim made by a department&#x27;s
+only approver is in nobody&#x27;s queue until the department has a second
+approver, because nobody else may confirm it.
 
 Oldest first, with the id breaking ties so two claims made at the same
 moment never swap places between pages. `total` counts every dataset
@@ -1352,9 +1350,9 @@ detail endpoints already use.</p>
   <p class="op-desc">The custodian agreeing with somebody&#x27;s sensitivity claim.
 
 Decided by the policy (`classification_confirmation_decision`): a data custodian who is a department approver of the owning department, never the
-person who made the claim. Any one approver may confirm. When the claimant is the department&#x27;s only approver, any other data custodian of
-the organisation may, so a custodian who brings data in still has a second pair of eyes on the claim. The person who made the claim is also
-refused by a check constraint. Until this happens the data cannot be released above the class that was claimed for it.</p>
+person who made the claim. Any one approver may confirm, and nobody who is not an approver of the owning department. When the claimant is the
+department&#x27;s only approver, the claim waits until a second approver is added. The person who made the claim is also refused by a check
+constraint. Until this happens the data cannot be released above the class that was claimed for it.</p>
   <div class="block-label">Parameters</div><table class="fields"><thead><tr><th>Name</th><th>In</th><th>Type</th><th>&nbsp;</th></tr></thead><tbody><tr><td class="mono">dataset_id</td><td>path</td><td class="mono">string</td><td class="req-required">required</td></tr></tbody></table>
   <div class="block-label">Request body</div><table class="fields"><thead><tr><th>Field</th><th>Type</th><th>&nbsp;</th></tr></thead><tbody><tr><td class="mono">confirmed_by</td><td class="mono">string</td><td class="req-required">required</td></tr></tbody></table>
   <div class="block-label">Responses</div>

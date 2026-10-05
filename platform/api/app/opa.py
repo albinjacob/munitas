@@ -91,8 +91,8 @@ _CONFIRMATION_PATH = "/v1/data/munitas/access/classification_confirmation_decisi
 def may_confirm_classification(payload: dict) -> tuple[bool, list[str]]:
     """May this person confirm somebody's sensitivity claim?
 
-    The data custodian of the owning department, never the person who made the claim. When that same custodian made it, any other data
-    custodian of the organisation may, so a custodian who brings data in still has a second pair of eyes on the claim.
+    A department approver of the owning department, never the person who made the claim, and nobody who is not an approver. When the claim
+    was made by the department's only approver, nobody can confirm it until the department has a second approver.
     """
     return _ask(_CONFIRMATION_PATH, payload)
 

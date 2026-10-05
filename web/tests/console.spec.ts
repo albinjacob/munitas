@@ -699,12 +699,12 @@ test.describe("U37: bringing data in through the console", () => {
     }
   });
 
-  test("a claim the owning custodian made is confirmed by another custodian, and says why", async ({ page }) => {
+  test("a claim the only approver made waits for a second approver, and no outside custodian can confirm it", async ({ page }) => {
     const department = await api<{ departments: { id: string; name: string }[] }>(
       `/organisation?tenant_id=${CANARY}`,
       await canaryAuth(),
     ).then((o) => o.departments.find((d) => d.name === "Verification")!);
-    const name = `console-second-custodian-${Date.now()}`;
+    const name = `console-second-approver-${Date.now()}`;
     const registered = await post<{ id: string }>("/datasets/register", {
       tenant_id: CANARY,
       name,
@@ -714,19 +714,51 @@ test.describe("U37: bringing data in through the console", () => {
       declared_class: "PUBLISHED",
       modality: [],
     });
+    const makerAuth = await bearerFor("canary-custodian");
+    const outsiderAuth = await bearerFor("canary-elsewhere");
+    const arrival = (id: string) => page.getByTestId("awaiting-confirmation").locator(`[data-arrival="${id}"]`);
 
-    // The maker does not see it in their own queue: they cannot confirm it.
-    await loginAs(page, "canary-custodian");
-    await expect(page.getByTestId("custodian-stats")).toBeVisible();
-    await expect(page.locator(`[data-arrival="${registered.id}"]`)).toHaveCount(0);
+    try {
+      // Nobody sees it in a queue: the maker cannot confirm it, and a custodian of another department has no say over this department's data.
+      await loginAs(page, "canary-custodian");
+      await expect(page.getByTestId("custodian-stats")).toBeVisible();
+      await expect(arrival(registered.id)).toHaveCount(0);
+      await loginAs(page, "canary-elsewhere");
+      await expect(page.getByTestId("custodian-stats")).toBeVisible();
+      await expect(arrival(registered.id)).toHaveCount(0);
 
-    // Another data custodian does, with the reason, and confirming clears it.
-    await loginAs(page, "canary-elsewhere");
-    const arrival = page.getByTestId("awaiting-confirmation").locator(`[data-arrival="${registered.id}"]`);
-    await expect(arrival).toBeVisible();
-    await expect(arrival).toContainText("made this claim, so another data custodian confirms it");
-    await arrival.getByTestId(`confirm-${registered.id}`).click();
-    await expect(arrival).toHaveCount(0);
+      // The platform refuses the outsider, and says what has to happen first.
+      const refused = await fetch(`${API}/datasets/${registered.id}/confirm-classification`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...outsiderAuth },
+        body: JSON.stringify({ confirmed_by: "canary-elsewhere" }),
+      });
+      expect(refused.status).toBe(403);
+      expect(JSON.stringify(await refused.json())).toContain("waits until the department has a second approver");
+
+      // The department's own screen says the same to its approver.
+      await loginAs(page, "canary-custodian");
+      await page.goto("/departments");
+      await expect(page.getByTestId(`single-approver-${department.id}`)).toContainText("cannot be confirmed until a second approver is added");
+
+      // Once a second approver is added, with a reason, that approver sees the claim and confirms it.
+      await post(
+        `/departments/${department.id}/approvers`,
+        { person_id: "canary-elsewhere", reason: "second approver so claims can be checked", valid_until: null },
+        makerAuth,
+      );
+      await loginAs(page, "canary-elsewhere");
+      await expect(arrival(registered.id)).toBeVisible();
+      await arrival(registered.id).getByTestId(`confirm-${registered.id}`).click();
+      await expect(arrival(registered.id)).toHaveCount(0);
+    } finally {
+      // Back to one approver, so the next run meets the same department.
+      await post(
+        `/departments/${department.id}/approvers/canary-elsewhere/remove`,
+        { reason: "the check is finished" },
+        makerAuth,
+      ).catch(() => undefined);
+    }
   });
 
   test("an approver adds and removes another approver, with reasons, and the last permanent one stays", async ({ page }) => {

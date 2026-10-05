@@ -157,6 +157,13 @@ function DepartmentCard({ department }: { department: Department }) {
         </p>
       )}
 
+      {iAmApprover && department.approvers.length === 1 && (
+        <p data-testid={`single-approver-${department.id}`} className="mt-2 text-xs text-amber-800">
+          {department.name} has one approver. A claim about this department&apos;s data that the approver makes cannot be confirmed until a second
+          approver is added.
+        </p>
+      )}
+
       {iAmApprover ? (
         <form
           data-testid={`add-form-${department.id}`}

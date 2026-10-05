@@ -7,7 +7,7 @@ the data custodian role and is listed for that department. This checks, one item
   * anybody of the organisation can see who to ask, and only the approvers and the data protection officer see the history;
   * only a current approver may add or remove one, only for a person who already holds the data custodian role, and always with a reason;
   * any one approver can confirm a claim, so a second approver, and temporary cover, unblock the department; the maker never confirms their own;
-  * the last resort (another data custodian confirming) exists only while the claimant is the single approver, and closes when there is a second;
+  * nobody outside the department confirms: a claim by the single approver waits, in nobody's queue, until a second approver is added;
   * a department always keeps one permanent approver, by the policy and by the database; temporary cover lapses by itself;
   * the history is never edited, and records who changed what and why;
   * the claims queue shows each custodian what they can act on.
@@ -146,10 +146,18 @@ def main() -> int:
         check("a custodian who is not an approver may not, now that there is a second approver", confirm(c4, by_c1).status_code == 403)
         check("the other approver does", confirm(c2, by_c1).status_code == 200)
 
-        heading("The last resort is only for a single approver")
+        heading("A claim by the single approver waits for a second approver")
         lone = claim(c2, oncology)
         check("in a department with one approver, that approver cannot confirm", confirm(c2, lone).status_code == 403)
-        check("another data custodian of the organisation can", confirm(c4, lone).status_code == 200)
+        outside = confirm(c4, lone)
+        check("a custodian of nothing may not, and the reason says it waits for a second approver",
+              outside.status_code == 403 and any("waits until the department has a second approver" in x for x in reasons(outside)), f"{outside.status_code} {reasons(outside)}")
+        check("a custodian of another department may not either", confirm(c1, lone).status_code == 403)
+        check("nobody's queue lists it", lone not in queue(c2) and lone not in queue(c4) and lone not in queue(c1))
+        check("a second approver is added, with a reason", add(c2, oncology, c4, reason="second approver, so claims can be checked").status_code == 201)
+        check("and now sees it", lone in queue(c4))
+        check("and may confirm it", confirm(c4, lone).status_code == 200)
+        check("the department goes back to one approver", remove(c2, oncology, c4, reason="the check is finished").status_code == 200)
 
         heading("The queue shows each custodian what they can act on")
         mine = claim(engineer, cardiology)
@@ -157,7 +165,7 @@ def main() -> int:
         check("an approver sees an engineer's claim about their department", mine in queue(c1) and mine in queue(c2))
         check("a custodian who is not an approver does not", mine not in queue(c4))
         check("the maker does not see their own claim", theirs not in queue(c2))
-        check("another data custodian sees the single approver's claim", theirs in queue(c4))
+        check("nobody else sees the single approver's claim", theirs not in queue(c4) and theirs not in queue(c1) and theirs not in queue(c3))
         check("and an approver of another department does not see this one's", mine not in queue(c3))
 
         heading("Temporary cover lapses by itself")

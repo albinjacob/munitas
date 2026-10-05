@@ -756,9 +756,9 @@ def confirm(dataset_id: str, body: ConfirmClassification, identity: dict = Depen
     """The custodian agreeing with somebody's sensitivity claim.
 
     Decided by the policy (`classification_confirmation_decision`): a data custodian who is a department approver of the owning department, never the
-    person who made the claim. Any one approver may confirm. When the claimant is the department's only approver, any other data custodian of
-    the organisation may, so a custodian who brings data in still has a second pair of eyes on the claim. The person who made the claim is also
-    refused by a check constraint. Until this happens the data cannot be released above the class that was claimed for it.
+    person who made the claim. Any one approver may confirm, and nobody who is not an approver of the owning department. When the claimant is the
+    department's only approver, the claim waits until a second approver is added. The person who made the claim is also refused by a check
+    constraint. Until this happens the data cannot be released above the class that was claimed for it.
     """
     dataset = _dataset(dataset_id)
     _mine(dataset, identity)

@@ -707,8 +707,8 @@ test_owning_custodian_may_not_confirm_their_own_claim if {
 	}
 }
 
-test_other_custodian_confirms_a_claim_the_owning_custodian_made if {
-	access.may_confirm_classification with input as {
+test_other_custodian_may_not_confirm_a_claim_the_only_approver_made if {
+	not access.may_confirm_classification with input as {
 		"confirmer": {"id": "cust-b", "roles": ["data_custodian"]},
 		"claim": {"declared_by": "cust-a"},
 		"department": department,
@@ -741,6 +741,17 @@ test_confirmation_by_the_claimant_says_why if {
 	}
 	decision.allow == false
 	"this person made the claim, so somebody else must confirm it" in decision.reasons
+}
+
+test_a_claim_the_only_approver_made_says_it_waits_for_a_second_approver if {
+	decision := access.classification_confirmation_decision with input as {
+		"confirmer": {"id": "cust-b", "roles": ["data_custodian"]},
+		"claim": {"declared_by": "cust-a"},
+		"department": department,
+	}
+	decision.allow == false
+	"the only approver of Cardiology made this claim, so it waits until the department has a second approver who can confirm it" in decision.reasons
+	count(decision.reasons) == 1
 }
 
 test_confirmation_by_a_non_custodian_says_why if {
@@ -794,7 +805,7 @@ test_the_claimant_approver_may_not_confirm_even_with_another_approver if {
 	}
 }
 
-test_the_last_resort_is_closed_once_there_is_a_second_approver if {
+test_a_custodian_outside_the_department_never_confirms if {
 	not access.may_confirm_classification with input as {
 		"confirmer": {"id": "cust-c", "roles": ["data_custodian"]},
 		"claim": {"declared_by": "cust-a"},

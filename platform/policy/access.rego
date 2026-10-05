@@ -592,8 +592,8 @@ pipeline_start_decision := {
 #
 # Bringing data in (registering a dataset, putting files into one, fetching one from outside, sealing it, withdrawing an upload) belongs to the
 # data engineer, whose job it is, and to the data custodian, who owns the data. A custodian who brings data in cannot confirm their own
-# sensitivity claim, so a second custodian confirms it (see classification_confirmation_decision below): the person who makes the claim is
-# never the one who checks it.
+# sensitivity claim, so an approver of the department other than the claimant confirms it (see classification_confirmation_decision below):
+# the person who makes the claim is never the one who checks it.
 #
 # Registering code (an agent, an agent version, a pipeline, a pipeline version) belongs to the data engineer alone. The platform administrator
 # has visibility without access and is absent from both, the same call the gate and the pipeline start made. A researcher reads de-identified
@@ -639,11 +639,10 @@ code_registration_decision := {
 # Somebody who registers a dataset may claim a sensitivity less restrictive than the safe default. Until a custodian agrees, the data cannot be
 # released above the class that was claimed. Only a data custodian confirms, and never the person who made the claim.
 #
-# Whose job it is: any one of the department approvers of the department that owns the dataset, other than the person who made the claim.
-# When the claimant is an approver and the department has no other approver, nobody in the department can check the claim, so any other
-# data custodian of the organisation may. That is the last resort, and it exists only for a department with a single approver; as soon as
-# the department has a second approver, only the approvers confirm, as for a claim made by anyone else. The route has already established
-# that the dataset is in the caller's own organisation.
+# Whose job it is: any one of the department approvers of the department that owns the dataset, other than the person who made the claim,
+# and nobody else. A custodian of another department has no say over this department's data, so there is no outside confirmer. When the
+# claimant is the department's only approver, the claim waits until the department has a second approver, who is added with a recorded reason
+# and then confirms it. The route has already established that the dataset is in the caller's own organisation.
 confirmer_roles := {"data_custodian"}
 
 holds_confirmer_role if {
@@ -664,13 +663,6 @@ may_confirm_classification if {
 	input.confirmer.id in input.department.approvers
 }
 
-may_confirm_classification if {
-	holds_confirmer_role
-	input.confirmer.id != input.claim.declared_by
-	input.claim.declared_by in input.department.approvers
-	count(other_approvers) == 0
-}
-
 confirmation_reason contains "only a data custodian may confirm a sensitivity claim" if {
 	not holds_confirmer_role
 }
@@ -679,14 +671,30 @@ confirmation_reason contains "this person made the claim, so somebody else must 
 	input.confirmer.id == input.claim.declared_by
 }
 
+# The department's only approver made the claim: nobody can check it until there is a second approver.
+claimed_by_the_only_approver if {
+	input.claim.declared_by in input.department.approvers
+	count(other_approvers) == 0
+}
+
 confirmation_reason contains msg if {
 	holds_confirmer_role
 	input.confirmer.id != input.claim.declared_by
 	not input.confirmer.id in input.department.approvers
 	not may_confirm_classification
+	not claimed_by_the_only_approver
 	msg := sprintf(
 		"this data is owned by %s, whose approvers are %s; only a department approver may confirm a claim made by somebody else",
 		[input.department.name, concat(", ", input.department.approvers)],
+	)
+}
+
+confirmation_reason contains msg if {
+	holds_confirmer_role
+	claimed_by_the_only_approver
+	msg := sprintf(
+		"the only approver of %s made this claim, so it waits until the department has a second approver who can confirm it",
+		[input.department.name],
 	)
 }
 
