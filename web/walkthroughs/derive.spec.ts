@@ -48,7 +48,7 @@ const STORIES = {
     sql: "SELECT a.admission_id, a.age, a.diagnosis_code, d.description, d.chronic, " +
       "a.length_of_stay_days, a.readmitted_30d FROM a JOIN d ON d.code = a.diagnosis_code " +
       "WHERE a.age > 65 AND d.chronic",
-    key: "admission_id", prefix: "older-chronic-patients",
+    key: "admission_id", prefix: "chronic-heart-patients-over-65",
   },
   finance: {
     shots: "derive-finance",
@@ -59,7 +59,7 @@ const STORIES = {
     inputs: [{ dataset: "transactions", alias: "t" }, { dataset: "merchants", alias: "m" }],
     sql: "SELECT t.txn_id, t.amount, t.country, t.occurred_at, m.category, m.high_risk, t.flagged " +
       "FROM t JOIN m ON m.merchant_id = t.merchant_id WHERE t.amount > 300 AND t.country <> 'US'",
-    key: "txn_id", prefix: "large-foreign-transfers",
+    key: "txn_id", prefix: "large-foreign-payments",
   },
 } as const;
 const STORY = STORIES[(process.env.DERIVE_TENANT ?? "health") as keyof typeof STORIES];
@@ -70,7 +70,10 @@ const RESEARCHER = STORY.researcher;
 const CUSTODIAN = STORY.custodian;
 
 const PURPOSE = STORY.purpose;
-const NEW_NAME = `${STORY.prefix}-${new Date().toISOString().slice(5, 16).replace(/[-:T]/g, "")}`;
+// The same name as the notebook half of the story (scripts/demo/derive-demo.py): the month, day, hour and minute, in local time.
+const NOW = new Date();
+const two = (n: number) => String(n).padStart(2, "0");
+const NEW_NAME = `${STORY.prefix}-${two(NOW.getMonth() + 1)}${two(NOW.getDate())}-${two(NOW.getHours())}${two(NOW.getMinutes())}`;
 
 let step = 0;
 

@@ -184,8 +184,8 @@ HEALTH_STEPS = [
                 "the person who decides who may read it. Sam made it, so Sam can read it straight away without "
                 "asking anybody.",
         "note": "The <strong>You can read</strong> column says <strong>1 of 1</strong>, and the access level "
-                "is still <strong>Raw</strong>. The name ends in a number only so that this example can be "
-                "recorded again.",
+                "is still <strong>Raw</strong>. The name ends in the month, day, hour and minute of the "
+                "recording, so that this example can be recorded again. The notebook half of this page was recorded a few minutes earlier, so the dataset made there carries an earlier time.",
     },
     {
         "kind": "code", "source": "health", "scenes": [8], "actor": "sam",
@@ -420,8 +420,8 @@ FINANCE_STEPS = [
                 "the person who decides who may read it. Omar made it, so Omar can read it straight away "
                 "without asking anybody.",
         "note": "The <strong>You can read</strong> column says <strong>1 of 1</strong>, and the access level "
-                "is still <strong>Raw</strong>. The name ends in a number only so that this example can be "
-                "recorded again.",
+                "is still <strong>Raw</strong>. The name ends in the month, day, hour and minute of the "
+                "recording, so that this example can be recorded again. The notebook half of this page was recorded a few minutes earlier, so the dataset made there carries an earlier time.",
     },
     {
         "kind": "code", "source": "finance", "scenes": [8], "actor": "omar",

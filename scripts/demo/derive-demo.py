@@ -30,6 +30,7 @@ import json
 import sys
 import textwrap
 import time
+from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -179,7 +180,9 @@ def main() -> int:
             ended += 1
         except MunitasError:
             pass  # a lease on another department's data is not this custodian's to end
-    target = cfg["target"]
+    # The name ends in the month, day, hour and minute of the run, so a second recording never meets a name that is taken. A counter
+    # follows only if two runs start in the same minute.
+    target = f"{cfg['target']}-{datetime.now():%m%d-%H%M}"
     for suffix in [""] + [f"-{n}" for n in range(2, 50)]:
         try:
             me.dataset(target + suffix)
@@ -189,7 +192,7 @@ def main() -> int:
     if ended:
         print(f"(housekeeping: ended {ended} lease left by an earlier run)")
     if target != cfg["target"]:
-        print(f"(housekeeping: {cfg['target']} already exists, so this run makes {target})")
+        print(f"(housekeeping: this run makes {target})")
     stage.ns["target"] = target
     purpose, tenant = cfg["purpose"], cfg["tenant"]
 
