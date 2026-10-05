@@ -277,7 +277,7 @@
       <dt>Version</dt><dd>One sealed state of a dataset. Changing the contents means making a new version, never editing an old one.</dd>
       <dt>Sealed</dt><dd>Finished and closed for good, so that it can never be edited.</dd>
       <dt>Access level</dt><dd>How restricted a dataset is. Raw is the most restricted, and nobody may read it without permission. Published is the most open.</dd>
-      <dt>Custodian</dt><dd>The person a department trusts to decide who may read its data.</dd>
+      <dt>Custodian</dt><dd>A person who holds the data custodian role, which allows deciding who may read data. A custodian decides for the departments they are an approver for.</dd>
       <dt>Pipeline</dt><dd>A series of steps that Munitas runs on a dataset version, each step after the ones it depends on. The last step is a gate decision.</dd>
       <dt>Run</dt><dd>One execution of an agent or a pipeline, started for a stated purpose.</dd>
       <dt>Gate decision</dt><dd>The final step of a pipeline, where a person decides whether a dataset version may be released to a more open access level. The person who started the run may not decide it.</dd>
@@ -696,7 +696,7 @@
 <footer class="page-foot">
   <p>Captured live against the <code>health</code> organisation by <code>web/walkthroughs/healthcare.spec.ts</code> and built by <code>docs/tools/build_healthcare_walkthrough.py</code>. The pipeline run is real: transcription and identifier detection ran on a synthetic recording made for this purpose. Every person, patient and card holder in the example data is invented.</p>
   <p><a href="index.html">All walkthroughs</a> &middot; <a href="feature-walkthrough.html">Feature tour</a>
-  &middot; Last updated 2026-10-02.</p>
+  &middot; Last updated 2026-10-05.</p>
 </footer>
 
 <div id="lightbox">

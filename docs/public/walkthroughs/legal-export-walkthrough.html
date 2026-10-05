@@ -275,7 +275,7 @@
       <dt>Department</dt><dd>A team inside an organisation that owns some of its data, such as Cardiology.</dd>
       <dt>Dataset</dt><dd>A named collection of records, such as a table of patient admissions.</dd>
       <dt>Sealed</dt><dd>Finished and closed for good, so that it can never be edited.</dd>
-      <dt>Custodian</dt><dd>The person a department trusts to decide who may read its data.</dd>
+      <dt>Custodian</dt><dd>A person who holds the data custodian role, which allows deciding who may read data. A custodian decides for the departments they are an approver for.</dd>
       <dt>Platform administrator</dt><dd>The person who runs Munitas itself. The role gives no say over who may read any department&rsquo;s data.</dd>
       <dt>Legal hold</dt><dd>An instruction from a court, a regulator or a law firm to keep an organisation&rsquo;s records and not delete them while a legal matter is open.</dd>
       <dt>Temporary custodian</dt><dd>The person a legal hold names to answer for the kept records while the hold stands. The person confirms having read the notice.</dd>
@@ -512,12 +512,12 @@ manifest.sig   128 bytes</pre></div>
     </div>
   </div>
 </section>
-<div class="pager"><a class="prev" href="closing-an-organisation-walkthrough.html"><small>Previous</small>Close down an organisation, and keep its records for a legal case</a></div>
+<div class="pager"><a class="prev" href="closing-an-organisation-walkthrough.html"><small>Previous</small>Close down an organisation, and keep its records for a legal case</a><a class="next" href="department-approvers-walkthrough.html"><small>Next</small>Cover a department while its custodian is away</a></div>
 </div>
 <footer class="page-foot">
   <p>Captured live against the <code>harbour</code> organisation by <code>web/walkthroughs/legal-export.spec.ts</code> and built by <code>docs/tools/build_legal_export_walkthrough.py</code>. The terminal part is the real output of the real commands. What the platform refuses is proved separately by <code>verify/v102_legal_export_rules.py</code> and <code>verify/v103_legal_export_package.py</code>, and <code>verify/v104_legal_export_filter.py</code>, which also open a package with the recipient&rsquo;s program, change it in four ways, and show that each change is noticed, and that a filtered table holds the named rows and nothing else. Every person, patient and card holder in the example data is invented.</p>
   <p><a href="index.html">All walkthroughs</a> &middot; <a href="feature-walkthrough.html">Feature tour</a>
-  &middot; Last updated 2026-10-03.</p>
+  &middot; Last updated 2026-10-05.</p>
 </footer>
 
 <div id="lightbox">

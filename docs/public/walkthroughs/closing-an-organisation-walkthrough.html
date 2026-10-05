@@ -273,7 +273,7 @@
       <dt>Organisation</dt><dd>A company or hospital group that uses Munitas. Each organisation sees only its own data.</dd>
       <dt>Department</dt><dd>A team inside an organisation that owns some of its data, such as Cardiology.</dd>
       <dt>Dataset</dt><dd>A named collection of records, such as a table of patient admissions.</dd>
-      <dt>Custodian</dt><dd>The person a department trusts to decide who may read its data.</dd>
+      <dt>Custodian</dt><dd>A person who holds the data custodian role, which allows deciding who may read data. A custodian decides for the departments they are an approver for.</dd>
       <dt>Role</dt><dd>A named set of permissions that a person can hold, such as the permission to decide who may read a department&rsquo;s data.</dd>
       <dt>Platform administrator</dt><dd>The person who runs Munitas itself. The role gives no say over who may read any department&rsquo;s data.</dd>
       <dt>Closing down an organisation</dt><dd>Ending an organisation&rsquo;s use of Munitas in two stages of 15 days. In the first its people can read and may cancel. In the second they can do nothing. When both end, everything inside the organisation is deleted.</dd>
@@ -546,7 +546,7 @@
 <footer class="page-foot">
   <p>Captured live against the <code>harbour</code> organisation by <code>web/walkthroughs/closing.spec.ts</code> and built by <code>docs/tools/build_closing_walkthrough.py</code>. The days between the stages were skipped by <code>scripts/admin/advance-closing-clock.py</code>, as each part says. What the platform refuses is proved separately by <code>verify/v98_organisation_closing.py</code>, <code>verify/v99_legal_hold.py</code> and <code>verify/v100_purge.py</code>, which also show that nothing outside a due, unheld organisation can be deleted. Every person, patient and card holder in the example data is invented.</p>
   <p><a href="index.html">All walkthroughs</a> &middot; <a href="feature-walkthrough.html">Feature tour</a>
-  &middot; Last updated 2026-10-03.</p>
+  &middot; Last updated 2026-10-05.</p>
 </footer>
 
 <div id="lightbox">

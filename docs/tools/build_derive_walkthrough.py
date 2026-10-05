@@ -107,8 +107,8 @@ HEALTH_STEPS = [
         "kind": "shot", "file": "05-hartley-sees-the-request.png", "actor": "hartley",
         "title": "Hartley sees the request in the Cardiology queue",
         "screen": "The custodian's home page",
-        "text": "Hartley's home page lists the requests to read Cardiology's data. Nobody else can decide this "
-                "one, and Sam cannot approve a request made under Sam's own name.",
+        "text": "Hartley's home page lists the requests to read Cardiology's data. Only an approver of Cardiology "
+                "can decide this one, and Sam cannot approve a request made under Sam's own name.",
         "note": "The card reads <strong>Sam (Researcher) wants to read admissions v1</strong>, followed by "
                 "Sam's reason and two buttons, <strong>Grant access</strong> and <strong>Refuse</strong>. The "
                 "small text under them says what granting means: a fixed time, this purpose only, and it ends "
@@ -340,8 +340,8 @@ FINANCE_STEPS = [
         "kind": "shot", "file": "05-hartley-sees-the-request.png", "actor": "marcus",
         "title": "Marcus sees the request in the Fraud Operations queue",
         "screen": "The custodian's home page",
-        "text": "Marcus's home page lists the requests to read Fraud Operations' data. Nobody else can decide "
-                "this one, and Omar cannot approve a request made under Omar's own name.",
+        "text": "Marcus's home page lists the requests to read Fraud Operations' data. Only an approver of Fraud "
+                "Operations can decide this one, and Omar cannot approve a request made under Omar's own name.",
         "note": "The first card reads <strong>Omar (Analyst) wants to read transactions v1</strong>, followed by "
                 "Omar's reason and two buttons, <strong>Grant access</strong> and <strong>Refuse</strong>. The "
                 "small text under them says what granting means: a fixed time, this purpose only, and it ends "

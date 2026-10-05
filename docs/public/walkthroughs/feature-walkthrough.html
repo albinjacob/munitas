@@ -793,12 +793,14 @@
     </table>
   </div>
   <p class="measure" style="font-size:0.9rem;">
-    There are two custodians because each owns a different department, and that
+    Hartley and Okonjo answer for different departments, and that
     is the point rather than an accident of the example. Hartley can approve
     access to Cardiology's data and cannot approve access to Radiology's, and
     Okonjo the reverse. Ownership is what decides who may say yes, so a request
-    goes to the person accountable for that particular data rather than to
-    whoever happens to be senior or available.
+    goes to the people accountable for that particular data rather than to
+    whoever happens to be senior or available. A department can name several
+    approvers, and any one of them can decide, so one person being away does
+    not hold up a request.
   </p>
   <p class="measure" style="font-size:0.9rem;">
     Every person has the same default, including the administrator. Anything more
@@ -883,7 +885,7 @@
     <div class="persona-body">
       <ol class="flow">
         <li data-n="1">Requests access to one specific dataset version, stating what the work is for and why it needs that data. Blanket requests for a whole department are not possible.</li>
-        <li data-n="2">Waits for the custodian of the department that owns the data, who is the only person able to approve it.</li>
+        <li data-n="2">Waits for an approver of the department that owns the data. Only the approvers of that department can say yes, and any one of them can.</li>
         <li data-n="3">Asks the system for access once approved. It checks whether the role already allows this, and if not, whether an approved and still-valid grant covers it.</li>
         <li data-n="4">Receives a credential for its own organisation's storage only, and only after the decision has been written to the audit record. A credential that rests on an approved lease opens that one dataset version and stops working when the lease ends.</li>
       </ol>
