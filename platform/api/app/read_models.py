@@ -831,7 +831,8 @@ def organisation(identity: dict = Depends(auth.current_session)) -> dict:
     departments = db.all_rows("""
         select d.id, d.name, d.custodian, dir.label as custodian_label,
                (select coalesce(json_agg(json_build_object(
-                          'person_id', a.person_id, 'label', p.label, 'added_at', a.added_at, 'valid_until', a.valid_until)
+                          'person_id', a.person_id, 'label', p.label, 'added_at', a.added_at, 'valid_until', a.valid_until,
+                          'holds_role', person_holds_live_role(a.person_id, 'data_custodian'))
                           order by a.added_at, p.label), '[]'::json)
                   from department_approver a
                   join directory p on p.id = a.person_id and p.ended_at is null

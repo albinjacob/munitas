@@ -2146,7 +2146,8 @@ permanently plus any grant that has not been withdrawn or lapsed), so the list a
     <span class="path mono">/departments/{department_id}/approvers</span>
   </div>
   <h3>List Approvers</h3>
-  <p class="op-desc">Who answers for this department now. With `history`, everybody who ever did, and who changed it and why.
+  <p class="op-desc">Who is listed as an approver of this department now, and whether each still holds the data custodian role (`holds_role`). One who does
+not is listed but cannot act, and does not count. With `history`, everybody who ever answered, and who changed it and why.
 
 Anybody of the organisation can see who to ask. The history is for the department&#x27;s own approvers and the data protection officer.</p>
   <div class="block-label">Parameters</div><table class="fields"><thead><tr><th>Name</th><th>In</th><th>Type</th><th>&nbsp;</th></tr></thead><tbody><tr><td class="mono">department_id</td><td>path</td><td class="mono">string</td><td class="req-required">required</td></tr><tr><td class="mono">history</td><td>query</td><td class="mono">boolean</td><td class="req-optional">optional</td></tr></tbody></table>

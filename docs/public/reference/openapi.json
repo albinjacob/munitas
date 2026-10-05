@@ -4582,7 +4582,7 @@
     },
     "/departments/{department_id}/approvers": {
       "get": {
-        "description": "Who answers for this department now. With `history`, everybody who ever did, and who changed it and why.\n\nAnybody of the organisation can see who to ask. The history is for the department's own approvers and the data protection officer.",
+        "description": "Who is listed as an approver of this department now, and whether each still holds the data custodian role (`holds_role`). One who does\nnot is listed but cannot act, and does not count. With `history`, everybody who ever answered, and who changed it and why.\n\nAnybody of the organisation can see who to ask. The history is for the department's own approvers and the data protection officer.",
         "operationId": "list_approvers_departments__department_id__approvers_get",
         "parameters": [
           {

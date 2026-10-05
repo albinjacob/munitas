@@ -33,7 +33,7 @@ interface OrgRow {
   departments: {
     id: string;
     name: string;
-    approvers: { person_id: string; label: string }[];
+    approvers: { person_id: string; label: string; holds_role: boolean }[];
     datasets: number;
   }[];
   datasets_without_a_department: number;
@@ -160,7 +160,7 @@ export function Services() {
                     {org.data.departments.map((d) => (
                       <tr key={d.id} className="border-t border-slate-100 transition-colors hover:bg-slate-50">
                         <td className="px-4 py-2 font-medium">{d.name}</td>
-                        <td>{d.approvers.map((a) => a.label).join(", ")}</td>
+                        <td>{d.approvers.map((a) => (a.holds_role ? a.label : `${a.label} (cannot act)`)).join(", ")}</td>
                         <td className="tabular-nums">{d.datasets}</td>
                       </tr>
                     ))}

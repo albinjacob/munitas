@@ -59,8 +59,9 @@ function DepartmentCard({ department }: { department: Department }) {
   const add = useAddApprover();
   const remove = useRemoveApprover();
 
-  const approverIds = department.approvers.map((a) => a.person_id);
-  const iAmApprover = Boolean(principal && approverIds.includes(principal.id));
+  // An approver is somebody listed who also holds the Data custodian role now. Listed without it, a person cannot act and is not counted.
+  const iAmApprover = Boolean(principal && department.approvers.some((a) => a.person_id === principal.id && a.holds_role));
+  const workingApprovers = department.approvers.filter((a) => a.holds_role);
   const mayReadHistory = iAmApprover || Boolean(principal?.roles.includes("dpo"));
 
   const [showHistory, setShowHistory] = useState(false);
@@ -93,6 +94,11 @@ function DepartmentCard({ department }: { department: Department }) {
               <span className="font-medium">{a.label}</span>{" "}
               <span className="text-slate-500">
                 {a.valid_until ? `covering until ${day(a.valid_until)}` : "permanent"}, since {day(a.added_at)}
+                {!a.holds_role && (
+                  <span data-testid={`dormant-${a.person_id}`} className="text-amber-800">
+                    . Does not hold the Data custodian role now, so cannot act until it is held again
+                  </span>
+                )}
               </span>
             </span>
             {iAmApprover && removing !== a.person_id && (
@@ -153,7 +159,7 @@ function DepartmentCard({ department }: { department: Department }) {
         </p>
       )}
 
-      {iAmApprover && department.approvers.length === 1 && (
+      {iAmApprover && workingApprovers.length === 1 && (
         <p data-testid={`single-approver-${department.id}`} className="mt-2 text-xs text-amber-800">
           {department.name} has one approver. A claim about this department&apos;s data that the approver makes cannot be confirmed until a second
           approver is added.

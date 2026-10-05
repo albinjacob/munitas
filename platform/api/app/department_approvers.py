@@ -68,7 +68,8 @@ def _roles_of(person_id: str) -> list[str]:
 
 def _approvers(department_id: str) -> list[dict]:
     return db.all_rows(
-        f"""select a.person_id, p.label, a.added_by, ab.label as added_by_label, a.added_at, a.valid_until, a.reason
+        f"""select a.person_id, p.label, a.added_by, ab.label as added_by_label, a.added_at, a.valid_until, a.reason,
+                   person_holds_live_role(a.person_id, 'data_custodian') as holds_role
               from department_approver a
               join directory p on p.id = a.person_id
               left join directory ab on ab.id = a.added_by
@@ -84,7 +85,8 @@ def _jsonable(rows: list[dict]) -> list[dict]:
 
 @router.get("/departments/{department_id}/approvers")
 def list_approvers(department_id: str, history: bool = False, identity: dict = Depends(auth.current_session)) -> dict:
-    """Who answers for this department now. With `history`, everybody who ever did, and who changed it and why.
+    """Who is listed as an approver of this department now, and whether each still holds the data custodian role (`holds_role`). One who does
+    not is listed but cannot act, and does not count. With `history`, everybody who ever answered, and who changed it and why.
 
     Anybody of the organisation can see who to ask. The history is for the department's own approvers and the data protection officer."""
     department = _department(department_id, identity)
@@ -176,7 +178,8 @@ def remove_approver(department_id: str, person_id: str, body: RemoveApprover, id
     current = _approvers(department_id)
     approvers = [a["person_id"] for a in current]
     target = next((a for a in current if a["person_id"] == person_id), None)
-    permanent_after = sum(1 for a in current if a["valid_until"] is None and a["person_id"] != person_id)
+    # Only an approver who can act counts toward the one permanent approver a department keeps.
+    permanent_after = sum(1 for a in current if a["valid_until"] is None and a["person_id"] != person_id and a["holds_role"])
     permitted, reasons = opa.may_remove_department_approver({
         "actor": {"id": identity["id"], "roles": identity["roles"]},
         "person": {"id": person_id, "permanent": bool(target and target["valid_until"] is None)},

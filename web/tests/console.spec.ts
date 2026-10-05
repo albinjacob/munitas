@@ -761,6 +761,31 @@ test.describe("U37: bringing data in through the console", () => {
     }
   });
 
+  test("an approver listed without the custodian role is marked, and does not count toward a single approver's warning", async ({ page }) => {
+    // The platform reports `holds_role`; the screen has to say so. A listed approver who cannot act is made up here, because making a real
+    // role lapse needs a grant that runs out.
+    await page.route("**/organisation?*", async (route) => {
+      const response = await route.fetch();
+      const body = await response.json();
+      for (const d of Array.isArray(body.departments) ? body.departments : []) {
+        if (d.name === "Elsewhere") {
+          d.approvers = [
+            ...d.approvers.map((a: object) => ({ ...a, holds_role: true })),
+            { person_id: "lapsed-person", label: "Lapsed person", added_at: new Date().toISOString(), valid_until: null, holds_role: false },
+          ];
+        }
+      }
+      await route.fulfill({ response, json: body });
+    });
+    await loginAs(page, "canary-elsewhere");
+    await page.goto("/departments");
+    const organisation = await api<{ departments: { id: string; name: string }[] }>(`/organisation?tenant_id=canary`, await canaryAuth());
+    const id = organisation.departments.find((d) => d.name === "Elsewhere")!.id;
+    await expect(page.getByTestId("dormant-lapsed-person")).toContainText("Does not hold the Data custodian role now");
+    // One approver can act, so the single-approver warning still shows although two people are listed.
+    await expect(page.getByTestId(`single-approver-${id}`)).toBeVisible();
+  });
+
   test("an approver adds and removes another approver, with reasons, and the last permanent one stays", async ({ page }) => {
     const organisation = await api<{ departments: { id: string; name: string }[] }>(
       `/organisation?tenant_id=${CANARY}`,

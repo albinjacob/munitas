@@ -325,6 +325,8 @@ export function useOrganisation() {
             added_at: string;
             /** Set for temporary cover, which ends by itself. */
             valid_until: string | null;
+            /** False for somebody listed whose Data custodian role has lapsed: listed, but not able to act and not counted. */
+            holds_role: boolean;
           }[];
           datasets: number;
         }[];

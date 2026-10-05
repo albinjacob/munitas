@@ -166,7 +166,14 @@ Any current approver may add another or remove one, with a reason that is
 recorded with who made the change and when. The person added must already hold
 the data custodian role: adding somebody to a department never grants the role.
 Temporary cover has an end date and lapses by itself. A department always keeps
-at least one permanent approver. The record of who answered for a department is
+at least one permanent approver.
+
+An approver counts only while they hold the data custodian role. A person who is
+listed but whose role has lapsed, for example because a temporary grant ran out,
+stays in the list and in the history, and comes back by themselves if the role
+does, but they cannot act and the department does not count them. The console
+marks them. A department therefore never looks covered by somebody who cannot act,
+and the one permanent approver it must keep is one who can. The record of who answered for a department is
 never edited, so who was accountable on any date can always be answered.
 
 ### The data protection officer approves nothing, deliberately

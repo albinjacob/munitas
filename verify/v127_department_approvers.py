@@ -228,8 +228,41 @@ def main() -> int:
         check("a row cannot be edited, only removed", not edited)
         check("a removed approver can be added again, as a new row",
               add(c1, cardiology, c2, reason="back from the other department").status_code == 201 and c2 in approvers(cardiology))
+
+        heading("An approver whose custodian role has lapsed is listed, and does not count")
+        c5 = add_person(org, "c5", "data_custodian", "Fifth custodian")
+        check("a custodian is added", add(c1, cardiology, c5, reason="second approver for the role checks").status_code == 201 and c5 in approvers(cardiology))
+        with db() as conn:
+            conn.execute("update directory set roles = %s where id = %s", (["analyst"], c5))
+        check("when the role is lost, they are no longer counted", c5 not in approvers(cardiology), str(approvers(cardiology)))
+        listed = {a["person_id"]: a for a in call(c1, "GET", f"/departments/{cardiology}/approvers").json()["approvers"]}
+        check("but they stay listed, marked as not holding the role", c5 in listed and listed[c5]["holds_role"] is False and listed[c1]["holds_role"] is True, str(listed.get(c5)))
+        check("and are not offered again to be added", c5 not in [p["person_id"] for p in call(c1, "GET", f"/departments/{cardiology}/approver-candidates").json()["candidates"]])
+        both = claim(c1, cardiology)
+        check("they cannot confirm", confirm(c5, both).status_code == 403)
+        check("an approver who can act confirms it", confirm(c2, both).status_code == 200 and c2 in approvers(cardiology))
+        check("the second approver is removed, with a reason", remove(c1, cardiology, c2, reason="back to one approver who can act").status_code == 200)
+        alone = claim(c1, cardiology)
+        waits = confirm(c4, alone)
+        check("with nobody else able to act, the platform says the claim waits for a second approver",
+              waits.status_code == 403 and any("waits until the department has a second approver" in x for x in reasons(waits)), f"{waits.status_code} {reasons(waits)}")
+        check("a lapsed approver is not that second approver", confirm(c5, alone).status_code == 403)
+        with db() as conn:
+            conn.execute(
+                "insert into role_grant (id, tenant_id, principal, role, approved_by, expires_at) values (gen_random_uuid(), %s, %s, 'data_custodian', %s, now() + interval '1 day')",
+                (org.id, c5, c1))
+        check("a temporary grant of the role makes them count again", c5 in approvers(cardiology), str(approvers(cardiology)))
+        check("and they can confirm", confirm(c5, alone).status_code == 200)
+        with db() as conn:
+            conn.execute("update role_grant set revoked = true where principal = %s", (c5,))
+        check("when the grant is withdrawn, they stop counting again", c5 not in approvers(cardiology), str(approvers(cardiology)))
+        lone_left = remove(c1, cardiology, c1, reason="leaving")
+        check("the one permanent approver who can act cannot be removed, even though somebody else is listed",
+              lone_left.status_code == 403 and KEEPS_ONE in reasons(lone_left), f"{lone_left.status_code} {reasons(lone_left)}")
+        check("somebody listed who cannot act can be removed", remove(c1, cardiology, c5, reason="no longer a custodian").status_code == 200)
     finally:
         with db() as conn:
+            conn.execute("delete from role_grant where tenant_id = %s", (org.id,))
             conn.execute("delete from dataset_source where dataset_id in (select id from dataset where tenant_id = %s)", (org.id,))
             conn.execute("delete from dataset where tenant_id = %s", (org.id,))
             conn.execute("delete from department_approver where tenant_id = %s", (org.id,))

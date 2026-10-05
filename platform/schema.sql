@@ -821,18 +821,25 @@ end $$;
 -- A null custodian is meaningful: the dataset has no department, so nobody is
 -- accountable and nobody can approve access to it. The console must show that
 -- as an unowned asset rather than as an empty dropdown.
-create or replace view version_custodian as
-select
-  dv.id            as dataset_version_id,
-  dv.tenant_id,
-  d.id             as dataset_id,
-  d.name           as dataset_name,
-  dept.id          as department_id,
-  dept.name        as department_name,
-  dept.custodian   as custodian
-from dataset_version dv
-join dataset d           on d.id = dv.dataset_id
-left join department dept on dept.id = d.department_id;
+--
+-- Made once, as it was first written. The version in force gained a column (`approvers`) further down, where the function it reads is defined;
+-- replacing it here again would try to drop that column, which a view refuses, and this file must stay safe to run over a database that has it.
+do $$ begin
+  if not exists (select 1 from pg_views where schemaname = current_schema() and viewname = 'version_custodian') then
+    create view version_custodian as
+    select
+      dv.id            as dataset_version_id,
+      dv.tenant_id,
+      d.id             as dataset_id,
+      d.name           as dataset_name,
+      dept.id          as department_id,
+      dept.name        as department_name,
+      dept.custodian   as custodian
+    from dataset_version dv
+    join dataset d           on d.id = dv.dataset_id
+    left join department dept on dept.id = d.department_id;
+  end if;
+end $$;
 
 -- ------------------------------------------------------- effective class --
 
@@ -2749,13 +2756,24 @@ create index if not exists department_approver_by_person
   on department_approver (person_id) where removed_at is null;
 
 -- The approvers in force now: not removed, not lapsed, and still a person who can act.
+-- Does this person hold this role right now? The role a person has permanently, plus any grant that has not been withdrawn or lapsed: the same
+-- union the API reads for every decision.
+create or replace function person_holds_live_role(person text, wanted text) returns boolean as $$
+  select exists (select 1 from directory d where d.id = person and wanted = any(d.roles))
+      or exists (select 1 from role_grant g where g.principal = person and g.role = wanted and not g.revoked and g.expires_at > now());
+$$ language sql stable;
+
+-- The approvers who can act now: listed for the department, not removed, not past the end of their cover, and still holding the data custodian
+-- role. A person listed whose role has lapsed is still in the department's history and comes back by themselves if the role does, but they
+-- are not counted, so a department never looks covered by somebody who cannot act.
 create or replace function active_department_approvers(dept uuid) returns text[] as $$
   select coalesce(array_agg(a.person_id order by a.added_at, a.person_id), '{}'::text[])
     from department_approver a
     join directory p on p.id = a.person_id and p.ended_at is null
    where a.department_id = dept
      and a.removed_at is null
-     and (a.valid_until is null or a.valid_until > now());
+     and (a.valid_until is null or a.valid_until > now())
+     and person_holds_live_role(a.person_id, 'data_custodian');
 $$ language sql stable;
 
 -- A row takes one change only: being removed. Everything else about who answered for a department, and when, stays as it was written.
@@ -2775,7 +2793,8 @@ begin
   if new.removed_at is not null and old.valid_until is null then
     if not exists (select 1 from department_approver a
                     where a.department_id = old.department_id and a.id <> old.id
-                      and a.removed_at is null and a.valid_until is null) then
+                      and a.removed_at is null and a.valid_until is null
+                      and person_holds_live_role(a.person_id, 'data_custodian')) then
       raise exception 'department % must keep at least one permanent approver', old.department_id
         using errcode = 'check_violation', constraint = 'department_keeps_a_permanent_approver';
     end if;
