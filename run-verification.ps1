@@ -42,6 +42,16 @@ if (-not (Test-Path $venvPython)) {
     throw "No .venv at $venvPython. The history page and the reclaimer both run on the host and need it."
 }
 
+# Exactly one API container, or the suite may run against the wrong one. `docker compose run` starts a second API beside the real one (the image's
+# entrypoint ignores the command given to it), on the same database and possibly with another master key, and `compose exec` can land in it. A
+# suite that ran there wrote storage credentials the real API could not decrypt, and every later check failed for a reason that had nothing to do
+# with the code. Counting containers first turns that into one clear message.
+$apiContainers = @(wsl -d $WslDistro -- bash -lc "docker ps --filter label=com.docker.compose.service=munitas-api --format '{{.Names}}'" | Where-Object { $_ })
+if ($apiContainers.Count -ne 1) {
+    throw ("Expected exactly one munitas-api container and found $($apiContainers.Count): " + ($apiContainers -join ", ") +
+        ". A second one is usually left by `docker compose run munitas-api ...`. Remove the extra with `docker rm -f <name>`, then run this again.")
+}
+
 Write-Host "Running the verification suite inside the munitas-api container..."
 Write-Host ""
 # Anything the suite writes to stderr (a check's traceback, a library warning) must not stop this script. With the error preference at Stop and the

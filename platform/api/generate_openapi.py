@@ -7,18 +7,26 @@ up. The one thing it does need is MUNITAS_MASTER_KEY, because
 EnvelopeCrypto() is instantiated at import time in app/main.py; a throwaway
 value is fine here since nothing is actually encrypted.
 
-Run it where the API's own dependencies already are, which is its image,
-rather than installing a second copy of them beside it. A disposable
-container, `--no-deps` so it starts nothing else, and the schema comes back
-on stdout for the host to write:
+Run it where the API's own dependencies already are, which is the running
+API container, rather than installing a second copy of them beside it. The
+schema comes back on stdout for the host to write:
 
-    docker compose run --rm --no-deps -T munitas-api         python generate_openapi.py --stdout > docs/public/reference/openapi.json
+    docker compose exec -T munitas-api python generate_openapi.py --stdout > docs/public/reference/openapi.json
 
-Nothing is mounted for writing to make that work, and the long-running
-control plane is not involved at all. It has no business writing this
-repository's documentation, and the read-only `./docs:/docs:ro` mount it does
-carry exists for the opposite direction: so `verify/v67_openapi_current.py`
-can read the committed file and compare it against what the service serves.
+Never `docker compose run munitas-api python generate_openapi.py`. That looks
+like a disposable container that prints and exits, but the image's entrypoint
+(docker-entrypoint.sh) ignores the command and starts a whole second API
+server beside the real one, on the same database, and with whatever master
+key the `run` was given. Anything that then reaches "the API" can land on the
+second one and write data the real one cannot decrypt. Its container keeps
+running until it is removed by hand, and the verification wrapper refuses to
+start while it is there.
+
+Nothing is mounted for writing to make that work. The API has no business
+writing this repository's documentation, and the read-only `./docs:/docs:ro`
+mount it does carry exists for the opposite direction: so
+`verify/v67_openapi_current.py` can read the committed file and compare it
+against what the service serves.
 
 With platform/api/requirements.txt installed locally it still runs directly,
 which is how it was written:
