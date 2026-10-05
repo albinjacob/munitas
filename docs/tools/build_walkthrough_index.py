@@ -68,7 +68,7 @@ def render() -> str:
 <header class="hero">
   <div class="eyebrow">Munitas &middot; Walkthroughs</div>
   <h1>See how Munitas decides who may read which data</h1>
-  <p class="lede">Munitas is a governance platform. It decides who may read which piece of data, for what
+  <p class="lede">Munitas is a governed data platform. It decides who may read which piece of data, for what
   purpose and for how long, and it keeps a permanent record of every decision. Each walkthrough below follows
   one real story, step by step, with real screens from the Munitas console.</p>
 </header>
