@@ -10,6 +10,9 @@ running it, or releasing it more widely all need someone else to sign off,
 on the record, with a stated reason. One governance model, used everywhere,
 instead of a different tool for each piece.
 
+Munitas is a governed data platform: it keeps the data, and every read of it
+is decided by policy and recorded with its reason.
+
 ---
 
 ## Basic concepts
@@ -20,11 +23,11 @@ instead of a different tool for each piece.
   dataset is: named, owned, and versioned before it can run.
 - **Pipeline.** A sequence of steps that processes data or runs an agent,
   either built into the platform or authored by an operator as a DAG.
-- **Department.** The team that owns a dataset, agent, or pipeline, and
-  whose custodian approves access to it.
-- **Tenant.** One organisation's isolated space on the platform. The two
-  worked examples further down, `health` and `finance`, are each a
-  separate tenant.
+- **Department.** The team that owns a dataset, agent, or pipeline. Its
+  approvers decide who may read what it owns.
+- **Tenant.** One organisation's isolated space on the platform. The
+  worked examples further down, `health`, `finance` and `harbour`, are each
+  a separate tenant.
 - **Version, and sealing.** Nothing is edited in place. Uploading content
   creates a version; sealing it makes that version immutable and
   content-addressed, so a later change always creates a new version
@@ -35,16 +38,29 @@ instead of a different tool for each piece.
   and what, if anything, it may approve.
 - **Access level.** Every dataset version sits at one of five levels, from
   most to least restricted: `RAW`, `UNDER_REVIEW`, `OPEN_FOR_ANNOTATION`,
-  `OPEN_FOR_TRAINING`, `PUBLISHED`. New data always starts at `RAW`. Moving
-  up a level is a gate decision someone else has to make; a dataset never
-  promotes itself.
-- **Custodian.** The person in a department authorised to approve requests
-  to read that department's data.
+  `OPEN_FOR_TRAINING`, `PUBLISHED`. Data brought in through the platform
+  starts at `RAW`. Moving up a level is a gate decision someone else has to
+  make; a dataset never promotes itself.
+- **Custodian.** A person who holds the data custodian role, which allows
+  deciding who may read data. A custodian decides for the departments they
+  are an approver of.
+- **Approver.** A data custodian listed for a department. A department can
+  have any number of approvers, and any one of them can approve a request or
+  confirm a claim about its data. A person counts only while they hold the
+  custodian role, and every change to the list is recorded with a reason.
+- **Derived dataset.** A new dataset made from a query over existing ones.
+  The platform drafts it, the person confirms, the query runs in an isolated
+  sandbox, and the result is sealed as restricted as the data it came from.
+  Withdrawing access to that data closes the new dataset too.
 - **Lease.** A temporary grant of access to a specific dataset version,
   bound to a stated purpose, that expires on its own.
 - **Gate decision.** The point where a pipeline run's output, or an
   agent's readiness, is explicitly cleared or held back by someone other
   than whoever ran it, recorded on the record.
+- **Closing down, and legal hold.** An organisation that leaves is closed in
+  two 15-day stages and then deleted, unless a legal hold stands. A hold
+  needs two different administrators, and records for a legal matter are
+  produced as an encrypted, signed package by three different people.
 
 ## How it works
 
@@ -66,6 +82,13 @@ instead of a different tool for each piece.
   before it is allowed: who is asking, what they are asking for, and why,
   evaluated against the same rules every time. No endpoint decides access
   on its own or has a way around this check.
+- **Open tables.** A sealed table is also stored as an Apache Iceberg
+  table, and a read-only catalog lists only the tables a person may read,
+  with short-lived storage keys, so tools such as DuckDB open governed data
+  directly.
+- **Derived datasets.** A query over existing datasets becomes a new
+  dataset only after the platform drafts it and the person confirms it. It
+  runs in a sandbox with no network and no passwords.
 
 For the services and how they fit together, see
 [docs/public/architecture.md](docs/public/architecture.md). For who's
@@ -77,13 +100,15 @@ and checked automatically so the two can never drift apart.
 
 ## See it in action
 
-[Walkthrough: what the platform does &rarr;](https://albinjacob.github.io/munitas/walkthroughs/feature-walkthrough.html)
-is real screenshots of a real flow, start to finish: a recording brought
-in, a researcher asking for access, a custodian granting it, a pipeline
-running and stopping at a gate a human has to clear. Four more walkthroughs
-cover finance, healthcare, role administration, and a custom pipeline an
-operator builds themselves, each one narrated step by step for someone who
-has never seen the platform before.
+[The feature tour &rarr;](https://albinjacob.github.io/munitas/walkthroughs/feature-walkthrough.html)
+explains what the platform does, who uses it, and why it is built the way
+it is. [The walkthroughs &rarr;](https://albinjacob.github.io/munitas/walkthroughs/index.html)
+follow nine real stories step by step, with real screens from the console,
+for a hospital group, a card-payments company and a small clinic: bringing
+a recording in and releasing it, asking for access, making a new dataset
+from a query, covering for an approver, closing an organisation down, and
+handing over its records for a legal case. Each one is written for someone
+who has never seen the platform before.
 
 ## What makes this different
 
@@ -159,9 +184,10 @@ about what works is backed by an automated check in the
   of work rather than an open question. `worker/transcribe_backend.py`'s
   docstring lays out exactly what that backend would need.
 - CI ([.github/workflows/verify.yml](.github/workflows/verify.yml)) runs the
-  real `verify/` suite against the actual Compose stack on every push and
-  PR, and a separate job builds and lints the console. It has not run yet,
-  because this repository has not been pushed to GitHub.
+  real `verify/` suite against the actual Compose stack on every push to
+  `main` and every pull request, and a separate job builds and lints the
+  console. The checks that need a GPU, real Cloudflare R2 keys, or a
+  sandbox run only on a developer machine.
 - No deployment story past one machine yet (Postgres HA, SeaweedFS
   clustering, secrets management).
 
@@ -180,7 +206,7 @@ same governance mechanism the two worked examples below use for every
 pipeline run.
 
 ```bash
-git clone <this-repo>
+git clone https://github.com/albinjacob/munitas.git
 cd munitas
 cp .env.example .env
 # edit .env: set MUNITAS_HOST_WORK_DIR to this machine's own absolute
@@ -188,7 +214,7 @@ cp .env.example .env
 docker compose --profile quickstart up
 ```
 
-This starts the eight services the governance model needs, plus
+This starts the nine services the governance model needs, plus
 `worker-lite` (`worker/lite_worker.py`), a worker built specifically to
 need no GPU and no host/WSL2 split, so it runs as an ordinary container
 on any OS Docker runs on. See that file's own docstring for exactly what
@@ -206,10 +232,11 @@ your machine, not inside the container.
 | Kratos | Human sign-in |
 | Kratos migration | One-time job that sets up Kratos's own database schema |
 | API | The control plane everything else talks to |
+| Table worker | Writes large tables in a background job |
 
-Plain `docker compose up` (no `--profile`) starts just the eight services
-above, with no worker at all, for looking at an already-seeded tenant
-without running anything.
+Plain `docker compose up` (no `--profile`) starts just the nine services
+above, with no pipeline or agent worker, for looking at an already-seeded
+tenant without running anything.
 
 Add `--profile full` instead of, or alongside, `quickstart` for four more
 services. None of them are needed to see the governance model work; they
@@ -237,26 +264,34 @@ WSL2. No lower-spec GPU has been verified; if yours has less VRAM, expect
 to find the actual floor yourself for now.
 
 ```powershell
-git clone <this-repo>
+git clone https://github.com/albinjacob/munitas.git
 cd munitas
 copy .env.example .env
 .\start-dev.ps1
 ```
 
-See [RUNBOOK.md](RUNBOOK.md) for what each piece does and how to run a
-demo tenant end to end.
+See [RUNBOOK.md](RUNBOOK.md) for what each piece does and how to run an
+example organisation end to end.
 
 ### Worked examples
 
-Two worked examples are seeded automatically on a fresh volume, in
-separate tenants: `health`, a hospital (consultation audio across several
-specialties, including cardiology, oncology, and orthopaedics, plus
-radiology reports), and `finance`, a card-payments company (transaction
-records, a fraud operations department, and KYC identity documents). Both
-go through the same mechanism, with nothing industry-specific changed for
-either. See
-[infra/postgres/seed-finance.sql](infra/postgres/seed-finance.sql) and
-[scripts/seed/seed-finance-example.py](scripts/seed/seed-finance-example.py).
+Three worked examples live in separate tenants: `health`, a hospital
+(consultation audio across several specialties, including cardiology,
+oncology, and orthopaedics, plus radiology reports), `finance`, a
+card-payments company (transaction records, a fraud operations department,
+and KYC identity documents), and `harbour`, a small clinic used to show an
+organisation being closed down and its records handed over for a legal
+matter. All three go through the same mechanism, with nothing
+industry-specific changed for any of them.
+
+On a fresh volume the database creates each organisation, its departments and
+its people from [infra/postgres/](infra/postgres/).
+[infra/kratos/seed-identities.py](infra/kratos/seed-identities.py) gives each
+person a login, and the datasets come from
+[scripts/seed/seed-health-example.py](scripts/seed/seed-health-example.py),
+[scripts/seed/seed-finance-example.py](scripts/seed/seed-finance-example.py)
+and
+[scripts/seed/seed-harbour-example.py](scripts/seed/seed-harbour-example.py).
 
 ## Contributing
 
