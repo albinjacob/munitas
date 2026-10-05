@@ -359,9 +359,7 @@
     Munitas is an open-source governed data platform that runs on a single machine.
     It decides who may read which piece of data, for what purpose and for how long, and keeps
     a permanent record of every decision, every dataset, every pipeline step that touched it, and
-    every AI agent that read it. Each claim on this page is checked by an automated
-    script that runs against the live system, so nothing here rests on a promise.
-    Three example organisations run throughout this page and the guided walkthroughs in section 13, for illustration: a health organisation, a finance organisation, and a small clinic used to show closing down an account.
+    every AI agent that read it. Three example organisations run throughout this page and the guided walkthroughs in section 13, for illustration: a health organisation, a finance organisation, and a small clinic used to show closing down an account.
   </p>
   <div class="seal-row">
     <span class="seal"><span class="dot"></span> Every capability below is checked by a script that runs against the live system</span>
@@ -722,8 +720,8 @@
       <p>Storage credentials are scoped to one organisation's bucket, rather than being one key shared across every customer. A credential that rests on an approved lease, or that is issued to a single task such as a pipeline step, a derivation run or an agent run, opens only the dataset versions that were allowed and ends with the lease or the task. On Cloudflare R2 every credential is short-lived. Losing one credential exposes the blast radius it was scoped to, not the whole platform.</p>
     </div>
     <div class="card">
-      <h4>No licence cost, and no vendor to leave</h4>
-      <p>Every component is under a permissive open-source licence, so there are no seat fees and no contract renewals. Keeping the guarantees described here does not depend on staying with any particular supplier.</p>
+      <h4>No vendor to leave</h4>
+      <p>Keeping the guarantees described here does not depend on staying with any particular supplier. Section 12 shows how each component maps onto a managed cloud service if that is ever wanted.</p>
     </div>
   </div>
 </section>
@@ -811,8 +809,7 @@
   <p class="measure" style="font-size:0.9rem;">
     Two roles are deliberately barred from approving access requests. The data
     protection officer is excluded because approving access means deciding how data
-    gets used, and GDPR Article 38(6) requires that the officer's independent
-    oversight is not compromised in that way. The platform administrator is
+    gets used, and GDPR Article 38(6) requires that an officer's other duties never create a conflict of interest with that oversight. The platform administrator is
     excluded because the account that operates the system should not also be able
     to grant itself access to what the system protects.
   </p>
@@ -992,8 +989,7 @@
         be at the top of the list.
       </p>
       <p>
-        A transcript in that queue looks like this, with the identifiers still in
-        place because that is exactly what a reviewer is there to confirm:
+        A transcript in that queue looks like this, with the identifiers still in place because that is exactly what a reviewer is there to confirm. The name and the date of birth are invented:
       </p>
       <blockquote style="margin:0 0 1rem; padding:0.6rem 0.9rem; border-left:3px solid var(--paper-line); font-size:0.9rem; color:var(--ink-soft);">
         clinician: Right. Let me pull up the notes. Eoghan Bell, born 12 February 1965, is that correct?
