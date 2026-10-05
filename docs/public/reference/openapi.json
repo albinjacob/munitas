@@ -1767,6 +1767,27 @@
         "title": "SchemaContractIn",
         "type": "object"
       },
+      "SealTableIn": {
+        "properties": {
+          "contract": {
+            "title": "Contract",
+            "type": "object"
+          },
+          "rows": {
+            "items": {
+              "type": "object"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "contract",
+          "rows"
+        ],
+        "title": "SealTableIn",
+        "type": "object"
+      },
       "StartAgentRun": {
         "properties": {
           "agent_version_id": {
@@ -3342,6 +3363,50 @@
         "summary": "Get Version"
       }
     },
+    "/dataset-versions/{version_id}/person-rows": {
+      "get": {
+        "description": "The rows of a table sealed under a privacy contract, with the locked columns opened for a permitted reader.\n\nA person who was erased has an erased marker where their locked values were. The decision is recorded either way.",
+        "operationId": "person_rows_dataset_versions__version_id__person_rows_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Person Rows Dataset Versions  Version Id  Person Rows Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Person Rows",
+        "tags": [
+          "person keys"
+        ]
+      }
+    },
     "/dataset-versions/{version_id}/promote": {
       "post": {
         "description": "Promote a version to a less restricted class.\n\nThis is the workload-triggered path, and it still trusts the identity its\ncaller supplies, on purpose: workloads have no session to present and\nclosing that is workload authentication, a separate piece of work.\n\nA human promotes through the gate decision endpoints instead, where the\nidentity comes from their session and cannot be asserted about themselves.",
@@ -4368,6 +4433,60 @@
         "summary": "Seal Audio",
         "tags": [
           "ingest"
+        ]
+      }
+    },
+    "/datasets/{dataset_id}/seal-table": {
+      "post": {
+        "description": "Seal rows as a version, with the columns that identify a person locked under that person's own key.\n\nThe whole table is refused, with every problem listed, when the contract is wrong or a row names nobody.",
+        "operationId": "seal_table_datasets__dataset_id__seal_table_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SealTableIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Seal Table Datasets  Dataset Id  Seal Table Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Seal Table",
+        "tags": [
+          "person keys"
         ]
       }
     },

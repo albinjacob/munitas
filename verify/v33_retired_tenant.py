@@ -43,6 +43,9 @@ EXEMPT = {
     # catalog records which key was asked for. The row holds no records and
     # grants nothing a lease or a role had not already decided.
     "catalog_key",
+    # Opening a person's locked columns in a closed organisation records which key was used, so this log must still be written. It holds
+    # no key and no record, only who used which person's key and when, and it is removed only with the organisation.
+    "key_use_log",
     # Holds are placed on organisations that are already closed, and the record of a
     # closing is written after it. Each has its own rules instead: a hold needs two
     # different administrators (U99), and neither can be deleted except by a purge

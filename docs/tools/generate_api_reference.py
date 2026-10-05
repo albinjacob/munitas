@@ -39,6 +39,7 @@ TAG_LABELS = {
     "derivations": "Derived datasets (a query over existing ones)",
     "lifecycle": "Closing an organisation, and legal holds",
     "legal-export": "Legal export (records produced for a legal matter)",
+    "person keys": "Tables with locked columns (sealing one and reading it back)",
     "iceberg": "Iceberg catalog (for DuckDB, PyIceberg and other standard tools)",
 }
 TAG_ORDER = list(TAG_LABELS.keys())
