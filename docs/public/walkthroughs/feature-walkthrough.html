@@ -420,7 +420,7 @@
       <li>Run a seven-step pipeline that strips personal information out of audio recordings, then put the result in front of a named reviewer, with every identifier it measured as still left behind, before anything is released more widely.</li>
       <li>Pause an agent partway through a run and hold it there until a person approves it. The pause survives a restart, so approval can come days later.</li>
       <li>Record every decision to allow or refuse access, along with the reason, so the history can be read back later.</li>
-      <li>Delete a person's records permanently without rewriting any locked dataset, by destroying the encryption key that record depends on.</li>
+      <li>Erase a person's records permanently without rewriting any locked dataset, by destroying the key the records depend on.</li>
       <li>Require a real sign-in through Ory Kratos before anyone can act, rather than letting the console take someone's word for who they are.</li>
       <li>Store each organisation's data in its own isolated bucket, and on Cloudflare R2 its own short-lived credential, so a leaked credential reaches one customer rather than all of them.</li>
       <li>Let a sandboxed agent read the real dataset it was scoped to, through a copy it fetches itself over an isolated network, capped in size before a single byte moves.</li>
@@ -601,7 +601,7 @@
     </div>
     <div class="card">
       <h4>Deleting a person's data without rewriting history</h4>
-      <p>Each record is encrypted with its own key. To delete a record permanently, the platform destroys that key rather than editing any locked dataset. The record becomes unreadable everywhere it ever appeared, while the dataset versions and audit trail stay exactly as they were. A short marker is kept to record that the deletion happened, so the fact of the erasure is not itself erased.</p>
+      <p>A person's records can be erased permanently without editing any locked dataset. The platform destroys the key the record depends on, so the record becomes unreadable everywhere it ever appeared, while the dataset versions and audit trail stay exactly as they were. A short marker is kept to record that the deletion happened, so the fact of the erasure is not itself erased.</p>
     </div>
   </div>
 </section>
@@ -1038,7 +1038,7 @@
           <tr><td class="mono">Munitas console</td><td>The web app people open in a browser</td><td>It asks the API for everything it shows, so what a person sees comes from the same decisions as everything else.</td></tr>
           <tr><td class="mono">Munitas client library</td><td>Lets a person work from Python or a notebook</td><td>It sends requests to the API, so the same access decisions apply as in the console.</td></tr>
           <tr><td class="mono">Derivation runner</td><td>Runs the query that makes a new dataset</td><td>It runs in a container with no network connection and no passwords, so a query cannot send data anywhere or reach anything it was not handed.</td></tr>
-          <tr><td class="mono">cryptography (Python)</td><td>Encrypts individual records and stored credentials</td><td>It is the standard, well-reviewed Python library for this, and using a per-record key is what allows permanent deletion without altering any locked dataset.</td></tr>
+          <tr><td class="mono">cryptography (Python)</td><td>Encrypts records and stored credentials</td><td>It is the standard, well-reviewed Python library for this, and keeping the key for a record apart from the record is what allows permanent deletion without altering any locked dataset.</td></tr>
         </tbody>
       </table>
     </div>
