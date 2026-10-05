@@ -68,9 +68,9 @@ STEPS = [
         "title": "Devi names the dataset and chooses Cardiology as its owner",
         "screen": "Bring a dataset in &middot; /datasets/register",
         "text": "Devi types a name, chooses the Cardiology department, and ticks <strong>audio</strong>. "
-                "Cardiology is the department that Hartley is the custodian for. A custodian is the person a "
-                "department trusts to decide who may read its data, so Hartley will decide who may read this "
-                "recording.",
+                "Hartley is a custodian, a person who decides who may read a department's data, and an approver of "
+                "Cardiology, the department that owns this recording. Any approver of a department can decide, and "
+                "Hartley is the one here, so Hartley will decide who may read this recording.",
         "note": "<strong>Owned by</strong> reads <strong>Cardiology</strong>, and the access level still reads "
                 "<strong>Raw (the safe default)</strong>. Choosing a lower level would be a claim recorded under "
                 "Devi's name, which the custodian would have to agree with.",

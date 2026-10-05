@@ -83,9 +83,9 @@ The single most important property is that **approval travels from the
 requesting side to the owning side**. That is what turns separation of duties
 from a string comparison into a relationship the database can hold.
 
-**Projects may span departments**, and that is precisely why the custodian sits
+**Projects may span departments**, and that is precisely why the approvers sit
 with the asset rather than with the project. A cardiology dataset used by a
-cross-departmental study is still approved by cardiology. Had the custodian sat
+cross-departmental study is still approved by cardiology. Had the approvers sat
 on the project, the study would approve its own access, which is self-approval
 moved up one organisational level and considerably harder to notice.
 
@@ -111,7 +111,7 @@ Six personas, each with a reason to open the console.
 
 | Persona | Role | What they do | May approve |
 | --- | --- | --- | --- |
-| Data custodian | `data_custodian` | Approves access to the departments they are an approver for, confirms sensitivity claims, and may bring data in | **Yes**, access to their own department only |
+| Data custodian | `data_custodian` | Approves access to the departments they are an approver for, confirms sensitivity claims, and may bring data in | **Yes**, access to the departments they are an approver for, and no others |
 | De-identification reviewer | `deid_reviewer` | Reads what a de-identification run left behind, and decides whether it may be promoted | **Yes**, the gate only, and never a run they triggered |
 | Data protection officer | `dpo` | Reads everything including every denial, evidences compliance, handles erasure requests | No |
 | Researcher | `notebook_explore` | Requests access under a project, consumes de-identified data | No |
