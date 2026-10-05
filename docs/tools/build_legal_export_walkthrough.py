@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import html
 import json
+from datetime import datetime, timedelta
 
 from walkthrough_kit import SHOTS_ROOT, Page, series_entry, write
 
@@ -169,8 +170,9 @@ STEPS = [
                 "the custodian.",
         "note": "The label reads <strong>Ready</strong>. The card adds <strong>Scope confirmed by Adeyemi</strong>, "
                 "the line <strong>2 of 10 rows matched</strong> and no patient id, "
-                "<strong>Package: 1 file, 2 KB, encrypted</strong> and <strong>Kept until October 17, "
-                "2026</strong>, after which the platform deletes the package. A button reads <strong>Show me "
+                "<strong>Package: 1 file</strong> with its size, <strong>encrypted</strong>, and "
+                "<strong>Kept until @D14@</strong>, after which the platform deletes the package. A button reads "
+                "<strong>Show me "
                 "the passphrase, once</strong>.",
     },
     {
@@ -200,7 +202,7 @@ STEPS = [
         "note": "The status is <strong>Ready</strong>. The card says <strong>Filtered: appointments, Only the "
                 "rows for named people, matched on the column patient_id</strong> and <strong>2 of 10 rows "
                 "matched</strong>, and it shows no patient id. The table lists one file, "
-                "<strong>appointments/v1/v1.filtered.csv</strong>, with its size and the start of its "
+                "<strong>data/appointments/v1/v1.filtered.csv</strong>, with its size and the start of its "
                 "<strong>SHA-256 fingerprint</strong>. The button <strong>Make a download link</strong> is "
                 "below the table.",
     },
@@ -213,7 +215,7 @@ STEPS = [
                 "recipient also needs the passphrase that only Adeyemi was given.",
         "note": "A box under the button shows the link, beginning with the platform&rsquo;s address and "
                 "<code>/legal-exports/download/mlx_</code>, and the line <strong>Works 3 times until "
-                "October 10, 2026. It is not shown again</strong>.",
+                "@D7@. It is not shown again</strong>.",
     },
     {
         "terminal": [0], "actor": "ruth",
@@ -303,6 +305,22 @@ def evidence(step: dict) -> str:
             "</div>")
     return "\n".join(boxes)
 
+
+# The dates a screen shows depend on the day it was captured, so the notes name them from the date of the capture and are never typed in.
+_FIRST = SHOTS / "09-the-package-is-ready.png"
+CAPTURED = datetime.fromtimestamp(_FIRST.stat().st_mtime).date() if _FIRST.exists() else datetime.now().date()
+
+
+def _on(days: int) -> str:
+    d = CAPTURED + timedelta(days=days)
+    return f"{d.strftime('%B')} {d.day}, {d.year}"
+
+
+_DATES = {"@D7@": _on(7), "@D14@": _on(14)}
+for _step in STEPS:
+    for _key in ("text", "note"):
+        for _token, _text in _DATES.items():
+            _step[_key] = _step[_key].replace(_token, _text)
 
 PAGE = Page(
     slug="legal-export", org="harbour",

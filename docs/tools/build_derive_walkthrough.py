@@ -121,7 +121,7 @@ HEALTH_STEPS = [
         "text": "Hartley chooses Grant access. The request leaves the queue, and a lease now exists that lets "
                 "Sam read this one dataset for the stated purpose.",
         "note": "A notice at the bottom right reads <strong>Access granted to Sam (Researcher)</strong>, and "
-                "the box <strong>Currently granted</strong> now counts one. The newest entry under <strong>What "
+                "the box <strong>Currently granted</strong> is one higher than it was before the click. The newest entry under <strong>What "
                 "you have decided</strong> says <strong>Granted</strong>, shows when the lease runs out, and "
                 "offers a <strong>Revoke</strong> link, which Hartley uses at the end of this walkthrough.",
     },
@@ -355,7 +355,7 @@ FINANCE_STEPS = [
         "text": "Marcus chooses Grant access. The request leaves the queue, and a lease now exists that lets "
                 "Omar read this one dataset for the stated purpose.",
         "note": "A notice at the bottom right reads <strong>Access granted to Omar (Analyst)</strong>, and the "
-                "box <strong>Currently granted</strong> now counts one. The newest entry under <strong>What "
+                "box <strong>Currently granted</strong> is one higher than it was before the click. The newest entry under <strong>What "
                 "you have decided</strong> says <strong>Granted</strong>, shows when the lease runs out, and "
                 "offers a <strong>Revoke</strong> link, which Marcus uses at the end of this walkthrough.",
     },

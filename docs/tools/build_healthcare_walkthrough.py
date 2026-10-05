@@ -230,8 +230,8 @@ STEPS = [
         "title": "Hartley finds Sam's request waiting",
         "screen": "Home &middot; the custodian's home page",
         "text": "Hartley's home page lists the requests to read Cardiology's data. A request for a recording that "
-                "Radiology owns would never appear here. The decisions below the request come from earlier "
-                "recordings of this walkthrough.",
+                "Radiology owns would never appear here. The decisions below the request were made earlier, "
+                "some of them while other walkthroughs were recorded.",
         "note": "<strong>Waiting for your decision</strong> counts <strong>1</strong>. The card reads "
                 "<strong>Sam (Researcher) wants to read</strong> the recording, with <strong>Raw</strong>, "
                 "Sam's reason, and <strong>Granting gives Sam 24 hours, for this purpose only</strong>.",

@@ -169,13 +169,16 @@ def main() -> int:
     # Housekeeping, not part of the story: a lease left by an earlier run would
     # make the first refusal impossible to show, and a name taken would make the
     # new dataset impossible to create.
-    raw_version = custodian.latest_version(cfg["raw"])["id"]
     leases = custodian._call("GET", "/leases", params={"principal": cfg["researcher"], "active_only": "true"})
     ended = 0
     for lease in leases.get("leases", []):
-        if lease.get("dataset_version_id") == raw_version:
+        # Any lease the person still holds, not only one on this table: a lease left by another walkthrough or a check would put
+        # an extra table in the first listing, and the first listing is supposed to show the one open lookup alone.
+        try:
             custodian.revoke(lease["id"])
             ended += 1
+        except MunitasError:
+            pass  # a lease on another department's data is not this custodian's to end
     target = cfg["target"]
     for suffix in [""] + [f"-{n}" for n in range(2, 50)]:
         try:

@@ -39,11 +39,16 @@ const ADMIN_B = "ops-ravi";
 
 let step = 0;
 
-async function shot(page: Page, name: string): Promise<void> {
+// `height` stops the picture where the part being shown ends. The list of deleted organisations below the form and below the clinic's own
+// entry also holds what earlier checks left, which has nothing to do with this story.
+async function shot(page: Page, name: string, height?: number): Promise<void> {
   await settled(page);
   step += 1;
   const n = String(step).padStart(2, "0");
-  await page.screenshot({ path: join(SHOTS, `${n}-${name}.png`) });
+  await page.screenshot({
+    path: join(SHOTS, `${n}-${name}.png`),
+    ...(height ? { clip: { x: 0, y: 0, width: 1920, height } } : {}),
+  });
 }
 
 function advance(flag: "--end-retiring" | "--end-closing"): void {
@@ -133,7 +138,7 @@ test("capture: an organisation is closed, held for a legal matter, then deleted"
   await page.getByTestId("hold-description").fill("A patient claim about a procedure carried out in 2024.");
   await page.getByTestId("hold-preserve").fill("Every record of the claimant, and the audit trail of who read them.");
   await page.getByRole("heading", { name: "Record a legal hold" }).evaluate((e) => e.scrollIntoView({ block: "start" }));
-  await shot(page, "priya-fills-in-the-notice");
+  await shot(page, "priya-fills-in-the-notice", 740);
 
   await page.getByTestId("hold-submit").click();
   await expect(page.getByTestId("holds-waiting")).toContainText("HC-2026-0417");
@@ -198,5 +203,5 @@ test("capture: an organisation is closed, held for a legal matter, then deleted"
   await page.goto("/legal-holds");
   await expect(page.getByTestId("deletion-records")).toContainText(TENANT);
   await page.getByRole("heading", { name: "Deleted organisations" }).evaluate((e) => e.scrollIntoView({ block: "start" }));
-  await shot(page, "harbour-clinic-is-deleted");
+  await shot(page, "harbour-clinic-is-deleted", 252);
 });

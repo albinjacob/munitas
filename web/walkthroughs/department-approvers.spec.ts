@@ -18,6 +18,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { actingHeaders, bearerFor, loginAs } from "../tests/auth-helpers";
 import { API_BASE } from "../config/ports";
 import { settled } from "./settled";
+import { closeTestRequests } from "./tidy";
 
 const SHOTS = join(process.cwd(), "walkthroughs", "shots", "department-approvers");
 
@@ -75,6 +76,10 @@ test("capture: cover for a department, used once, then ended", async ({ page }) 
     hartleyAuth,
   );
   const cardiology = organisation.departments.find((d) => d.name === "Cardiology")!.id;
+
+  // Mensah's home page counts every request waiting on a Cardiology or Oncology approver, so what test runs left there is closed first.
+  await closeTestRequests(MENSAH);
+  await closeTestRequests(HARTLEY);
 
   // A capture that inherited cover from an earlier run would photograph two approvers and call one of them new.
   await call("POST", `/departments/${cardiology}/approvers/${MENSAH}/remove`, { reason: "clearing before a capture" }, hartleyAuth).catch(

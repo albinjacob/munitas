@@ -145,7 +145,7 @@ STEPS = [
                 "everything Devi wrote.",
         "note": "<strong>Waiting for your decision</strong> counts <strong>1</strong>. The card reads "
                 "<strong>Devi (Data engineer) wants to read cardiology-intake-notes v1</strong> with the label "
-                "<strong>Raw</strong>, Devi's reason, the purpose, and <strong>for 24 hours</strong>. Under the "
+                "<strong>Raw</strong>, Devi's reason, the purpose, and <strong>for 24 hours</strong>. Beside the "
                 "two buttons, the text reads <strong>Granting gives Devi 24 hours, for this purpose only, and "
                 "it ends by itself</strong>.",
     },

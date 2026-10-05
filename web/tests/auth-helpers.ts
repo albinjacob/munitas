@@ -119,7 +119,7 @@ export async function loginAs(page: Page, directoryId: string): Promise<void> {
 const WORKER_TOKEN = process.env.MUNITAS_WORKER_TOKEN ?? "dev-worker-token-not-for-production";
 const WORKER_ROUTES: Array<[string, RegExp]> = [
   ["POST", /^\/schema-contracts$/], ["POST", /^\/datasets$/], ["POST", /^\/action-runs$/], ["POST", /^\/pipeline-runs$/],
-  ["POST", /^\/write-credentials$/], ["POST", /^\/credentials$/], ["POST", /^\/dataset-versions$/],
+  ["POST", /^\/write-credentials$/], ["POST", /^\/credentials$/], ["POST", /^\/dataset-versions$/], ["POST", /^\/dataset-versions\/[^/]+\/promote$/],
 ];
 const PERSON_ROUTES: Array<[string, RegExp, string]> = [
   ["POST", /^\/datasets\/register$/, "registered_by"], ["POST", /^\/agents\/register$/, "registered_by"],

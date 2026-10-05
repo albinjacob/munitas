@@ -30,7 +30,7 @@
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { EMAIL_BY_DIRECTORY_ID, PASSWORD, bearerFor, loginAs } from "../tests/auth-helpers";
+import { EMAIL_BY_DIRECTORY_ID, PASSWORD, actingHeaders, bearerFor, loginAs } from "../tests/auth-helpers";
 import { API_BASE } from "../config/ports";
 import { settled } from "./settled";
 
@@ -60,6 +60,12 @@ const REQUEST_PURPOSE = "measure recall of the de-identification model before wi
 const RUN_PURPOSE = `rank the incoming radiology batch for review, live walkthrough capture ${Date.now() % 100000}`;
 const DIGEST_REQUEST_PURPOSE = "quarterly outcomes digest, live walkthrough capture";
 
+/** A setup call that must have worked: a failure here is a failed capture, not a page that quietly shows the wrong thing. */
+async function checked(response: Response, what: string): Promise<any> {
+  if (!response.ok) throw new Error(`${what} failed: ${response.status} ${await response.text()}`);
+  return response.json().catch(() => ({}));
+}
+
 /**
  * A small, already-reviewed dataset version, owned by Cardiology -- made
  * through the same register/upload/seal path the console itself uses, then
@@ -76,18 +82,15 @@ async function anUnderReviewVersion(name: string): Promise<string> {
   }).then((r) => r.json());
   const department = org.departments.find((d: { name: string }) => d.name === "Cardiology");
 
-  const dataset = await fetch(`${API}/datasets/register`, {
+  // Registering is done by a person, so the call carries that person's session, as the console's own would.
+  const registration = { tenant_id: "health", name, department_id: department.id, registered_by: ENGINEER, provenance: "internal_regulated", modality: ["tabular"] };
+  const registered = await fetch(`${API}/datasets/register`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      tenant_id: "health",
-      name,
-      department_id: department.id,
-      registered_by: ENGINEER,
-      provenance: "internal_regulated",
-      modality: ["tabular"],
-    }),
-  }).then((r) => r.json());
+    headers: { "content-type": "application/json", ...(await actingHeaders("POST", "/datasets/register", registration)) },
+    body: JSON.stringify(registration),
+  });
+  if (!registered.ok) throw new Error(`could not register ${name}: ${registered.status} ${await registered.text()}`);
+  const dataset = await registered.json();
 
   const form = new FormData();
   form.append(
@@ -95,12 +98,12 @@ async function anUnderReviewVersion(name: string): Promise<string> {
     new Blob([Buffer.from("quarter,outcome_rate\nQ3,0.94\n")]),
     "digest.csv",
   );
-  await fetch(`${API}/datasets/${dataset.id}/files`, { method: "POST", body: form });
-  const sealed = await fetch(`${API}/datasets/${dataset.id}/seal`, { method: "POST" }).then((r) => r.json());
+  await checked(await fetch(`${API}/datasets/${dataset.id}/files`, { method: "POST", headers: await bearerFor(ENGINEER), body: form }), "uploading the file");
+  const sealed = await checked(await fetch(`${API}/datasets/${dataset.id}/seal`, { method: "POST", headers: await bearerFor(ENGINEER) }), "sealing the dataset");
 
-  await fetch(`${API}/dataset-versions/${sealed.id}/promote`, {
+  await checked(await fetch(`${API}/dataset-versions/${sealed.id}/promote`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...(await actingHeaders("POST", `/dataset-versions/${sealed.id}/promote`, null)) },
     body: JSON.stringify({
       to_class: "UNDER_REVIEW",
       decided_by: "health-pipeline",
@@ -108,7 +111,7 @@ async function anUnderReviewVersion(name: string): Promise<string> {
       gate_evidence: { note: "reviewed for the walkthrough's own pattern-choice scene" },
       grant_roles: [],
     }),
-  });
+  }), "releasing the version one step");
 
   return sealed.id;
 }
@@ -120,11 +123,11 @@ async function toTop(page: Page, locator: ReturnType<Page["locator"]>): Promise<
   await locator.evaluate((e) => e.scrollIntoView({ block: "start" }));
 }
 
-async function shot(page: Page, name: string): Promise<void> {
+async function shot(page: Page, name: string, fullPage = false): Promise<void> {
   await settled(page);
   step += 1;
   const n = String(step).padStart(2, "0");
-  await page.screenshot({ path: join(SHOTS, `${n}-${name}.png`) });
+  await page.screenshot({ path: join(SHOTS, `${n}-${name}.png`), fullPage });
 }
 
 /**
@@ -346,14 +349,15 @@ test("capture: the healthcare worked example, start to finish", async ({ page })
   await page.getByRole("link", { name: "Open the decision" }).click();
   await expect(page).toHaveURL(/\/gates\/[0-9a-f-]{36}$/);
   await expect(page.getByTestId("gate-blocked")).toContainText("You started this run");
-  await shot(page, "devi-blocked-from-own-decision");
+  // Whole page: the two buttons the step is about sit below the first screen.
+  await shot(page, "devi-blocked-from-own-decision", true);
 
   const gateUrl = page.url();
 
   await loginAs(page, CUSTODIAN_CARDIOLOGY);
   await page.goto(gateUrl);
   await expect(page.getByTestId("gate-blocked")).toContainText("not part of your role");
-  await shot(page, "hartley-blocked-too");
+  await shot(page, "hartley-blocked-too", true);
 
   await loginAs(page, REVIEWER);
   await page.goto(gateUrl);
@@ -553,7 +557,7 @@ test("capture: the healthcare worked example, start to finish", async ({ page })
   // do with what the lease itself covers.
   const laterCredential = await fetch(`${API}/credentials`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...(await actingHeaders("POST", "/credentials", null)) },
     body: JSON.stringify({
       principal: RESEARCHER,
       principal_kind: "human",

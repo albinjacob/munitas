@@ -13,6 +13,8 @@ platform, and this needs neither. The page, its look and the wording check come 
 """
 from __future__ import annotations
 
+from datetime import date, datetime, timedelta
+
 from walkthrough_kit import SHOTS_ROOT, Page, series_entry, write
 
 CLOCK = (
@@ -67,9 +69,9 @@ STEPS = [
                 "database. Reading still works until the first date. Because this is the first stage, the "
                 "page offers Dunmore a button to cancel.",
         "note": "A yellow banner across the top reads <strong>This organisation is closing down</strong> and "
-                "gives <strong>October 18, 2026 (15 days left)</strong> as the last day to cancel. The status "
-                "box says <strong>Closing down started on October 3, 2026, asked for by Dunmore</strong> and "
-                "names <strong>November 2, 2026</strong> as the day everything inside is deleted. The "
+                "gives <strong>@D15@ (15 days left)</strong> as the last day to cancel. The status "
+                "box says <strong>Closing down started on @D0@, asked for by Dunmore</strong> and "
+                "names <strong>@D30@</strong> as the day everything inside is deleted. The "
                 "<strong>Cancel the closing down</strong> button is there, and a notice at the bottom right "
                 "reads <strong>harbour is closing down</strong>.",
     },
@@ -84,7 +86,7 @@ STEPS = [
                 "Quinn has no menu entry for closing down, because that entry is shown only to data custodians, "
                 "data protection officers and platform administrators. The banner carries a link instead.",
         "note": "The banner reads <strong>This organisation is closing down</strong> with the same last day to "
-                "cancel, <strong>October 18, 2026</strong>, and ends with a link <strong>See where it "
+                "cancel, <strong>@D15@</strong>, and ends with a link <strong>See where it "
                 "stands</strong>. In the box at the top left the clinic is marked <strong>closing down</strong> "
                 "and the role is <strong>Analyst</strong>.",
     },
@@ -113,8 +115,8 @@ STEPS = [
                 "menu whose every link would be refused.",
         "note": "The heading reads <strong>harbour has closed down to its people</strong>, with a red "
                 "<strong>Closed to its people</strong> "
-                "label. The status line reads <strong>The time to cancel ended on October 3, 2026. Everything "
-                "inside is deleted on October 18, 2026 (15 days left)</strong>, which are earlier dates than "
+                "label. The status line reads <strong>The time to cancel ended on @D0@. Everything "
+                "inside is deleted on @D15@ (15 days left)</strong>, which are earlier dates than "
                 "before because of the clock move described above. The only control is <strong>Sign "
                 "out</strong>.",
     },
@@ -132,7 +134,7 @@ STEPS = [
                 "organisation. The table shows dates and states only, and never what an organisation holds. "
                 "Harbour Clinic is already in the second stage.",
         "note": "The row for <strong>harbour</strong> reads <strong>Closed to its people</strong> in red, with "
-                "<strong>Deleted on October 18, 2026</strong> and <strong>None</strong> under Legal hold. The "
+                "<strong>Deleted on @D15@</strong> and <strong>None</strong> under Legal hold. The "
                 "rows for <strong>finance</strong> and <strong>health</strong> read <strong>Open</strong> and "
                 "each carries a <strong>Close down</strong> button.",
     },
@@ -164,8 +166,8 @@ STEPS = [
                 "lapses and stops standing in the way.",
         "note": "A card titled <strong>HC-2026-0417: Alder v Harbour Clinic</strong> carries an amber label "
                 "<strong>Waiting for a second administrator</strong>. It repeats every part of the notice, "
-                "reads <strong>Recorded by Priya on October 3, 2026</strong>, and gives "
-                "<strong>October 10, 2026</strong> as the day it lapses if nobody approves it. Under the "
+                "reads <strong>Recorded by Priya on @D0@</strong>, and gives "
+                "<strong>@D7@</strong> as the day it lapses if nobody approves it. Under the "
                 "buttons: <strong>You recorded this one, so a different administrator approves it</strong>.",
     },
     {
@@ -204,8 +206,8 @@ STEPS = [
                 "date, so that somebody has to look at it again and it does not stand by default for ever. "
                 "Releasing it is possible only with a written reason.",
         "note": "The card now carries a red label <strong>In force</strong> and reads <strong>Approved by Ravi "
-                "on October 3, 2026: Notice checked against the issuing firm&rsquo;s reference</strong> and "
-                "<strong>Review by December 31, 2026</strong>. The line <strong>Adeyemi, has not acknowledged "
+                "on @D0@: Notice checked against the issuing firm&rsquo;s reference</strong> and "
+                "<strong>Review by @D90@</strong>. The line <strong>Adeyemi, has not acknowledged "
                 "it yet</strong> shows that the temporary custodian has not responded. Below the card the "
                 "button <strong>Release this hold</strong> says that releasing starts the closing period "
                 "again.",
@@ -234,8 +236,8 @@ STEPS = [
         "text": "The acknowledgement is stored with the hold and shown to the platform administrators. Only "
                 "the named person can give it. Another member of the clinic who pressed the same button "
                 "would be refused.",
-        "note": "The button has been replaced by a green line, <strong>You acknowledged this hold on October "
-                "3, 2026</strong>.",
+        "note": "The button has been replaced by a green line, <strong>You acknowledged this hold on "
+                "@D0@</strong>.",
     },
     {
         "file": "15-the-time-is-up-and-nothing-is-deleted.png", "actor": "priya",
@@ -272,7 +274,7 @@ STEPS = [
         "text": "The clinic is back in the second stage, with a new deletion date 15 days after the release. "
                 "No hold stands, so the sweep will delete the clinic when that date arrives.",
         "note": "The row for <strong>harbour</strong> reads <strong>Closed to its people</strong> in red, with "
-                "<strong>Deleted on October 18, 2026</strong> and <strong>None</strong> under Legal hold. The "
+                "<strong>Deleted on @D15@</strong> and <strong>None</strong> under Legal hold. The "
                 "date matches the 15 days that the release added.",
     },
     {
@@ -293,9 +295,9 @@ STEPS = [
         "note": "Under <strong>Deleted organisations</strong> the entry for <strong>harbour</strong> begins "
                 "with the line <strong>Filed under</strong> and the new name, which starts with "
                 "<code>harbour~deleted-</code>. It then reads <strong>Closing down was asked for by Dunmore "
-                "on October 3, 2026, because: Harbour Clinic is winding down</strong>, <strong>Removed 3 "
-                "sign-in accounts</strong>, and <strong>2 audit rows of who read what are kept until October "
-                "3, 2033, and then removed</strong>. The last line, <strong>Legal holds that applied: HC-2026-0417 (Aldous and Brennan "
+                "on @D0@, because: Harbour Clinic is winding down</strong>, <strong>Removed 3 "
+                "sign-in accounts</strong>, and <strong>2 audit rows of who read what are kept until "
+                "@Y7@, and then removed</strong>. The last line, <strong>Legal holds that applied: HC-2026-0417 (Aldous and Brennan "
                 "LLP, for the claimant, released)</strong>, shows the hold by its number and issuer.",
     },
 ]
@@ -307,6 +309,23 @@ ACTORS = {
     "ravi": ("Ravi", "A second platform administrator"),
     "adeyemi": ("Adeyemi", "Data protection officer at Harbour Clinic, named temporary custodian"),
 }
+
+# The dates a screen shows depend on the day it was captured, so the notes name them from the date of the capture and are never typed in.
+_FIRST = SHOTS_ROOT / "closing" / "03-the-clinic-is-closing-down.png"
+CAPTURED = datetime.fromtimestamp(_FIRST.stat().st_mtime).date() if _FIRST.exists() else date.today()
+
+
+def _on(days: int = 0, years: int = 0) -> str:
+    d = CAPTURED + timedelta(days=days)
+    d = d.replace(year=d.year + years)
+    return f"{d.strftime('%B')} {d.day}, {d.year}"
+
+
+_DATES = {"@D0@": _on(), "@D7@": _on(7), "@D15@": _on(15), "@D30@": _on(30), "@D90@": _on(90), "@Y7@": _on(0, 7)}
+for _step in STEPS:
+    for _key in ("text", "note"):
+        for _token, _text in _DATES.items():
+            _step[_key] = _step[_key].replace(_token, _text)
 
 PAGE = Page(
     slug="closing-an-organisation", org="harbour",

@@ -24,6 +24,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { EMAIL_BY_DIRECTORY_ID, PASSWORD, bearerFor, loginAs } from "../tests/auth-helpers";
 import { API_BASE } from "../config/ports";
 import { settled } from "./settled";
+import { closeTestRequests, revokeEarlierRecordings } from "./tidy";
 
 const SHOTS = join(process.cwd(), "walkthroughs", "shots", "custom-pipeline");
 const PIPELINE_YAML = join(process.cwd(), "walkthroughs", "fixtures", "cardiac-note-qc.yaml");
@@ -84,6 +85,11 @@ async function waitForPipelineRun(page: Page, timeoutMs = 120_000): Promise<void
 
 test("capture: an operator registers and runs their own pipeline", async ({ page }) => {
   mkdirSync(SHOTS, { recursive: true });
+
+  // Hartley's home page counts every request waiting on a Cardiology approver, so requests left by test runs are closed first.
+  await closeTestRequests(CUSTODIAN_CARDIOLOGY);
+  // Access that an earlier recording of this walkthrough granted would also count as currently granted.
+  console.log(`earlier access revoked: ${await revokeEarlierRecordings(CUSTODIAN_CARDIOLOGY, ENGINEER, REQUEST_PURPOSE)}`);
   test.setTimeout(180_000);
 
   const suffix = `${new Date().toISOString().slice(0, 10)}-${Date.now() % 10000}`;
