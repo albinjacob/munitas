@@ -647,6 +647,28 @@ Use `scripts/seed/reseed-tenant.ps1` to rebuild one worked example,
 
 ---
 
+## Running a command inside the API
+
+To run a script or a command with the API's own code and dependencies, run it in the container that is already up:
+
+```
+docker compose exec -T munitas-api python <script>
+```
+
+Never use `docker compose run` on `munitas-api`. It looks like a disposable container that runs one command and exits, but the image's entrypoint
+ignores the command and starts a whole second API server beside the real one, on the same database and with whatever settings the `run` was
+given. Anything that then reaches "the API" can land on the second one. When it was given a different master key, it wrote encrypted storage
+credentials the real API could not open, and every later access request failed with `InvalidTag` until those rows were ended by hand.
+
+To check for a stray one, list the API containers. There should be exactly one:
+
+```
+docker ps --filter label=com.docker.compose.service=munitas-api --format "{{.Names}}"
+```
+
+If there is a second, remove it with `docker rm -f <name>` before running anything else. The verification wrapper (`run-verification.ps1`) checks
+this itself and refuses to start while a second one is there.
+
 ## Troubleshooting: containers stuck in a crash-recovery loop (Windows + WSL2)
 
 **Symptom:** `postgres` logs "database system was not properly shut down"
