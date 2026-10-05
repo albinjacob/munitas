@@ -378,7 +378,7 @@
     <li><a href="#scope"><span class="num">02</span> Scope</a></li>
     <li><a href="#architecture"><span class="num">03</span> Architecture</a></li>
     <li><a href="#concepts"><span class="num">04</span> Core concepts</a></li>
-    <li><a href="#implemented"><span class="num">05</span> What's implemented</a></li>
+    <li><a href="#implemented"><span class="num">05</span> Proven, not promised</a></li>
     <li><a href="#metrics"><span class="num">06</span> How it is measured</a></li>
     <li><a href="#value"><span class="num">07</span> Value to your organisation</a></li>
     <li><a href="#roi"><span class="num">08</span> Cost and return</a></li>
@@ -394,10 +394,10 @@
 
 <section id="capabilities">
   <p class="eyebrow">01 &middot; What it does</p>
-  <h2 class="measure">It governs AI agents with the same rules it applies to data</h2>
+  <h2 class="measure">It decides who may read which data, and holds AI agents to the same rules</h2>
   <div class="measure">
-    <p>
-      Most data platforms carefully track datasets and stop there. The AI agents
+    <p>Munitas keeps an organisation's datasets and decides, for every request to read one, whether it is allowed. A dataset is a named collection of records, such as a table of patient admissions. It is kept as numbered versions, and a version that is sealed (finished and closed for good) can never be edited. Each dataset belongs to one department, the team that owns it, and has a sensitivity level that says how restricted it is. A person who needs a restricted dataset asks for it and says what the work is for. An approver of the owning department, called a data custodian, accepts or refuses. An accepted request gives access for that purpose and for a limited time, and every decision is recorded with its reason.</p>
+    <p>The same rules cover AI agents. Most data platforms carefully track datasets and stop there. The AI agents
       that read those datasets are treated as ordinary software: deployed, changed,
       and rerun with no permanent record of which version did what.
     </p>
@@ -440,9 +440,7 @@
   <p class="eyebrow">02 &middot; Scope</p>
   <h2 class="measure">A complete system on one machine, not a scaled-down prototype of one</h2>
   <p class="measure">
-    Every guarantee on this page is enforced by the platform running today, not
-    described in a specification for later. Production-scale infrastructure was
-    left out deliberately: none of it changes whether those guarantees hold.
+    Every guarantee on this page is enforced by the platform running today, not described in a specification for later.
   </p>
   <div class="card">
     <span class="tag">BUILT</span>
@@ -572,8 +570,7 @@
     <div class="item"><span class="swatch" style="background:var(--accent);"></span> agent network, no internet access</div>
   </div>
   <p class="measure" style="font-size:0.88rem; color:var(--ink-faint);">
-    This diagram is simplified. Tracing (Jaeger and OpenTelemetry), MLflow, Label
-    Studio, the Temporal web interface and Ory Kratos (which sits in front of the
+    This diagram is simplified. The runner that executes the query for a new dataset, the worker that writes large tables, the catalog that lets tools such as DuckDB open tables, tracing (Jaeger and OpenTelemetry), MLflow, Label Studio, the Temporal web interface and Ory Kratos (which sits in front of the
     console and issues the session every request carries) are left out here.
     Ollama, which runs the agent's AI model on the machine's own graphics card,
     is also left out because it holds no data and enforces no rules.
@@ -582,11 +579,19 @@
 
 <section id="concepts">
   <p class="eyebrow">04 &middot; Core concepts</p>
-  <h2 class="measure">Four ideas that the rest of the system is built on</h2>
+  <h2 class="measure">Six ideas that the rest of the system is built on</h2>
   <div class="grid grid-2">
     <div class="card">
+      <h4>The department that owns the data decides who may read it</h4>
+      <p>Every dataset belongs to one department. Only that department's approvers can accept a request to read it, and any one of them can. Ownership therefore decides who may say yes, rather than seniority or whoever happens to be available, and the person asking can never be the one who accepts.</p>
+    </div>
+    <div class="card">
+      <h4>Access is for a purpose and for a limited time</h4>
+      <p>A request names one dataset version, what the work is for and why it needs that data. An accepted request is a lease: it is tied to that purpose and ends on its own. If a lease is withdrawn, any dataset made from the data under it is closed too.</p>
+    </div>
+    <div class="card">
       <h4>Widening access never moves the data</h4>
-      <p>Every dataset version sits at one of five sensitivity levels, from <code>RAW</code> (most restricted) up to <code>PUBLISHED</code>. Moving a version up to a less restricted level changes only which access credential opens it. The files themselves are never copied or rewritten, which was confirmed by checking that their storage keys and checksums are identical before and after.</p>
+      <p>Every dataset version sits at one of five sensitivity levels: <code>RAW</code> (most restricted), <code>UNDER_REVIEW</code>, <code>OPEN_FOR_ANNOTATION</code>, <code>OPEN_FOR_TRAINING</code> and <code>PUBLISHED</code> (least restricted). Moving a version up to a less restricted level changes only which access credential opens it. The files themselves are never copied or rewritten, which was confirmed by checking that their storage keys and checksums are identical before and after.</p>
     </div>
     <div class="card">
       <h4>Sensitivity and origin are two separate questions</h4>
@@ -689,7 +694,7 @@
 </section>
 
 <section id="value">
-  <p class="eyebrow">07 &middot; Value for an AI development organisation</p>
+  <p class="eyebrow">07 &middot; Value to your organisation</p>
   <h2 class="measure">The hard part is not storing the data. It is accounting for it afterwards.</h2>
   <div class="grid grid-3">
     <div class="card">
@@ -728,8 +733,7 @@
   <h2 class="measure">What it costs to run, and which recurring work it removes</h2>
   <p class="measure">
     Two things drive the return: what the platform costs to run, and which
-    expensive manual work it removes entirely. Both are laid out below, worth
-    checking directly against your own organisation's numbers.
+    expensive manual work it removes entirely. Both are described below, so each can be set against your own organisation's numbers.
   </p>
   <div class="grid grid-2">
     <div class="card">
@@ -738,15 +742,15 @@
     </div>
     <div class="card">
       <h4>Running an agent: hardware, not usage fees</h4>
-      <p>The agent's AI model runs on the machine's own graphics card instead of a paid external service. The cost of a run is therefore the cost of hardware you already own, rather than a bill that grows with every request. The per-run limits in section 6 cap how much of that hardware any single run can occupy.</p>
+      <p>The agent's AI model runs on the machine's own graphics card instead of a paid external service. The cost of a run is therefore the cost of the hardware the platform runs on, rather than a bill that grows with every request. The per-run limits in section 6 cap how much of that hardware any single run can occupy.</p>
     </div>
     <div class="card">
       <h4>Removes: reconstructing an audit trail</h4>
-      <p>Answering "what did this agent read, and who approved it" is a query against records written at the time. The alternative is several people spending days piecing the answer together from logs, chat history and recollection, which also produces a less reliable answer.</p>
+      <p>Answering "what did this agent read, and who approved it" is a query against records written at the time. The alternative is piecing the answer together from logs, chat history and recollection, which also produces a less reliable answer.</p>
     </div>
     <div class="card">
       <h4>Removes: tracing a bad output by hand</h4>
-      <p>A suspicious result can be traced to the exact code and input data behind it in one query. Doing the same without recorded lineage means manually working out which run, which code revision and which data were involved, typically hours of work under time pressure.</p>
+      <p>A suspicious result can be traced to the exact code and input data behind it in one query. Doing the same without recorded lineage means manually working out which run, which code revision and which data were involved, under time pressure.</p>
     </div>
     <div class="card">
       <h4>Removes: arguing about whether a release was safe</h4>
@@ -778,7 +782,7 @@
   </p>
   <div class="tablewrap">
     <table>
-      <thead><tr><th>Who</th><th>Role</th><th>Owns</th><th>Reads by default</th></tr></thead>
+      <thead><tr><th>Who</th><th>Role</th><th>Department</th><th>Reads by default</th></tr></thead>
       <tbody>
         <tr><td>Devi</td><td>Data engineer</td><td class="muted">no department</td><td class="tabular">Published only</td></tr>
         <tr><td>Hartley</td><td>Data custodian</td><td>Cardiology</td><td class="tabular">Published only</td></tr>
@@ -866,6 +870,8 @@
         <li data-n="4">Approves or refuses. Hartley cannot approve a request of their own, or one somebody filed on their behalf. Both the policy engine and the database enforce this independently.</li>
         <li data-n="5">Sees a written reason with every refusal, naming which rule caused it, rather than only an error code.</li>
         <li data-n="6">Sees requests made for an agent in the same queue as requests made for a person, showing which agent will read the data and which engineer asked for it. Approving one starts the waiting run; refusing it closes that run with Hartley's reason attached, so nothing is left waiting on a decision that has already been made.</li>
+        <li data-n="7">Manages who the approvers of Cardiology are. Hartley can add a person who already holds the data custodian role, give temporary cover that ends by itself, or remove an approver. Every change needs a written reason and stays in the history, and at least one permanent approver who can act must always remain.</li>
+        <li data-n="8">When an organisation is being closed down, its custodian can still cancel during the first 15 days. When records are produced for a legal matter, the custodian named by the legal hold confirms what the package covers.</li>
       </ol>
       <div class="without"><strong>Without this:</strong> access is granted in a chat message, with no lasting record of who asked, what for, or what they actually received. Whoever answers first becomes the approver, regardless of whether the data was theirs to give, and the rule against approving your own request exists only on paper.</div>
     </div>
@@ -956,6 +962,21 @@
 
   <details class="persona">
     <summary>
+      <div class="persona-id"><span class="name">Background workers</span><span class="role">Automated</span></div>
+      <svg class="chevron" width="16" height="16" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </summary>
+    <div class="persona-body">
+      <ol class="flow">
+        <li data-n="1">The derivation runner executes the query that makes a new dataset, inside an isolated container with no network connection and no passwords. The platform checks the result before the new dataset appears.</li>
+        <li data-n="2">The table worker writes large tables in the background as a job, so the screen responds at once however large the table is.</li>
+        <li data-n="3">The closing sweep runs on a schedule and moves an account that is being closed down from one stage to the next when its date arrives. An account under a legal hold is not deleted.</li>
+      </ol>
+      <div class="without"><strong>Without this:</strong> the work would run inside the same process that holds every credential, so one faulty query or one missed date would have the widest possible reach.</div>
+    </div>
+  </details>
+
+  <details class="persona">
+    <summary>
       <div class="persona-id"><span class="name">Triage agent</span><span class="role">Automated: AI agent</span></div>
       <svg class="chevron" width="16" height="16" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </summary>
@@ -1018,6 +1039,9 @@
           <tr><td class="mono">Open Policy Agent</td><td>Decides every access, approval and publication question</td><td>Keeping the rules in one testable place means access policy can be unit-tested like code. It returns a reason with every decision, which is what makes the audit trail meaningful rather than a list of yes and no.</td></tr>
           <tr><td class="mono">Ory Kratos</td><td>Handles real sign-in for every human role</td><td>Chosen over Keycloak for its lower memory ceiling on a single machine. An identity always comes from a session Kratos issued, never from a name the caller supplies.</td></tr>
           <tr><td class="mono">FastAPI</td><td>The single interface everything else goes through</td><td>It validates incoming data against a declared shape automatically, so malformed requests are rejected before reaching any logic. Keeping this layer thin was deliberate: rules belong in the policy engine and the database, not scattered here.</td></tr>
+          <tr><td class="mono">Munitas console</td><td>The web app people open in a browser</td><td>It asks the API for everything it shows, so what a person sees comes from the same decisions as everything else.</td></tr>
+          <tr><td class="mono">Munitas client library</td><td>Lets a person work from Python or a notebook</td><td>It sends requests to the API, so the same access decisions apply as in the console.</td></tr>
+          <tr><td class="mono">Derivation runner</td><td>Runs the query that makes a new dataset</td><td>It runs in a container with no network connection and no passwords, so a query cannot send data anywhere or reach anything it was not handed.</td></tr>
           <tr><td class="mono">cryptography (Python)</td><td>Encrypts individual records and stored credentials</td><td>It is the standard, well-reviewed Python library for this, and using a per-record key is what allows permanent deletion without altering any locked dataset.</td></tr>
         </tbody>
       </table>
@@ -1104,10 +1128,6 @@
           <td>Cognito</td><td>Entra ID, or Azure AD B2C</td><td>Identity Platform</td><td>IAM Identity Domains</td>
         </tr>
         <tr>
-          <td>Encryption keys</td><td>Local key file</td>
-          <td>KMS</td><td>Key Vault</td><td>Cloud KMS</td><td>Vault</td>
-        </tr>
-        <tr>
           <td>Running the AI model</td><td>Ollama</td>
           <td>Bedrock, or SageMaker</td><td>Azure OpenAI, or AI Foundry</td><td>Vertex AI</td><td>Generative AI Service</td>
         </tr>
@@ -1174,19 +1194,11 @@
   </div>
   <p class="measure" style="margin-top:1.25rem"><a href="index.html">Open the walkthrough index &rarr;</a></p>
   <!-- walkthrough-list:end -->
-  <p class="measure" style="margin-top:2.25rem">
-    Running it on your own machine: every local address and who to sign in
-    as are generated for you, not published here, since they name real
-    local ports and seeded login details. Start the stack, then run
-    <code>docs/tools/generate_services_page.py</code> (or just start
-    <code>start-dev.ps1</code>, which does it for you) and open the two
-    pages it writes under <code>docs/internal/dev/</code>.
-  </p>
 </section>
 
 </main>
 </div>
 
 <footer>
-  Every claim on this page can be traced to a verification script in the <code>verify/</code> folder or to the database definition in <code>platform/schema.sql</code>. This page itself lives at <code>docs/public/walkthroughs/feature-walkthrough.html</code>.
+  Every claim on this page can be traced to a verification script in the <code>verify/</code> folder or to the database definition in <code>platform/schema.sql</code>. 
 </footer>
