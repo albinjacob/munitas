@@ -76,6 +76,40 @@ test_revoked_lease_denied if {
 	}
 }
 
+# Many leases on one version have ended over time. The refusal names the most
+# recent one, once, not every lease the person has ever held on it.
+test_many_ended_leases_give_one_reason_each if {
+	d := access.decision with input as {
+		"principal": principal(["notebook_explore"], [
+			# The most recently revoked is not the one due to run longest: l-mid ran
+			# furthest into the future but was withdrawn first of the two later ones.
+			lease({"id": "l-old", "revoked": true, "revoked_at": "2026-10-01T00:00:00Z", "expires_at": "2026-10-02T00:00:00Z"}),
+			lease({"id": "l-mid", "revoked": true, "revoked_at": "2026-10-02T00:00:00Z", "expires_at": "2040-01-01T00:00:00Z"}),
+			lease({"id": "l-new", "revoked": true, "revoked_at": "2026-10-03T00:00:00Z", "expires_at": "2026-10-04T00:00:00Z"}),
+			lease({"id": "l-ran-out", "expires_at": past}),
+			lease({"id": "l-ran-out-earlier", "expires_at": "2019-01-01T00:00:00Z"}),
+		]),
+		"dataset": ds("RAW"),
+		"purpose": "shape exploration",
+	}
+	"lease l-new revoked" in d.reasons
+	not "lease l-old revoked" in d.reasons
+	not "lease l-mid revoked" in d.reasons
+	"lease l-ran-out expired" in d.reasons
+	not "lease l-ran-out-earlier expired" in d.reasons
+}
+
+# A lease that was revoked is not also reported as having expired.
+test_revoked_lease_is_not_also_expired if {
+	d := access.decision with input as {
+		"principal": principal(["notebook_explore"], [lease({"id": "l-1", "revoked": true, "expires_at": past})]),
+		"dataset": ds("RAW"),
+		"purpose": "shape exploration",
+	}
+	"lease l-1 revoked" in d.reasons
+	not "lease l-1 expired" in d.reasons
+}
+
 # Self-approval must not work, even with an otherwise valid lease.
 test_self_approved_lease_denied if {
 	not access.allow with input as {
@@ -236,7 +270,7 @@ request_on_behalf_of(who, requested_by) := {
 	"requested_by": requested_by,
 }
 
-asset(custodian) := {"dataset_version": "dv-1", "custodian": custodian}
+asset(custodian) := {"dataset_version": "dv-1", "approvers": [custodian]}
 
 test_custodian_may_approve_their_own_department if {
 	access.may_approve with input as {
@@ -588,6 +622,379 @@ test_pipeline_start_refusal_says_why if {
 }
 
 # ------------------------------------------------------------------
+# Bringing data in, and registering code.
+
+test_engineer_may_bring_data_in if {
+	access.may_bring_in_data with input as {"person": {"id": "canary-engineer", "roles": ["pipeline_operator"]}}
+}
+
+test_custodian_may_bring_data_in if {
+	access.may_bring_in_data with input as {"person": {"id": "canary-custodian", "roles": ["data_custodian"]}}
+}
+
+test_roles_that_may_not_bring_data_in if {
+	every role in ["notebook_explore", "analyst", "dpo", "deid_reviewer", "network_architect", "platform_admin", "hybridops", "agent_runtime", "training_job", "pipeline_action"] {
+		not access.may_bring_in_data with input as {"person": {"id": "x", "roles": [role]}}
+	}
+}
+
+test_nobody_with_no_role_may_bring_data_in if {
+	not access.may_bring_in_data with input as {"person": {"id": "x", "roles": []}}
+}
+
+test_one_allowed_role_among_others_is_enough_to_bring_data_in if {
+	access.may_bring_in_data with input as {"person": {"id": "x", "roles": ["notebook_explore", "pipeline_operator"]}}
+}
+
+test_intake_refusal_says_why if {
+	decision := access.intake_decision with input as {"person": {"id": "x", "roles": ["notebook_explore"]}}
+	decision.allow == false
+	"this person holds no role that may bring data in (a data engineer or a data custodian)" in decision.reasons
+}
+
+test_intake_allowance_has_no_reasons if {
+	decision := access.intake_decision with input as {"person": {"id": "x", "roles": ["pipeline_operator"]}}
+	decision.allow == true
+	count(decision.reasons) == 0
+}
+
+test_engineer_may_register_code if {
+	access.may_register_code with input as {"person": {"id": "canary-engineer", "roles": ["pipeline_operator"]}}
+}
+
+test_roles_that_may_not_register_code if {
+	every role in ["data_custodian", "notebook_explore", "analyst", "dpo", "deid_reviewer", "network_architect", "platform_admin", "hybridops", "agent_runtime", "training_job", "pipeline_action"] {
+		not access.may_register_code with input as {"person": {"id": "x", "roles": [role]}}
+	}
+}
+
+test_nobody_with_no_role_may_register_code if {
+	not access.may_register_code with input as {"person": {"id": "x", "roles": []}}
+}
+
+test_code_registration_refusal_says_why if {
+	decision := access.code_registration_decision with input as {"person": {"id": "x", "roles": ["platform_admin"]}}
+	decision.allow == false
+	"this person holds no role that may register an agent or a pipeline (a data engineer)" in decision.reasons
+}
+
+# ------------------------------------------------------------------
+# Confirming a sensitivity claim.
+
+department := {"name": "Cardiology", "approvers": ["cust-a"]}
+
+test_owning_custodian_confirms_a_claim_made_by_an_engineer if {
+	access.may_confirm_classification with input as {
+		"confirmer": {"id": "cust-a", "roles": ["data_custodian"]},
+		"claim": {"declared_by": "eng-1"},
+		"department": department,
+	}
+}
+
+test_other_custodian_may_not_confirm_a_claim_made_by_somebody_else if {
+	not access.may_confirm_classification with input as {
+		"confirmer": {"id": "cust-b", "roles": ["data_custodian"]},
+		"claim": {"declared_by": "eng-1"},
+		"department": department,
+	}
+}
+
+test_owning_custodian_may_not_confirm_their_own_claim if {
+	not access.may_confirm_classification with input as {
+		"confirmer": {"id": "cust-a", "roles": ["data_custodian"]},
+		"claim": {"declared_by": "cust-a"},
+		"department": department,
+	}
+}
+
+test_other_custodian_may_not_confirm_a_claim_the_only_approver_made if {
+	not access.may_confirm_classification with input as {
+		"confirmer": {"id": "cust-b", "roles": ["data_custodian"]},
+		"claim": {"declared_by": "cust-a"},
+		"department": department,
+	}
+}
+
+test_non_custodian_may_not_confirm_even_a_claim_the_owner_made if {
+	not access.may_confirm_classification with input as {
+		"confirmer": {"id": "eng-1", "roles": ["pipeline_operator"]},
+		"claim": {"declared_by": "cust-a"},
+		"department": department,
+	}
+}
+
+test_dpo_and_admin_may_not_confirm if {
+	every role in ["dpo", "platform_admin", "deid_reviewer", "notebook_explore"] {
+		not access.may_confirm_classification with input as {
+			"confirmer": {"id": "x", "roles": [role]},
+			"claim": {"declared_by": "cust-a"},
+			"department": department,
+		}
+	}
+}
+
+test_confirmation_by_the_claimant_says_why if {
+	decision := access.classification_confirmation_decision with input as {
+		"confirmer": {"id": "cust-a", "roles": ["data_custodian"]},
+		"claim": {"declared_by": "cust-a"},
+		"department": department,
+	}
+	decision.allow == false
+	"this person made the claim, so somebody else must confirm it" in decision.reasons
+}
+
+test_a_claim_the_only_approver_made_says_it_waits_for_a_second_approver if {
+	decision := access.classification_confirmation_decision with input as {
+		"confirmer": {"id": "cust-b", "roles": ["data_custodian"]},
+		"claim": {"declared_by": "cust-a"},
+		"department": department,
+	}
+	decision.allow == false
+	"the only approver of Cardiology made this claim, so it waits until the department has a second approver who can confirm it" in decision.reasons
+	count(decision.reasons) == 1
+}
+
+test_confirmation_by_a_non_custodian_says_why if {
+	decision := access.classification_confirmation_decision with input as {
+		"confirmer": {"id": "eng-1", "roles": ["pipeline_operator"]},
+		"claim": {"declared_by": "cust-a"},
+		"department": department,
+	}
+	decision.allow == false
+	"only a data custodian may confirm a sensitivity claim" in decision.reasons
+}
+
+test_confirmation_by_the_wrong_custodian_names_the_right_one if {
+	decision := access.classification_confirmation_decision with input as {
+		"confirmer": {"id": "cust-b", "roles": ["data_custodian"]},
+		"claim": {"declared_by": "eng-1"},
+		"department": department,
+	}
+	decision.allow == false
+	"this data is owned by Cardiology, whose approvers are cust-a; only a department approver may confirm a claim made by somebody else" in decision.reasons
+}
+
+# ------------------------------------------------------------------
+# A department with several approvers.
+
+two_approvers := {"name": "Cardiology", "approvers": ["cust-a", "cust-b"]}
+
+test_any_one_approver_confirms_a_claim_made_by_an_engineer if {
+	every approver in ["cust-a", "cust-b"] {
+		access.may_confirm_classification with input as {
+			"confirmer": {"id": approver, "roles": ["data_custodian"]},
+			"claim": {"declared_by": "eng-1"},
+			"department": two_approvers,
+		}
+	}
+}
+
+test_the_other_approver_confirms_a_claim_one_approver_made if {
+	access.may_confirm_classification with input as {
+		"confirmer": {"id": "cust-b", "roles": ["data_custodian"]},
+		"claim": {"declared_by": "cust-a"},
+		"department": two_approvers,
+	}
+}
+
+test_the_claimant_approver_may_not_confirm_even_with_another_approver if {
+	not access.may_confirm_classification with input as {
+		"confirmer": {"id": "cust-a", "roles": ["data_custodian"]},
+		"claim": {"declared_by": "cust-a"},
+		"department": two_approvers,
+	}
+}
+
+test_a_custodian_outside_the_department_never_confirms if {
+	not access.may_confirm_classification with input as {
+		"confirmer": {"id": "cust-c", "roles": ["data_custodian"]},
+		"claim": {"declared_by": "cust-a"},
+		"department": two_approvers,
+	}
+}
+
+test_an_approver_who_lost_the_role_may_not_confirm if {
+	not access.may_confirm_classification with input as {
+		"confirmer": {"id": "cust-b", "roles": ["analyst"]},
+		"claim": {"declared_by": "eng-1"},
+		"department": two_approvers,
+	}
+}
+
+test_a_department_with_no_approver_can_be_confirmed_by_nobody if {
+	not access.may_confirm_classification with input as {
+		"confirmer": {"id": "cust-b", "roles": ["data_custodian"]},
+		"claim": {"declared_by": "eng-1"},
+		"department": {"name": "Cardiology", "approvers": []},
+	}
+}
+
+test_any_approver_may_approve_access_to_their_department if {
+	every approver in ["cust-a", "cust-b"] {
+		access.may_approve with input as {
+			"approver": {"id": approver, "roles": ["data_custodian"]},
+			"request": {"principal": "svc-alice", "requested_by": null},
+			"asset": {"dataset_version": "dv-1", "approvers": ["cust-a", "cust-b"]},
+		}
+	}
+}
+
+test_a_non_approver_custodian_may_not_approve_access if {
+	not access.may_approve with input as {
+		"approver": {"id": "cust-c", "roles": ["data_custodian"]},
+		"request": {"principal": "svc-alice", "requested_by": null},
+		"asset": {"dataset_version": "dv-1", "approvers": ["cust-a", "cust-b"]},
+	}
+}
+
+test_approval_refusal_names_all_the_approvers if {
+	decision := access.approval_decision with input as {
+		"approver": {"id": "cust-c", "roles": ["data_custodian"]},
+		"request": {"principal": "svc-alice", "requested_by": null},
+		"asset": {"dataset_version": "dv-1", "approvers": ["cust-a", "cust-b"]},
+	}
+	"this asset is owned by a department whose approvers are cust-a, cust-b" in decision.reasons
+}
+
+# ------------------------------------------------------------------
+# Changing a department's approvers.
+
+dept_changes := {"name": "Cardiology", "approvers": ["cust-a", "cust-b"], "permanent_after": 1}
+
+test_an_approver_may_add_a_custodian_with_a_reason if {
+	access.may_add_department_approver with input as {
+		"actor": {"id": "cust-a", "roles": ["data_custodian"]},
+		"person": {"id": "cust-c", "roles": ["data_custodian"]},
+		"department": dept_changes,
+		"reason": "covers while Dr Hartley is away",
+	}
+}
+
+test_a_non_approver_may_not_add if {
+	decision := access.approver_addition_decision with input as {
+		"actor": {"id": "cust-c", "roles": ["data_custodian"]},
+		"person": {"id": "cust-d", "roles": ["data_custodian"]},
+		"department": dept_changes,
+		"reason": "x",
+	}
+	decision.allow == false
+	"only a current approver of this department may add another" in decision.reasons
+}
+
+test_the_person_added_must_hold_the_data_custodian_role if {
+	decision := access.approver_addition_decision with input as {
+		"actor": {"id": "cust-a", "roles": ["data_custodian"]},
+		"person": {"id": "tom", "roles": ["analyst"]},
+		"department": dept_changes,
+		"reason": "x",
+	}
+	decision.allow == false
+	"this person does not hold the data custodian role, which an approver must hold; they can ask for it first" in decision.reasons
+}
+
+test_an_existing_approver_cannot_be_added_again if {
+	decision := access.approver_addition_decision with input as {
+		"actor": {"id": "cust-a", "roles": ["data_custodian"]},
+		"person": {"id": "cust-b", "roles": ["data_custodian"]},
+		"department": dept_changes,
+		"reason": "x",
+	}
+	decision.allow == false
+	"this person is already an approver of this department" in decision.reasons
+}
+
+test_an_addition_needs_a_reason if {
+	decision := access.approver_addition_decision with input as {
+		"actor": {"id": "cust-a", "roles": ["data_custodian"]},
+		"person": {"id": "cust-c", "roles": ["data_custodian"]},
+		"department": dept_changes,
+		"reason": "  ",
+	}
+	decision.allow == false
+	"a change to a department's approvers needs a reason, which is recorded with it" in decision.reasons
+}
+
+test_an_actor_without_the_role_may_not_change_approvers if {
+	not access.may_add_department_approver with input as {
+		"actor": {"id": "cust-a", "roles": ["analyst"]},
+		"person": {"id": "cust-c", "roles": ["data_custodian"]},
+		"department": dept_changes,
+		"reason": "x",
+	}
+}
+
+test_an_approver_may_remove_another if {
+	access.may_remove_department_approver with input as {
+		"actor": {"id": "cust-a", "roles": ["data_custodian"]},
+		"person": {"id": "cust-b", "permanent": true},
+		"department": dept_changes,
+		"reason": "left the department",
+	}
+}
+
+test_an_approver_may_remove_themselves_when_another_permanent_remains if {
+	access.may_remove_department_approver with input as {
+		"actor": {"id": "cust-a", "roles": ["data_custodian"]},
+		"person": {"id": "cust-a", "permanent": true},
+		"department": dept_changes,
+		"reason": "moving on",
+	}
+}
+
+test_the_last_permanent_approver_cannot_be_removed if {
+	decision := access.approver_removal_decision with input as {
+		"actor": {"id": "cust-a", "roles": ["data_custodian"]},
+		"person": {"id": "cust-a", "permanent": true},
+		"department": {"name": "Cardiology", "approvers": ["cust-a"], "permanent_after": 0},
+		"reason": "moving on",
+	}
+	decision.allow == false
+	"a department always keeps at least one permanent approver, so this one cannot be removed until another is added" in decision.reasons
+}
+
+test_a_temporary_approver_may_be_removed_even_if_it_leaves_no_permanent_change if {
+	access.may_remove_department_approver with input as {
+		"actor": {"id": "cust-a", "roles": ["data_custodian"]},
+		"person": {"id": "cust-b", "permanent": false},
+		"department": {"name": "Cardiology", "approvers": ["cust-a", "cust-b"], "permanent_after": 1},
+		"reason": "cover ended early",
+	}
+}
+
+test_a_non_approver_may_not_remove if {
+	decision := access.approver_removal_decision with input as {
+		"actor": {"id": "cust-c", "roles": ["data_custodian"]},
+		"person": {"id": "cust-b", "permanent": true},
+		"department": dept_changes,
+		"reason": "x",
+	}
+	decision.allow == false
+	"only a current approver of this department may remove one" in decision.reasons
+}
+
+test_removing_somebody_who_is_not_an_approver_is_refused if {
+	decision := access.approver_removal_decision with input as {
+		"actor": {"id": "cust-a", "roles": ["data_custodian"]},
+		"person": {"id": "cust-z", "permanent": true},
+		"department": dept_changes,
+		"reason": "x",
+	}
+	decision.allow == false
+	"this person is not an approver of this department" in decision.reasons
+}
+
+test_a_removal_needs_a_reason if {
+	decision := access.approver_removal_decision with input as {
+		"actor": {"id": "cust-a", "roles": ["data_custodian"]},
+		"person": {"id": "cust-b", "permanent": true},
+		"department": dept_changes,
+		"reason": "",
+	}
+	decision.allow == false
+	"a change to a department's approvers needs a reason, which is recorded with it" in decision.reasons
+}
+
+# ------------------------------------------------------------------
 # Housekeeping: who sees storage telemetry, and who may destroy bytes.
 
 test_support_sees_platform_wide_housekeeping if {
@@ -810,16 +1217,19 @@ test_nobody_confirms_their_own_role if {
 	}
 }
 
-# Standing access to whole buckets is held only inside the boundary. A role
-# that reads data (a person, a training job, an agent) must go through a
-# per-version grant the register justifies, never a bucket-wide one.
-test_only_the_pipeline_holds_bucket_wide_access if {
+# No role holds standing access to a whole bucket. A role that reads or writes data (a person, a training job, an agent, the
+# pipeline) goes through a grant the register justifies for one version or one folder, and a task is given a key of its own for it.
+test_no_role_holds_bucket_wide_access if {
 	holders := {role | some role, spec in access.storage_roles; count(spec.every_bucket) > 0}
-	holders == {"pipeline_action"}
+	count(holders) == 0
 }
 
-test_pipeline_bucket_wide_access_is_exactly_read_write_list_tagging if {
-	{verb | some verb in access.storage_roles.pipeline_action.every_bucket} == {"Read", "Write", "List", "Tagging"}
+# Writing is granted per task and per prefix, on the same proof reading needs (POST /write-credentials), so Write must never come
+# back into any role's bucket-wide list.
+test_no_role_has_standing_write if {
+	every _, spec in access.storage_roles {
+		not "Write" in spec.every_bucket
+	}
 }
 
 # Every role that holds a storage key is a role the policy already knows, so a
@@ -932,4 +1342,351 @@ test_preview_unreadable_agrees_with_allow if {
 	not a.by_role
 	a.current_leases == []
 	not access.allow with input as {"principal": p, "dataset": ds("RAW"), "purpose": "shape exploration"}
+}
+
+# ---------------------------------------------------------------- closing --
+
+full_hold := {
+	"matter_name": "Doe v Harbour Clinic",
+	"matter_number": "HC-2026-0417",
+	"description": "A patient claim about a cardiology procedure in 2024.",
+	"triggering_event": "Letter before claim received on 2026-09-30",
+	"issuing_authority": "Aldous and Brennan LLP, for the claimant",
+	"authority_reference": "AB/2026/17",
+	"attorney_name": "Ruth Aldous",
+	"attorney_email": "ruth.aldous@example.test",
+	"notice_received_on": "2026-10-01",
+	"preserve": "Every record of the claimant and the audit trail of who read it.",
+	"custodian_id": "hold-keeper",
+}
+
+test_own_custodian_may_close_their_organisation if {
+	access.may_retire with input as {
+		"actor": {"id": "cust-hartley", "tenant_id": "health", "roles": ["data_custodian"]},
+		"organisation": "health",
+		"reason": "The contract ends on 31 October",
+	}
+}
+
+test_custodian_of_another_organisation_may_not_close_it if {
+	not access.may_retire with input as {
+		"actor": {"id": "cust-marcus", "tenant_id": "finance", "roles": ["data_custodian"]},
+		"organisation": "health",
+		"reason": "Tidying up",
+	}
+}
+
+test_ordinary_member_may_not_close_their_organisation if {
+	not access.may_retire with input as {
+		"actor": {"id": "sam-researcher", "tenant_id": "health", "roles": ["notebook_explore"]},
+		"organisation": "health",
+		"reason": "I would like it gone",
+	}
+}
+
+test_platform_administrator_may_close_on_instruction if {
+	access.may_retire with input as {
+		"actor": {"id": "ops-priya", "tenant_id": "health", "roles": ["platform_admin"]},
+		"organisation": "finance",
+		"reason": "Written instruction from the customer",
+	}
+}
+
+test_closing_without_a_reason_is_refused if {
+	not access.may_retire with input as {
+		"actor": {"id": "cust-hartley", "tenant_id": "health", "roles": ["data_custodian"]},
+		"organisation": "health",
+		"reason": "  ",
+	}
+}
+
+test_own_custodian_may_cancel if {
+	access.may_cancel_retirement with input as {
+		"actor": {"id": "cust-hartley", "tenant_id": "health", "roles": ["data_custodian"]},
+		"organisation": "health",
+	}
+}
+
+test_ordinary_member_may_not_cancel if {
+	not access.may_cancel_retirement with input as {
+		"actor": {"id": "sam-researcher", "tenant_id": "health", "roles": ["notebook_explore"]},
+		"organisation": "health",
+	}
+}
+
+test_platform_administrator_may_place_a_complete_hold if {
+	access.may_place_hold with input as {
+		"actor": {"id": "ops-priya", "roles": ["platform_admin"]},
+		"hold": full_hold,
+	}
+}
+
+test_custodian_may_not_place_a_hold if {
+	not access.may_place_hold with input as {
+		"actor": {"id": "cust-hartley", "roles": ["data_custodian"]},
+		"hold": full_hold,
+	}
+}
+
+test_hold_without_an_attorney_is_refused if {
+	not access.may_place_hold with input as {
+		"actor": {"id": "ops-priya", "roles": ["platform_admin"]},
+		"hold": object.remove(full_hold, ["attorney_name"]),
+	}
+}
+
+test_hold_refusal_names_what_is_missing if {
+	r := access.place_hold_decision with input as {
+		"actor": {"id": "ops-priya", "roles": ["platform_admin"]},
+		"hold": object.remove(full_hold, ["attorney_name", "preserve"]),
+	}
+	r.reasons == ["the notice is missing: attorney_name, preserve"]
+}
+
+test_a_different_administrator_may_approve if {
+	access.may_decide_hold with input as {
+		"actor": {"id": "ops-ravi", "roles": ["platform_admin"]},
+		"hold": {"placed_by": "ops-priya"},
+	}
+}
+
+test_the_administrator_who_placed_it_may_not_approve if {
+	not access.may_decide_hold with input as {
+		"actor": {"id": "ops-priya", "roles": ["platform_admin"]},
+		"hold": {"placed_by": "ops-priya"},
+	}
+}
+
+test_custodian_may_not_approve_a_hold if {
+	not access.may_decide_hold with input as {
+		"actor": {"id": "cust-hartley", "roles": ["data_custodian"]},
+		"hold": {"placed_by": "ops-priya"},
+	}
+}
+
+test_release_needs_a_reason_and_an_administrator if {
+	access.may_release_hold with input as {
+		"actor": {"id": "ops-ravi", "roles": ["platform_admin"]},
+		"reason": "Matter settled, written confirmation received",
+	}
+	not access.may_release_hold with input as {
+		"actor": {"id": "ops-ravi", "roles": ["platform_admin"]},
+		"reason": "",
+	}
+	not access.may_release_hold with input as {
+		"actor": {"id": "cust-hartley", "roles": ["data_custodian"]},
+		"reason": "Matter settled",
+	}
+}
+
+test_people_see_their_own_organisations_closing_and_no_other if {
+	access.may_see_lifecycle with input as {
+		"scope": "tenant", "tenant_id": "health",
+		"viewer": {"id": "sam-researcher", "tenant_id": "health", "roles": ["notebook_explore"]},
+	}
+	not access.may_see_lifecycle with input as {
+		"scope": "tenant", "tenant_id": "finance",
+		"viewer": {"id": "sam-researcher", "tenant_id": "health", "roles": ["notebook_explore"]},
+	}
+}
+
+test_only_administrators_see_every_organisation if {
+	access.may_see_lifecycle with input as {
+		"scope": "platform",
+		"viewer": {"id": "ops-priya", "tenant_id": "health", "roles": ["platform_admin"]},
+	}
+	not access.may_see_lifecycle with input as {
+		"scope": "platform",
+		"viewer": {"id": "cust-hartley", "tenant_id": "health", "roles": ["data_custodian"]},
+	}
+}
+
+# ------------------------------------------------------- legal export --
+
+full_export := {
+	"demand_authority": "High Court, Queen's Bench",
+	"demand_reference": "KB-2026-004411",
+	"demanded_on": "2026-10-05",
+	"demand_text": "Disclosure of the claimant's records and the log of who read them.",
+	"recipient_name": "Ruth Aldous",
+	"recipient_organisation": "Aldous and Brennan LLP",
+	"recipient_email": "ruth.aldous@example.test",
+	"dataset_ids": ["d1"],
+}
+
+test_administrator_may_ask_for_an_export_under_a_hold_in_force if {
+	access.may_request_export with input as {
+		"actor": {"id": "ops-priya", "roles": ["platform_admin"]},
+		"hold": {"status": "active"},
+		"export": full_export,
+	}
+}
+
+test_no_export_without_a_hold_in_force if {
+	not access.may_request_export with input as {
+		"actor": {"id": "ops-priya", "roles": ["platform_admin"]},
+		"hold": {"status": "proposed"},
+		"export": full_export,
+	}
+	not access.may_request_export with input as {
+		"actor": {"id": "ops-priya", "roles": ["platform_admin"]},
+		"hold": {"status": "released"},
+		"export": full_export,
+	}
+}
+
+test_a_custodian_may_not_ask_for_an_export if {
+	not access.may_request_export with input as {
+		"actor": {"id": "cust-hartley", "roles": ["data_custodian"]},
+		"hold": {"status": "active"},
+		"export": full_export,
+	}
+}
+
+test_an_export_without_a_demand_or_dataset_is_refused if {
+	not access.may_request_export with input as {
+		"actor": {"id": "ops-priya", "roles": ["platform_admin"]},
+		"hold": {"status": "active"},
+		"export": object.remove(full_export, ["demand_reference"]),
+	}
+	not access.may_request_export with input as {
+		"actor": {"id": "ops-priya", "roles": ["platform_admin"]},
+		"hold": {"status": "active"},
+		"export": object.union(full_export, {"dataset_ids": []}),
+	}
+}
+
+test_the_refusal_names_what_is_missing if {
+	r := access.export_request_decision with input as {
+		"actor": {"id": "ops-priya", "roles": ["platform_admin"]},
+		"hold": {"status": "active"},
+		"export": object.remove(full_export, ["demand_reference", "recipient_email"]),
+	}
+	r.reasons == ["the demand or the recipient is missing: demand_reference, recipient_email"]
+}
+
+test_a_different_administrator_approves if {
+	access.may_approve_export with input as {
+		"actor": {"id": "ops-ravi", "roles": ["platform_admin"]},
+		"export": {"requested_by": "ops-priya", "status": "requested"},
+	}
+}
+
+test_the_administrator_who_asked_may_not_approve if {
+	not access.may_approve_export with input as {
+		"actor": {"id": "ops-priya", "roles": ["platform_admin"]},
+		"export": {"requested_by": "ops-priya", "status": "requested"},
+	}
+}
+
+test_only_the_hold_custodian_confirms_the_scope if {
+	access.may_confirm_export with input as {
+		"actor": {"id": "dpo-adeyemi", "roles": ["dpo"]},
+		"hold": {"custodian_id": "dpo-adeyemi"},
+		"export": {"status": "approved"},
+	}
+	not access.may_confirm_export with input as {
+		"actor": {"id": "ops-ravi", "roles": ["platform_admin"]},
+		"hold": {"custodian_id": "dpo-adeyemi"},
+		"export": {"status": "approved"},
+	}
+}
+
+test_scope_is_confirmed_only_after_approval if {
+	not access.may_confirm_export with input as {
+		"actor": {"id": "dpo-adeyemi", "roles": ["dpo"]},
+		"hold": {"custodian_id": "dpo-adeyemi"},
+		"export": {"status": "requested"},
+	}
+}
+
+test_a_link_is_made_by_an_administrator_for_a_ready_package if {
+	access.may_link_export with input as {
+		"actor": {"id": "ops-priya", "roles": ["platform_admin"]},
+		"export": {"status": "ready"},
+	}
+	not access.may_link_export with input as {
+		"actor": {"id": "ops-priya", "roles": ["platform_admin"]},
+		"export": {"status": "producing"},
+	}
+	not access.may_link_export with input as {
+		"actor": {"id": "dpo-adeyemi", "roles": ["dpo"]},
+		"export": {"status": "ready"},
+	}
+}
+
+test_the_passphrase_goes_to_the_custodian_once if {
+	access.may_read_passphrase with input as {
+		"actor": {"id": "dpo-adeyemi", "roles": ["dpo"]},
+		"hold": {"custodian_id": "dpo-adeyemi"},
+		"export": {"status": "ready", "passphrase_revealed": false},
+	}
+	not access.may_read_passphrase with input as {
+		"actor": {"id": "dpo-adeyemi", "roles": ["dpo"]},
+		"hold": {"custodian_id": "dpo-adeyemi"},
+		"export": {"status": "ready", "passphrase_revealed": true},
+	}
+	not access.may_read_passphrase with input as {
+		"actor": {"id": "ops-priya", "roles": ["platform_admin"]},
+		"hold": {"custodian_id": "dpo-adeyemi"},
+		"export": {"status": "ready", "passphrase_revealed": false},
+	}
+}
+
+test_a_filtered_dataset_needs_the_custodian_to_name_the_values if {
+	access.may_confirm_export with input as {
+		"actor": {"id": "dpo-adeyemi", "roles": ["dpo"]},
+		"hold": {"custodian_id": "dpo-adeyemi"},
+		"export": {"status": "approved", "filter_datasets": ["d1"]},
+		"confirm": {"valued_datasets": ["d1"]},
+	}
+	not access.may_confirm_export with input as {
+		"actor": {"id": "dpo-adeyemi", "roles": ["dpo"]},
+		"hold": {"custodian_id": "dpo-adeyemi"},
+		"export": {"status": "approved", "filter_datasets": ["d1", "d2"]},
+		"confirm": {"valued_datasets": ["d1"]},
+	}
+	r := access.export_confirmation_decision with input as {
+		"actor": {"id": "dpo-adeyemi", "roles": ["dpo"]},
+		"hold": {"custodian_id": "dpo-adeyemi"},
+		"export": {"status": "approved", "filter_datasets": ["d1", "d2"]},
+		"confirm": {"valued_datasets": ["d1"]},
+	}
+	r.reasons == ["the custodian names the values to match for every filtered dataset, and none were given for: d2"]
+}
+
+test_an_export_without_filters_needs_no_values if {
+	access.may_confirm_export with input as {
+		"actor": {"id": "dpo-adeyemi", "roles": ["dpo"]},
+		"hold": {"custodian_id": "dpo-adeyemi"},
+		"export": {"status": "approved"},
+		"confirm": {"valued_datasets": []},
+	}
+}
+
+# An organisation's own table worker is given by a platform administrator and by nobody else.
+test_a_platform_administrator_may_give_an_organisation_its_own_table_worker if {
+	access.may_set_table_worker with input as {"viewer": {"id": "ops-priya", "roles": ["platform_admin"], "tenant_id": "munitas"}, "tenant_id": "harbour"}
+}
+
+test_an_organisations_own_people_may_not_give_themselves_a_table_worker if {
+	not access.may_set_table_worker with input as {"viewer": {"id": "dpo-adeyemi", "roles": ["dpo", "data_custodian"], "tenant_id": "harbour"}, "tenant_id": "harbour"}
+	r := access.table_worker_decision with input as {"viewer": {"id": "dpo-adeyemi", "roles": ["dpo"], "tenant_id": "harbour"}, "tenant_id": "harbour"}
+	r.reasons == ["an organisation's own table worker is given by a platform administrator"]
+	not access.may_set_table_worker with input as {"viewer": {"id": "x", "roles": [], "tenant_id": "harbour"}, "tenant_id": "harbour"}
+}
+
+# Standing access to a whole bucket is held in the role's own organisation only. A role that holds any must say so, so that a
+# new one cannot be cross-organisation by leaving the word out, and the pipeline's is exactly that.
+test_standing_bucket_access_is_held_only_in_the_roles_own_organisation if {
+	violators := {role |
+		some role, spec in access.storage_roles
+		count(spec.every_bucket) > 0
+		not spec.scope == "own_tenant"
+	}
+	count(violators) == 0
+}
+
+test_the_pipeline_holds_its_standing_access_in_its_own_organisation if {
+	access.storage_roles.pipeline_action.scope == "own_tenant"
 }

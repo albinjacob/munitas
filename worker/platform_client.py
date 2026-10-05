@@ -28,7 +28,7 @@ class ControlPlaneError(Exception):
 
 def _post(path: str, payload: dict) -> dict:
     response = httpx.post(f"{config.API}{path}", json=payload, timeout=30.0,
-                          verify=config.api_verify())
+                          headers={"x-worker-token": config.WORKER_TOKEN}, verify=config.api_verify())
     if response.status_code >= 400:
         raise ControlPlaneError(f"{path} returned {response.status_code}: {response.text[:300]}")
     return response.json()
@@ -36,24 +36,13 @@ def _post(path: str, payload: dict) -> dict:
 
 # The object-storage backends this worker can actually talk to.
 #
-# One, and `s3()` below is why: it builds a SeaweedFS client from SeaweedFS
+# One, and the readers and writers below are why: each builds a SeaweedFS client from SeaweedFS
 # credentials at a SeaweedFS endpoint, with nothing anywhere that would build
 # an R2 client instead. A dataset can already be marked `r2`, so this is a real
 # gap rather than a hypothetical, and naming it here is what lets the run be
 # refused instead of writing an R2-backed version's objects into SeaweedFS
 # under the R2 bucket's name and sealing a version that says seaweedfs.
 SERVED_BACKENDS = ("seaweedfs",)
-
-
-def s3():
-    return boto3.client(
-        "s3",
-        endpoint_url=config.S3_ENDPOINT,
-        aws_access_key_id=config.PIPELINE_KEY,
-        aws_secret_access_key=config.PIPELINE_SECRET,
-        config=Config(signature_version="s3v4"),
-        region_name="us-east-1",
-    )
 
 
 class CredentialPending(Exception):
@@ -70,21 +59,24 @@ class CredentialPending(Exception):
 
 def s3_scoped(task_credential: str, dataset_version_id: str, tenant_id: str,
               principal: str, purpose: str) -> "boto3.client":
-    """A read-only S3 client scoped to exactly one dataset version.
+    """A read-only S3 client for one dataset version.
 
     Requests it through the same `/credentials` every human and agent read
     goes through, presenting `task_credential` as proof this call really is
     the task it claims (an `action_run` or `pipeline_run`; see
     task_credential.py) rather than the worker's static, all-purpose key.
-    Read-only and single-version on purpose: nothing here ever writes, so
-    nothing here needs the write-wide static key at all.
+    The decision, and the audit record, are for exactly one version. The KEY is
+    narrower only for a derivation's run, which is handed a key of its own that
+    opens just the inputs it was allowed; any other task is handed the pipeline
+    role's key for its organisation, which opens that organisation's whole
+    bucket for reading.
     """
     response = httpx.post(f"{config.API}/credentials", json={
         "principal": principal, "principal_kind": "workload",
         "roles": [config.PIPELINE_ROLE], "tenant_id": tenant_id,
         "dataset_version_id": dataset_version_id, "purpose": purpose,
         "task_credential": task_credential,
-    }, timeout=30.0, verify=config.api_verify())
+    }, timeout=30.0, headers={"x-worker-token": config.WORKER_TOKEN}, verify=config.api_verify())
 
     if response.status_code == 202:
         raise CredentialPending(
@@ -103,7 +95,7 @@ def s3_scoped(task_credential: str, dataset_version_id: str, tenant_id: str,
     # reachable from inside the containers it runs among), and this worker
     # runs on the host, which reaches the same SeaweedFS through a published
     # port on localhost instead -- config.S3_ENDPOINT already knows which of
-    # those it is, the same way s3() above never trusts a caller-supplied
+    # those it is, the same way the writer below never trusts a caller-supplied
     # endpoint either.
     return boto3.client(
         "s3",
@@ -137,7 +129,7 @@ def s3_scoped_write(task_credential: str, dataset_id: str, tenant_id: str,
         "roles": [config.PIPELINE_ROLE], "tenant_id": tenant_id,
         "dataset_id": dataset_id, "purpose": purpose,
         "task_credential": task_credential,
-    }, timeout=30.0, verify=config.api_verify())
+    }, timeout=30.0, headers={"x-worker-token": config.WORKER_TOKEN}, verify=config.api_verify())
 
     if response.status_code == 202:
         raise CredentialPending(
@@ -162,30 +154,19 @@ def s3_scoped_write(task_credential: str, dataset_id: str, tenant_id: str,
     )
 
 
-def ensure_bucket(bucket: str) -> None:
-    """Create the bucket if it is missing.
-
-    A convenience for the corpus path against a development stack. A real
-    tenant's bucket is provisioned by the control plane when the tenant is
-    created, not by whatever happens to write first.
-    """
-    client = s3()
-    try:
-        client.create_bucket(Bucket=bucket)
-    except Exception:
-        pass
-
-
 def register_contract(contract: Contract, tenant_id: str | None = None) -> str:
     return _post(
         "/schema-contracts", contract.as_payload(tenant_id or config.TENANT)
     )["id"]
 
 
-def ensure_dataset(name: str, tenant_id: str | None = None) -> str:
-    return _post(
-        "/datasets", {"tenant_id": tenant_id or config.TENANT, "name": name}
-    )["id"]
+def ensure_dataset(name: str, tenant_id: str | None = None, derived_from: str | None = None) -> str:
+    """The dataset of this name, made if it does not exist. `derived_from` is the version a step reads, and the dataset then takes the
+    department of the dataset that version is in; a step with no input version (the corpus ingest) has none to name."""
+    body = {"tenant_id": tenant_id or config.TENANT, "name": name}
+    if derived_from:
+        body["derived_from_version_id"] = derived_from
+    return _post("/datasets", body)["id"]
 
 
 def next_location(dataset_id: str, tenant_id: str | None = None) -> dict:
@@ -203,7 +184,7 @@ def next_location(dataset_id: str, tenant_id: str | None = None) -> dict:
     response = httpx.get(
         f"{config.API}/datasets/{dataset_id}/next-version",
         params={"tenant_id": tenant_id or config.TENANT}, timeout=15.0,
-        verify=config.api_verify(),
+        headers={"x-worker-token": config.WORKER_TOKEN}, verify=config.api_verify(),
     )
     if response.status_code >= 400:
         raise ControlPlaneError(f"next-version returned {response.status_code}")
@@ -313,6 +294,7 @@ def seal_version(
     dataset_id: str, schema_id: str, visibility_class: str,
     manifest: list[dict], record_count: int, run_id: str,
     tenant_id: str | None = None, storage_backend: str = "seaweedfs",
+    records_key: str | None = None,
 ) -> dict:
     """Seal a version, under the tenant this run belongs to.
 
@@ -335,6 +317,9 @@ def seal_version(
         # version written anywhere else used to record the wrong backend and a
         # credential minted from it would look in the wrong place entirely.
         "storage_backend": storage_backend,
+        # Which object holds this version's rows, so the platform can also
+        # write them as an Iceberg table. None for a version with no rows.
+        "records_key": records_key,
     })
 
 
@@ -356,12 +341,9 @@ def promote(version_id: str, to_class: str, evidence: dict, grant_roles: list[st
 # arguments are what stop that recurring, since a caller that forgets one
 # now fails at the call rather than writing somewhere plausible.
 #
-# Both now take the client to write with, rather than reaching for the
-# module's own static s3(). pipeline_action's storage identity no longer
-# holds standing Write (see docs/internal/design/write-credential-rationale.md), so
-# there is no default client left here that could still write anything;
-# every caller passes the s3_scoped_write() client it minted for its own
-# action_run or pipeline_run.
+# Both take the client to write with. No role holds standing storage access (see access.rego), so there is no default client
+# here that could write or read anything; every caller passes the client minted for its own task: s3_scoped_write() for a write,
+# step_reader() or s3_scoped() for a read.
 
 
 def put_json(client, key: str, payload: object, bucket: str) -> dict:
@@ -376,10 +358,23 @@ def put_file(client, key: str, path: Path, bucket: str) -> dict:
     return {"key": key, "bytes": len(body), "sha256": hashlib.sha256(body).hexdigest()}
 
 
-def get_json(key: str, bucket: str) -> object:
-    return json.loads(
-        s3().get_object(Bucket=bucket, Key=key)["Body"].read()
-    )
+def step_reader(task_credential: str, version_ids: list[str], tenant_id: str, principal: str, purpose: str) -> "boto3.client":
+    """A read-only client for the versions a task declared as its inputs, and no others.
+
+    Asks the platform once for each version, in order. Every answer is the same key, the task's own, and each answer adds one
+    version's folder to what it opens, so the client returned opens exactly the versions asked for. The platform decides each one
+    (and records it): a version the task did not declare is refused.
+    """
+    client = None
+    for version_id in dict.fromkeys(version_ids):
+        client = s3_scoped(task_credential, version_id, tenant_id, principal, purpose)
+    if client is None:
+        raise ValueError("a step that reads must name at least one input version")
+    return client
+
+
+def read_json(client, bucket: str, key: str) -> object:
+    return json.loads(client.get_object(Bucket=bucket, Key=key)["Body"].read())
 
 
 _code_hash: str | None = None

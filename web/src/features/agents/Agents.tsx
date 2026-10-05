@@ -7,6 +7,7 @@
  * "nothing has ever been sealed for this agent" is visible without opening it.
  */
 
+import { CODE_ROLES, useHoldsRole } from "../../identity/mayDo";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAgents } from "../../api/agents";
@@ -16,6 +17,7 @@ import { Pagination } from "../../components/Pagination";
 const PAGE_SIZE = 15;
 
 export function Agents() {
+  const mayRegister = useHoldsRole(CODE_ROLES);
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
   const agents = useAgents({
@@ -30,13 +32,15 @@ export function Agents() {
       title="Agents"
       description="Registered by end users, the same way a dataset is. Versioned and content-addressed, not asserted."
       actions={
-        <Link
-          to="/agents/register"
-          data-testid="agents-register-link"
-          className="rounded bg-indigo-500 hover:bg-indigo-800 px-3 py-1.5 text-sm font-medium text-white"
-        >
-          Register an agent
-        </Link>
+        mayRegister ? (
+          <Link
+            to="/agents/register"
+            data-testid="agents-register-link"
+            className="rounded bg-indigo-500 hover:bg-indigo-800 px-3 py-1.5 text-sm font-medium text-white"
+          >
+            Register an agent
+          </Link>
+        ) : undefined
       }
     >
       <div className="mb-4 flex flex-wrap items-end gap-3 rounded border border-slate-200 bg-white p-3">

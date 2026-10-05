@@ -74,7 +74,7 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 # expected clock a well-behaved run runs out.
 DEFAULT_TTL_SECONDS = 6 * 3600
 
-TASK_KINDS = ("agent_run", "action_run", "pipeline_run", "huggingface_fetch_job")
+TASK_KINDS = ("agent_run", "action_run", "pipeline_run", "huggingface_fetch_job", "table_write_job")
 
 
 class InvalidTaskCredential(Exception):

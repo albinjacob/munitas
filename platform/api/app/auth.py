@@ -36,11 +36,26 @@ The trust chain, and why each link is the one it is
 from __future__ import annotations
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 
-from . import config, db
+from . import config, db, opa, task_credential
 
 router = APIRouter(tags=["auth"])
+
+
+# The phases of an organisation's closing in which its people can do nothing at
+# all (platform/schema.sql, tenant_phase). A platform administrator is the one
+# exception, because the administrator holds no standing access to what the
+# organisation contains and is the only person who can act on a closing one.
+CLOSED_TO_PEOPLE = ("closing", "purge_due", "purged")
+
+
+def closed_refusal(phase: str | None, roles: list[str]) -> str | None:
+    """The sentence that says why this person cannot act, or None when they can."""
+    if phase in CLOSED_TO_PEOPLE and "platform_admin" not in roles:
+        return ("this organisation is closing down, so nothing can be done in it any more. "
+                "Only a platform administrator can act on it now")
+    return None
 
 
 def current_session(request: Request) -> dict:
@@ -50,7 +65,21 @@ def current_session(request: Request) -> dict:
     rather than folded into the endpoint below, so the same check can be
     reused on other endpoints as they migrate to requiring it, without
     duplicating the whoami call and the directory lookup at each call site.
+
+    Somebody whose organisation is closing is refused here, at the one place every
+    acting endpoint passes through. The few endpoints that exist for that
+    situation use `current_session_while_closing` instead.
     """
+    return _resolve_session(request, refuse_closing=True)
+
+
+def current_session_while_closing(request: Request) -> dict:
+    """The same session, for the endpoints that answer to a closing organisation:
+    where it is in its closing, and a legal hold's custodian acknowledging it."""
+    return _resolve_session(request, refuse_closing=False)
+
+
+def _resolve_session(request: Request, refuse_closing: bool) -> dict:
     forward = {}
     if cookie := request.headers.get("cookie"):
         forward["Cookie"] = cookie
@@ -89,6 +118,7 @@ def current_session(request: Request) -> dict:
     # (`where not revoked`) exists for exactly this query.
     person = db.one(
         """select d.id, d.tenant_id, d.label, d.kind, d.ended_at,
+                  tenant_phase(d.tenant_id) as phase,
                   array(
                       select distinct role from (
                           select unnest(d.roles) as role
@@ -131,19 +161,137 @@ def current_session(request: Request) -> dict:
             ]},
         )
 
+    if refuse_closing:
+        why = closed_refusal(person["phase"], person["roles"])
+        if why:
+            raise HTTPException(403, {"reasons": [why]})
+
     return {
         "id": person["id"],
         "tenant_id": person["tenant_id"],
         "label": person["label"],
         "kind": person["kind"],
         "roles": person["roles"],
+        "phase": person["phase"],
         "session_id": session["id"],
         "authenticated_at": session["authenticated_at"],
     }
 
 
+def identity_for(person_id: str) -> dict | None:
+    """The same identity current_session builds, for a person already known by
+    id, when no session is involved (a catalog token names its holder).
+
+    Roles are the live union current_session reads, so a role granted a minute
+    ago applies and one revoked a minute ago does not. An ended appointment is
+    returned as-is, with `ended_at` set, and the caller refuses it: this only
+    answers who the person is, never whether they may act.
+    """
+    person = db.one(
+        """select d.id, d.tenant_id, d.label, d.kind, d.ended_at,
+                  tenant_phase(d.tenant_id) as phase,
+                  array(
+                      select distinct role from (
+                          select unnest(d.roles) as role
+                          union
+                          select role from role_grant
+                           where principal = d.id
+                             and not revoked
+                             and expires_at > now()
+                      ) effective
+                  ) as roles
+             from directory d
+            where d.id = %s""",
+        (person_id,),
+    )
+    return person
+
+
+def worker_only(x_worker_token: str | None = Header(default=None)) -> None:
+    """The platform's own workers, and nobody else.
+
+    For the endpoints a person never calls: they seal a version or open a run on the platform's behalf, and a caller that can
+    reach one can write state for any organisation it names in the body. The token is the one the workers already send
+    (MUNITAS_WORKER_TOKEN). If none is configured, nobody is let in: an unset token must close the endpoint, not open it.
+    """
+    if not config.WORKER_TOKEN or x_worker_token != config.WORKER_TOKEN:
+        raise HTTPException(403, {"reasons": ["only the platform's own workers may call this"]})
+
+
+def person_or_worker(request: Request, x_worker_token: str | None = Header(default=None)) -> dict:
+    """Who is calling: the platform's own worker, or a signed-in person.
+
+    For an endpoint that a person uses through the console and a worker or a script uses on the platform's behalf. A worker is
+    not narrowed (the token already says it is the platform); a person is, and `must_be` is what narrows them."""
+    if config.WORKER_TOKEN and x_worker_token == config.WORKER_TOKEN:
+        return {"worker": True, "id": None, "tenant_id": None, "roles": []}
+    return {**current_session(request), "worker": False}
+
+
+def require_code_registration_role(caller: dict) -> None:
+    """Registering an agent, an agent version, a pipeline or a pipeline version is a data engineer's job, and nobody else's: refused with the reason.
+
+    The platform's own workers act without a person and are not asked."""
+    if caller.get("worker"):
+        return
+    permitted, reasons = opa.may_register_code({"person": {"id": caller["id"], "roles": caller["roles"]}})
+    if not permitted:
+        raise HTTPException(403, {"reasons": reasons})
+
+
+def must_be(caller: dict, *, tenant_id: str | None = None, person: str | None = None) -> None:
+    """A person acts in their own organisation, and as themselves, and never as somebody else.
+
+    The identity an endpoint acts on comes from the session. A name in the request body is only a claim, and an endpoint that
+    believed it let anybody register, confirm or erase as anybody."""
+    if caller.get("worker"):
+        return
+    if tenant_id is not None and caller["tenant_id"] != tenant_id:
+        raise HTTPException(403, {"reasons": ["you can only act in your own organisation"]})
+    if person is not None and caller["id"] != person:
+        raise HTTPException(403, {"reasons": ["you can only act as yourself"]})
+
+
+def organisation_scope(
+    request: Request,
+    tenant_id: str | None = Query(default=None),
+    x_worker_token: str | None = Header(default=None),
+    x_task_credential: str | None = Header(default=None),
+) -> str | None:
+    """The organisation a read of one record is limited to.
+
+    A signed-in person is limited to their own organisation, taken from the session. A
+    `tenant_id` in the URL is ignored for them, so naming somebody else's organisation, or
+    leaving it out, shows nothing of another organisation's data.
+
+    The platform's own workers have no login to present. They send the worker token instead,
+    and then name the organisation they act for. A worker that names none is not narrowed,
+    because the token already says it is the platform itself.
+
+    An agent's code runs with neither a login nor the worker token, which it must never hold.
+    It presents the signed credential minted for its own run instead, and that credential
+    names the organisation, so the organisation is again not something the caller can choose.
+
+    Anybody else is refused: no session, no worker token and no run credential means no
+    answer.
+    """
+    if config.WORKER_TOKEN and x_worker_token == config.WORKER_TOKEN:
+        return tenant_id
+    if x_task_credential:
+        try:
+            claim = task_credential.verify(x_task_credential)
+        except task_credential.InvalidTaskCredential as exc:
+            raise HTTPException(401, {"reasons": [f"run credential rejected: {exc}"]}) from exc
+        if claim.task_kind == "table_write_job":
+            # A table worker holds this for hours and for one job. It names an organisation, but it is for that job's own
+            # endpoints (table_jobs.py), which check it themselves, and it is not a way to read that organisation's records.
+            raise HTTPException(401, {"reasons": ["a table job's credential is for its own job and cannot be used here"]})
+        return claim.tenant_id
+    return current_session(request)["tenant_id"]
+
+
 @router.get("/auth/whoami")
-def whoami(identity: dict = Depends(current_session)) -> dict:
+def whoami(identity: dict = Depends(current_session_while_closing)) -> dict:
     """Prove the mechanism: a real session resolves to a real directory row.
 
     Nothing downstream reads this endpoint yet. It exists so the login flow

@@ -601,7 +601,8 @@ def build_services(ports: dict[str, list[int]]) -> str:
     file rather than served.
   </p>
   <p class="crosslink">
-    Who to sign in as: <a href="logins.html">logins and passwords &rarr;</a>
+    Who to sign in as: <a href="logins.html">logins and passwords &rarr;</a><br>
+    Who calls each API route, and how it authenticates them: <a href="api-callers.html">API callers &rarr;</a>
     &nbsp;&middot;&nbsp; <button type="button" id="recheck" class="linkish">check again</button>
   </p>
 

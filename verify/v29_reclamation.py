@@ -30,7 +30,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "verify"))
 
-from common import (ADMIN, CANARY, api, bucket_for, check, db,  # noqa: E402
+from common import (ADMIN, CANARY, WORKER_HEADERS, api, bucket_for, check, db,  # noqa: E402
                     fixture_contract, fixture_tenant, fixture_version, heading,
                     require_api, s3_client, summary)
 
@@ -69,7 +69,7 @@ def main() -> int:
     check("the fixture has objects to reclaim", before.get("KeyCount", 0) == 3,
           f"{before.get('KeyCount', 0)} objects")
 
-    lineage_before = api("GET", f"/lineage/{version['id']}")
+    lineage_before = api("GET", f"/lineage/{version['id']}", params={"tenant_id": CANARY}, headers=WORKER_HEADERS)
 
     # ------------------------------------------------------------- U30 --
     heading("U30: a production tenant cannot be reclaimed")
@@ -136,14 +136,14 @@ def main() -> int:
           and bool(record["reclaimed_by"]),
           f"{record['reason']} / {record['reclaimed_by']}" if record else "no row")
 
-    lineage_after = api("GET", f"/lineage/{version['id']}")
+    lineage_after = api("GET", f"/lineage/{version['id']}", params={"tenant_id": CANARY}, headers=WORKER_HEADERS)
     check("the lineage still answers after the bytes are gone",
           lineage_after.status_code == 200, f"HTTP {lineage_after.status_code}")
     check("and answers the same as it did before",
           lineage_before.status_code == lineage_after.status_code
           and lineage_before.json() == lineage_after.json())
 
-    versioned = api("GET", f"/dataset-versions/{version['id']}")
+    versioned = api("GET", f"/dataset-versions/{version['id']}", params={"tenant_id": CANARY}, headers=WORKER_HEADERS)
     check("the console can still open the version",
           versioned.status_code == 200, f"HTTP {versioned.status_code}")
     check("and it says its bytes were reclaimed rather than pretending otherwise",

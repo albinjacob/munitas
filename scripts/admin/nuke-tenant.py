@@ -102,6 +102,11 @@ PROTECTED_RULES = [
     ("dataset_version", "dataset_version_no_delete"),
     ("agent_version", "agent_version_no_update"),
     ("agent_version", "agent_version_no_delete"),
+    # The closing records: a hold and the history of a closing are removed only with their
+    # organisation, and this is how a deliberately deleted one goes.
+    ("legal_hold", "legal_hold_no_delete"),
+    ("lifecycle_event", "lifecycle_event_no_delete"),
+    ("legal_export", "legal_export_no_delete"),
 ]
 
 
@@ -123,7 +128,9 @@ def tenant_scoped_tables(conn) -> list[str]:
         "where c.column_name = 'tenant_id' and c.table_schema = 'public' "
         "  and t.table_type = 'BASE TABLE'"
     ).fetchall()
-    return sorted(r["table_name"] for r in rows)
+    # tenant_deletion_record is what a purge leaves behind on purpose and is never deleted, so it
+    # is not something this script clears.
+    return sorted(r["table_name"] for r in rows if r["table_name"] != "tenant_deletion_record")
 
 
 # Tables carrying one tenant's data with no tenant_id column of their own:
@@ -225,16 +232,21 @@ def delete_all(conn, tables: list[str], tenant: str) -> dict[str, int]:
 
 
 def _delete_together(conn, tables: list[str], tenant: str) -> dict[str, int]:
-    """Delete `tenant`'s rows from every table in `tables` in one statement."""
-    parts = [
-        f'd{i} as (delete from "{t}" where {delete_clause(t)} returning 1)'
-        for i, t in enumerate(tables)
-    ]
-    counts = ", ".join(f"(select count(*) from d{i}) as n{i}" for i in range(len(tables)))
-    row = conn.execute(
-        "with " + ", ".join(parts) + " select " + counts, [tenant] * len(tables)
-    ).fetchone()
-    return {t: row[f"n{i}"] for i, t in enumerate(tables) if row[f"n{i}"]}
+    """Delete `tenant`'s rows from every table in `tables` in one statement.
+
+    The rows are counted first and the delete does not ask for them back (`returning`). PostgreSQL refuses a `delete ... returning`
+    on a table that has a conditional `do instead` rule, and `dataset_version` has one (the immutability rule, which lets a tenant
+    that declared itself disposable delete its sealed versions), so counting through `returning` failed for exactly the disposable
+    tenants whose lineage loops back on itself. A data-modifying `with` runs whether or not anything reads it."""
+    before = {
+        t: conn.execute(
+            f'select count(*) as n from "{t}" where {delete_clause(t)}', (tenant,)
+        ).fetchone()["n"]
+        for t in tables
+    }
+    parts = [f'd{i} as (delete from "{t}" where {delete_clause(t)})' for i, t in enumerate(tables)]
+    conn.execute("with " + ", ".join(parts) + " select 1", [tenant] * len(tables))
+    return {t: n for t, n in before.items() if n}
 
 
 def main() -> int:
@@ -294,6 +306,10 @@ def main() -> int:
             print("Not confirmed. Nothing changed.")
             return 1
 
+        # Packages of legal exports live in a bucket of their own, so their names are read before the rows go.
+        packages = [r["package_key"] for r in conn.execute(
+            "select package_key from legal_export where tenant_id = %s and package_key is not null and expired_at is null",
+            (args.tenant,)).fetchall()]
         try:
             for table, rule in PROTECTED_RULES:
                 conn.execute(f'alter table "{table}" disable rule "{rule}"')
@@ -322,6 +338,15 @@ def main() -> int:
     # files that are already gone. The reverse leftover, a bucket with no
     # tenant, is what verify/v74_storage_agrees.py reports.
     failed = False
+    if packages:
+        store = s3()
+        for key in packages:
+            try:
+                store.delete_object(Bucket=os.environ.get("MUNITAS_LEGAL_EXPORT_BUCKET", "munitas-legal-exports"), Key=key)
+            except Exception as exc:  # noqa: BLE001
+                failed = True
+                print(f"  package {key}: NOT removed ({exc})")
+        print(f"  {len(packages)} legal export package(s) removed")
     for b in buckets:
         if b["backend"] != "seaweedfs":
             continue

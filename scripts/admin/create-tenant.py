@@ -49,7 +49,9 @@ def slugify(key: str) -> str:
 
 
 def known_roles() -> set[str]:
-    r = httpx.get(f"{API}/policy/roles", timeout=15.0)
+    # The role list is closed to anonymous callers. This script is the platform's operator acting, so it sends the worker token.
+    r = httpx.get(f"{API}/policy/roles", timeout=15.0,
+                  headers={"x-worker-token": os.environ.get("MUNITAS_WORKER_TOKEN", "dev-worker-token-not-for-production")})
     r.raise_for_status()
     return set(r.json()["role_floor"].keys())
 

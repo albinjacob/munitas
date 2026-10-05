@@ -83,9 +83,9 @@ The single most important property is that **approval travels from the
 requesting side to the owning side**. That is what turns separation of duties
 from a string comparison into a relationship the database can hold.
 
-**Projects may span departments**, and that is precisely why the custodian sits
+**Projects may span departments**, and that is precisely why the approvers sit
 with the asset rather than with the project. A cardiology dataset used by a
-cross-departmental study is still approved by cardiology. Had the custodian sat
+cross-departmental study is still approved by cardiology. Had the approvers sat
 on the project, the study would approve its own access, which is self-approval
 moved up one organisational level and considerably harder to notice.
 
@@ -98,8 +98,10 @@ rather than department. That is the same structure with a different label on the
 box.
 
 Research-heavy organisations often replace a single custodian with a **Data
-Access Committee**. That is a custodian that happens to be a committee, and the
-model does not change: one accountable approver, which may be a group.
+Access Committee**. A department can name several approvers, so a committee is
+simply its members, and any one of them may act. The model does not change: the
+department is the accountable answer, and each decision names the person who
+made it.
 
 ---
 
@@ -109,11 +111,11 @@ Six personas, each with a reason to open the console.
 
 | Persona | Role | What they do | May approve |
 | --- | --- | --- | --- |
-| Data custodian | `data_custodian` | Approves access to their department's assets | **Yes**, access to their own department only |
+| Data custodian | `data_custodian` | Approves access to the departments they are an approver for, confirms sensitivity claims, and may bring data in | **Yes**, access to the departments they are an approver for, and no others |
 | De-identification reviewer | `deid_reviewer` | Reads what a de-identification run left behind, and decides whether it may be promoted | **Yes**, the gate only, and never a run they triggered |
 | Data protection officer | `dpo` | Reads everything including every denial, evidences compliance, handles erasure requests | No |
 | Researcher | `notebook_explore` | Requests access under a project, consumes de-identified data | No |
-| Data engineer | `pipeline_operator` | Runs pipelines, diagnoses failures | No |
+| Data engineer | `pipeline_operator` | Runs pipelines, brings data in, registers agents and pipelines, diagnoses failures | No |
 | Platform administrator | `platform_admin` | Keeps services running | No |
 
 The two approvals are different questions and are deliberately held by different
@@ -123,6 +125,56 @@ more widely at all**, which is a judgement about the data rather than about the
 requester. Giving both to the custodian would let the owner of a dataset clear
 their own department's output for wider use and then approve the requests to
 read it.
+
+### Who brings data in, and who registers code
+
+Bringing data in is the work of two roles: registering a dataset, putting files
+into it, fetching it from outside, sealing it and withdrawing an upload. The
+**data engineer** does it because it is their job, and the **data custodian**
+may do it because they own the data. Registering an agent or a pipeline, or a
+version of either, belongs to the **data engineer** alone. Researchers, data
+protection officers, reviewers, network architects and the platform
+administrator do none of these, and the platform refuses them and says why.
+
+The person who makes a sensitivity claim is never the one who confirms it. Any
+one approver of the department that owns the data confirms a claim made by
+anyone else, and nobody who is not an approver of that department does. When
+the person who made the claim is the department's only approver, the claim waits
+until the department has a second approver, who is added with a recorded reason
+and then confirms it. A custodian of another department has no say over this
+department's data, so every claim is checked by somebody who answers for the
+same data.
+
+A role is held by people, not by a single seat. An organisation may have several
+custodians or several data protection officers, and each decision is checked
+against the role the person holds.
+
+### Department approvers
+
+Two things are kept apart. A **role** says what kinds of act a person may do,
+and it belongs to the person: the data custodian role is asked for by the person,
+approved by a different custodian, and confirmed from time to time. A **department
+approver** is a position: it says whose data a person answers for. A person is
+an approver of a department when they hold the data custodian role and are
+listed for that department, and not otherwise. Hartley can be an approver for
+Cardiology and not for Oncology, even though he holds the same role as the
+approver for Oncology.
+
+A department has any number of approvers, and any one of them may approve access
+or confirm a claim, so a department is never blocked by one person being away.
+Any current approver may add another or remove one, with a reason that is
+recorded with who made the change and when. The person added must already hold
+the data custodian role: adding somebody to a department never grants the role.
+Temporary cover has an end date and lapses by itself. A department always keeps
+at least one permanent approver.
+
+An approver counts only while they hold the data custodian role. A person who is
+listed but whose role has lapsed, for example because a temporary grant ran out,
+stays in the list and in the history, and comes back by themselves if the role
+does, but they cannot act and the department does not count them. The console
+marks them. A department therefore never looks covered by somebody who cannot act,
+and the one permanent approver it must keep is one who can. The record of who answered for a department is
+never edited, so who was accountable on any date can always be answered.
 
 ### The data protection officer approves nothing, deliberately
 
@@ -225,7 +277,7 @@ Three layers, all enforced.
 | Layer | Claim | Enforced by |
 | --- | --- | --- |
 | Authority | The approver is a registered custodian | Foreign key from `access_lease.approved_by` |
-| Relationship | The approver is the custodian of the department owning the asset, and is not the requester | Policy, plus a self-approval check constraint |
+| Relationship | The approver is one of the approvers of the department owning the asset, and is not the requester | Policy, plus a self-approval check constraint |
 | Identity | The caller really is that approver | Ory Kratos session, verified by `platform/api/app/auth.py` |
 
 ### Human approval is authenticated, not asserted
@@ -266,33 +318,41 @@ task, so what needs proving there is which human's session a read is for:
 a delegation problem, addressed separately from the spawn-time credential
 above.
 
-The pipeline worker requests one of these tokens for the one read that
-needs it. The de-identification pipeline reads and writes several
-intermediate files per run, but only the first step (`adopt_version`,
-reading a dataset version somebody else registered and sealed) touches
-classified data somebody else owns; everything after it is the pipeline
-reading its own prior-step scratch output. Because `adopt_version` opens
-no per-step run of its own, its credential is scoped to the whole pipeline
-run instead, which both workflow engines open before this step and close
-once at the end, the same way a cloud CI system scopes a short-lived
-credential to the whole job rather than to each step inside it. That scope
-resolves from the run's own declared input: its `source_version_id` column
-for a console-triggered run, or the `input_versions` array a DAG engine's
-own runs can declare several of.
+Every step of the de-identification pipeline proves itself the same way.
+Each step opens its own run, which names the versions it reads (the redact
+step names two: the result of the step before it, and the recordings it
+masks), and the platform decides each read and records it. The first step
+(`adopt_version`, reading a dataset version somebody else registered and
+sealed) has no run of its own to name, so its credential is scoped to the
+whole pipeline run instead, which both workflow engines open before this
+step and close once at the end, the same way a cloud CI system scopes a
+short-lived credential to the whole job rather than to each step inside it.
+That scope resolves from the run's own declared input: its
+`source_version_id` column for a console-triggered run, or the
+`input_versions` array a DAG engine's own runs can declare several of,
+together with the versions its own steps sealed, which the scoring step
+reads.
 
 ### Writes are justified the same way reads are
 
-`pipeline_action`'s storage role is narrowed to `[Read, List, Tagging]`.
-Write access is granted per task through a `write_grant` table
+No storage role holds standing access to a bucket. A task that reads or
+writes is given a key of its own, made for that task, and the key ends with
+it. Write access is granted per task through a `write_grant` table
 (`platform/schema.sql`), one row per task that has legitimately reserved a
 version-location, issued through `POST /write-credentials` after the same
 task-credential proof `/credentials` requires for reads, verified against
 a real `action_run`, `pipeline_run`, or `huggingface_fetch_job` row rather
-than the caller's own say-so. Holding the role's static secret is not
-enough to write anywhere without a matching grant, enforced at the
-object-storage layer, not only by the API. List and Tagging stay standing
-bucket-wide: they expose object names, not contents or the ability to
-alter them, a materially smaller blast radius than Read or Write.
+than the caller's own say-so. The key a writer receives lets it write the one
+folder reserved for its output and nothing else, enforced at the
+object-storage layer, not only by the API.
+
+Each pipeline step, each derivation run, each pipeline run and each agent run
+reads with a key of its own. The key lists only the input folders the platform
+has allowed that task to read, and it contains no listing. It is removed when
+the task ends or fails, and when the six-hour life of the task credential runs
+out without the task asking again. A task that asks again after waiting, for
+example an agent run that waited for a person to approve access, receives its
+key again.
 
 ---
 
@@ -300,7 +360,8 @@ alter them, a materially smaller blast radius than Read or Write.
 
 | Table or column | Purpose |
 | --- | --- |
-| `department` table | Tenant, name, and the custodian principal |
+| `department` table | Tenant, name, and the person the department was made with |
+| `department_approver` table | Who answers for each department, since when and until when, and who changed it and why |
 | `project` table | Tenant, name, lead, declared purpose, lifespan |
 | `dataset.department_id` | Which department owns the asset |
 | `lease_request.project_id` | Which approved purpose the request is made under (nullable) |

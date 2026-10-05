@@ -13,6 +13,12 @@ mechanisms doing one job can only be trusted when they are literally the same
 code, and this file is thirty lines because that is all it should be.
 
     docker compose exec -T munitas-api python /app/reconcile-grants.py
+    docker compose exec -T munitas-api python /app/reconcile-grants.py --allow-shrink
+
+The safety guard refuses a print that would remove more than 40% of the prefix grants, which is what a mistake looks like. A deliberate
+change can look the same: when a role stops holding standing access (as the pipeline and agent roles did when every task was given a key
+of its own), the first print removes a large share at once. `--allow-shrink` is the one way to print it. Read the numbers in the refusal
+first; this does not ask again.
 
 What this cannot do
 -------------------
@@ -33,8 +39,9 @@ from app import db, grants  # noqa: E402
 
 def main() -> int:
     db.pool.open()
+    allow_shrink = "--allow-shrink" in sys.argv[1:]
     try:
-        result = grants.reconcile(trigger="manual")
+        result = grants.reconcile(armed=not allow_shrink, trigger="manual")
     except grants.UnsafeProjection as exc:
         print(f"refused: {exc}")
         return 1

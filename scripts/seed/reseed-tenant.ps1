@@ -35,7 +35,7 @@
 # here in full rather than buried in a flag.
 
 param(
-    [Parameter(Mandatory = $true)][ValidateSet("health", "finance")][string]$Tenant,
+    [Parameter(Mandatory = $true)][ValidateSet("health", "finance", "harbour")][string]$Tenant,
     [switch]$Force,
     [string]$WslDistro = "Ubuntu-20.04"
 )
@@ -54,6 +54,7 @@ $compose = Get-ComposePrefix -WslDistro $WslDistro -ProjectRoot $RepoRoot
 $Recipes = @{
     "health"    = @{ Sql = "infra\postgres\seed-organisation.sql"; Example = "scripts\seed\seed-health-example.py" }
     "finance" = @{ Sql = "infra\postgres\seed-finance.sql";      Example = "scripts\seed\seed-finance-example.py" }
+    "harbour" = @{ Sql = "infra\postgres\seed-harbour.sql";      Example = "scripts\seed\seed-harbour-example.py" }
 }
 $recipe = $Recipes[$Tenant]
 
@@ -108,6 +109,15 @@ cmd /c "echo $Tenant| `"$venvPython`" scripts\admin\nuke-tenant.py --tenant $Ten
 if ($LASTEXITCODE -ne 0) { throw "scripts/admin/nuke-tenant.py failed; nothing further was done." }
 }
 
+# Harbour is deleted by the closing walkthrough, and a deletion leaves a record that nothing may delete.
+# Rebuilding the demonstration organisation under the same name is a deliberate reset, so the earlier
+# record of its deletion is cleared inside one transaction, which puts the rule back whatever happens.
+# Only this organisation: any other record, and its audit rows, stay exactly as written.
+if ($Tenant -eq "harbour") {
+    Write-Host "    clearing the earlier record that harbour was deleted..."
+    Get-Scalar "begin; alter table tenant_deletion_record disable rule tenant_deletion_record_no_delete; delete from access_decision where tenant_id in (select tenant_id from tenant_deletion_record where original_tenant_id = 'harbour' or tenant_id = 'harbour'); delete from tenant_deletion_record where original_tenant_id = 'harbour' or tenant_id = 'harbour'; alter table tenant_deletion_record enable rule tenant_deletion_record_no_delete; commit; select count(*) from tenant_deletion_record where original_tenant_id = 'harbour'" | Out-Null
+}
+
 Write-Host "2/5 restoring the people from $($recipe.Sql)..."
 Get-Content (Join-Path $RepoRoot $recipe.Sql) -Raw |
     wsl -d $WslDistro -- bash -lc "$compose exec -T postgres psql -U munitas -d platform -f -" | Out-Null
@@ -151,7 +161,8 @@ Write-Host "  bucket             $resolved"
 $problems = @()
 if ([int]$datasets -eq 0) { $problems += "no datasets were created" }
 if ([int]$versions -eq 0) { $problems += "no versions were sealed" }
-if ([int]$pending -eq 0) { $problems += "no access request is pending, so no custodian has anything to decide" }
+# Harbour is shut down, not worked in, so it has no request waiting by design.
+if ($Tenant -ne "harbour" -and [int]$pending -eq 0) { $problems += "no access request is pending, so no custodian has anything to decide" }
 if ([int]$linked -eq 0) { $problems += "no login is connected to a person, so nobody can sign in as this tenant" }
 if ($resolved -eq "(none)") {
     $problems += "this tenant resolves to '$resolved' rather than a bucket of its own"

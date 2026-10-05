@@ -109,7 +109,7 @@ async def _pipeline_worker_pollers() -> int:
     return len(response.pollers)
 
 
-@router.get("/pipeline/served-backends")
+@router.get("/pipeline/served-backends", dependencies=[Depends(auth.person_or_worker)])
 def served_backends() -> dict:
     """Which object-storage backends the pipeline can read and write.
 
@@ -149,7 +149,7 @@ _ENDED_AS = {
 
 
 async def _workflow_ending(workflow_id: str):
-    """(ended_at, status, error) if Temporal says this workflow stopped, or
+    """(ended_at, status, error, source) if Temporal says this workflow stopped, or
     None if it is still running or Temporal cannot say.
 
     Used only for a run whose record is still open: a run that ended through
@@ -172,28 +172,28 @@ async def _workflow_ending(workflow_id: str):
     except RPCError as exc:
         if exc.status == RPCStatusCode.NOT_FOUND:
             return (datetime.now(timezone.utc), "unknown",
-                    "the job runner has no record of this run")
+                    "the job runner has no record of this run", "job_runner_no_record")
         return None
     if described.status in (None, WorkflowExecutionStatus.RUNNING):
         return None
     name = described.status.name
     status = _ENDED_AS.get(name, "unknown")
     error = None if status == "succeeded" else f"the job runner reports it {name.lower()}"
-    return described.close_time or datetime.now(timezone.utc), status, error
+    return described.close_time or datetime.now(timezone.utc), status, error, "job_runner"
 
 
 def _record_ending(run_id, ending) -> None:
-    """Close a still-open run record with the ending Temporal reported."""
-    ended_at, status, error = ending
+    """Close a still-open run record with the ending Temporal reported, and say that is where it came from."""
+    ended_at, status, error, source = ending
     db.execute(
         """update pipeline_run
-              set status = %s, error = %s, ended_at = %s
+              set status = %s, error = %s, ended_at = %s, ended_source = %s
             where id = %s and ended_at is null""",
-        (status, error, ended_at, run_id),
+        (status, error, ended_at, source, run_id),
     )
 
 
-@router.get("/pipeline/kinds")
+@router.get("/pipeline/kinds", dependencies=[Depends(auth.person_or_worker)])
 def pipeline_kinds() -> dict:
     """Which pipeline kinds this process knows how to start.
 
@@ -438,7 +438,9 @@ async def start_deidentification(
         # that it did not start, which is the question asked afterwards; a
         # deleted row answers nothing.
         db.execute(
-            "update pipeline_run set ended_at = now() where id = %s", (run_id,)
+            "update pipeline_run set status = 'failed', error = %s, ended_at = now(), ended_source = 'start_failed' "
+            "where id = %s",
+            (f"could not start the background job: {exc}", run_id),
         )
         raise HTTPException(502, {"started": False, "reasons": [
             f"could not start the background job: {exc}"
@@ -534,7 +536,7 @@ async def read_pipeline_run(
         if ending:
             _record_ending(row["id"], ending)
             row = {**row, **db.one(
-                "select status, error, ended_at from pipeline_run where id = %s",
+                "select status, error, ended_at, ended_source from pipeline_run where id = %s",
                 (row["id"],))}
         elif not temporal_client.connected():
             status_error = "could not reach the job runner, so this may have finished"
@@ -550,6 +552,7 @@ async def read_pipeline_run(
         "status_error": status_error,
         "started_at": row["started_at"],
         "ended_at": row["ended_at"],
+        "ended_source": row["ended_source"],
         "triggered_by": row["triggered_by"],
         "triggered_by_label": row["triggered_by_label"],
         "started_from": row["started_from"],

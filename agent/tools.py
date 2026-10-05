@@ -136,9 +136,13 @@ def _version(ctx: ToolContext, version_id: str, timeout: float = 20.0):
     A version in another organisation comes back 404, so the caller cannot tell
     it apart from one that was never there.
     """
+    # The run's own signed credential, which names the organisation. Without it the control
+    # plane answers nobody, because this read returns a version's storage keys.
+    headers = {"x-task-credential": ctx.identity.run_secret} if ctx.identity.run_secret else {}
     return httpx.get(
         f"{API}/dataset-versions/{version_id}",
         params={"tenant_id": ctx.identity.tenant},
+        headers=headers,
         timeout=timeout,
     )
 
@@ -312,8 +316,9 @@ def _egress_status(ctx: ToolContext) -> tuple[set[str], str | None]:
     Asked fresh on every call, the same "checked every time, not just
     once" posture every other tool in this module already takes (see this
     module's own docstring). `GET /agent-versions/{id}/egress-status`
-    takes no session, the same reason `GET /dataset-versions/{id}`
-    (`main.py`) does not either: the caller is a workload, not a person.
+    takes no session, because the caller is a workload, not a person.
+    (`GET /dataset-versions/{id}` is different: it carries storage keys, so
+    `_version` presents the run's own signed credential.)
     Treated as "nothing approved" if the call fails, the same fail-closed
     posture `opa.py`'s `PolicyUnavailable` takes when the policy engine
     itself cannot be reached -- an egress check that quietly allowed
@@ -323,6 +328,7 @@ def _egress_status(ctx: ToolContext) -> tuple[set[str], str | None]:
     try:
         response = httpx.get(
             f"{API}/agent-versions/{ctx.identity.agent_version_id}/egress-status",
+            headers={"x-task-credential": ctx.identity.run_secret} if ctx.identity.run_secret else {},
             timeout=10.0,
         )
         response.raise_for_status()

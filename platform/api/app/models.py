@@ -35,6 +35,9 @@ class SchemaContractIn(BaseModel):
 class DatasetIn(BaseModel):
     tenant_id: str
     name: str
+    # The version this dataset is made from, when it is the output of a step that read one. The dataset then belongs to the same
+    # department as the dataset that version belongs to: a dataset with no owning department is one nobody can approve access to.
+    derived_from_version_id: str | None = None
 
 
 class DatasetVersionIn(BaseModel):
@@ -50,6 +53,25 @@ class DatasetVersionIn(BaseModel):
     # unmodified, while a caller that wants a specific backend (verify's
     # own U57 checks, a future console flow) can still name one explicitly.
     storage_backend: Literal["seaweedfs", "r2"] = "seaweedfs"
+    # Which object in `object_manifest` holds this version's records, shaped by
+    # `schema_id`'s contract. When it is given, the platform also writes the
+    # version as an Iceberg table (iceberg.py), so a standard tool can read it.
+    # Optional, because a version made of files has no rows to put in a table,
+    # and every existing caller leaves it out. The name chooses the shape.
+    records_key: str | None = Field(default=None, description=(
+        "The object in object_manifest that holds this version's rows, which the platform also writes as a table. Its name "
+        "chooses the shape: a name ending in .parquet is a Parquet file, one ending in .ndjson or .jsonl is one JSON row per "
+        "line, and any other name is a JSON list of rows. A JSON list is read whole and is limited to 32 MB; the other two are "
+        "read in batches and are limited to 2 GB, so a large table is sent as one of them. Parquet columns are matched to the "
+        "contract by name and must have a fitting type. Leave it out for a version made of files."))
+    # Whether this version must be a table. Left out, the platform's default applies: a version that names a records
+    # file is refused when its table cannot be written because of the data or a fault, and nothing is left behind.
+    # `false` seals the files without a table and records why not.
+    table_required: bool | None = None
+    # Where the table is written. "inline" writes it while this request waits, and refuses a records file too large for
+    # that. "background" hands it to a table worker and answers 202 with a job. Left out, the platform decides by the size
+    # of the records file.
+    table_mode: Literal["inline", "background"] | None = None
 
 
 class ActionRunIn(BaseModel):
@@ -120,6 +142,12 @@ class CredentialRequest(BaseModel):
     # is agent-specific and a pipeline task has no equivalent id to pair it
     # with -- the token itself carries which action_run it is.
     task_credential: str | None = None
+    # Ask for the decision only, and no storage key. For a person reaching data
+    # through a workspace that issues its own scoped key (the Iceberg catalog),
+    # so the roles that hold no key themselves, such as analyst, are decided on
+    # their real role and not refused at the key. The workspace records the
+    # grant row itself once its key exists. People only.
+    decide_only: bool = False
 
 
 class WriteCredentialRequest(BaseModel):
@@ -214,6 +242,18 @@ class EndPipelineRun(BaseModel):
     error: str | None = Field(default=None, max_length=2000)
 
 
+class CatalogTokenIn(BaseModel):
+    """What a person says when they ask for a token for their own tools.
+
+    The purpose is the same sentence a lease is approved for. A table opened
+    with this token is decided on it, exactly as a credential request is, so a
+    token whose purpose is not the purpose of the person's lease opens nothing
+    that lease covers.
+    """
+    purpose: str = Field(min_length=3, max_length=200)
+    hours: float = Field(default=8, gt=0, le=72)
+
+
 class AccessPreviewIn(BaseModel):
     dataset_ids: list[UUID] = Field(default_factory=list)
     version_ids: list[UUID] = Field(default_factory=list)
@@ -242,3 +282,29 @@ class DatasetAccess(BaseModel):
 class AccessPreview(BaseModel):
     versions: dict[str, VersionAccess]
     datasets: dict[str, DatasetAccess]
+
+
+class DerivationInput(BaseModel):
+    """One dataset a derivation reads. The SQL refers to it by its alias, which
+    defaults to the dataset's name with anything that is not a letter or digit
+    turned into an underscore."""
+    dataset: str = Field(min_length=1, max_length=120)
+    version: int | None = Field(default=None, ge=1)
+    alias: str | None = Field(default=None, pattern=r"^[A-Za-z_][A-Za-z0-9_]{0,62}$")
+
+
+class DerivationDraftIn(BaseModel):
+    """A request to make a new dataset from a query, before anything is run."""
+    inputs: list[DerivationInput] = Field(min_length=1, max_length=8)
+    sql: str = Field(min_length=1, max_length=20000)
+    target_name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{1,80}$")
+    primary_key: list[str] = Field(min_length=1, max_length=8)
+    purpose: str = Field(min_length=3, max_length=200)
+
+
+class DerivationConfirmIn(BaseModel):
+    """The person's decision on a draft. Sensitivities may be raised and never
+    lowered: a field already carries at least the sensitivity of what it was
+    computed from."""
+    sensitivities: dict[str, Literal["none", "quasi", "direct", "phi"]] = Field(default_factory=dict)
+

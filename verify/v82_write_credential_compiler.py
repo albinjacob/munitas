@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 import uuid
 
 from common import (PIPELINE, api, bucket_for, check, fixture_contract,
@@ -87,18 +88,25 @@ def main() -> int:
     contract = fixture_contract(tenant)
     bucket = bucket_for(tenant)
 
-    heading("U85: the old static key can no longer write outside a granted prefix")
+    heading("U85: neither the old shared key nor the organisation's own key can write outside a granted prefix")
+
+    def refused(client, key: str) -> str:
+        try:
+            client.put_object(Bucket=bucket, Key=key, Body=b"{}")
+            return "written"
+        except Exception as exc:  # noqa: BLE001 - the refusal itself is the assertion
+            return "AccessDenied" if "AccessDenied" in str(exc) or "403" in str(exc) else type(exc).__name__ + ": " + str(exc)[:80]
+
+    sys.path.insert(0, "/app")
+    from app import grants as app_grants
 
     stray_key = f"{tenant}/v82-stray/{uuid.uuid4().hex}.json"
-    static_client = s3_client(PIPELINE_S3_KEY, PIPELINE_S3_SECRET)
-    denied = False
-    try:
-        static_client.put_object(Bucket=bucket, Key=stray_key, Body=b"{}")
-    except Exception as exc:  # noqa: BLE001 - the refusal itself is the assertion
-        denied = "AccessDenied" in str(exc) or "403" in str(exc)
-    check("the static pipeline-action key cannot PutObject with no write_grant",
-          denied,
-          "denied as expected" if denied else "the write succeeded, which means Write is still standing")
+    shared = refused(s3_client(PIPELINE_S3_KEY, PIPELINE_S3_SECRET), stray_key)
+    check("the old shared pipeline-action key no longer exists, so it cannot write at all",
+          shared != "written" and "InvalidAccessKeyId" in shared, shared)
+    own_key, own_secret = app_grants.tenant_role_key("pipeline_action", tenant)
+    own = refused(s3_client(own_key, own_secret), stray_key)
+    check("the organisation's own pipeline key cannot PutObject with no write_grant", own == "AccessDenied", own)
 
     heading("U85: a dataset with no registered pipeline_action workload cannot ask")
 
@@ -192,6 +200,42 @@ def main() -> int:
             blocked = "AccessDenied" in str(exc) or "403" in str(exc)
         check("the scoped credential cannot write outside its own granted prefix",
               blocked, "" if blocked else "the write outside the granted prefix succeeded")
+
+        heading("U85: the credential is the task's own key, and ends when the task stops asking")
+
+        from app import grants as app_grants
+
+        mine = app_grants.tenant_role_key("pipeline_action", tenant)
+        check("the key handed out is the task's own, not the organisation's pipeline key and not a key shared by every organisation",
+              body.get("identity") == "task" and body["access_key"].startswith("run-") and body["access_key"] != mine[0],
+              f"{body.get('identity')} {body['access_key']}")
+        # A grant lasts as long as its task keeps asking. Here the task is taken to have stopped asking a day and an hour ago.
+        from common import db as database
+        with database() as conn:
+            conn.execute("update write_grant set renewed_at = now() - interval '25 hours' where tenant_id = %s", (tenant,))
+        from app import db as app_db
+        if app_db.pool.closed:
+            app_db.pool.open()
+        app_grants.reconcile(trigger="manual")
+        time.sleep(4)
+        still = True
+        try:
+            scoped_client.put_object(Bucket=body["bucket"], Key=f"{body['prefix']}/after-the-grant-ended.json", Body=b"{}")
+        except Exception as exc:  # noqa: BLE001
+            # The key is removed from storage altogether once the grant has lapsed, which is stricter than a refusal.
+            still = False if ("AccessDenied" in str(exc) or "403" in str(exc) or "InvalidAccessKeyId" in str(exc)) else exc
+        check("once the task has stopped asking, the key can no longer write into the folder it was granted", still is False, repr(still)[:120])
+        again = api("POST", "/write-credentials", json={
+            "principal": PIPELINE, "principal_kind": "workload", "roles": ["pipeline_action"], "tenant_id": tenant,
+            "dataset_id": dataset_id, "purpose": "this run's own sealed output", "task_credential": token})
+        check("a task that asks again is granted again", again.status_code == 200, f"HTTP {again.status_code}")
+        time.sleep(4)
+        wrote_again = True
+        try:
+            scoped_client.put_object(Bucket=body["bucket"], Key=f"{body['prefix']}/after-it-asked-again.json", Body=b"{}")
+        except Exception as exc:  # noqa: BLE001
+            wrote_again = False
+        check("and the same key writes into the folder again", wrote_again)
     else:
         check("the minted credential actually writes into the granted prefix",
               False, "no credential was granted, so this could not be checked")

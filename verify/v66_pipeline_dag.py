@@ -38,7 +38,7 @@ steps:
   - name: decide
     kind: gate
     depends_on: [count]
-    to_class: AL
+    to_class: OPEN_FOR_ANNOTATION
     inputs:
       recommendation: "${steps.count.recommendation}"
       recommendation_reason: "${steps.count.reason}"
@@ -89,7 +89,7 @@ steps:
   - name: decide
     kind: gate
     depends_on: [score]
-    to_class: AL
+    to_class: OPEN_FOR_ANNOTATION
     inputs:
       recommendation: "${steps.score.recommendation}"
       recommendation_reason: "${steps.score.reason}"
@@ -152,11 +152,11 @@ name: fixture
 steps:
   - name: a
     kind: gate
-    to_class: AL
+    to_class: OPEN_FOR_ANNOTATION
     inputs: {recommendation: "pass", recommendation_reason: "x"}
   - name: b
     kind: gate
-    to_class: AL
+    to_class: OPEN_FOR_ANNOTATION
     inputs: {recommendation: "pass", recommendation_reason: "x"}
 """)
     problems = validate_dag(two_gates, set())
@@ -296,7 +296,7 @@ steps:
   - name: decide
     kind: gate
     depends_on: [pause]
-    to_class: AL
+    to_class: OPEN_FOR_ANNOTATION
     inputs:
       recommendation: "${steps.pause.recommendation}"
       recommendation_reason: "${steps.pause.reason}"

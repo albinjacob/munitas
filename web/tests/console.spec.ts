@@ -12,7 +12,7 @@
  */
 
 import { expect, test } from "@playwright/test";
-import { bearerFor, loginAs } from "./auth-helpers";
+import { actingHeaders, bearerFor, loginAs } from "./auth-helpers";
 import { CLASS_LABEL } from "../src/api/types";
 import { API_BASE } from "../config/ports";
 
@@ -72,7 +72,7 @@ async function api<T>(path: string, headers?: Record<string, string>): Promise<T
 async function post<T>(path: string, body: unknown, headers?: Record<string, string>): Promise<T> {
   const response = await fetch(API + path, {
     method: "POST",
-    headers: { "content-type": "application/json", ...(headers ?? {}) },
+    headers: { "content-type": "application/json", ...(headers ?? (await actingHeaders("POST", path, body))) },
     body: JSON.stringify(body),
   });
   if (!response.ok) {
@@ -617,11 +617,223 @@ test.describe("U37: bringing data in through the console", () => {
     // Confirmed in the platform, not just off the screen. The queue endpoint
     // is the one that matters: it is what decides whether this claim still
     // blocks release, and its own query already excludes anything confirmed.
-    const stillWaiting = await api<{ id: string }[]>(
+    const stillWaiting = await api<{ items: { id: string }[] }>(
       `/datasets/awaiting-confirmation?tenant_id=${CANARY}&custodian=canary-custodian`,
       await canaryAuth(),
     );
-    expect(stillWaiting.some((d) => d.id === registered.id)).toBe(false);
+    expect(stillWaiting.items.some((d) => d.id === registered.id)).toBe(false);
+  });
+
+  test("a queue longer than a page says how many are waiting, and shows more on request", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    const department = await api<{ departments: { id: string; name: string }[] }>(
+      `/organisation?tenant_id=${CANARY}`,
+      await canaryAuth(),
+    ).then((o) => o.departments.find((d) => d.name === "Verification")!);
+    const custodianAuth = await bearerFor("canary-custodian");
+    const before = await api<{ total: number }>(
+      `/datasets/awaiting-confirmation?tenant_id=${CANARY}&custodian=canary-custodian`,
+      await canaryAuth(),
+    );
+    // Enough claims to run past the first 100, whatever is already waiting.
+    const need = Math.max(101 - before.total, 0) + 2;
+    const made: string[] = [];
+    try {
+      for (let i = 0; i < need; i++) {
+        const r = await post<{ id: string }>("/datasets/register", {
+          tenant_id: CANARY,
+          name: `console-queue-page-${Date.now()}-${i}`,
+          department_id: department.id,
+          registered_by: "canary-engineer",
+          provenance: "external_public",
+          declared_class: "PUBLISHED",
+          modality: [],
+        });
+        made.push(r.id);
+      }
+      const total = before.total + made.length;
+      expect(total).toBeGreaterThan(100);
+
+      await loginAs(page, "canary-custodian");
+      await expect(page.getByTestId("arrivals-count")).toContainText(
+        `Showing 100 of ${total} waiting`,
+      );
+      await expect(page.getByTestId("awaiting-confirmation").locator("li")).toHaveCount(100);
+
+      await page.getByTestId("arrivals-show-more").click();
+      await expect(page.getByTestId("awaiting-confirmation").locator("li")).toHaveCount(
+        Math.min(total, 200),
+      );
+      if (total <= 200) {
+        await expect(page.getByTestId("arrivals-count")).toHaveCount(0);
+      }
+    } finally {
+      // Leave the queue as it was found, so later tests see their own claim in the first page.
+      for (const id of made) {
+        await post(`/datasets/${id}/confirm-classification`, { confirmed_by: "canary-custodian" }, custodianAuth).catch(() => undefined);
+      }
+    }
+  });
+
+  test("each role is offered only the registration actions it may use", async ({ page }) => {
+    const cases: { person: string; datasets: boolean; agents: boolean; pipelines: boolean }[] = [
+      { person: "canary-engineer", datasets: true, agents: true, pipelines: true },
+      { person: "canary-custodian", datasets: true, agents: false, pipelines: false },
+      { person: "canary-researcher", datasets: false, agents: false, pipelines: false },
+      { person: "canary-dpo", datasets: false, agents: false, pipelines: false },
+      { person: "ops-priya", datasets: false, agents: false, pipelines: false },
+    ];
+    for (const c of cases) {
+      await loginAs(page, c.person);
+      await page.goto("/datasets");
+      await expect(page.getByRole("heading", { name: "Datasets", exact: true })).toBeVisible();
+      await expect(page.getByTestId("datasets-register-link")).toHaveCount(c.datasets ? 1 : 0);
+      await page.goto("/agents");
+      await expect(page.getByRole("heading", { name: "Agents", exact: true })).toBeVisible();
+      await expect(page.getByTestId("agents-register-link")).toHaveCount(c.agents ? 1 : 0);
+      await page.goto("/pipelines");
+      await expect(page.getByRole("heading", { name: "Pipelines", exact: true })).toBeVisible();
+      await expect(page.getByTestId("pipelines-register-link")).toHaveCount(c.pipelines ? 1 : 0);
+    }
+  });
+
+  test("a claim the only approver made waits for a second approver, and no outside custodian can confirm it", async ({ page }) => {
+    const department = await api<{ departments: { id: string; name: string }[] }>(
+      `/organisation?tenant_id=${CANARY}`,
+      await canaryAuth(),
+    ).then((o) => o.departments.find((d) => d.name === "Verification")!);
+    const name = `console-second-approver-${Date.now()}`;
+    const registered = await post<{ id: string }>("/datasets/register", {
+      tenant_id: CANARY,
+      name,
+      department_id: department.id,
+      registered_by: "canary-custodian",
+      provenance: "external_public",
+      declared_class: "PUBLISHED",
+      modality: [],
+    });
+    const makerAuth = await bearerFor("canary-custodian");
+    const outsiderAuth = await bearerFor("canary-elsewhere");
+    const arrival = (id: string) => page.getByTestId("awaiting-confirmation").locator(`[data-arrival="${id}"]`);
+
+    try {
+      // Nobody sees it in a queue: the maker cannot confirm it, and a custodian of another department has no say over this department's data.
+      await loginAs(page, "canary-custodian");
+      await expect(page.getByTestId("custodian-stats")).toBeVisible();
+      await expect(arrival(registered.id)).toHaveCount(0);
+      await loginAs(page, "canary-elsewhere");
+      await expect(page.getByTestId("custodian-stats")).toBeVisible();
+      await expect(arrival(registered.id)).toHaveCount(0);
+
+      // The platform refuses the outsider, and says what has to happen first.
+      const refused = await fetch(`${API}/datasets/${registered.id}/confirm-classification`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...outsiderAuth },
+        body: JSON.stringify({ confirmed_by: "canary-elsewhere" }),
+      });
+      expect(refused.status).toBe(403);
+      expect(JSON.stringify(await refused.json())).toContain("waits until the department has a second approver");
+
+      // The department's own screen says the same to its approver.
+      await loginAs(page, "canary-custodian");
+      await page.goto("/departments");
+      await expect(page.getByTestId(`single-approver-${department.id}`)).toContainText("cannot be confirmed until a second approver is added");
+
+      // Once a second approver is added, with a reason, that approver sees the claim and confirms it.
+      await post(
+        `/departments/${department.id}/approvers`,
+        { person_id: "canary-elsewhere", reason: "second approver so claims can be checked", valid_until: null },
+        makerAuth,
+      );
+      await loginAs(page, "canary-elsewhere");
+      await expect(arrival(registered.id)).toBeVisible();
+      await arrival(registered.id).getByTestId(`confirm-${registered.id}`).click();
+      await expect(arrival(registered.id)).toHaveCount(0);
+    } finally {
+      // Back to one approver, so the next run meets the same department.
+      await post(
+        `/departments/${department.id}/approvers/canary-elsewhere/remove`,
+        { reason: "the check is finished" },
+        makerAuth,
+      ).catch(() => undefined);
+    }
+  });
+
+  test("an approver listed without the custodian role is marked, and does not count toward a single approver's warning", async ({ page }) => {
+    // The platform reports `holds_role`; the screen has to say so. A listed approver who cannot act is made up here, because making a real
+    // role lapse needs a grant that runs out.
+    await page.route("**/organisation?*", async (route) => {
+      const response = await route.fetch();
+      const body = await response.json();
+      for (const d of Array.isArray(body.departments) ? body.departments : []) {
+        if (d.name === "Elsewhere") {
+          d.approvers = [
+            ...d.approvers.map((a: object) => ({ ...a, holds_role: true })),
+            { person_id: "lapsed-person", label: "Lapsed person", added_at: new Date().toISOString(), valid_until: null, holds_role: false },
+          ];
+        }
+      }
+      await route.fulfill({ response, json: body });
+    });
+    await loginAs(page, "canary-elsewhere");
+    await page.goto("/departments");
+    const organisation = await api<{ departments: { id: string; name: string }[] }>(`/organisation?tenant_id=canary`, await canaryAuth());
+    const id = organisation.departments.find((d) => d.name === "Elsewhere")!.id;
+    await expect(page.getByTestId("dormant-lapsed-person")).toContainText("Does not hold the Data custodian role now");
+    // One approver can act, so the single-approver warning still shows although two people are listed.
+    await expect(page.getByTestId(`single-approver-${id}`)).toBeVisible();
+  });
+
+  test("an approver adds and removes another approver, with reasons, and the last permanent one stays", async ({ page }) => {
+    const organisation = await api<{ departments: { id: string; name: string }[] }>(
+      `/organisation?tenant_id=${CANARY}`,
+      await canaryAuth(),
+    );
+    const id = organisation.departments.find((d) => d.name === "Elsewhere")!.id;
+    const elsewhereAuth = await bearerFor("canary-elsewhere");
+    try {
+      await loginAs(page, "canary-elsewhere");
+      await page.goto("/departments");
+      await expect(page.getByTestId(`approvers-${id}`).locator('[data-approver="canary-elsewhere"]')).toContainText("permanent");
+
+      // Only people who hold the Data custodian role and are not approvers yet are offered.
+      await page.getByTestId(`add-person-${id}`).selectOption("canary-custodian");
+      await page.getByTestId(`add-reason-${id}`).fill("covers while the department's custodian is away");
+      await page.getByTestId(`add-submit-${id}`).click();
+      await expect(page.getByTestId(`approvers-${id}`).locator('[data-approver="canary-custodian"]')).toBeVisible();
+
+      await page.getByTestId(`remove-${id}-canary-custodian`).click();
+      await page.getByTestId(`remove-reason-${id}`).fill("back to one approver");
+      await page.getByTestId(`confirm-remove-${id}`).click();
+      await expect(page.getByTestId(`approvers-${id}`).locator('[data-approver="canary-custodian"]')).toHaveCount(0);
+
+      // The last permanent approver cannot be removed, and the screen says why.
+      await page.getByTestId(`remove-${id}-canary-elsewhere`).click();
+      await page.getByTestId(`remove-reason-${id}`).fill("leaving");
+      await page.getByTestId(`confirm-remove-${id}`).click();
+      await expect(page.getByTestId(`remove-error-${id}`)).toContainText("always keeps at least one permanent approver");
+      await expect(page.getByTestId(`approvers-${id}`).locator('[data-approver="canary-elsewhere"]')).toBeVisible();
+    } finally {
+      // Leave the department as it was found, whatever happened above.
+      await post(`/departments/${id}/approvers/canary-custodian/remove`, { reason: "test cleanup" }, elsewhereAuth).catch(() => undefined);
+    }
+  });
+
+  test("somebody who is not an approver cannot change the list, and the data protection officer reads its history", async ({ page }) => {
+    await loginAs(page, "canary-researcher");
+    await page.goto("/departments");
+    await expect(page.getByText("Only an approver of this department can change this list.").first()).toBeVisible();
+    await expect(page.locator('[data-testid^="add-form-"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid^="history-toggle-"]')).toHaveCount(0);
+
+    await loginAs(page, "canary-dpo");
+    await page.goto("/departments");
+    await expect(page.locator('[data-testid^="add-form-"]')).toHaveCount(0);
+    const toggle = page.locator('[data-testid^="history-toggle-"]').first();
+    await toggle.click();
+    await expect(page.locator('[data-testid^="history-"]:not([data-testid^="history-toggle-"])').first()).toContainText(/carried over from the department|named when the department was made/);
   });
 
   test("selecting several files at once uploads and lists every one of them", async ({
@@ -862,10 +1074,10 @@ test.describe("U42: fetching a dataset directly from HuggingFace", () => {
 
     // The claim was never asserted; it was verified by the fetch. Confirmed
     // by checking the queue it would otherwise be sitting in.
-    const waiting = await api<{ name: string }[]>(
+    const waiting = await api<{ items: { name: string }[] }>(
       `/datasets/awaiting-confirmation?tenant_id=${CANARY}&custodian=canary-custodian`,
     );
-    expect(waiting.some((d) => d.name === name)).toBe(false);
+    expect(waiting.items.some((d) => d.name === name)).toBe(false);
   });
 
   test("a repo that does not exist is refused, not a server error", async ({

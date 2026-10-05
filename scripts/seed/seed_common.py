@@ -95,3 +95,33 @@ def expect(response, *allowed: int, doing: str):
             "script, which does nothing once its datasets exist."
         )
     return response
+
+
+# How a seed script authenticates, by route (the same rule as verify/common.py). The routes the platform's own workers use take the
+# worker token; the ones a person uses take that person's session, and the person is the one the request names, because the platform
+# acts as the signed-in person and refuses a name that is not theirs.
+WORKER_HEADERS = {"x-worker-token": os.environ.get("MUNITAS_WORKER_TOKEN", "dev-worker-token-not-for-production")}
+_WORKER_ROUTES = (
+    ("POST", r"/schema-contracts"), ("POST", r"/datasets"), ("POST", r"/action-runs"), ("POST", r"/pipeline-runs"),
+    ("POST", r"/write-credentials"), ("POST", r"/credentials"), ("POST", r"/dataset-versions"),
+    ("POST", r"/dataset-versions/[^/]+/promote"), ("GET", r"/policy/roles"), ("GET", r"/datasets/[^/]+/next-version"),
+)
+_PERSON_ROUTES = (
+    ("POST", r"/datasets/register", "registered_by"), ("POST", r"/agents/register", "registered_by"),
+    ("POST", r"/pipelines/register", "registered_by"), ("POST", r"/datasets/[^/]+/confirm-classification", "confirmed_by"),
+    ("POST", r"/datasets/[^/]+/fetch-huggingface", "fetched_by"),
+)
+
+
+def acting_headers(method: str, path: str, kwargs: dict) -> dict[str, str] | None:
+    import re
+
+    for verb, pattern in _WORKER_ROUTES:
+        if method == verb and re.fullmatch(pattern, path):
+            return WORKER_HEADERS
+    for verb, pattern, field in _PERSON_ROUTES:
+        if method == verb and re.fullmatch(pattern, path):
+            body = kwargs.get("json")
+            if isinstance(body, dict) and body.get(field):
+                return bearer_for(body[field])
+    return None

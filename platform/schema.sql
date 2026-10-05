@@ -411,6 +411,9 @@ alter table action_run
 -- exemption is a subquery rather than a column on this table on purpose: the
 -- answer belongs to the tenant, and copying it here would be a second place
 -- for it to be wrong.
+--
+-- The delete rule is redefined near the end of this file, where the one exemption a
+-- purge needs is added; the function it asks is defined there.
 drop rule if exists dataset_version_no_update on dataset_version;
 create rule dataset_version_no_update as
   on update to dataset_version
@@ -524,6 +527,12 @@ create table if not exists write_grant (
 );
 
 create index if not exists write_grant_role_idx on write_grant (role, bucket, storage_prefix);
+
+-- A write grant is a key to a folder, so it lasts as long as the task that asked for it keeps asking, and then ends. It used
+-- to last for ever, on the argument that the folder becomes a sealed version's and is write-once; but the KEY would still open
+-- it, so a key that held every grant ever made could write into every sealed folder. `renewed_at` is the last time the task
+-- asked, and the permissions are compiled only from grants renewed within WRITE_GRANT_ACTIVE_SECONDS.
+alter table write_grant add column if not exists renewed_at timestamptz not null default now();
 
 -- huggingface_fetch_job added after this table's first release: a HuggingFace
 -- fetch job proves itself the same way an action_run or pipeline_run does
@@ -812,18 +821,25 @@ end $$;
 -- A null custodian is meaningful: the dataset has no department, so nobody is
 -- accountable and nobody can approve access to it. The console must show that
 -- as an unowned asset rather than as an empty dropdown.
-create or replace view version_custodian as
-select
-  dv.id            as dataset_version_id,
-  dv.tenant_id,
-  d.id             as dataset_id,
-  d.name           as dataset_name,
-  dept.id          as department_id,
-  dept.name        as department_name,
-  dept.custodian   as custodian
-from dataset_version dv
-join dataset d           on d.id = dv.dataset_id
-left join department dept on dept.id = d.department_id;
+--
+-- Made once, as it was first written. The version in force gained a column (`approvers`) further down, where the function it reads is defined;
+-- replacing it here again would try to drop that column, which a view refuses, and this file must stay safe to run over a database that has it.
+do $$ begin
+  if not exists (select 1 from pg_views where schemaname = current_schema() and viewname = 'version_custodian') then
+    create view version_custodian as
+    select
+      dv.id            as dataset_version_id,
+      dv.tenant_id,
+      d.id             as dataset_id,
+      d.name           as dataset_name,
+      dept.id          as department_id,
+      dept.name        as department_name,
+      dept.custodian   as custodian
+    from dataset_version dv
+    join dataset d           on d.id = dv.dataset_id
+    left join department dept on dept.id = d.department_id;
+  end if;
+end $$;
 
 -- ------------------------------------------------------- effective class --
 
@@ -1697,6 +1713,33 @@ do $$ begin
     check ((status = 'running') = (ended_at is null));
 end $$;
 
+-- Where a run's recorded ending came from, set by code in the same statement that sets the end time. The status says how a run ended; this says
+-- how that was found out, which matters when the status is 'unknown' or a failure:
+--   workflow              the pipeline's own workflow reported it as it finished;
+--   job_runner            the workflow never reported (killed from outside, or its worker died), so the job runner's account was written in its place;
+--   job_runner_no_record  the job runner had already forgotten the run (it keeps a finished one for 24 hours here), so the status is 'unknown';
+--   start_failed          the workflow could not be started at all, so the run never began;
+--   not_recorded          the run ended before this column existed and nothing recorded how that was found out.
+-- Present exactly when there is an end time, so a code path that ends a run without saying how is refused by the database, not left to a free-text note.
+alter table pipeline_run add column if not exists ended_source text;
+do $$ begin
+  alter table pipeline_run disable trigger refuse_retired_pipeline_run;
+  update pipeline_run set ended_source = case
+      when status = 'unknown' and error like 'the job runner has no record%' then 'job_runner_no_record'
+      when error like 'the job runner reports it %' then 'job_runner'
+      else 'not_recorded' end
+   where ended_at is not null and ended_source is null;
+  alter table pipeline_run enable trigger refuse_retired_pipeline_run;
+end $$;
+do $$ begin
+  alter table pipeline_run drop constraint if exists pipeline_run_ended_source_valid;
+  alter table pipeline_run add constraint pipeline_run_ended_source_valid
+    check (ended_source in ('workflow', 'job_runner', 'job_runner_no_record', 'start_failed', 'not_recorded'));
+  alter table pipeline_run drop constraint if exists pipeline_run_ended_source_matches_end;
+  alter table pipeline_run add constraint pipeline_run_ended_source_matches_end
+    check ((ended_source is null) = (ended_at is null));
+end $$;
+
 -- One storage key per lease, rather than one per job title.
 --
 -- Six key pairs served the whole platform, one per role, so every researcher
@@ -1753,6 +1796,71 @@ create trigger refuse_retired_tenant_storage_identity
   before insert or update on storage_identity
   for each row execute function refuse_write_to_retired_tenant();
 
+-- One storage key per derivation run, rather than the pipeline role's key for the whole organisation.
+--
+-- A derivation reads its input tables through staging containers. Until now each was handed pipeline_action~<organisation>, a key that
+-- opens the organisation's whole bucket for reading, so storage did not repeat a decision the policy had made for one version. The key
+-- of a run opens only the folders of the inputs that run was allowed to read, and it ends with the run.
+--
+-- `task_read_grant` is to a read what write_grant is to a write: written when the platform allows a read for a task, and the source the
+-- permissions are compiled from. A grant counts only while its action run is running and inside the task credential's lifetime.
+alter table action_run add column if not exists failure_reason text;
+
+alter table storage_identity add column if not exists action_run_id uuid references action_run(id);
+create unique index if not exists storage_identity_one_per_action_run
+  on storage_identity (action_run_id) where action_run_id is not null;
+
+-- The standing ingest key is the one identity with no subject but its organisation, so a run's key must be excluded from that
+-- uniqueness or the second run of an organisation would be refused. The index is redefined once, below, when every kind of run
+-- has its column.
+
+create table if not exists task_read_grant (
+  id                 uuid primary key,
+  tenant_id          text not null references tenant(id),
+  action_run_id      uuid not null references action_run(id),
+  dataset_version_id uuid not null references dataset_version(id),
+  created_at         timestamptz not null default now(),
+  unique (action_run_id, dataset_version_id)
+);
+create index if not exists task_read_grant_run_idx on task_read_grant (action_run_id);
+
+drop trigger if exists refuse_retired_task_read_grant on task_read_grant;
+create trigger refuse_retired_task_read_grant
+  before insert or update on task_read_grant
+  for each row execute function refuse_write_to_retired_tenant();
+
+-- The same key for the other two kinds of task that read through POST /credentials: a pipeline run (the step that adopts a sealed
+-- version) and an agent run. A grant names exactly one task. `renewed_at` is the last time the task asked: a pipeline run or an agent
+-- run can wait a long time for a person and still be alive, and many of them never record an end, so their key is compiled only
+-- while the run has not ended AND it has asked within the task credential's lifetime, the same rule a write grant follows.
+alter table task_read_grant alter column action_run_id drop not null;
+alter table task_read_grant add column if not exists pipeline_run_id uuid references pipeline_run(id);
+alter table task_read_grant add column if not exists agent_run_id uuid references agent_run(id);
+alter table task_read_grant add column if not exists renewed_at timestamptz not null default now();
+alter table task_read_grant drop constraint if exists task_read_grant_one_task;
+alter table task_read_grant add constraint task_read_grant_one_task
+  check (num_nonnulls(action_run_id, pipeline_run_id, agent_run_id) = 1);
+create unique index if not exists task_read_grant_pipeline_run_uq
+  on task_read_grant (pipeline_run_id, dataset_version_id) where pipeline_run_id is not null;
+create unique index if not exists task_read_grant_agent_run_uq
+  on task_read_grant (agent_run_id, dataset_version_id) where agent_run_id is not null;
+
+alter table storage_identity add column if not exists pipeline_run_id uuid references pipeline_run(id);
+-- A Hugging Face fetch job writes the files it fetches, so it too has a key of its own: Write on the one folder it was given.
+alter table storage_identity add column if not exists huggingface_fetch_job_id uuid references huggingface_fetch_job(id);
+create unique index if not exists storage_identity_one_per_hf_job
+  on storage_identity (huggingface_fetch_job_id) where huggingface_fetch_job_id is not null;
+create unique index if not exists storage_identity_one_per_pipeline_run
+  on storage_identity (pipeline_run_id) where pipeline_run_id is not null;
+create unique index if not exists storage_identity_one_per_agent_run
+  on storage_identity (agent_run_id) where agent_run_id is not null;
+
+drop index if exists storage_identity_one_ingest_per_tenant;
+create unique index if not exists storage_identity_one_ingest_per_tenant
+  on storage_identity (tenant_id, backend)
+  where lease_id is null and agent_run_id is null and action_run_id is null and pipeline_run_id is null
+    and huggingface_fetch_job_id is null;
+
 -- A closed organisation grants no roles, takes no new asks, and gains no
 -- pipelines. Guarded the same way every other tenant-scoped table is, so
 -- U33's check that each one is either guarded or named as an exception stays
@@ -1790,10 +1898,16 @@ create table if not exists storage_permission_print (
   succeeded    boolean,            -- null while the print is running
   retryable    boolean,            -- set on failure: false means retrying cannot fix it
   trigger      text not null check (trigger in
-                 ('request', 'provision', 'promotion', 'start-up', 'activator', 'manual')),
+                 ('request', 'provision', 'promotion', 'start-up', 'activator', 'manual', 'revocation')),
   identities   int,
   reason       text
 );
+-- A lease that is revoked prints at once, so its key stops working then and not at the
+-- next unrelated print. Applied to an existing table too, because the list above is
+-- only read when the table is first created.
+alter table storage_permission_print drop constraint if exists storage_permission_print_trigger_check;
+alter table storage_permission_print add constraint storage_permission_print_trigger_check
+  check (trigger in ('request', 'provision', 'promotion', 'start-up', 'activator', 'manual', 'revocation'));
 create index if not exists storage_permission_print_success_idx
   on storage_permission_print (started_at desc) where succeeded;
 
@@ -1994,3 +2108,742 @@ drop trigger if exists access_lease_no_simple_for_raw on access_lease;
 create trigger access_lease_no_simple_for_raw
   before insert or update on access_lease
   for each row execute function refuse_simple_pattern_for_raw();
+
+-- ------------------------------------------------------------ iceberg --
+--
+-- A sealed tabular version, also written as an Iceberg table, so a standard
+-- tool can read it (platform/api/app/iceberg.py). The version row stays the
+-- authority: this row says where the table is and what it held when it was
+-- written, and a verification script compares the two.
+--
+-- Written once, with the version. The table's files live under the version's
+-- own storage prefix and are part of its object manifest, so the grant that
+-- covers the version covers the table, and the content hash covers the files.
+-- Nothing is written under a sealed prefix afterwards, which is why a tag or
+-- a branch is never moved after sealing.
+--
+-- One table per version, not one per dataset with a snapshot per version: a
+-- credential is granted for one version's prefix, and a table spanning
+-- versions would put other versions' files inside the table a reader opens.
+create table if not exists iceberg_table_ref (
+  dataset_version_id uuid primary key
+                     references dataset_version(id) on delete cascade,
+  tenant_id          text not null references tenant(id),
+  dataset_id         uuid not null references dataset(id),
+  namespace          text not null,          -- the dataset's name
+  table_name         text not null,          -- 'v' and the version number
+  location           text not null,          -- s3://bucket/prefix/iceberg
+  metadata_location  text not null,          -- the table's current metadata file
+  snapshot_id        bigint not null,
+  format_version     int not null,
+  record_count       bigint not null,
+  records_sha256     text not null,          -- of the records object the rows came from
+  projected_at       timestamptz not null default now(),
+  unique (tenant_id, namespace, table_name)
+);
+
+create or replace function refuse_iceberg_table_ref_update() returns trigger as $$
+begin
+  raise exception 'iceberg_table_ref rows are written once, with the version they describe'
+    using errcode = 'check_violation';
+end;
+$$ language plpgsql;
+
+drop trigger if exists iceberg_table_ref_write_once on iceberg_table_ref;
+create trigger iceberg_table_ref_write_once
+  before update on iceberg_table_ref
+  for each row execute function refuse_iceberg_table_ref_update();
+
+-- What a person's own tool presents to the Iceberg catalog. Only a hash of the
+-- token is stored, so reading this table cannot reveal a usable token. A token
+-- names a person and a purpose and nothing else: every table it opens is still
+-- decided on its own, by the same policy and leases as any other read.
+create table if not exists catalog_token (
+  id           uuid primary key,
+  token_hash   text not null unique,       -- sha256, hex
+  principal    text not null references directory(id),
+  tenant_id    text not null references tenant(id),
+  purpose      text not null,
+  created_at   timestamptz not null default now(),
+  expires_at   timestamptz not null,
+  revoked_at   timestamptz,
+  last_used_at timestamptz
+);
+
+create index if not exists catalog_token_principal_idx on catalog_token (principal);
+
+-- A retired organisation may not gain a new token or a new table reference,
+-- the same as every other table that carries its tenant_id.
+do $$
+declare t text;
+begin
+  foreach t in array array['iceberg_table_ref','catalog_token'] loop
+    execute format('drop trigger if exists %I on %I', 'refuse_retired_' || t, t);
+    execute format(
+      'create trigger %I before insert or update on %I
+         for each row execute function refuse_write_to_retired_tenant()',
+      'refuse_retired_' || t, t);
+  end loop;
+end $$;
+
+-- The storage keys the Iceberg catalog hands out. One row per person and per
+-- version: the identity it names holds a rolling series of keys, each valid for
+-- a stretch of time, derived from a secret nobody stores (grants.py). The row
+-- says only that the series is wanted and which epoch it was last asked for, so
+-- the series ends by itself once nobody asks, and at once when the lease it
+-- rests on ends.
+--
+-- Not guarded against a retired organisation, and named as an exception in U33:
+-- a closed organisation's records stay readable, and reading them through the
+-- catalog needs this row. It holds no records and grants nothing a lease or a
+-- role did not already decide.
+create table if not exists catalog_key (
+  id                 uuid primary key,
+  tenant_id          text not null references tenant(id),
+  principal          text not null,
+  dataset_version_id uuid not null references dataset_version(id) on delete cascade,
+  lease_id           uuid references access_lease(id),
+  identity_name      text not null unique,
+  issued_epoch       bigint not null,
+  created_at         timestamptz not null default now(),
+  unique (principal, dataset_version_id)
+);
+
+-- A new dataset made from a query over existing ones (derivations.py).
+--
+-- A draft is the platform's answer to a submitted query: which versions it
+-- would read, the shape of what it would produce, and the sensitivity each
+-- field must carry. Nothing is registered until the person confirms. After
+-- that the row follows the run: queued, running, then succeeded or failed.
+-- The SQL is kept as submitted and is never edited, so the sealed version can
+-- name exactly the query it came from.
+create table if not exists derivation (
+  id                uuid primary key,
+  tenant_id         text not null references tenant(id),
+  submitted_by      text not null references directory(id),
+  status            text not null
+                    check (status in ('draft', 'queued', 'running', 'succeeded', 'failed', 'expired')),
+  sql               text not null,
+  target_name       text not null,
+  purpose           text not null,
+  inputs            jsonb not null,
+  primary_key       text[] not null,
+  proposed_fields   jsonb not null,
+  output_class      text not null,
+  -- The same query over the same input versions with the same shape has the
+  -- same key, so asking twice finds the first answer instead of running again.
+  derivation_key    text,
+  dataset_id        uuid references dataset(id),
+  schema_id         uuid references schema_contract(id),
+  action_run_id     uuid references action_run(id),
+  output_version_id uuid references dataset_version(id),
+  error             text,
+  created_at        timestamptz not null default now(),
+  confirmed_at      timestamptz,
+  ended_at          timestamptz
+);
+create index if not exists derivation_submitter_idx on derivation (submitted_by, created_at desc);
+create index if not exists derivation_key_idx on derivation (derivation_key) where derivation_key is not null;
+
+drop trigger if exists refuse_retired_derivation on derivation;
+create trigger refuse_retired_derivation
+  before insert or update on derivation
+  for each row execute function refuse_write_to_retired_tenant();
+
+-- A lease the platform gave to the person who made a derivation, so they can read
+-- what they made. It is tied to the derivation, so that revoking the lease they
+-- made it from ends it too (main.py, revoke_lease).
+alter table access_lease add column if not exists derivation_id uuid references derivation(id);
+
+
+
+-- ============================================================ retirement ==
+--
+-- Closing an organisation takes two stages and ends in a purge, so the people who
+-- asked can change their minds and nothing is destroyed by accident.
+--
+--   retiring   `retiring_until` is ahead. The organisation takes no writes (the
+--              retired-tenant guard above), its people may still read what it
+--              holds, and they may cancel the retirement.
+--   closing    `closing_until` is ahead. Its people can do nothing at all. Only a
+--              platform administrator can act, and only to place or lift a legal
+--              hold.
+--   purge_due  both periods have ended. When no legal hold is pending or active
+--              the platform deletes everything inside the organisation.
+--   purged     done. The organisation row stays as a tombstone, so its name is
+--              never reused, and `tenant_deletion_record` says what went.
+--
+-- The phase is worked out from the dates every time it is asked, so there is no
+-- timer to miss and a restart loses nothing. An organisation retired before these
+-- columns existed has no dates, reads as plain `retired`, and is never purged:
+-- nothing here deletes an organisation nobody gave a deadline.
+alter table tenant add column if not exists retire_requested_by text;
+alter table tenant add column if not exists retire_reason text;
+alter table tenant add column if not exists retired_at timestamptz;
+alter table tenant add column if not exists retiring_until timestamptz;
+alter table tenant add column if not exists closing_until timestamptz;
+alter table tenant add column if not exists purged_at timestamptz;
+
+alter table tenant drop constraint if exists tenant_retirement_dates;
+alter table tenant add constraint tenant_retirement_dates
+  check ((retiring_until is null) = (closing_until is null)
+         and (retiring_until is null or closing_until >= retiring_until));
+
+-- ---------------------------------------------------------- legal holds --
+--
+-- An instruction from outside the platform, in practice a court, a regulator or an
+-- organisation's own lawyers, to keep an organisation's records and not destroy
+-- them. It reaches the platform administrator in writing. One platform
+-- administrator records it (`proposed`); a different one approves it (`active`).
+-- Until it is decided, a proposal also stops the purge, because a purge that could
+-- land between placing a hold and approving it would make the hold worthless.
+--
+-- A hold covers a whole organisation. It is deliberately not guarded by the
+-- retired-tenant rule: holds are placed on organisations that are already closed.
+create table if not exists legal_hold (
+  id                        uuid primary key,
+  tenant_id                 text not null references tenant(id),
+  status                    text not null
+                            check (status in ('proposed','active','declined','lapsed','released')),
+  -- What the notice says.
+  matter_name               text not null check (matter_name <> ''),
+  matter_number             text not null check (matter_number <> ''),
+  description               text not null check (description <> ''),
+  triggering_event          text not null check (triggering_event <> ''),
+  issuing_authority         text not null check (issuing_authority <> ''),
+  authority_reference       text not null check (authority_reference <> ''),
+  attorney_name             text not null check (attorney_name <> ''),
+  attorney_email            text not null check (attorney_email <> ''),
+  notice_received_on        date not null,
+  preserve                  text not null check (preserve <> ''),
+  data_from                 date,
+  data_to                   date,
+  -- The person who answers for the preserved records while the hold stands,
+  -- named from the notice. Must acknowledge it.
+  custodian_id              text not null references directory(id),
+  custodian_acknowledged_at timestamptz,
+  -- Who did what, and when.
+  placed_by                 text not null references directory(id),
+  placed_at                 timestamptz not null default now(),
+  expires_unapproved_at     timestamptz not null,
+  decided_by                text references directory(id),
+  decided_at                timestamptz,
+  decision_note             text,
+  review_due_on             date not null,
+  released_by               text references directory(id),
+  released_at               timestamptz,
+  release_reason            text,
+  -- Two different people, enforced here as well as in policy.
+  constraint legal_hold_two_people check (decided_by is null or decided_by <> placed_by),
+  constraint legal_hold_decided check ((status in ('proposed','lapsed')) or decided_by is not null),
+  constraint legal_hold_released check ((status = 'released') = (released_at is not null)),
+  constraint legal_hold_dates check (data_from is null or data_to is null or data_from <= data_to)
+);
+create index if not exists legal_hold_tenant_idx on legal_hold (tenant_id, status);
+
+-- A record of what happened, one row per step, for an organisation's retirement
+-- and its holds. Never edited. Not tied to the organisation by a foreign key,
+-- so it can be written while the organisation is closed.
+create table if not exists lifecycle_event (
+  id         bigserial primary key,
+  tenant_id  text not null,
+  hold_id    uuid,
+  at         timestamptz not null default now(),
+  actor      text not null,
+  event      text not null,
+  detail     jsonb not null default '{}'::jsonb
+);
+create index if not exists lifecycle_event_tenant_idx on lifecycle_event (tenant_id, at desc);
+
+-- What is left after a purge, and nothing else: which organisation, when it was
+-- asked to close and who asked, which holds applied, and what was removed. It
+-- names no person beyond the one who asked and holds none of the organisation's
+-- records. Not tied to the organisation by a foreign key, and never changed or
+-- removed.
+create table if not exists tenant_deletion_record (
+  id                  bigserial primary key,
+  -- Not unique: an organisation deliberately rebuilt under the same name by an operator
+  -- (scripts/admin/nuke-tenant.py) and purged again has two records, which is true.
+  tenant_id           text not null,
+  retire_reason       text,
+  retire_requested_by text,
+  retired_at          timestamptz,
+  closing_ended_at    timestamptz,
+  purged_at           timestamptz not null default now(),
+  purged_by           text not null,
+  holds               jsonb not null default '[]'::jsonb,
+  rows_removed        jsonb not null default '{}'::jsonb,
+  files_removed       int not null default 0,
+  buckets_removed     jsonb not null default '[]'::jsonb,
+  buckets_left        jsonb not null default '[]'::jsonb
+);
+
+-- What a purge keeps about the audit trail, and about the name.
+--
+-- The audit rows of a deleted organisation are kept for seven years (a decision about who read what is
+-- evidence for a long time after the data itself is gone), and then removed. They are re-labelled so
+-- that a new organisation can take the old name again without seeing them: `tenant_id` is now the
+-- name the organisation was kept under, `harbour~deleted-20261002-a1b2`, and `original_tenant_id` says
+-- what it was called. The record and the audit rows carry the same kept-under name, so each leads to
+-- the other.
+alter table tenant_deletion_record add column if not exists original_tenant_id text;
+alter table tenant_deletion_record add column if not exists audit_kept_until timestamptz;
+alter table tenant_deletion_record add column if not exists audit_rows_kept int not null default 0;
+alter table tenant_deletion_record add column if not exists audit_removed_at timestamptz;
+alter table tenant_deletion_record add column if not exists identities_removed int not null default 0;
+create index if not exists tenant_deletion_record_original_idx on tenant_deletion_record (original_tenant_id);
+
+-- A record is never edited, with one exception: when the audit rows reach the end of their seven years
+-- and are removed, that day is written on it.
+drop rule if exists tenant_deletion_record_no_update on tenant_deletion_record;
+create rule tenant_deletion_record_no_update as on update to tenant_deletion_record
+  where (new.id, new.tenant_id, new.original_tenant_id, new.retire_reason, new.retire_requested_by,
+         new.retired_at, new.closing_ended_at, new.purged_at, new.purged_by, new.holds, new.rows_removed,
+         new.files_removed, new.buckets_removed, new.buckets_left, new.audit_kept_until,
+         new.audit_rows_kept, new.identities_removed)
+        is distinct from
+        (old.id, old.tenant_id, old.original_tenant_id, old.retire_reason, old.retire_requested_by,
+         old.retired_at, old.closing_ended_at, old.purged_at, old.purged_by, old.holds, old.rows_removed,
+         old.files_removed, old.buckets_removed, old.buckets_left, old.audit_kept_until,
+         old.audit_rows_kept, old.identities_removed)
+  do instead nothing;
+drop rule if exists tenant_deletion_record_no_delete on tenant_deletion_record;
+create rule tenant_deletion_record_no_delete as on delete to tenant_deletion_record do instead nothing;
+
+-- Where an organisation is in its closing, from its dates. The one definition:
+-- the API, the console and the purge all ask this, so there is no second opinion.
+create or replace function tenant_phase(tid text) returns text as $$
+  select case
+    when t.purged_at is not null then 'purged'
+    when t.purpose <> 'retired' then 'active'
+    when t.retiring_until is null then 'retired'
+    when now() < t.retiring_until then 'retiring'
+    when now() < t.closing_until then 'closing'
+    else 'purge_due'
+  end
+  from tenant t where t.id = tid
+$$ language sql stable;
+
+-- Whether a hold that has not ended stands over the organisation.
+create or replace function tenant_hold_state(tid text) returns text as $$
+  select case
+    when exists (select 1 from legal_hold h where h.tenant_id = tid and h.status = 'active') then 'active'
+    when exists (select 1 from legal_hold h where h.tenant_id = tid and h.status = 'proposed') then 'pending'
+    else 'none'
+  end
+$$ language sql stable;
+
+-- Whether the platform may delete this organisation right now. The database
+-- answers, not the caller, because this is what lets the rules below stand
+-- aside for a purge: a caller that sets the setting below for an organisation
+-- that is not due, or that is held, gets the same refusal as everybody else.
+create or replace function tenant_purge_allowed(tid text) returns boolean as $$
+  select tenant_phase(tid) = 'purge_due' and tenant_hold_state(tid) = 'none'
+$$ language sql stable;
+
+-- True only inside a purge of this organisation: the setting names it, and the
+-- organisation is due and not held. Used by the rewrite rules below.
+create or replace function tenant_is_being_purged(tid text) returns boolean as $$
+  select coalesce(current_setting('munitas.purge_tenant', true), '') = tid
+         and tenant_purge_allowed(tid)
+$$ language sql stable;
+
+-- The immutability rules, with the one exemption a purge needs. A sealed
+-- version is still never changed, and is deleted only for a scratch
+-- organisation or inside a purge that tenant_purge_allowed permits.
+drop rule if exists dataset_version_no_delete on dataset_version;
+create rule dataset_version_no_delete as
+  on delete to dataset_version
+  where old.sealed
+    and not exists (select 1 from tenant t
+                     where t.id = old.tenant_id and t.purpose = 'scratch')
+    and not tenant_is_being_purged(old.tenant_id)
+  do instead nothing;
+
+drop rule if exists agent_version_no_delete on agent_version;
+create rule agent_version_no_delete as
+  on delete to agent_version
+  where old.sealed
+    and not tenant_is_being_purged(old.tenant_id)
+  do instead nothing;
+
+-- Holds and the record of what happened are removed only with their organisation.
+drop rule if exists legal_hold_no_delete on legal_hold;
+create rule legal_hold_no_delete as
+  on delete to legal_hold
+  where not tenant_is_being_purged(old.tenant_id)
+    and not exists (select 1 from tenant t where t.id = old.tenant_id and t.purpose = 'scratch')
+  do instead nothing;
+
+drop rule if exists lifecycle_event_no_update on lifecycle_event;
+create rule lifecycle_event_no_update as on update to lifecycle_event do instead nothing;
+drop rule if exists lifecycle_event_no_delete on lifecycle_event;
+create rule lifecycle_event_no_delete as
+  on delete to lifecycle_event
+  where not tenant_is_being_purged(old.tenant_id)
+    and not exists (select 1 from tenant t where t.id = old.tenant_id and t.purpose = 'scratch')
+  do instead nothing;
+
+
+-- An organisation closed by the old script has no dates, which made it a state of its own that nothing
+-- ever deleted. Nothing is left in it: each gets one day, and then the same sweep deletes it as any other.
+-- Applied every time this file is, and a no-op once there is nothing undated left.
+update tenant
+   set retire_reason = coalesce(retire_reason, 'Closed before closing dates were recorded; removal set to one day'),
+       retired_at = coalesce(retired_at, now()),
+       retiring_until = now(),
+       closing_until = now() + interval '1 day'
+ where purpose = 'retired' and retiring_until is null and purged_at is null;
+
+
+-- ======================================================= legal export ==
+--
+-- Producing records for a legal matter (platform/api/app/legal_export.py, and the design in
+-- docs/internal/design/legal-export.md). A legal hold keeps an organisation's records. An export is how
+-- some of them leave, once a court, a regulator or the organisation's lawyers has demanded them.
+--
+--   requested   a platform administrator asked, on a hold in force, naming the demand and the scope
+--   approved    a different platform administrator agreed
+--   confirmed   the hold's temporary custodian confirmed the scope is what the demand asks and no wider
+--   producing   a job is copying the files into an encrypted, signed package
+--   ready       the package exists, and the custodian can be given its passphrase once
+--   expired     the package was deleted after its retention; the manifest stays
+--   refused     somebody in the chain said no, with a reason
+--   failed      production stopped, and the reason is written down
+--
+-- Not guarded by the retired-tenant rule, for the same reason a hold is not: an export is made for an
+-- organisation that is already closed. It is removed only with its organisation, and a summary of it is
+-- written to the deletion record first.
+create table if not exists legal_export (
+  id                      uuid primary key,
+  tenant_id               text not null references tenant(id),
+  hold_id                 uuid not null references legal_hold(id),
+  status                  text not null check (status in
+                            ('requested','approved','confirmed','producing','ready','expired','refused','failed')),
+  -- The demand this answers, which can differ from the hold's notice: a hold says keep, a demand says produce.
+  demand_authority        text not null check (demand_authority <> ''),
+  demand_reference        text not null check (demand_reference <> ''),
+  demanded_on             date not null,
+  demand_text             text not null check (demand_text <> ''),
+  -- The scope: whole datasets, every sealed version of each. The dates narrow the audit trail only.
+  dataset_ids             uuid[] not null check (cardinality(dataset_ids) > 0),
+  include_audit           boolean not null default true,
+  data_from               date,
+  data_to                 date,
+  -- Who receives it. The platform does not send anything: a person delivers the package.
+  recipient_name          text not null check (recipient_name <> ''),
+  recipient_organisation  text not null check (recipient_organisation <> ''),
+  recipient_email         text not null check (recipient_email <> ''),
+  requested_by            text not null references directory(id),
+  requested_at            timestamptz not null default now(),
+  approved_by             text references directory(id),
+  approved_at             timestamptz,
+  approval_note           text,
+  confirmed_by            text references directory(id),
+  confirmed_at            timestamptz,
+  confirm_note            text,
+  refused_by              text references directory(id),
+  refused_at              timestamptz,
+  refusal_reason          text,
+  production_started_at   timestamptz,
+  produced_at             timestamptz,
+  failure                 text,
+  -- The package. Encrypted with a passphrase that is kept sealed until the custodian reads it, once.
+  package_key             text,
+  package_bytes           bigint,
+  package_sha256          text,
+  manifest_sha256         text,
+  signature               text,
+  file_count              int,
+  passphrase_ciphertext   bytea,
+  passphrase_wrapped_key  bytea,
+  passphrase_revealed_at  timestamptz,
+  passphrase_revealed_by  text,
+  expires_at              timestamptz,
+  expired_at              timestamptz,
+  constraint legal_export_two_people check (approved_by is null or approved_by <> requested_by),
+  constraint legal_export_dates check (data_from is null or data_to is null or data_from <= data_to)
+);
+create index if not exists legal_export_hold_idx on legal_export (hold_id, status);
+
+-- What a package holds, as rows, so it can be listed and checked without opening it.
+create table if not exists legal_export_file (
+  export_id   uuid not null references legal_export(id),
+  tenant_id   text not null,
+  path        text not null,
+  dataset_id  uuid,
+  dataset     text,
+  version     int,
+  version_id  uuid,
+  bytes       bigint not null,
+  sha256      text not null,
+  source_key  text not null,
+  primary key (export_id, path)
+);
+
+-- A way to download a ready package: short-lived, and limited in uses. Only a hash of the token is kept, so
+-- a token is shown once. The package is encrypted, so a token alone opens nothing.
+create table if not exists legal_export_link (
+  id          uuid primary key,
+  export_id   uuid not null references legal_export(id),
+  tenant_id   text not null,
+  token_hash  text not null unique,
+  created_by  text not null references directory(id),
+  created_at  timestamptz not null default now(),
+  expires_at  timestamptz not null,
+  max_uses    int not null check (max_uses > 0),
+  uses        int not null default 0,
+  revoked_at  timestamptz,
+  constraint legal_export_link_uses check (uses <= max_uses)
+);
+
+drop rule if exists legal_export_no_delete on legal_export;
+create rule legal_export_no_delete as
+  on delete to legal_export
+  where not tenant_is_being_purged(old.tenant_id)
+    and not exists (select 1 from tenant t where t.id = old.tenant_id and t.purpose = 'scratch')
+  do instead nothing;
+
+-- An erasure that a legal hold held back. Erasing a record destroys its key, which cannot be undone, so
+-- while a hold is pending or in force the request is kept instead and carried out when no hold stands.
+create table if not exists deferred_erasure (
+  record_id     text primary key,
+  tenant_id     text not null references tenant(id),
+  reason        text not null,
+  requested_by  text not null,
+  requested_at  timestamptz not null default now(),
+  honoured_at   timestamptz
+);
+
+-- What the deletion record keeps about exports: the matter, the demand, the manifest hash and who received it.
+alter table tenant_deletion_record add column if not exists exports jsonb not null default '[]'::jsonb;
+
+-- The record is still never edited but for the day its audit rows were removed; `exports` is part of what it keeps.
+drop rule if exists tenant_deletion_record_no_update on tenant_deletion_record;
+create rule tenant_deletion_record_no_update as on update to tenant_deletion_record
+  where (new.id, new.tenant_id, new.original_tenant_id, new.retire_reason, new.retire_requested_by,
+         new.retired_at, new.closing_ended_at, new.purged_at, new.purged_by, new.holds, new.rows_removed,
+         new.files_removed, new.buckets_removed, new.buckets_left, new.audit_kept_until,
+         new.audit_rows_kept, new.identities_removed, new.exports)
+        is distinct from
+        (old.id, old.tenant_id, old.original_tenant_id, old.retire_reason, old.retire_requested_by,
+         old.retired_at, old.closing_ended_at, old.purged_at, old.purged_by, old.holds, old.rows_removed,
+         old.files_removed, old.buckets_removed, old.buckets_left, old.audit_kept_until,
+         old.audit_rows_kept, old.identities_removed, old.exports)
+  do instead nothing;
+
+-- Filtering a table to the rows for named people. The request says which tables are filtered and by which column;
+-- the custodian the hold names supplies the values, because the custodian answers for the records. The values are
+-- personal data, so they are kept here, never shown to a platform administrator, and deleted with the organisation.
+-- `filter_results` holds only counts: how many rows matched, out of how many.
+alter table legal_export add column if not exists filters jsonb not null default '[]'::jsonb;
+alter table legal_export add column if not exists filter_values jsonb;
+alter table legal_export add column if not exists filter_results jsonb;
+
+
+-- Why a version has no table copy. A version whose rows were written as an Iceberg table has an iceberg_table_ref row.
+-- One that was not has, from now on, a row here saying why, so the console can show it and nobody has to read the log:
+-- the version named no table of rows (it is files), the writing was skipped (no schema contract, files on R2, projection
+-- switched off), or the writing failed. A version sealed before this table existed has neither row, and the console
+-- says that plainly rather than guessing. Written once, with the version it describes, and never changed.
+create table if not exists iceberg_projection_note (
+  dataset_version_id uuid primary key references dataset_version(id) on delete cascade,
+  tenant_id          text not null references tenant(id),
+  outcome            text not null check (outcome in ('not_requested', 'skipped', 'failed')),
+  reason             text not null check (reason <> ''),
+  noted_at           timestamptz not null default now()
+);
+
+create or replace function refuse_iceberg_projection_note_update() returns trigger as $$
+begin
+  raise exception 'iceberg_projection_note rows are written once, with the version they describe'
+    using errcode = 'check_violation';
+end;
+$$ language plpgsql;
+
+drop trigger if exists iceberg_projection_note_write_once on iceberg_projection_note;
+create trigger iceberg_projection_note_write_once
+  before update on iceberg_projection_note
+  for each row execute function refuse_iceberg_projection_note_update();
+
+drop trigger if exists refuse_retired_iceberg_projection_note on iceberg_projection_note;
+create trigger refuse_retired_iceberg_projection_note
+  before insert or update on iceberg_projection_note
+  for each row execute function refuse_write_to_retired_tenant();
+
+-- ---------------------------------------------------------------------------
+-- Table jobs.
+--
+-- A table too large to write while a request waits is written by a worker, in a job. The job reserves the
+-- version number and the folder for the version, so nothing else takes them, and the version itself does not
+-- exist until the job has finished: a version is sealed with its table inside it or not at all, and nothing is
+-- written under a sealed folder afterwards. The request that started it is kept whole, so the platform can
+-- finish the seal itself when the worker reports.
+--
+--   pending   waiting for a worker.
+--   running   a worker has asked for the work.
+--   sealed    the version exists. `outcome` says whether it has its table.
+--   refused   a table was required and could not be written. No version was made and its number is free.
+--   expired   nobody finished it in time. No version was made and its number is free.
+--
+-- `queue` is the line of work it was put on when it was made, and does not change afterwards: a job that
+-- waits for an organisation's own worker does not move to the shared pool because that worker is slow.
+-- ---------------------------------------------------------------------------
+alter table tenant add column if not exists table_queue text;
+
+create table if not exists table_job (
+  id              uuid primary key,
+  tenant_id       text not null references tenant(id),
+  dataset_id      uuid not null references dataset(id),
+  version         integer not null,
+  storage_prefix  text not null,
+  storage_backend text not null,
+  request         jsonb not null,
+  queue           text not null,
+  status          text not null check (status in ('pending', 'running', 'sealed', 'refused', 'expired')),
+  attempts        integer not null default 0,
+  created_at      timestamptz not null default now(),
+  dispatched_at   timestamptz,
+  started_at      timestamptz,
+  finished_at     timestamptz,
+  expires_at      timestamptz not null,
+  version_id      uuid,
+  outcome         text,
+  reason          text
+);
+
+-- One job at a time holds a version number of a dataset.
+create unique index if not exists table_job_reserved on table_job (dataset_id, version)
+  where status in ('pending', 'running');
+create index if not exists table_job_tenant_status on table_job (tenant_id, status);
+
+drop trigger if exists refuse_retired_table_job on table_job;
+create trigger refuse_retired_table_job
+  before insert on table_job
+  for each row execute function refuse_write_to_retired_tenant();
+
+-- ------------------------------------------------ department approvers --
+
+-- Who may approve access to a department's data and confirm claims about it. A department has any number of approvers, any one of whom may
+-- act, because one person on leave must not block a whole department. A person is an approver of a department when they hold the data
+-- custodian role AND are listed here for that department: the role says what they may do, this says for which department's data.
+--
+-- Rows are never edited and never deleted by the platform, so the history of who answered for a department, and when, can be asked at any
+-- date. Removing an approver sets removed_at, removed_by and the reason; the only change a row ever takes. An approver with a valid_until is
+-- temporary cover and lapses by itself when that moment passes. A department always keeps at least one permanent approver.
+--
+-- department.custodian is no longer read for any decision. It remains as the person named when the department was made, which the
+-- trigger below turns into the first approver, so every way of making a department (the onboarding script, the seed files) still works.
+create table if not exists department_approver (
+  id             uuid primary key default gen_random_uuid(),
+  tenant_id      text not null references tenant(id),
+  department_id  uuid not null references department(id),
+  person_id      text not null references directory(id),
+  added_by       text not null references directory(id),
+  added_at       timestamptz not null default now(),
+  valid_until    timestamptz,
+  reason         text not null,
+  removed_by     text references directory(id),
+  removed_at     timestamptz,
+  removal_reason text,
+  constraint department_approver_removal_complete check ((removed_at is null) = (removed_by is null)),
+  constraint department_approver_ends_after_it_starts check (valid_until is null or valid_until > added_at)
+);
+
+create unique index if not exists department_approver_one_active
+  on department_approver (department_id, person_id) where removed_at is null;
+create index if not exists department_approver_by_person
+  on department_approver (person_id) where removed_at is null;
+
+-- The approvers in force now: not removed, not lapsed, and still a person who can act.
+-- Does this person hold this role right now? The role a person has permanently, plus any grant that has not been withdrawn or lapsed: the same
+-- union the API reads for every decision.
+create or replace function person_holds_live_role(person text, wanted text) returns boolean as $$
+  select exists (select 1 from directory d where d.id = person and wanted = any(d.roles))
+      or exists (select 1 from role_grant g where g.principal = person and g.role = wanted and not g.revoked and g.expires_at > now());
+$$ language sql stable;
+
+-- The approvers who can act now: listed for the department, not removed, not past the end of their cover, and still holding the data custodian
+-- role. A person listed whose role has lapsed is still in the department's history and comes back by themselves if the role does, but they
+-- are not counted, so a department never looks covered by somebody who cannot act.
+create or replace function active_department_approvers(dept uuid) returns text[] as $$
+  select coalesce(array_agg(a.person_id order by a.added_at, a.person_id), '{}'::text[])
+    from department_approver a
+    join directory p on p.id = a.person_id and p.ended_at is null
+   where a.department_id = dept
+     and a.removed_at is null
+     and (a.valid_until is null or a.valid_until > now())
+     and person_holds_live_role(a.person_id, 'data_custodian');
+$$ language sql stable;
+
+-- A row takes one change only: being removed. Everything else about who answered for a department, and when, stays as it was written.
+create or replace function department_approver_guard() returns trigger as $$
+begin
+  if new.id is distinct from old.id or new.tenant_id is distinct from old.tenant_id or new.department_id is distinct from old.department_id
+     or new.person_id is distinct from old.person_id or new.added_by is distinct from old.added_by or new.added_at is distinct from old.added_at
+     or new.valid_until is distinct from old.valid_until or new.reason is distinct from old.reason then
+    raise exception 'a department approver row is never edited, only removed' using errcode = 'check_violation',
+      constraint = 'department_approver_is_history';
+  end if;
+  if old.removed_at is not null then
+    raise exception 'this approver was already removed' using errcode = 'check_violation',
+      constraint = 'department_approver_is_history';
+  end if;
+  -- Removing the last permanent approver would leave a department nobody can act for once any temporary cover ends.
+  if new.removed_at is not null and old.valid_until is null then
+    if not exists (select 1 from department_approver a
+                    where a.department_id = old.department_id and a.id <> old.id
+                      and a.removed_at is null and a.valid_until is null
+                      and person_holds_live_role(a.person_id, 'data_custodian')) then
+      raise exception 'department % must keep at least one permanent approver', old.department_id
+        using errcode = 'check_violation', constraint = 'department_keeps_a_permanent_approver';
+    end if;
+  end if;
+  return new;
+end;
+$$ language plpgsql;
+
+drop trigger if exists department_approver_guard_trg on department_approver;
+create trigger department_approver_guard_trg
+  before update on department_approver
+  for each row execute function department_approver_guard();
+
+-- Whoever a department is made with is its first approver, however it was made.
+create or replace function department_founding_approver() returns trigger as $$
+begin
+  insert into department_approver (tenant_id, department_id, person_id, added_by, reason)
+  values (new.tenant_id, new.id, new.custodian, new.custodian, 'named when the department was made');
+  return new;
+end;
+$$ language plpgsql;
+
+drop trigger if exists department_founding_approver_trg on department;
+create trigger department_founding_approver_trg
+  after insert on department
+  for each row execute function department_founding_approver();
+
+-- Departments that existed before this table: their custodian becomes their first approver. Nothing is added to one that already has an approver.
+insert into department_approver (tenant_id, department_id, person_id, added_by, reason)
+select d.tenant_id, d.id, d.custodian, d.custodian, 'carried over from the department''s custodian'
+  from department d
+ where not exists (select 1 from department_approver a where a.department_id = d.id);
+
+drop trigger if exists refuse_retired_department_approver on department_approver;
+create trigger refuse_retired_department_approver
+  before insert or update on department_approver
+  for each row execute function refuse_write_to_retired_tenant();
+
+-- The view every decision reads gains the approvers in force. `custodian` stays as the person the department was made with.
+create or replace view version_custodian as
+select
+  dv.id            as dataset_version_id,
+  dv.tenant_id,
+  d.id             as dataset_id,
+  d.name           as dataset_name,
+  dept.id          as department_id,
+  dept.name        as department_name,
+  dept.custodian   as custodian,
+  case when dept.id is null then '{}'::text[] else active_department_approvers(dept.id) end as approvers
+from dataset_version dv
+join dataset d           on d.id = dv.dataset_id
+left join department dept on dept.id = d.department_id;

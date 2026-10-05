@@ -23,6 +23,8 @@ import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { EMAIL_BY_DIRECTORY_ID, PASSWORD, bearerFor, loginAs } from "../tests/auth-helpers";
 import { API_BASE } from "../config/ports";
+import { settled } from "./settled";
+import { closeTestRequests, revokeEarlierRecordings } from "./tidy";
 
 const SHOTS = join(process.cwd(), "walkthroughs", "shots", "custom-pipeline");
 const PIPELINE_YAML = join(process.cwd(), "walkthroughs", "fixtures", "cardiac-note-qc.yaml");
@@ -39,6 +41,7 @@ const REQUEST_PURPOSE = "run cardiac-note-qc against this version to check note 
 let step = 0;
 
 async function shot(page: Page, name: string): Promise<void> {
+  await settled(page);
   step += 1;
   const n = String(step).padStart(2, "0");
   await page.screenshot({ path: join(SHOTS, `${n}-${name}.png`) });
@@ -82,6 +85,11 @@ async function waitForPipelineRun(page: Page, timeoutMs = 120_000): Promise<void
 
 test("capture: an operator registers and runs their own pipeline", async ({ page }) => {
   mkdirSync(SHOTS, { recursive: true });
+
+  // Hartley's home page counts every request waiting on a Cardiology approver, so requests left by test runs are closed first.
+  await closeTestRequests(CUSTODIAN_CARDIOLOGY);
+  // Access that an earlier recording of this walkthrough granted would also count as currently granted.
+  console.log(`earlier access revoked: ${await revokeEarlierRecordings(CUSTODIAN_CARDIOLOGY, ENGINEER, REQUEST_PURPOSE)}`);
   test.setTimeout(180_000);
 
   const suffix = `${new Date().toISOString().slice(0, 10)}-${Date.now() % 10000}`;
@@ -91,7 +99,12 @@ test("capture: an operator registers and runs their own pipeline", async ({ page
   // ---- Act one: Devi registers her own pipeline --------------------------
   await loginAs(page, ENGINEER);
   await page.goto("/pipelines");
-  await shot(page, "pipelines-empty-for-this-department");
+  // The page draws before the person is resolved, and a picture taken then shows only "Nobody is
+  // signed in" and a loading line. Wait for the person and for the list.
+  await expect(page.getByTestId("current-persona")).toBeVisible();
+  await expect(page.getByTestId("pipelines-register-link")).toBeVisible();
+  await expect(page.getByText("Loading")).toHaveCount(0);
+  await shot(page, "pipelines-list");
 
   await page.getByTestId("pipelines-register-link").click();
   await expect(page.getByTestId("register-pipeline-form")).toBeVisible();

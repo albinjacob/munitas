@@ -37,6 +37,9 @@ services:
       # company, not a hospital), so the platform doesn't read as
       # healthcare-specific out of the box. See that file's own header.
       - ./infra/postgres/seed-finance.sql:/docker-entrypoint-initdb.d/04-seed-finance.sql:ro
+      # An organisation that is winding down, so closing one can be shown and
+      # tested without closing health or finance.
+      - ./infra/postgres/seed-harbour.sql:/docker-entrypoint-initdb.d/05-seed-harbour.sql:ro
     ports:
       - "${PORT_POSTGRES:-5432}:5432"
     networks: [control, data]
@@ -280,6 +283,8 @@ services:
       # only which bucket names them.
       MUNITAS_STORAGE_PATH: ${MUNITAS_DATA:?set MUNITAS_DATA in .env, see .env.example}/seaweed
       MUNITAS_MASTER_KEY: ${MUNITAS_MASTER_KEY:-dev-master-key-not-for-production}
+      # Signs the manifest of a legal export so its recipient can verify it. Not for production.
+      MUNITAS_SIGNING_KEY: ${MUNITAS_SIGNING_KEY:-dev-signing-key-not-for-production}
       # The storage keys of the platform's own identities, read by
       # platform/api/app/config.py and compiled into the permissions document.
       # The same names the host scripts and the worker read, so .env sets each
@@ -290,6 +295,24 @@ services:
       S3_PIPELINE_SECRET: ${S3_PIPELINE_SECRET:-}
       TEMPORAL_ADDRESS: temporal:7233
       MUNITAS_KRATOS_PUBLIC_URL: http://kratos:4433
+      # Only a purge uses this, to remove the sign-in accounts of the organisation it deletes.
+      MUNITAS_KRATOS_ADMIN_URL: http://kratos:4434
+      # Iceberg (platform/api/app/iceberg.py). Newer S3 clients, pyarrow's
+      # among them, send an upload with its checksum in a trailer by default,
+      # and SeaweedFS stores the transfer framing as part of the object
+      # (found by writing a table to it: the metadata file began with
+      # "3A4\r\n{" and could not be parsed). These two settings make the
+      # client send a plain upload, which SeaweedFS stores correctly.
+      AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+      AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+      # The address a person's own tool uses to reach storage; the catalog
+      # puts it in the table configuration it returns. The API itself reaches
+      # storage at S3_ENDPOINT, which only exists inside this network.
+      MUNITAS_PUBLIC_S3_ENDPOINT: http://localhost:${PORT_SEAWEEDFS_S3:-8333}
+      MUNITAS_ICEBERG_PROJECTION: ${MUNITAS_ICEBERG_PROJECTION:-on}
+      MUNITAS_CATALOG_KEY_SECONDS: ${MUNITAS_CATALOG_KEY_SECONDS:-3600}
+      MUNITAS_ICEBERG_ROW_GROUP_ROWS: ${MUNITAS_ICEBERG_ROW_GROUP_ROWS:-0}
+      MUNITAS_ICEBERG_FILE_BYTES: ${MUNITAS_ICEBERG_FILE_BYTES:-0}
       # Checked by GET /agents/{id}/versions/{id}/code (agent_upload.py)
       # only. Must match the worker's own MUNITAS_WORKER_TOKEN, set once,
       # here and on the host where the worker runs, from the same env var
@@ -309,6 +332,12 @@ services:
       # Verification scripts run in here so they sign S3 requests properly and
       # see the same network the platform does.
       - ./verify:/verify:ro
+      # The tool a recipient uses to open a legal export, so a check can use the real one.
+      - ./scripts/client:/client:ro
+      # The canary-only tidy, so a check can prove it refuses everything that is not the canary tenant.
+      - ./scripts/admin:/scripts-admin:ro
+      # Who the canary seed creates, so the tidy's check can read the people it must never delete.
+      - ./infra/postgres/seed-canary.sql:/infra/postgres/seed-canary.sql:ro
       # verify/common.py's own sys.path.insert reaches for
       # Path(__file__).resolve().parent.parent to import ports_config --
       # /verify's parent is container root, so these two land exactly where
@@ -342,7 +371,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512m
+          # 1g, up from 512m: writing a version as an Iceberg table loads
+          # pyarrow, which needs room beside the API itself.
+          memory: 1g
 
   # The GPU-free worker (worker/lite_worker.py). Runs count_records and
   # operator DAG pipelines end to end -- registration, access requests,
@@ -403,6 +434,65 @@ services:
       resources:
         limits:
           memory: 512m
+
+  # The table worker (platform/tablejob). A table too large to write while a request waits is written here, in a job: the
+  # control plane makes the job and a storage key for it, this worker reads the records and writes the table, and the control
+  # plane checks the result and seals the version. This is the shared pool, which every organisation's jobs go to unless the
+  # organisation has been given a worker of its own.
+  #
+  # What it holds: nothing but an address for Temporal and one for the control plane. No database, no master key, no storage
+  # key. The one storage key it ever uses is made for one job, for one folder, and handed over by the control plane for that
+  # job. One job at a time; a write takes a few hundred megabytes whatever the size of the file, so more work is more
+  # containers and not more jobs in one.
+  table-worker:
+    image: munitas-table-worker:latest
+    build:
+      context: ./platform
+      dockerfile: tablejob/Dockerfile
+    <<: *restart
+    depends_on:
+      temporal:
+        condition: service_started
+      munitas-api:
+        condition: service_started
+    environment:
+      MUNITAS_API: http://munitas-api:8000
+      TEMPORAL_ADDRESS: temporal:7233
+      # The control plane's own comment on these two explains them: SeaweedFS stores an upload's checksum trailer in the object.
+      AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+      AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+    networks: [control, data]
+    deploy:
+      resources:
+        limits:
+          memory: 1536m
+          cpus: "2"
+
+  # An organisation's own table worker: the same image, serving one organisation's line of work and refusing any other
+  # organisation's job. Not started with the stack. scripts/admin/table-worker.ps1 starts one for a named organisation, and
+  # a platform administrator gives the organisation the line (PUT /tenants/{id}/table-worker) so its jobs are put there.
+  table-worker-dedicated:
+    profiles: ["dedicated"]
+    image: munitas-table-worker:latest
+    build:
+      context: ./platform
+      dockerfile: tablejob/Dockerfile
+    <<: *restart
+    environment:
+      MUNITAS_API: http://munitas-api:8000
+      TEMPORAL_ADDRESS: temporal:7233
+      # Empty unless the script names an organisation. The worker refuses to start as a dedicated worker without one,
+      # so it can never quietly join the shared pool.
+      AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+      AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+      MUNITAS_TABLE_DEDICATED: "1"
+      MUNITAS_TABLE_TENANT: ${TABLE_WORKER_TENANT:-}
+    networks: [control, data]
+    deploy:
+      resources:
+        limits:
+          memory: 1536m
+          cpus: "2"
 
   # Real login. A session Kratos issues is verified server-side and resolved
   # to a real directory row, and every decision a person makes in the

@@ -9,6 +9,7 @@
  * dataset version's own page, not from here.
  */
 
+import { CODE_ROLES, useHoldsRole } from "../../identity/mayDo";
 import { useParams } from "react-router-dom";
 import { usePipeline } from "../../api/dag_pipelines";
 import { Empty, Failure, Loading, Section } from "../../components/states";
@@ -16,6 +17,7 @@ import { UploadPipelineVersion } from "./UploadPipelineVersion";
 
 export function PipelineDetail() {
   const { pipelineId } = useParams();
+  const mayRegisterCode = useHoldsRole(CODE_ROLES);
   const pipeline = usePipeline(pipelineId);
 
   if (pipeline.isLoading) return <Loading what="this pipeline" />;
@@ -75,12 +77,14 @@ export function PipelineDetail() {
         )}
       </Section>
 
-      <Section
-        title="Upload the next version"
-        description="Sealed on arrival. There is no editing a version in place, only registering the next one."
-      >
-        <UploadPipelineVersion pipelineId={p.id} />
-      </Section>
+      {mayRegisterCode && (
+        <Section
+          title="Upload the next version"
+          description="Sealed on arrival. There is no editing a version in place, only registering the next one."
+        >
+          <UploadPipelineVersion pipelineId={p.id} />
+        </Section>
+      )}
     </div>
   );
 }

@@ -28,7 +28,7 @@ not listed here.
 
 from __future__ import annotations
 
-from . import db, seaweed, versions
+from . import config, db, seaweed, versions
 
 
 def _owned(tenant_id: str) -> tuple[set[str], list[str]]:
@@ -91,6 +91,8 @@ def audit(*, scratch_files: bool = True) -> dict:
 
     orphan_buckets, orphan_objects = [], []
     for b in (x["Name"] for x in client.list_buckets().get("Buckets", [])):
+        if b == config.LEGAL_EXPORT_BUCKET:
+            continue  # packages of legal exports, owned by legal_export rows and deleted after their retention
         owner = provisioned.get(b)
         if owner not in tenants:
             orphan_buckets.append(b)
@@ -105,6 +107,7 @@ def audit(*, scratch_files: bool = True) -> dict:
             orphan_objects.append({"bucket": b, "key": k, "bytes": o["Size"]})
 
     rows = {r["identity_name"] for r in db.all_rows("select identity_name from storage_identity")}
+    rows |= {r["identity_name"] for r in db.all_rows("select identity_name from catalog_key")}
     from . import grants
     roles = grants.identity_names()
     orphan_identities = sorted(

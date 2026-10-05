@@ -143,7 +143,68 @@ def bucket_for(tenant_id: str, backend: str = "seaweedfs") -> str:
     )
 
 
+# What the platform's own workers send where they have no login. A few reads of one record answer
+# a signed-in person (limited to their own organisation) or a worker presenting this.
+WORKER_HEADERS = {"x-worker-token": os.environ.get("MUNITAS_WORKER_TOKEN", "dev-worker-token-not-for-production")}
+
+
+# How a script authenticates, by route. The platform closed these routes to anonymous callers: the ones the platform's own workers
+# use take the worker token, and the ones a person uses take that person's session, and the person is the one the request names
+# (registered_by, confirmed_by, fetched_by), because the platform acts as the signed-in person and refuses a name that is not theirs.
+# A script that wants to prove a refusal passes its own headers (even an empty set) and is left alone.
+WORKER_ROUTES = (
+    ("POST", r"/schema-contracts"), ("POST", r"/datasets"), ("POST", r"/action-runs"), ("POST", r"/pipeline-runs"),
+    ("POST", r"/pipeline-runs/[^/]+/end"), ("POST", r"/write-credentials"), ("POST", r"/credentials"),
+    ("POST", r"/dataset-versions"), ("POST", r"/dataset-versions/[^/]+/promote"), ("POST", r"/records"),
+    ("POST", r"/records/[^/]+/open"), ("DELETE", r"/records/[^/]+"), ("GET", r"/policy/roles"),
+    ("GET", r"/pipeline/(kinds|served-backends)"), ("GET", r"/datasets/[^/]+/next-version"),
+    ("GET", r"/agent-versions/[^/]+/egress-status"),
+)
+PERSON_ROUTES = (
+    ("POST", r"/datasets/register", "registered_by"), ("POST", r"/agents/register", "registered_by"),
+    ("POST", r"/agents/[^/]+/versions", "registered_by"), ("POST", r"/agents/[^/]+/versions/upload", "registered_by"),
+    ("POST", r"/pipelines/register", "registered_by"), ("POST", r"/pipelines/[^/]+/versions/upload", "registered_by"),
+    ("POST", r"/datasets/[^/]+/confirm-classification", "confirmed_by"),
+    ("POST", r"/datasets/[^/]+/fetch-huggingface", "fetched_by"),
+)
+
+_sessions: dict[str, dict[str, str]] = {}
+
+
+def _session_for(person: str) -> dict[str, str]:
+    """A signed-in session for a seeded person, kept for the run: a check that acts as somebody many times logs in once."""
+    if person not in _sessions:
+        _sessions[person] = bearer_for(person)
+    return _sessions[person]
+
+
+def acting_headers(method: str, path: str, kwargs: dict) -> dict[str, str] | None:
+    import re
+
+    for verb, pattern in WORKER_ROUTES:
+        if method == verb and re.fullmatch(pattern, path):
+            return WORKER_HEADERS
+    for verb, pattern, field in PERSON_ROUTES:
+        if method == verb and re.fullmatch(pattern, path):
+            body = kwargs.get("json") if isinstance(kwargs.get("json"), dict) else kwargs.get("data")
+            if isinstance(body, dict) and body.get(field):
+                return _session_for(body[field])
+            return None
+    # An upload, a seal or a cancel on a dataset is done by the person who registered it.
+    m = re.fullmatch(r"/datasets/([^/]+)/(files|seal|seal-audio|huggingface-fetch-jobs/[^/]+/cancel)", path)
+    if method == "POST" and m:
+        with db() as conn:
+            row = conn.execute("select registered_by from dataset where id = %s", (m.group(1),)).fetchone()
+        if row and row["registered_by"]:
+            return _session_for(row["registered_by"])
+    return None
+
+
 def api(method: str, path: str, **kwargs) -> httpx.Response:
+    if "headers" not in kwargs:
+        found = acting_headers(method, path, kwargs)
+        if found:
+            kwargs["headers"] = found
     return httpx.request(method, f"{API}{path}", timeout=15.0, **kwargs)
 
 
@@ -210,12 +271,17 @@ _EMAIL_BY_DIRECTORY_ID = {
     "sam-researcher": "sam@health.example",
     "eng-devi": "devi@health.example",
     "ops-priya": "priya@health.example",
+    "ops-ravi": "ravi@health.example",
+    "cust-dunmore": "dunmore@harbour.example",
+    "dpo-adeyemi": "adeyemi@harbour.example",
+    "ana-quinn": "quinn@harbour.example",
     "canary-custodian": "custodian@canary.example",
     "canary-elsewhere": "elsewhere@canary.example",
     "canary-engineer": "engineer@canary.example",
     "canary-researcher": "researcher@canary.example",
     "canary-dpo": "dpo@canary.example",
     "canary-reviewer": "reviewer@canary.example",
+    "canary-architect": "architect@canary.example",
     "rev-imani": "imani@health.example",
 }
 _PASSWORD = "dev-password-not-for-production"
@@ -262,7 +328,7 @@ def bearer_for(directory_id: str) -> dict[str, str]:
 # what v1_immutability.py needs its own fixture to be.
 _DISPOSABLE_PREFIXES = (
     "storage-probe-", "ingest-probe-", "legacy-probe-", "scratch-probe-",
-    "scratch-empty-", "verify-retired-",
+    "scratch-empty-", "verify-retired-", "pipeline-probe-",
 )
 
 
@@ -346,6 +412,105 @@ def fixture_department(tenant_id: str, dataset_id: str,
             (row["id"], dataset_id),
         )
     return row["custodian"]
+
+
+# --------------------------------------------------------------- tabular --
+#
+# A version made of rows, not files: the shape the Iceberg projection writes as a
+# table. One field of every kind a contract can name, so a check that passes here
+# has seen a string, a float, an integer, a boolean, a list and a dictionary.
+
+TABULAR_FIELDS = [
+    {"name": "record_id", "type": "string", "sensitivity": "none", "added_by": "verify"},
+    {"name": "transcript", "type": "string", "sensitivity": "phi", "added_by": "verify"},
+    {"name": "score", "type": "float", "sensitivity": "none", "added_by": "verify"},
+    {"name": "count", "type": "int", "sensitivity": "none", "added_by": "verify"},
+    {"name": "ok", "type": "bool", "sensitivity": "none", "added_by": "verify"},
+    {"name": "tags", "type": "list", "sensitivity": "quasi", "added_by": "verify"},
+    {"name": "detail", "type": "dict", "sensitivity": "none", "added_by": "verify"},
+]
+
+
+def tabular_rows(n: int = 3) -> list[dict]:
+    return [
+        {"record_id": f"rec-{i}", "transcript": f"synthetic transcript number {i}",
+         "score": 0.5 + i, "count": i * 2, "ok": i % 2 == 0,
+         "tags": ["a", f"b{i}"], "detail": {"i": i, "nested": {"k": "v"}}}
+        for i in range(n)
+    ]
+
+
+def fixture_tabular_contract(tenant_id: str = CANARY) -> str:
+    r = api("POST", "/schema-contracts", json={
+        "tenant_id": tenant_id, "name": "iceberg_probe",
+        "fields": TABULAR_FIELDS, "primary_key": ["record_id"],
+    })
+    r.raise_for_status()
+    return r.json()["id"]
+
+
+def fixture_tabular_version(tenant_id: str = CANARY, rows: list[dict] | None = None,
+                            klass: str = "RAW", dataset_name: str | None = None,
+                            produced_by_run: str | None = None,
+                            schema_id: str | None = None, with_records_key: bool = True,
+                            dataset_id: str | None = None, table_required: bool | None = None) -> dict:
+    """A dataset and one sealed version whose records are really in storage.
+
+    The records object is written the way a producer writes it: at the prefix
+    the platform reserved, before sealing, and the seal names it. Returns the
+    seal response plus the rows, the dataset, the bucket and the records key.
+    """
+    import hashlib as _hashlib
+
+    rows = rows if rows is not None else tabular_rows()
+    schema_id = schema_id or fixture_tabular_contract(tenant_id)
+    name = dataset_name or f"iceberg-{uuid.uuid4().hex[:8]}"
+    if dataset_id is None:
+        r = api("POST", "/datasets", json={"tenant_id": tenant_id, "name": name})
+        r.raise_for_status()
+        dataset_id = r.json()["id"]
+    # else: a further version of a dataset that already exists, named `dataset_name`.
+
+    where = api("GET", f"/datasets/{dataset_id}/next-version", params={"tenant_id": tenant_id})
+    where.raise_for_status()
+    prefix = where.json()["storage_prefix"]
+    bucket = bucket_for(tenant_id)
+    body = json.dumps(rows).encode("utf-8")
+    key = f"{prefix}/records.json"
+    s3_client(*ADMIN).put_object(Bucket=bucket, Key=key, Body=body)
+
+    payload = {
+        "tenant_id": tenant_id, "dataset_id": dataset_id, "schema_id": schema_id,
+        "visibility_class": klass,
+        "object_manifest": [{"key": key, "bytes": len(body),
+                             "sha256": _hashlib.sha256(body).hexdigest()}],
+        "record_count": len(rows),
+    }
+    if produced_by_run:
+        payload["produced_by_run"] = produced_by_run
+    if with_records_key:
+        payload["records_key"] = key
+    if table_required is not None:
+        payload["table_required"] = table_required
+    sealed = api("POST", "/dataset-versions", json=payload)
+    sealed.raise_for_status()
+    out = sealed.json()
+    out.update({"dataset_id": dataset_id, "dataset_name": name, "bucket": bucket,
+                "records_key": key, "rows": rows, "prefix": prefix,
+                "records_sha256": _hashlib.sha256(body).hexdigest(), "schema_id": schema_id})
+    return out
+
+
+def read_table(metadata_location: str):
+    """The Iceberg table at this metadata file, read with the platform's own
+    super-key. A reader's view of it is a different check (the catalog's)."""
+    from pyiceberg.table import StaticTable
+
+    return StaticTable.from_metadata(metadata_location, properties={
+        "s3.endpoint": S3_ENDPOINT, "s3.access-key-id": ADMIN[0],
+        "s3.secret-access-key": ADMIN[1], "s3.region": "us-east-1",
+        "s3.path-style-access": "true",
+    })
 
 
 def require_api() -> None:

@@ -20,6 +20,7 @@ completely and still be refused.
 from __future__ import annotations
 
 import dataclasses
+import os
 import sys
 import uuid
 from pathlib import Path
@@ -36,6 +37,7 @@ from agent.tools import BudgetExceeded, ToolContext  # noqa: E402
 from ports_config import PORTS  # noqa: E402
 
 API = f"http://localhost:{PORTS['munitas_api_http']}"
+WORKER_HEADERS = {"x-worker-token": os.environ.get("MUNITAS_WORKER_TOKEN", "dev-worker-token-not-for-production")}
 PG_DSN = f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform"
 
 # The canary tenant and its agent, seeded by infra/postgres/seed-canary.sql.
@@ -71,29 +73,50 @@ def fixture_versions() -> tuple[str, str]:
             (TENANT, f"key/{TENANT}"),
         )
 
-    contract = httpx.post(f"{API}/schema-contracts", json={
+    contract = httpx.post(f"{API}/schema-contracts", headers=WORKER_HEADERS, json={
         "tenant_id": TENANT, "name": "agent-fixture",
         "fields": [{"name": "record_id", "type": "string", "added_by": "verify"}],
         "primary_key": ["record_id"],
     }, timeout=20.0).json()["id"]
 
     def make(klass: str) -> str:
-        dataset = httpx.post(f"{API}/datasets", json={
+        dataset = httpx.post(f"{API}/datasets", headers=WORKER_HEADERS, json={
             "tenant_id": TENANT, "name": f"agent-{uuid.uuid4().hex[:8]}",
         }, timeout=20.0).json()["id"]
-        return httpx.post(f"{API}/dataset-versions", json={
+        return httpx.post(f"{API}/dataset-versions", headers=WORKER_HEADERS, json={
             "tenant_id": TENANT, "dataset_id": dataset, "schema_id": contract,
             "visibility_class": klass, "record_count": 1,
         }, timeout=20.0).json()["id"]
 
     in_scope = make("UNDER_REVIEW")
-    httpx.post(f"{API}/dataset-versions/{in_scope}/promote", json={
+    httpx.post(f"{API}/dataset-versions/{in_scope}/promote", headers=WORKER_HEADERS, json={
         "to_class": "PUBLISHED", "decided_by": "verify-suite", "decided_by_kind": "workload",
         "gate_evidence": {"note": "fixture for agent tests"},
         "grant_roles": ["agent_runtime"],
     }, timeout=20.0)
 
     return in_scope, make("RAW")
+
+
+def mint_task_credential(principal: str, task_kind: str, task_id: str, tenant_id: str) -> str:
+    """A task credential signed the way the platform signs one, by loading the platform's own module (it needs nothing else from the app)
+    and the same master key the API container runs with (from .env, or the development default the Compose file uses)."""
+    import importlib.util
+
+    if not os.environ.get("MUNITAS_MASTER_KEY"):
+        env_file = Path(__file__).resolve().parents[1] / ".env"
+        key = None
+        if env_file.exists():
+            for line in env_file.read_text(encoding="utf-8").splitlines():
+                if line.startswith("MUNITAS_MASTER_KEY="):
+                    key = line.split("=", 1)[1].strip()
+        os.environ["MUNITAS_MASTER_KEY"] = key or "dev-master-key-not-for-production"
+    path = Path(__file__).resolve().parents[1] / "platform" / "api" / "app" / "task_credential.py"
+    spec = importlib.util.spec_from_file_location("platform_task_credential", path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module  # its dataclass looks the module up by name while it loads
+    spec.loader.exec_module(module)
+    return module.mint(principal=principal, task_kind=task_kind, task_id=task_id, tenant_id=tenant_id)
 
 
 def register_real_run(run_id: str, dataset_version_id: str) -> str:
@@ -111,7 +134,9 @@ def register_real_run(run_id: str, dataset_version_id: str) -> str:
     about is not necessarily the first one recorded. Returns the secret so
     the caller can put it on the `AgentIdentity` it builds by hand.
     """
-    run_secret = uuid.uuid4().hex
+    # The platform's own signed token for this run, minted by its own function, because a run's secret is now a signed task credential
+    # and a bare random string is refused as malformed before any access decision is made.
+    run_secret = mint_task_credential(AGENT, "agent_run", run_id, TENANT)
     with psycopg.connect(PG_DSN, autocommit=True) as conn:
         agent_id = str(uuid.uuid4())
         conn.execute(

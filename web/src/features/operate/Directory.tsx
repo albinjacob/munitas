@@ -59,14 +59,16 @@ export function Directory() {
                   </td>
                   <td>{p.roles.map(roleLabel).join(", ")}</td>
                   <td>
-                    {p.department_name ?? (
+                    {p.approver_of.length ? (
+                      p.approver_of.join(", ")
+                    ) : (
                       <span className="text-xs text-slate-400">none</span>
                     )}
                   </td>
                   <td>
-                    {approves(p.roles) ? (
+                    {approves(p.roles) && p.approver_of.length ? (
                       <span className="rounded bg-teal-100 px-2 py-0.5 text-xs font-medium text-teal-900">
-                        {p.department_name} only
+                        {p.approver_of.join(", ")} only
                       </span>
                     ) : (
                       <span className="text-xs text-slate-400">no</span>

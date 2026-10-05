@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import sys
 
-from common import (RESEARCHER, api, bearer_for, check, db,
+from common import (RESEARCHER, WORKER_HEADERS, api, bearer_for, check, db,
                     fixture_contract, fixture_tenant, fixture_version,
                     heading, require_api, summary)
 
@@ -149,58 +149,62 @@ def main() -> int:
     # anybody holding a version id being able to read its dataset name, its
     # class, its record count and its release history regardless.
     #
-    # They are not all scoped the same way any more. `/dataset-versions/{id}`
-    # and `/lineage/{id}` are deliberately left open with no session at all,
-    # for internal callers (the pipeline, this verify suite) that carry no
-    # Kratos login, and take an honest `tenant_id` query parameter as their
-    # only scoping. `/dataset-versions/{id}/transitions` and
-    # `/datasets/{id}/versions` were closed by item 24's read-endpoint audit:
-    # they now require a real session and derive tenant from it, and a
-    # `tenant_id` query parameter on them is silently ignored, not honoured
-    # and not rejected. Proving isolation on those two means asking as a
-    # real person from each organisation, not naming a tenant by hand.
+    # Every one of these now takes the organisation from the caller's session, and a
+    # `tenant_id` typed into the URL is ignored. The single-record reads (the version, its
+    # lineage, the dataset) used to take that parameter on trust and answer anybody who left
+    # it out, which also handed over the version's storage keys. They answer a signed-in
+    # person, limited to their own organisation, or the platform's own workers, who have no
+    # login and send the worker token instead.
     version_id = canary_version["id"]
     dataset_id = canary_version["dataset_id"]
 
-    param_scoped = [
+    single_records = [
         ("the version itself", f"/dataset-versions/{version_id}"),
         ("its lineage", f"/lineage/{version_id}"),
+        ("the dataset's own record", f"/datasets/{dataset_id}"),
     ]
     session_scoped = [
         ("its release history", f"/dataset-versions/{version_id}/transitions"),
         ("the versions in its dataset", f"/datasets/{dataset_id}/versions"),
     ]
 
-    for label, path in param_scoped:
-        r = api("GET", path, params={"tenant_id": OTHER})
-        # A list answers with an empty list; a single record answers 404. Both
-        # say the same thing: there is nothing here for you.
-        empty = r.status_code == 404 or (r.status_code == 200 and r.json() == [])
-        check(f"{label} is not visible to another organisation", empty,
-              f"HTTP {r.status_code} {r.text[:60]}")
-
     # 404 and not 403, which matters more than it looks. A refusal confirms the
     # version exists, and existence is half of what somebody trying ids at
     # random was trying to learn.
-    forbidden = api("GET", f"/dataset-versions/{version_id}",
-                    params={"tenant_id": OTHER})
-    check("and is reported as absent rather than as refused",
-          forbidden.status_code == 404, f"HTTP {forbidden.status_code}")
+    for label, path in single_records:
+        r = api("GET", path, headers=bearer_for(OTHER_PERSON))
+        check(f"{label} is reported as absent to another organisation's session",
+              r.status_code == 404, f"HTTP {r.status_code} {r.text[:60]}")
 
-    for label, path in param_scoped:
-        r = api("GET", path, params={"tenant_id": canary})
-        answered = r.status_code == 200 and r.json() not in ([], None)
-        check(f"{label} still answers its own organisation", answered,
-              f"HTTP {r.status_code}")
+    for label, path in single_records:
+        r = api("GET", path, params={"tenant_id": canary}, headers=bearer_for(OTHER_PERSON))
+        check(f"{label} ignores a forged tenant_id from another organisation's session",
+              r.status_code == 404, f"HTTP {r.status_code} {r.text[:60]}")
 
-    # Omitting the tenant still answers, which is what keeps the pipeline, the
-    # verification scripts and anything else internal working. It is also the
-    # limit of this claim: there is no authentication, so nothing stops a caller
-    # leaving it out. What this closes is the console showing one organisation
-    # another's metadata, not a request somebody wrote by hand.
-    unscoped = api("GET", f"/dataset-versions/{version_id}")
-    check("omitting the organisation still answers, which is the limit of this",
-          unscoped.status_code == 200, f"HTTP {unscoped.status_code}")
+    for label, path in single_records:
+        r = api("GET", path)
+        check(f"{label} is refused with no session and no worker token",
+              r.status_code == 401, f"HTTP {r.status_code} {r.text[:60]}")
+
+    for label, path in single_records:
+        r = api("GET", path, headers=bearer_for(RESEARCHER))
+        check(f"{label} still answers a session in its own organisation",
+              r.status_code == 200 and r.json() not in ([], None), f"HTTP {r.status_code}")
+
+    # The platform's own workers: no login, so the worker token plus the organisation they
+    # act for. A worker naming another organisation sees nothing, the same as a person.
+    for label, path in single_records:
+        r = api("GET", path, params={"tenant_id": OTHER}, headers=WORKER_HEADERS)
+        check(f"{label} is absent to a worker acting for another organisation",
+              r.status_code == 404, f"HTTP {r.status_code} {r.text[:60]}")
+        r = api("GET", path, params={"tenant_id": canary}, headers=WORKER_HEADERS)
+        check(f"{label} still answers a worker acting for its own organisation",
+              r.status_code == 200 and r.json() not in ([], None), f"HTTP {r.status_code}")
+
+    # A wrong worker token is no better than none.
+    wrong = api("GET", f"/dataset-versions/{version_id}", params={"tenant_id": canary},
+                headers={"x-worker-token": "not-the-token"})
+    check("a wrong worker token is refused", wrong.status_code == 401, f"HTTP {wrong.status_code}")
 
     # The session-scoped pair: a real health session asking about canary's
     # own version and dataset gets an empty list, not a 403 or a 404 -- the

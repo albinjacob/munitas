@@ -8,6 +8,7 @@
  * reading a row here, not by asking whoever deployed it.
  */
 
+import { CODE_ROLES, useHoldsRole } from "../../identity/mayDo";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
@@ -37,6 +38,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 export function AgentDetail() {
   const { agentId } = useParams();
   const { principal } = useIdentity();
+  const mayRegisterCode = useHoldsRole(CODE_ROLES);
   const agent = useAgent(agentId);
   const runs = useAgentRuns(agentId);
   const deploy = useDeployAgent(agentId!);
@@ -192,9 +194,11 @@ export function AgentDetail() {
             ))}
           </ol>
         )}
-        <div className="mt-4">
-          <UploadAgentVersion agentId={agentId!} />
-        </div>
+        {mayRegisterCode && (
+          <div className="mt-4">
+            <UploadAgentVersion agentId={agentId!} />
+          </div>
+        )}
       </Section>
 
       <Section

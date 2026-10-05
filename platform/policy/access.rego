@@ -44,23 +44,24 @@ role_floor := {
 # buckets. Everyone else reads through a per-version grant that the register
 # justifies, so an empty list is a decision, not an omission.
 #
-# `pipeline_action` no longer holds standing Write here. Reading anything was
-# already made request-justified (task_credential.py, item 65); writing was
-# the one verb still trusted on the static key alone, the only role and only
-# verb still running on "just trust the password" (see
-# docs/internal/design/write-credential-rationale.md). A task now proves itself the
-# same way for a write as for a read, and platform/api/app/grants.py adds
-# whatever write_grant actually justifies from that proof -- see
-# justified_write_pairs() there. List/Tagging stay standing: they expose
-# object names, not contents or the ability to alter them, a materially
-# smaller blast radius than Read or Write, so narrowing them the same way was
-# asked about and deliberately deferred.
+# "Whole buckets" means the whole bucket of the ORGANISATION the key is made for, and never another's. `scope` says so:
+# "own_tenant" makes the platform issue one key per role per organisation, each opening that organisation's bucket (or, for a
+# role with no standing access, only the folders the register justifies there) and nothing of any other organisation
+# (grants.desired_document). It used to be one key per role, the same for every organisation: the pipeline's could read every
+# bucket, and the others carried the folder grants of every organisation at once. Every role has the scope, and a role that holds
+# standing bucket access must (test_standing_bucket_access_is_held_only_in_the_roles_own_organisation), so that a new one cannot
+# be cross-organisation by leaving the word out.
+#
+# No role holds a bucket-wide verb. A task that reads or writes is given a key of its own, made for that task and ending with
+# it (platform/api/app/grants.py, _minted_identities): a read of the folders of the versions it was allowed, and a write of the one
+# folder reserved for it. The pipeline was the last role to hold standing bucket access (Read, List, Tagging); its steps, its
+# derivations and its writers now each have a key of their own, so its role key opens nothing by itself.
 storage_roles := {
-	"pipeline_action": {"every_bucket": ["Read", "List", "Tagging"]},
-	"training_job": {"every_bucket": []},
-	"annotation_tool": {"every_bucket": []},
-	"notebook_explore": {"every_bucket": []},
-	"agent_runtime": {"every_bucket": []},
+	"pipeline_action": {"every_bucket": [], "scope": "own_tenant"},
+	"training_job": {"every_bucket": [], "scope": "own_tenant"},
+	"annotation_tool": {"every_bucket": [], "scope": "own_tenant"},
+	"notebook_explore": {"every_bucket": [], "scope": "own_tenant"},
+	"agent_runtime": {"every_bucket": [], "scope": "own_tenant"},
 }
 
 # Roles that may approve somebody else's lease.
@@ -204,17 +205,52 @@ reason contains "no declared purpose" if {
 	input.purpose == ""
 }
 
-reason contains sprintf("lease %v expired", [lease.id]) if {
-	some lease in input.principal.leases
-	lease.dataset_version == input.dataset.version_id
-	lease.expires_at != null
-	time.parse_rfc3339_ns(lease.expires_at) <= time.now_ns()
+# A person can hold, lose and be granted access to the same data again and again,
+# and every one of those leases stays on record. The refusal names only the most
+# recent lease that ended in each way: listing them all made the reason longer
+# with every cycle, and read as though all of them had just been withdrawn.
+leases_here := [l |
+	some l in input.principal.leases
+	l.dataset_version == input.dataset.version_id
+]
+
+# When a lease ended: the moment it was revoked, or the moment it ran out. A lease
+# revoked before revocation times were recorded falls back to its expiry.
+ended_when(l) := at if {
+	l.revoked
+	at := object.get(l, "revoked_at", null)
+	at != null
 }
 
-reason contains sprintf("lease %v revoked", [lease.id]) if {
-	some lease in input.principal.leases
-	lease.dataset_version == input.dataset.version_id
-	lease.revoked
+ended_when(l) := l.expires_at if {
+	l.revoked
+	object.get(l, "revoked_at", null) == null
+}
+
+ended_when(l) := l.expires_at if not l.revoked
+
+# Orders ended leases by when they ended, then by id so ties are settled.
+lease_order(l) := sprintf("%v|%v", [ended_when(l), l.id])
+
+reason contains sprintf("lease %v expired", [latest.id]) if {
+	ran_out := [l |
+		some l in leases_here
+		not l.revoked
+		l.expires_at != null
+		time.parse_rfc3339_ns(l.expires_at) <= time.now_ns()
+	]
+	count(ran_out) > 0
+	newest := max([lease_order(l) | some l in ran_out])
+	some latest in ran_out
+	lease_order(latest) == newest
+}
+
+reason contains sprintf("lease %v revoked", [latest.id]) if {
+	withdrawn := [l | some l in leases_here; l.revoked]
+	count(withdrawn) > 0
+	newest := max([lease_order(l) | some l in withdrawn])
+	some latest in withdrawn
+	lease_order(latest) == newest
 }
 
 reason contains sprintf("no role reaches class %v", [input.dataset.visibility_class]) if {
@@ -293,8 +329,9 @@ may_approve if {
 	some role in input.approver.roles
 	approver_roles[role]
 
-	# The approver is the custodian of the department owning this asset.
-	input.approver.id == input.asset.custodian
+	# The approver is one of the department approvers of the department owning this asset. Any one of them may act, so a department is
+	# never blocked by one person being away.
+	input.approver.id in input.asset.approvers
 }
 
 approve_reason contains "an approver cannot approve their own request" if {
@@ -313,15 +350,15 @@ approve_reason contains "this principal holds no role that may approve" if {
 }
 
 approve_reason contains sprintf(
-	"this asset is owned by a department whose custodian is %v",
-	[input.asset.custodian],
+	"this asset is owned by a department whose approvers are %v",
+	[concat(", ", input.asset.approvers)],
 ) if {
-	input.asset.custodian != ""
-	input.approver.id != input.asset.custodian
+	count(input.asset.approvers) > 0
+	not input.approver.id in input.asset.approvers
 }
 
-approve_reason contains "this asset has no owning department, so nobody can approve access to it" if {
-	not input.asset.custodian
+approve_reason contains "this asset has no owning department, or its department has no approver, so nobody can approve access to it" if {
+	count(object.get(input.asset, "approvers", [])) == 0
 }
 
 approval_decision := {
@@ -546,6 +583,215 @@ start_reason contains "this principal holds no role that may start a pipeline ru
 pipeline_start_decision := {
 	"allow": may_start_pipeline,
 	"reasons": [r | some r in start_reason],
+}
+
+# ---------------------------------- bringing data in, and registering code --
+
+# Until now these acts asked only that the caller was the person they named, in their own organisation. Any signed-in person could register
+# a dataset, put files into one, or register an agent or a pipeline. Three questions, each a named decision, so the route can say why it refused.
+#
+# Bringing data in (registering a dataset, putting files into one, fetching one from outside, sealing it, withdrawing an upload) belongs to the
+# data engineer, whose job it is, and to the data custodian, who owns the data. A custodian who brings data in cannot confirm their own
+# sensitivity claim, so an approver of the department other than the claimant confirms it (see classification_confirmation_decision below):
+# the person who makes the claim is never the one who checks it.
+#
+# Registering code (an agent, an agent version, a pipeline, a pipeline version) belongs to the data engineer alone. The platform administrator
+# has visibility without access and is absent from both, the same call the gate and the pipeline start made. A researcher reads de-identified
+# data and a data protection officer reads and decides nothing, so neither registers anything.
+intake_roles := {"pipeline_operator", "data_custodian"}
+
+default may_bring_in_data := false
+
+may_bring_in_data if {
+	some role in input.person.roles
+	intake_roles[role]
+}
+
+intake_reason contains "this person holds no role that may bring data in (a data engineer or a data custodian)" if {
+	not may_bring_in_data
+}
+
+intake_decision := {
+	"allow": may_bring_in_data,
+	"reasons": [r | some r in intake_reason],
+}
+
+code_registration_roles := {"pipeline_operator"}
+
+default may_register_code := false
+
+may_register_code if {
+	some role in input.person.roles
+	code_registration_roles[role]
+}
+
+code_registration_reason contains "this person holds no role that may register an agent or a pipeline (a data engineer)" if {
+	not may_register_code
+}
+
+code_registration_decision := {
+	"allow": may_register_code,
+	"reasons": [r | some r in code_registration_reason],
+}
+
+# ---------------------------------------- confirming a sensitivity claim --
+
+# Somebody who registers a dataset may claim a sensitivity less restrictive than the safe default. Until a custodian agrees, the data cannot be
+# released above the class that was claimed. Only a data custodian confirms, and never the person who made the claim.
+#
+# Whose job it is: any one of the department approvers of the department that owns the dataset, other than the person who made the claim,
+# and nobody else. A custodian of another department has no say over this department's data, so there is no outside confirmer. When the
+# claimant is the department's only approver, the claim waits until the department has a second approver, who is added with a recorded reason
+# and then confirms it. The route has already established that the dataset is in the caller's own organisation.
+confirmer_roles := {"data_custodian"}
+
+holds_confirmer_role if {
+	some role in input.confirmer.roles
+	confirmer_roles[role]
+}
+
+other_approvers := {a |
+	some a in input.department.approvers
+	a != input.claim.declared_by
+}
+
+default may_confirm_classification := false
+
+may_confirm_classification if {
+	holds_confirmer_role
+	input.confirmer.id != input.claim.declared_by
+	input.confirmer.id in input.department.approvers
+}
+
+confirmation_reason contains "only a data custodian may confirm a sensitivity claim" if {
+	not holds_confirmer_role
+}
+
+confirmation_reason contains "this person made the claim, so somebody else must confirm it" if {
+	input.confirmer.id == input.claim.declared_by
+}
+
+# The department's only approver made the claim: nobody can check it until there is a second approver.
+claimed_by_the_only_approver if {
+	input.claim.declared_by in input.department.approvers
+	count(other_approvers) == 0
+}
+
+confirmation_reason contains msg if {
+	holds_confirmer_role
+	input.confirmer.id != input.claim.declared_by
+	not input.confirmer.id in input.department.approvers
+	not may_confirm_classification
+	not claimed_by_the_only_approver
+	msg := sprintf(
+		"this data is owned by %s, whose approvers are %s; only a department approver may confirm a claim made by somebody else",
+		[input.department.name, concat(", ", input.department.approvers)],
+	)
+}
+
+confirmation_reason contains msg if {
+	holds_confirmer_role
+	claimed_by_the_only_approver
+	msg := sprintf(
+		"the only approver of %s made this claim, so it waits until the department has a second approver who can confirm it",
+		[input.department.name],
+	)
+}
+
+classification_confirmation_decision := {
+	"allow": may_confirm_classification,
+	"reasons": [r | some r in confirmation_reason],
+}
+
+# ---------------------------------------------- changing a department's approvers --
+
+# Any current approver of a department may add another or remove one, and every change is recorded with who made it and why. The person
+# added must already hold the data custodian role: adding them to a department is not a way of giving them the role, which is asked for
+# by the person and approved by a different custodian. A department always keeps at least one permanent approver.
+approver_change_roles := {"data_custodian"}
+
+holds_change_role if {
+	some role in input.actor.roles
+	approver_change_roles[role]
+}
+
+default may_add_department_approver := false
+
+may_add_department_approver if {
+	holds_change_role
+	input.actor.id in input.department.approvers
+	some role in input.person.roles
+	approver_change_roles[role]
+	not input.person.id in input.department.approvers
+	count(trim_space(object.get(input, "reason", ""))) > 0
+}
+
+addition_reason contains "only a current approver of this department may add another" if {
+	not input.actor.id in input.department.approvers
+}
+
+addition_reason contains "only a data custodian may change a department's approvers" if {
+	not holds_change_role
+}
+
+addition_reason contains "this person does not hold the data custodian role, which an approver must hold; they can ask for it first" if {
+	every role in input.person.roles {
+		not approver_change_roles[role]
+	}
+}
+
+addition_reason contains "this person is already an approver of this department" if {
+	input.person.id in input.department.approvers
+}
+
+addition_reason contains "a change to a department's approvers needs a reason, which is recorded with it" if {
+	count(trim_space(object.get(input, "reason", ""))) == 0
+}
+
+approver_addition_decision := {
+	"allow": may_add_department_approver,
+	"reasons": [r | some r in addition_reason],
+}
+
+default may_remove_department_approver := false
+
+may_remove_department_approver if {
+	holds_change_role
+	input.actor.id in input.department.approvers
+	input.person.id in input.department.approvers
+	count(trim_space(object.get(input, "reason", ""))) > 0
+	not removes_last_permanent_approver
+}
+
+# `permanent_after` is how many permanent approvers would remain, counted by the route.
+removes_last_permanent_approver if {
+	input.person.permanent
+	input.department.permanent_after < 1
+}
+
+removal_reason contains "only a current approver of this department may remove one" if {
+	not input.actor.id in input.department.approvers
+}
+
+removal_reason contains "only a data custodian may change a department's approvers" if {
+	not holds_change_role
+}
+
+removal_reason contains "this person is not an approver of this department" if {
+	not input.person.id in input.department.approvers
+}
+
+removal_reason contains "a department always keeps at least one permanent approver, so this one cannot be removed until another is added" if {
+	removes_last_permanent_approver
+}
+
+removal_reason contains "a change to a department's approvers needs a reason, which is recorded with it" if {
+	count(trim_space(object.get(input, "reason", ""))) == 0
+}
+
+approver_removal_decision := {
+	"allow": may_remove_department_approver,
+	"reasons": [r | some r in removal_reason],
 }
 
 # --------------------------------------------- agent egress allowlist --
@@ -813,4 +1059,383 @@ attest_reason contains "this principal holds no role that may confirm another's"
 attest_decision := {
 	"allow": may_attest_role,
 	"reasons": [r | some r in attest_reason],
+}
+
+# ------------------------------------------------------------------
+# Closing an organisation, and holding its records.
+#
+# Retiring starts a countdown that ends in everything inside the organisation
+# being deleted, so who may start it, who may stop it and who may place a legal
+# hold are decided here and not left to whoever reaches the endpoint.
+#
+# Starting and cancelling a retirement belong to the organisation: its own data
+# custodians, who already decide who may read its data, and to a platform
+# administrator acting on the organisation's written instruction. A reason is
+# recorded when starting, because the record is what an organisation reads back
+# when it asks why it was closed.
+#
+# A legal hold is different. It overrides the organisation's wishes, so no
+# member of the organisation may place one, and no single administrator may
+# either: one administrator records the notice and a different one approves it.
+# The same shape as a lease, where nobody approves their own.
+
+lifecycle_actor_roles := {"platform_admin"}
+
+default may_retire := false
+
+may_retire if {
+	count(trim_space(object.get(input, "reason", ""))) > 0
+	lifecycle_actor_ok
+}
+
+lifecycle_actor_ok if {
+	some role in input.actor.roles
+	lifecycle_actor_roles[role]
+}
+
+lifecycle_actor_ok if {
+	input.actor.tenant_id == input.organisation
+	some role in input.actor.roles
+	approver_roles[role]
+}
+
+retire_reason contains "only a data custodian of the organisation, or a platform administrator, may close it down" if {
+	not lifecycle_actor_ok
+}
+
+retire_reason contains "closing down an organisation needs a reason, which is recorded with it" if {
+	count(trim_space(object.get(input, "reason", ""))) == 0
+}
+
+retire_decision := {
+	"allow": may_retire,
+	"reasons": [r | some r in retire_reason],
+}
+
+default may_cancel_retirement := false
+
+may_cancel_retirement if lifecycle_actor_ok
+
+cancel_reason contains "only a data custodian of the organisation, or a platform administrator, may cancel its closing down" if {
+	not lifecycle_actor_ok
+}
+
+cancel_decision := {
+	"allow": may_cancel_retirement,
+	"reasons": [r | some r in cancel_reason],
+}
+
+# What a legal hold notice has to say, so a hold cannot be placed on a hunch.
+hold_required_fields := {
+	"matter_name", "matter_number", "description", "triggering_event",
+	"issuing_authority", "authority_reference", "attorney_name", "attorney_email",
+	"notice_received_on", "preserve", "custodian_id",
+}
+
+hold_missing contains f if {
+	some f in hold_required_fields
+	count(trim_space(sprintf("%v", [object.get(input.hold, f, "")]))) == 0
+}
+
+default may_place_hold := false
+
+may_place_hold if {
+	some role in input.actor.roles
+	lifecycle_actor_roles[role]
+	count(hold_missing) == 0
+}
+
+place_hold_reason contains "only a platform administrator may place a legal hold" if {
+	every role in input.actor.roles {
+		not lifecycle_actor_roles[role]
+	}
+}
+
+place_hold_reason contains sprintf("the notice is missing: %v", [concat(", ", sort([f | some f in hold_missing]))]) if {
+	count(hold_missing) > 0
+}
+
+place_hold_decision := {
+	"allow": may_place_hold,
+	"reasons": [r | some r in place_hold_reason],
+}
+
+default may_decide_hold := false
+
+may_decide_hold if {
+	input.actor.id != input.hold.placed_by
+	some role in input.actor.roles
+	lifecycle_actor_roles[role]
+}
+
+decide_hold_reason contains "a legal hold is approved by a different platform administrator from the one who placed it" if {
+	input.actor.id == input.hold.placed_by
+}
+
+decide_hold_reason contains "only a platform administrator may decide a legal hold" if {
+	every role in input.actor.roles {
+		not lifecycle_actor_roles[role]
+	}
+}
+
+decide_hold_decision := {
+	"allow": may_decide_hold,
+	"reasons": [r | some r in decide_hold_reason],
+}
+
+default may_release_hold := false
+
+may_release_hold if {
+	count(trim_space(object.get(input, "reason", ""))) > 0
+	some role in input.actor.roles
+	lifecycle_actor_roles[role]
+}
+
+release_hold_reason contains "only a platform administrator may release a legal hold" if {
+	every role in input.actor.roles {
+		not lifecycle_actor_roles[role]
+	}
+}
+
+release_hold_reason contains "releasing a legal hold needs a reason, which is recorded with it" if {
+	count(trim_space(object.get(input, "reason", ""))) == 0
+}
+
+release_hold_decision := {
+	"allow": may_release_hold,
+	"reasons": [r | some r in release_hold_reason],
+}
+
+# Seeing where an organisation is in its closing: its own people see their
+# organisation's, a platform administrator sees every organisation's. What is
+# shown is dates and states, never contents.
+default may_see_lifecycle := false
+
+may_see_lifecycle if {
+	input.scope == "platform"
+	some role in input.viewer.roles
+	lifecycle_actor_roles[role]
+}
+
+may_see_lifecycle if {
+	input.scope == "tenant"
+	input.viewer.tenant_id == input.tenant_id
+}
+
+may_see_lifecycle if {
+	input.scope == "tenant"
+	some role in input.viewer.roles
+	lifecycle_actor_roles[role]
+}
+
+see_lifecycle_reason contains "this view belongs to a platform administrator" if {
+	input.scope == "platform"
+	every role in input.viewer.roles {
+		not lifecycle_actor_roles[role]
+	}
+}
+
+see_lifecycle_reason contains "an organisation's closing is visible to its own people and to platform administrators" if {
+	input.scope == "tenant"
+	input.viewer.tenant_id != input.tenant_id
+	every role in input.viewer.roles {
+		not lifecycle_actor_roles[role]
+	}
+}
+
+see_lifecycle_decision := {
+	"allow": may_see_lifecycle,
+	"reasons": [r | some r in see_lifecycle_reason],
+}
+
+# ------------------------------------------------------------------
+# An organisation's own table worker.
+#
+# A large table is written by a table worker. An organisation can be given one of its own, so that its tables are written
+# by a process that serves nobody else. That is a cost the platform carries, and a promise made to the organisation, so only a
+# platform administrator may give or take it. An organisation's own people do not decide it for themselves.
+default may_set_table_worker := false
+
+may_set_table_worker if {
+	some role in input.viewer.roles
+	lifecycle_actor_roles[role]
+}
+
+table_worker_reason contains "an organisation's own table worker is given by a platform administrator" if {
+	every role in input.viewer.roles {
+		not lifecycle_actor_roles[role]
+	}
+}
+
+table_worker_decision := {
+	"allow": may_set_table_worker,
+	"reasons": [r | some r in table_worker_reason],
+}
+
+# ------------------------------------------------------------------
+# Producing an organisation's records for a legal matter.
+#
+# A legal hold keeps records. An export lets some of them leave, so it is the most sensitive thing this
+# platform does with a hold, and it has more separation than any other act. Three different people are
+# needed, and none of them reads the contents:
+#
+#   a platform administrator asks, naming the demand and the scope,
+#   a different platform administrator approves,
+#   the hold's temporary custodian, who answers for the records, confirms the scope is what the demand
+#   asks for and no wider.
+#
+# The platform administrator holds no standing access to what an organisation contains (role_floor
+# above). An export does not change that: the package is built by a job, encrypted, and opened by its
+# recipient with a passphrase that only the custodian is given.
+
+export_required_fields := {
+	"demand_authority", "demand_reference", "demanded_on", "demand_text",
+	"recipient_name", "recipient_organisation", "recipient_email",
+}
+
+export_missing contains f if {
+	some f in export_required_fields
+	count(trim_space(sprintf("%v", [object.get(input.export, f, "")]))) == 0
+}
+
+default may_request_export := false
+
+may_request_export if {
+	some role in input.actor.roles
+	lifecycle_actor_roles[role]
+	input.hold.status == "active"
+	count(export_missing) == 0
+	count(object.get(input.export, "dataset_ids", [])) > 0
+}
+
+request_export_reason contains "only a platform administrator may ask for an export" if {
+	every role in input.actor.roles {
+		not lifecycle_actor_roles[role]
+	}
+}
+
+request_export_reason contains "records are produced only while a legal hold is in force" if {
+	input.hold.status != "active"
+}
+
+request_export_reason contains sprintf("the demand or the recipient is missing: %v", [concat(", ", sort([f | some f in export_missing]))]) if {
+	count(export_missing) > 0
+}
+
+request_export_reason contains "an export names at least one dataset" if {
+	count(object.get(input.export, "dataset_ids", [])) == 0
+}
+
+export_request_decision := {
+	"allow": may_request_export,
+	"reasons": [r | some r in request_export_reason],
+}
+
+default may_approve_export := false
+
+may_approve_export if {
+	input.actor.id != input.export.requested_by
+	input.export.status == "requested"
+	some role in input.actor.roles
+	lifecycle_actor_roles[role]
+}
+
+approve_export_reason contains "an export is approved by a different platform administrator from the one who asked for it" if {
+	input.actor.id == input.export.requested_by
+}
+
+approve_export_reason contains "only a platform administrator may approve an export" if {
+	every role in input.actor.roles {
+		not lifecycle_actor_roles[role]
+	}
+}
+
+approve_export_reason contains sprintf("this export is already %v", [input.export.status]) if {
+	input.export.status != "requested"
+}
+
+export_approval_decision := {
+	"allow": may_approve_export,
+	"reasons": [r | some r in approve_export_reason],
+}
+
+default may_confirm_export := false
+
+may_confirm_export if {
+	input.actor.id == input.hold.custodian_id
+	input.export.status == "approved"
+	count(confirm_missing_values) == 0
+}
+
+# A dataset filtered to the rows for named people needs the people named, and the custodian names them.
+confirm_missing_values contains d if {
+	some d in object.get(input.export, "filter_datasets", [])
+	not d in object.get(input.confirm, "valued_datasets", [])
+}
+
+confirm_export_reason contains "only the custodian the hold names confirms what an export holds" if {
+	input.actor.id != input.hold.custodian_id
+}
+
+confirm_export_reason contains "an export is confirmed after a platform administrator has approved it" if {
+	input.export.status != "approved"
+	input.actor.id == input.hold.custodian_id
+}
+
+confirm_export_reason contains sprintf("the custodian names the values to match for every filtered dataset, and none were given for: %v", [concat(", ", sort([d | some d in confirm_missing_values]))]) if {
+	count(confirm_missing_values) > 0
+	input.actor.id == input.hold.custodian_id
+}
+
+export_confirmation_decision := {
+	"allow": may_confirm_export,
+	"reasons": [r | some r in confirm_export_reason],
+}
+
+default may_link_export := false
+
+may_link_export if {
+	input.export.status == "ready"
+	some role in input.actor.roles
+	lifecycle_actor_roles[role]
+}
+
+link_export_reason contains "only a platform administrator makes a download link" if {
+	every role in input.actor.roles {
+		not lifecycle_actor_roles[role]
+	}
+}
+
+link_export_reason contains "a link is made once the package is ready, and before it expires" if {
+	input.export.status != "ready"
+}
+
+export_link_decision := {
+	"allow": may_link_export,
+	"reasons": [r | some r in link_export_reason],
+}
+
+default may_read_passphrase := false
+
+may_read_passphrase if {
+	input.actor.id == input.hold.custodian_id
+	input.export.status == "ready"
+	not input.export.passphrase_revealed
+}
+
+passphrase_reason contains "only the custodian the hold names is given the passphrase, and only once" if {
+	input.actor.id != input.hold.custodian_id
+}
+
+passphrase_reason contains "the passphrase has been read already, and is not kept after that" if {
+	input.export.passphrase_revealed
+}
+
+passphrase_reason contains "the passphrase is given once the package is ready" if {
+	input.export.status != "ready"
+}
+
+export_passphrase_decision := {
+	"allow": may_read_passphrase,
+	"reasons": [r | some r in passphrase_reason],
 }

@@ -8,7 +8,7 @@
  * upload anything itself" has one file to check.
  */
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, API_BASE, ApiError } from "./client";
 import { useIdentity } from "../identity/IdentityContext";
 import type { VisibilityClass } from "./types";
@@ -18,7 +18,7 @@ export interface RegisteredDataset {
   declared_class: VisibilityClass;
   declaration_basis: "verified_source" | "asserted" | null;
   needs_confirmation: boolean;
-  custodian: string | null;
+  approvers: string[];
   note: string;
 }
 
@@ -63,7 +63,8 @@ export function useUploadFile() {
       form.append("file", file);
       const response = await fetch(
         `${API_BASE}/datasets/${datasetId}/files`,
-        { method: "POST", body: form },
+        // Sent with the session: this is a person acting, and the platform acts as the signed-in person.
+        { method: "POST", body: form, credentials: "include" },
       );
       const text = await response.text();
       const body = text ? JSON.parse(text) : null;
@@ -294,13 +295,13 @@ export function useWithdrawUpload() {
  * one custodian can act on. Only claims need this: the safe default and a
  * verified source need no confirmation.
  */
-export function useAwaitingConfirmation(custodian: string | undefined) {
+export function useAwaitingConfirmation(custodian: string | undefined, limit = 100) {
   const tenant = useIdentity().tenant;
   return useQuery({
-    queryKey: ["awaiting-confirmation", tenant, custodian],
+    queryKey: ["awaiting-confirmation", tenant, custodian, limit],
     queryFn: () =>
-      api.get<
-        {
+      api.get<{
+        items: {
           id: string;
           name: string;
           declared_class: VisibilityClass;
@@ -308,13 +309,21 @@ export function useAwaitingConfirmation(custodian: string | undefined) {
           declared_at: string;
           provenance: string;
           department_name: string | null;
-          custodian: string | null;
-        }[]
-      >("/datasets/awaiting-confirmation", {
+          /** Everybody who may confirm a claim about this department's data. */
+          approvers: string[];
+        }[];
+        /** Every dataset waiting, not only the ones in `items`. */
+        total: number;
+        limit: number;
+        offset: number;
+      }>("/datasets/awaiting-confirmation", {
         tenant_id: tenant,
         custodian,
+        limit,
       }),
     enabled: Boolean(custodian),
+    // Showing more keeps the list on screen while the longer one loads.
+    placeholderData: keepPreviousData,
   });
 }
 

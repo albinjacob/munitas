@@ -12,9 +12,13 @@
 -- run time. U28 does that, and it needs this file to exist.
 --
 -- `purpose` is `canary`, which is what makes these versions' objects eligible
--- for reclamation by scripts/admin/reclaim-storage.py. Rows are never reclaimed: 81 versions
--- of metadata came to 9 MB while their objects came to 502 MB, so the bytes are
--- the problem and the rows are not.
+-- for reclamation by scripts/admin/reclaim-storage.py. That frees the bytes and keeps the
+-- rows: 81 versions of metadata came to 9 MB while their objects came to 502 MB, so the
+-- bytes were the problem. The rows became one later, because they show in screens (a
+-- custodian's queue lists the oldest 100 arrivals), so scripts/admin/tidy-canary.py removes
+-- this tenant's old fixtures, rows and files, and this tenant's only. It is test-harness
+-- housekeeping, not platform behaviour, and run-verification.ps1 runs it after each
+-- recorded run.
 --
 -- Applied the same way as seed-organisation.sql:
 --

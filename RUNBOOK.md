@@ -446,6 +446,139 @@ temporal schedule describe nightly-tidy-probes
 
 ---
 
+## Test tenants left behind by a verification run
+
+`run-verification.ps1` ends with `scripts/admin/check-leftover-tenants.py`, after the canary tidy and the probe sweep, so it only sees what
+no cleanup could remove. It exits 1 and names each leftover (what it holds, and why it counts) when a check made a tenant and did not remove it, and
+exits 2 when it could not look. A run whose checks all passed but that left tenants behind, or could not check, exits 3.
+
+The result is also kept on the verification history page. The run is recorded before any cleanup (cleanup deletes data), so the result goes in a second line
+of `verify/history/runs.jsonl` tied to that run (`verify/report.py --add-after`), and the page shows it as the `LEAK` check and in the card "After the last run's cleanup".
+If that line cannot be recorded the run exits 3 as well.
+
+A tenant counts when it is not one of the standing set (`STANDING` in the script: health, finance, harbour, canary, r2-probe-a, r2-probe-b) and it is
+disposable (`scratch`), a `canary` fixture, or named like a test fixture. Any other `production` tenant is never flagged. Keeping a tenant on purpose means
+adding it to `STANDING`, which is the decision that it is permanent. To clear a leftover: `scripts/admin/tidy-probes.py --apply` removes disposable
+ones; one that holds sealed versions and is not disposable needs `scripts/admin/nuke-tenant.py`, which asks for the name typed back. The fix for the
+cause is in the check that made it: create the tenant through `fixture_tenant` with a prefix listed in `common._DISPOSABLE_PREFIXES` (U124 fails if that
+list and the script's disagree), or remove it in a `finally`.
+
+---
+
+## Pipeline runs that stopped without recording it
+
+A pipeline run's own workflow writes its ending as it finishes. A workflow killed from outside, or one whose worker
+died, cannot, so its record stays open and the console refuses to start that version again. Temporal knows the run
+stopped, but only remembers a finished workflow for the namespace's retention period (24 hours here; check with
+`temporal operator namespace describe default`). After that it can no longer say how the run ended.
+
+**Script:** `scripts/admin/close-finished-pipeline-runs.py` (preview, then `--apply`).
+**Schedule:** `close-stopped-pipeline-runs`, every six hours, run by the housekeeping worker on the host.
+
+```bash
+# What is open and what Temporal says about each. Changes nothing.
+python scripts/admin/close-finished-pipeline-runs.py
+python scripts/admin/close-finished-pipeline-runs.py --apply
+
+# The schedule (register once; the host worker must be running the current code)
+python -m worker.schedule_close_finished_runs --schedule-id close-stopped-pipeline-runs
+temporal schedule describe --schedule-id close-stopped-pipeline-runs
+temporal schedule trigger  --schedule-id close-stopped-pipeline-runs      # run it now
+```
+
+- A run is open when it has no end time, and only then is it looked at. A run with an end time is never touched again.
+- A run Temporal reports as still running is left alone. If Temporal cannot be reached nothing is changed, and the
+  scheduled run fails visibly in Temporal's list of workflows rather than passing as a run that found nothing.
+- The interval must stay well inside the retention period. Once a day would reach a run with barely a minute to
+  spare. Check U122 after changing either: it fails if the schedule fires fewer than twice per retention period.
+- A row the database refuses to change (for example an organisation that has been retired) is reported and left
+  open, and the others still close.
+
+**Where an ending came from.** Every closed run carries `ended_source`, set by code in the same statement as the end time
+and required by the database whenever there is an end time:
+
+| `ended_source` | Meaning |
+|---|---|
+| `workflow` | the pipeline's own workflow reported it as it finished |
+| `job_runner` | the workflow never reported; Temporal's account of it was written in its place |
+| `job_runner_no_record` | Temporal had already forgotten the run, so the status is `unknown` |
+| `start_failed` | the platform could not start the workflow, so the run never began |
+| `not_recorded` | the run ended before this column existed and nothing recorded how it was found out |
+
+---
+
+## Clearing the canary tenant's old fixtures
+
+**Script:** `scripts/admin/tidy-canary.py`, run automatically at the end of `run-verification.ps1`
+(skip it with `-NoTidyCanary`; change the age with `-TidyCanaryOlderThanHours`, default 2).
+
+**Why:** the verification suite writes its fixtures into the `canary` tenant. A sealed version cannot be
+deleted through the platform (check V1 proves it), so those rows used to pile up for ever, thousands of
+them, and they show in screens: a custodian's queue that lists the oldest 100 arrivals stops showing new
+ones once the suite has left 100 behind. `reclaim-storage.py` frees the files and keeps the rows; this
+removes the rows and the files of canary datasets that are old enough. It is test-harness housekeeping, not
+platform behaviour: nothing in the API calls it.
+
+**It works on the canary tenant and on nothing else.** It takes no tenant argument (`--tenant` is
+refused), and the tenant is a constant in `scripts/admin/_canary_purge.py`. The guards are checked at every
+step, and the tool prints `[guard ok]` for the first three:
+
+| Guard | What is checked |
+|---|---|
+| G1 | the tenant is the constant `canary`, never read from an argument or the environment |
+| G2 | the database row has the id `canary` and the purpose `canary` |
+| G3 | the storage binding is SeaweedFS and the bucket is exactly `munitas-canary` |
+| G4, G5 | every dataset is read back from the database and belongs to canary, then locked and checked again inside the transaction that deletes it |
+| G6 | every delete statement is scoped to canary in its own SQL wherever the table has a tenant column |
+| G7 | the number of rows every other tenant has in the tables touched is the same before and after, or the whole batch is rolled back |
+| G8 | every stored object is in canary's bucket under `canary/<a verified dataset>/` before it is deleted |
+
+| G9 | an agent is taken only when it, its versions, runs and deployments are all old; its stored code is taken only from `canary/agents/<a verified agent>/`; the immutability rules on agent versions are off only inside the deleting transaction and are on again before it commits |
+| G10 | a person is taken only when they have no login, are not one of the identities `infra/postgres/seed-canary.sql` creates (read from that file; the tool refuses to go on if it finds fewer than 11), and no row refers to them |
+
+The tool works in three stages, in this order: old datasets, then old agents (the checks register agents, and registering one
+creates a directory identity for its runtime), then the invented identities nothing refers to any more. The seeded people
+and anyone with a login always stay. The caps are `--max-datasets` (3000), `--max-agents` (3000) and `--max-people` (5000).
+
+Check U119 proves each guard refuses, and that canary datasets, agents and identities are deleted while a second
+organisation's dataset, version, object, agent and identity are untouched.
+
+```bash
+# What would go. Changes nothing.
+python scripts/admin/tidy-canary.py
+
+# Delete what is older than 2 hours.
+python scripts/admin/tidy-canary.py --apply
+
+# A first clearing of a large backlog (the default cap is 3000 datasets).
+python scripts/admin/tidy-canary.py --apply --max-datasets 6000
+```
+
+- Only datasets older than `--older-than-hours` go, so the run just made is still there to look at when it fails.
+- Datasets that cannot be deleted without each other (a pipeline run's source and the outputs of its steps)
+  are deleted together, and only when every one of them is old enough. A group with a young member is left whole.
+- It leaves alone the three canary datasets whose files were freed most recently, and the oldest dataset that has a sealed
+  version and has not been freed yet, so that the console's "the files were freed" screen (test U32) always has a version to
+  look at once one exists. Files are freed a day after a version is made, so that test skips until the first one is.
+- `--max-datasets` (default 3000) is a circuit breaker: a selection bigger than it is refused outright, so a
+  mistake in the age calculation cannot turn into a mass delete. It is not a platform limit.
+- Exit codes: 0 done or nothing to do, 1 a batch failed (nothing in that batch was changed), 2 a guard refused.
+
+**The storage permissions.** Deleting a dataset removes its rows at once, but the permissions document in
+storage keeps its folder grants until it is printed again, and the platform's safety guard refuses a print
+that removes more than 40% of them (a print that is refused also leaves new keys unable to activate, which
+shows as 503 errors). So after every batch the tool runs `scripts/admin/_canary_reprint.py` inside the API
+container. That relaxes the guard only when it can prove that everything the print removes is a folder grant,
+in canary's bucket, of a dataset that no longer exists, and that every identity that disappears is a lease,
+catalog, task or table job key. If any of that fails, nothing is printed and it names what it found. If
+`/health` shows `storage_permissions` failing after a canary clear, run it by hand:
+
+```bash
+wsl -d Ubuntu-20.04 -- docker exec munitas-munitas-api-1 python /scripts-admin/_canary_reprint.py
+```
+
+---
+
 ## Closing a tenant
 
 **Script:** `scripts/admin/retire-tenant.py`
@@ -513,6 +646,28 @@ Use `scripts/seed/reseed-tenant.ps1` to rebuild one worked example,
 ```
 
 ---
+
+## Running a command inside the API
+
+To run a script or a command with the API's own code and dependencies, run it in the container that is already up:
+
+```
+docker compose exec -T munitas-api python <script>
+```
+
+Never use `docker compose run` on `munitas-api`. It looks like a disposable container that runs one command and exits, but the image's entrypoint
+ignores the command and starts a whole second API server beside the real one, on the same database and with whatever settings the `run` was
+given. Anything that then reaches "the API" can land on the second one. When it was given a different master key, it wrote encrypted storage
+credentials the real API could not open, and every later access request failed with `InvalidTag` until those rows were ended by hand.
+
+To check for a stray one, list the API containers. There should be exactly one:
+
+```
+docker ps --filter label=com.docker.compose.service=munitas-api --format "{{.Names}}"
+```
+
+If there is a second, remove it with `docker rm -f <name>` before running anything else. The verification wrapper (`run-verification.ps1`) checks
+this itself and refuses to start while a second one is there.
 
 ## Troubleshooting: containers stuck in a crash-recovery loop (Windows + WSL2)
 
@@ -656,11 +811,300 @@ platform is still retrying.
 wsl -d Ubuntu-20.04 -- docker exec munitas-munitas-api-1 python /app/reconcile-grants.py
 ```
 
+  If the guard refused because the change is deliberate (for example the first
+  print after a release that stops a role holding standing storage access, which
+  can remove more than 40% of the prefix grants at once), read the numbers in the
+  refusal, and when they are what the release intended, print it with:
+
+```bash
+wsl -d Ubuntu-20.04 -- docker exec munitas-munitas-api-1 python /app/reconcile-grants.py --allow-shrink
+```
+
 The banner clears on the next successful print and waiting runs resume
 within 10 seconds. The history of every print is in
 `storage_permission_print`.
 
 ---
+
+## Reading governed tables from DuckDB or PyIceberg
+
+Every sealed version whose rows have a schema contract is also written as an
+Iceberg table, and a catalog at `/iceberg` on the API lists and opens only what
+the person asking may read. A person needs a token for their own tools, nothing
+else.
+
+1. Ask for a token in a session of your own (the console session, or any
+   Kratos session). The purpose is the sentence your leases are approved for:
+
+   ```bash
+   curl -s -X POST http://localhost:8000/iceberg/tokens      -H "Authorization: Bearer <session>" -H "Content-Type: application/json"      -d '{"purpose":"readmission study","hours":8}'
+   ```
+
+   The token is shown once. `GET /iceberg/tokens` lists yours without showing
+   them, and `POST /iceberg/tokens/<id>/revoke` ends one.
+
+2. Connect. The warehouse is the organisation's name, for example `canary`:
+
+   ```sql
+   INSTALL iceberg; LOAD iceberg;
+   ATTACH 'canary' AS lake (TYPE ICEBERG, ENDPOINT 'http://localhost:8000/iceberg', TOKEN '<token>');
+   SELECT count(*) FROM lake."<dataset name>".v1;
+   ```
+
+   ```python
+   from pyiceberg.catalog.rest import RestCatalog
+   cat = RestCatalog("munitas", uri="http://localhost:8000/iceberg", token="<token>", warehouse="canary")
+   cat.load_table(("<dataset name>", "v1")).scan().to_arrow()
+   ```
+
+Each version is a table named `v<N>`. A table the person may not read is not
+listed, and opening it is refused with the reason. Opening a raw table needs an
+approved lease; the storage key it hands out expires, as described below.
+
+Two settings matter when a client runs on another machine. The catalog tells
+the client where storage is from `MUNITAS_PUBLIC_S3_ENDPOINT` (default
+`http://localhost:8333`), so set it to an address the client can reach. Newer
+S3 clients send uploads that SeaweedFS stores wrongly unless
+`AWS_REQUEST_CHECKSUM_CALCULATION=when_required` and
+`AWS_RESPONSE_CHECKSUM_VALIDATION=when_required` are set; the API container
+has both already.
+
+Checks. U90 and U91 run with the rest of the suite. U92 uses the real tools,
+so it runs on the host:
+
+```bash
+.venv\Scripts\python.exe -m pip install duckdb "pyiceberg[pyarrow]"
+.venv\Scripts\python.exe verify\v92_iceberg_real_clients.py
+```
+
+A database created before the Iceberg tables existed gets them with
+`.venv\Scripts\python.exe scripts\admin\apply-schema.py`, which is safe to
+run again. Projection can be turned off with `MUNITAS_ICEBERG_PROJECTION=off`; a
+version that cannot be projected is still sealed, and the reason is logged.
+
+### How long a storage key lasts, and long reads
+
+The key the catalog hands out for a table expires. It lives between half and
+all of `MUNITAS_CATALOG_KEY_SECONDS` (default 3600, so 30 to 60 minutes) and the
+table's configuration says exactly when (`s3.session-token-expires-at-ms`).
+Revoking a lease ends its keys at once, whatever time they had left. A key that
+leaks is useful for at most that long, not for as long as a lease lasts.
+
+A read that outlasts its key has to ask for the next one, and every ask decides
+access again. If access has ended, the ask is refused with the reason and the
+read stops.
+
+- **DuckDB** asks again by itself, by loading the table again. Nothing to do.
+- **PyIceberg** does not. It opens each data file with the key it held when the
+  table was loaded, and on a table too large to read ahead of itself that fails
+  on a later file with an access error. Read with the helper, which loads the
+  table again whenever the key is about to run out:
+
+  ```python
+  import sys; sys.path.insert(0, "scripts/client")
+  from iceberg_reader import read_batches
+  for batch in read_batches(catalog, ("my_dataset", "v1")):
+      ...   # a pyarrow RecordBatch
+  ```
+
+- Anything else that reads the files itself: load the table again, or call
+  `GET /iceberg/v1/<organisation>/namespaces/<dataset>/tables/v<N>/credentials`,
+  before `s3.session-token-expires-at-ms`.
+
+The catalog offers both ways of asking, and each client may use whichever it
+supports. Both run the same decision and mint the same kind of key.
+
+- Loading the table again is what DuckDB 1.5.6 did in U93, every time, even
+  though the catalog also advertises the credentials endpoint. A newer DuckDB
+  Iceberg extension is documented to prefer the credentials endpoint when it is
+  advertised and to load the table again when it is not, so this may change
+  with the extension version. Both work. U93 asserts the behaviour (the tool
+  asked again, and a revoke stopped it), not which of the two it used.
+- The credentials endpoint is the one the Iceberg REST specification defines
+  (version 1.9 onward), and it is advertised in `/iceberg/v1/config` and in the
+  table's `client.refresh-credentials-endpoint` property, as a path relative to
+  the catalog's address, as Java-based clients expect. Of the clients tried,
+  none relied on it: PyIceberg 0.12 has a call for it but its file reader does
+  not use it, and only U93's own explicit calls exercised it. It is kept so that
+  clients which do use it (Spark, Flink and other Java-based ones are the usual
+  ones) work as the specification describes. That is untested here.
+- Some clients do not renew vended keys at all. Public issue trackers show this
+  for Trino and Unity Catalog, and refresh failures in the Java client. A read
+  on such a client stops at the first expiry. For those, raise
+  `MUNITAS_CATALOG_KEY_SECONDS` above the longest read, accepting that a leaked
+  key then lasts that long, or read in pieces and open the table again for each.
+
+The lifetime has a floor of 40 seconds. Raising it costs nothing; lowering it
+makes the API rewrite the storage permissions more often (once per half
+lifetime, while any key is in use).
+
+Check U93 proves all of this with real tools, and takes about six minutes
+because it needs the API started with short keys and small files:
+
+```bash
+$env:MUNITAS_CATALOG_KEY_SECONDS = "60"; $env:MUNITAS_ICEBERG_ROW_GROUP_ROWS = "100"; $env:MUNITAS_ICEBERG_FILE_BYTES = "6000"
+# restart the API with those set, then:
+.venv\Scripts\python.exe -m pip install duckdb numpy "pyiceberg[pyarrow]" boto3
+.venv\Scripts\python.exe verify\v93_catalog_key_expiry.py
+# then restart the API without them
+```
+
+With any other settings, U93 reports every check as skipped and names the
+setting to change.
+
+---
+
+## Running a query to make a new dataset
+
+A person can make a new dataset from a query over datasets they may already
+read. The platform runs the query for them, in a container with no network and
+no credentials, checks the result against the shape they confirmed, and seals
+it as an ordinary dataset version. They never run the query that produces the
+dataset on their own machine.
+
+**Once, per machine:** build the image the query runs in, in the distro that
+holds Docker. It needs the internet for two package installs and nothing after.
+
+```bash
+wsl -d Ubuntu-20.04 -- bash -lc "cd /mnt/c/AIProjects/ClaudeProjects/Munitas && docker build -t munitas-derive-runner:1 worker/derive"
+```
+
+Both workers must be running, because the query container is started by the
+sandbox worker and the result is sealed by the host worker (`start-dev.ps1`
+starts both). If the image is missing the run says so and is retried.
+
+**The flow**, with a session token for the person (the same one used to mint a
+catalog token):
+
+1. `POST /derivations` with the datasets the query reads, the query, a name for
+   the result, the primary key and a purpose. Nothing runs. The answer is a
+   draft: the version each input resolved to, the columns the query would
+   produce with their types, and the sensitivity each must carry.
+
+   ```json
+   {"inputs": [{"dataset": "admissions", "alias": "a"}],
+    "sql": "SELECT age, diagnosis_code FROM a WHERE age > 65",
+    "target_name": "admissions-over-65", "primary_key": ["age"],
+    "purpose": "readmission study"}
+   ```
+
+   The query refers to each input by its alias (by default the dataset's name
+   with anything but letters and digits turned into an underscore). `version`
+   may be given per input and defaults to the newest sealed one.
+2. `POST /derivations/<id>/confirm`, optionally with `{"sensitivities": {...}}`
+   to raise a field's sensitivity. This registers the dataset and its schema and
+   starts the run. A draft expires after an hour.
+3. `GET /derivations/<id>` until `status` is `succeeded` or `failed`. A failure
+   says why, by kind of error and never by quoting a value.
+
+**What is enforced, and where**
+- Every input must be readable by the person at the moment of the draft and again
+  at the confirm, by the same decision a table open makes.
+- Only a single `SELECT` over the declared inputs runs. The platform checks it,
+  and so does the runner inside the container, which also locks DuckDB to the
+  copied input files so a query cannot read a file, a web address or anything else.
+- A field may not carry less sensitivity than the fields it was computed from.
+  Where a query cannot be traced column by column (a subquery, a `WITH`, a
+  `UNION`) every field takes the highest sensitivity of any input. Lowering is
+  refused. It is not offered yet, because lowering is a claim that needs somebody
+  other than the person who wrote the query.
+- The result is registered at the strictest class of any input, and sealed there.
+  The person is given a lease on it at once, which ends when the earliest lease
+  they hold on an input ends and is revoked with it. Anybody else needs access to
+  it in the usual way.
+- The same query over the same input versions with the same shape returns the
+  result it already made and does not run again.
+
+**Limits (phase one):** inputs are copied into the container, so together they
+may not exceed 1 GB; a result may not exceed 5 million rows or 512 MB; a query is
+stopped after 15 minutes; the container has 512 MB of memory. Only SeaweedFS
+storage is served. The result must have a primary key, with no empty and no
+repeated values. A query that produces no rows seals nothing.
+
+**If a run seems stuck.** The sandbox worker sends a heartbeat every 20 seconds.
+If it dies, or finishes but cannot report (a network error to Temporal), Temporal
+notices after 90 seconds and runs the activity again. That is safe: the run is
+recorded under a fixed key, the upload overwrites the same object, and sealing
+reuses a version that already exists. Check `docker ps` in the distro for a query
+container and the sandbox worker's own log (`MUNITAS_LOG_DIR`,
+`sandbox-worker.log`). The worker removes containers a previous process left
+behind when it starts.
+
+Checks. U94 proves the draft and confirm rules and runs with the suite. U95 runs
+real queries through the real worker and container, so it needs the workers and
+the image, and takes about two minutes. U96 proves the worker starts when a
+leftover container has already exited:
+
+```bash
+wsl -d Ubuntu-20.04 -- bash -lc "cd /mnt/c/AIProjects/ClaudeProjects/Munitas && docker compose exec -T munitas-api python /verify/v95_derivation_run.py"
+.venv\Scripts\python.exe verify\v96_reap_leftover_containers.py
+```
+
+---
+
+## Writing a large table: the table worker
+
+A version whose rows are in a records file is also written as a table, so that
+a standard tool can read it. A small file is written while the request waits.
+A file over 32 MB (`MUNITAS_TABLE_JOB_INLINE_BYTES`), or a seal that sends
+`"table_mode": "background"`, becomes a **job**: the request is answered at once
+with `202` and the job, and a **table worker** writes the table. The version is
+sealed when the worker has finished, with its table inside it, and does not
+exist before. Send the records as `.parquet` or `.ndjson` (one JSON row per
+line) for anything large; a JSON list is read whole and is limited to 32 MB.
+
+**Start it.** The shared worker is part of the stack, and `docker compose up -d`
+starts it (`table-worker`, one job at a time, 1.5 GB). More work is more
+containers, not more jobs in one.
+
+**Follow a job.** The answer to the seal has `status_url`. `GET /table-jobs/<id>`
+says `pending`, `running`, `sealed` (with the version), `refused` (a table was
+required and could not be written, with the reason; the version number is free)
+or `expired` (nobody finished it in four hours). The housekeeping screen has a
+"Tables being written" section, and raises an alert when a job has waited more
+than ten minutes for a worker.
+
+**An organisation's own worker.** A platform administrator can give an
+organisation a worker that serves nobody else:
+
+```bash
+python scripts/admin/table-worker.py start harbour
+```
+
+then `PUT /tenants/harbour/table-worker` with `{"dedicated": true}`. Start the
+worker first. A job made while the organisation is on its own line waits for that
+worker however long it takes and never moves to the shared pool, so if the worker
+is not running the job is reported as stalled. `stop` removes the worker; set
+`dedicated` back to `false` to return the organisation to the shared pool (only
+jobs made afterwards use it).
+
+**If the worker dies.** Temporal notices a missing heartbeat after 90 seconds and
+hands the work out again; the platform clears what the dead attempt wrote before it
+does. A container killed by hand (`docker kill`) is not restarted by Docker's
+restart policy, so start it again; a crash is restarted. `verify/v110_table_worker_resilience.py`
+does this on purpose (host only).
+
+**What the worker holds.** No database, no master key, no standing storage key.
+For each job it is given one key, made for that job, which reads and writes the one
+folder the version will have and lists object names in the organisation's own
+bucket. It stops working when the job ends.
+
+## Secrets before a real deployment
+
+Two values have a development default in this repository and in `docker-compose.yml`:
+the storage administrator's secret (`S3_ADMIN_SECRET`) and the worker token
+(`MUNITAS_WORKER_TOKEN`). Both matter more than they look. Every storage key the
+platform issues (one per role per organisation, one per table job, the catalog's
+rolling keys) is derived from the administrator's secret, so anybody who has read
+the source can compute them all if it is left in place. The worker token is what lets
+a caller seal a version and run the platform's own endpoints.
+
+Set `MUNITAS_ENV=production` and the control plane refuses to start while either still
+holds the published value, naming the variable and never printing the value. On a
+laptop leave it unset and the defaults work. Changing the administrator's secret later
+changes every derived key at the next print of the storage permissions (the control plane
+prints at start-up), so restart the workers afterwards: a worker keeps the key it was given
+for as long as it runs.
 
 ## Local HTTPS between the worker and the API
 

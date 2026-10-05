@@ -16,6 +16,7 @@ with different controls, and the class label is then decoration.
 
 from __future__ import annotations
 
+import os
 import sys
 import time
 import uuid
@@ -31,7 +32,12 @@ from agent.identity import AgentIdentity, Budget  # noqa: E402
 from agent.tools import ToolContext  # noqa: E402
 from ports_config import PORTS  # noqa: E402
 
+# The run fixture V8 and V9 build: a real agent, version and run, with the signed task credential the platform expects as the run's secret.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from v8_v9_agent import AGENT, register_real_run  # noqa: E402
+
 API = f"http://localhost:{PORTS['munitas_api_http']}"
+WORKER_HEADERS = {"x-worker-token": os.environ.get("MUNITAS_WORKER_TOKEN", "dev-worker-token-not-for-production")}
 JAEGER = f"http://localhost:{PORTS['jaeger_ui']}"
 PG_DSN = f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform"
 
@@ -57,23 +63,23 @@ def fixture() -> tuple[str, str]:
                values (%s,'shared',%s,'canary') on conflict (id) do nothing""",
             (TENANT, f"key/{TENANT}"),
         )
-    contract = httpx.post(f"{API}/schema-contracts", json={
+    contract = httpx.post(f"{API}/schema-contracts", headers=WORKER_HEADERS, json={
         "tenant_id": TENANT, "name": "trace-fixture",
         "fields": [{"name": "record_id", "type": "string", "added_by": "verify"}],
         "primary_key": ["record_id"],
     }, timeout=20.0).json()["id"]
 
     def make(klass: str) -> str:
-        dataset = httpx.post(f"{API}/datasets", json={
+        dataset = httpx.post(f"{API}/datasets", headers=WORKER_HEADERS, json={
             "tenant_id": TENANT, "name": f"trace-{uuid.uuid4().hex[:8]}",
         }, timeout=20.0).json()["id"]
-        return httpx.post(f"{API}/dataset-versions", json={
+        return httpx.post(f"{API}/dataset-versions", headers=WORKER_HEADERS, json={
             "tenant_id": TENANT, "dataset_id": dataset, "schema_id": contract,
             "visibility_class": klass, "record_count": 1,
         }, timeout=20.0).json()["id"]
 
     allowed = make("UNDER_REVIEW")
-    httpx.post(f"{API}/dataset-versions/{allowed}/promote", json={
+    httpx.post(f"{API}/dataset-versions/{allowed}/promote", headers=WORKER_HEADERS, json={
         "to_class": "PUBLISHED", "decided_by": "verify-suite", "decided_by_kind": "workload",
         "gate_evidence": {"note": "trace fixture"}, "grant_roles": ["agent_runtime"],
     }, timeout=20.0)
@@ -83,13 +89,17 @@ def fixture() -> tuple[str, str]:
 def main() -> int:
     in_scope, out_of_scope = fixture()
 
+    # The platform refuses a credential request that does not come from a real run of a registered agent, so this is one, not a made-up name.
+    run_id = str(uuid.uuid4())
+    run_secret = register_real_run(run_id, in_scope)
     identity = AgentIdentity(
-        principal=f"agent-trace-{uuid.uuid4().hex[:6]}", tenant=TENANT,
+        principal=AGENT, tenant=TENANT,
         roles=("agent_runtime",), purpose="review triage",
         agent_version_id="b3da82da-69b1-4b21-a948-8fc795df393e",
         allowed_versions=frozenset({in_scope}),
+        run_secret=run_secret,
     )
-    ctx = ToolContext(identity=identity, run_id="7ef2c4b3-cc08-498a-b983-bde577ea5f34", budget=Budget())
+    ctx = ToolContext(identity=identity, run_id=run_id, budget=Budget())
     graph = build_graph(ctx)
 
     graph.invoke(

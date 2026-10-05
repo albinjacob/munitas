@@ -2,19 +2,17 @@
  * U75 on screen: approved storage access that has not taken effect yet.
  *
  * The real states need storage permissions failing to print, which means
- * stopping storage (verify/v76_activation_live.py does that, by hand). These
- * tests load the real pages with real data and change only the fields that
- * say whether access is in effect, as the responses arrive in the browser.
- * So what they prove is that each screen shows those states correctly when
+ * stopping storage (verify/v76_activation_live.py does that, by hand). The
+ * housekeeping tests load the real screen and change only the fields that say
+ * whether access is in effect; the parked-run and audit-log tests make up the
+ * data the page is given, so none of them depends on what the organisation
+ * holds and none can skip. So what they prove is that each screen shows those states correctly when
  * the API reports them, not that the API reports them; U75 and U76 prove
  * that half.
  */
 
 import { expect, test, type Page } from "@playwright/test";
 import { loginAs } from "./auth-helpers";
-import { API_BASE } from "../config/ports";
-
-const API = API_BASE;
 
 /** Rewrite one JSON response on its way to the page. */
 async function rewrite(page: Page, pattern: string, change: (body: any) => any) {
@@ -24,6 +22,7 @@ async function rewrite(page: Page, pattern: string, change: (body: any) => any) 
     await route.fulfill({ response, json: change(body) });
   });
 }
+
 
 function minutesAgo(n: number): string {
   return new Date(Date.now() - n * 60_000).toISOString();
@@ -105,28 +104,46 @@ test.describe("U75: the housekeeping screen raises an outage, not individual run
 
 test.describe("U75: a parked run says it is waiting for access, not stuck", () => {
   test("the run reads 'access taking effect' and explains itself", async ({ page }) => {
-    await loginAs(page, "canary-engineer");
-    const { agents } = await page.request
-      .get(`${API}/agents?tenant_id=canary`)
-      .then((r) => r.json());
-    let agentId: string | null = null;
-    for (const agent of agents.slice(0, 40)) {
-      const runs = await page.request
-        .get(`${API}/agents/${agent.id}/runs?tenant_id=canary`)
-        .then((r) => r.json());
-      if (Array.isArray(runs) && runs.length) {
-        agentId = agent.id;
-        break;
-      }
-    }
-    test.skip(!agentId, "no canary agent has a run to show");
+    // The agent, its deployed version and its run are all made up here, so the test does not depend on which
+    // agents the organisation happens to hold today. The page shows runs only for an agent with a deployed version.
+    const agentId = "stub-agent";
+    const versionId = "stub-agent-version";
+    const runId = "stub-run";
+    const agent = {
+      id: agentId,
+      tenant_id: "canary",
+      name: "stub-agent",
+      purpose: "an agent made up for this test",
+      principal_id: "canary-agent",
+      created_at: minutesAgo(60),
+      department_name: null,
+      registered_by_label: "Canary engineer",
+      version_count: 1,
+      latest_version: 1,
+      latest_code_hash: "git:stub",
+      versions: [
+        {
+          id: versionId, version: 1, code_hash: "git:stub", source_path: "/stub", image_digest: "native:stub",
+          model_id: "none", tool_scope: [], content_hash: "sha256:stub", sealed: true, created_at: minutesAgo(60),
+          registered_by_label: "Canary engineer", sandboxed: false, entrypoint: "", requested_hosts: [],
+          egress_approval_id: null, egress_state: null,
+        },
+      ],
+      active_version: { agent_version_id: versionId, deployed_at: minutesAgo(50) },
+    };
+    const run = {
+      id: runId, agent_version_id: versionId, agent_version: 1, status: "awaiting_activation",
+      purpose: "a run made up for this test", requested_by: "canary-engineer", requested_by_label: "Canary engineer",
+      tool_calls: 0, halted_reason: null, error: null, started_at: minutesAgo(5), ended_at: null,
+      approved_by: "canary-custodian", approved_at: minutesAgo(2), lease_request_id: null, findings: [],
+      execution_mode: "native",
+    };
 
-    let runId = "";
-    await rewrite(page, `**/agents/${agentId}/runs**`, (runs) => {
-      runId = runs[0].id;
-      return [{ ...runs[0], status: "awaiting_activation", ended_at: null }, ...runs.slice(1)];
-    });
+    await loginAs(page, "canary-engineer");
+    await page.route(`**/agents/${agentId}/runs**`, (route) => route.fulfill({ json: [run] }));
+    await page.route(`**/agents/${agentId}?**`, (route) => route.fulfill({ json: agent }));
     await page.goto(`/agents/${agentId}`);
+
     const row = page.getByTestId("agent-runs").locator("li").first();
     await expect(row).toContainText("access taking effect");
     await expect(page.getByTestId(`run-activation-${runId}`)).toHaveText(
@@ -137,34 +154,47 @@ test.describe("U75: a parked run says it is waiting for access, not stuck", () =
   });
 });
 
+/** A page of the audit log made up for the test: three allowed grants, of which `waiting` are not in effect yet. */
+function auditPage(waiting: number[]) {
+  const decisions = [1, 2, 3].map((id) => ({
+    id,
+    at: minutesAgo(id),
+    principal: "canary-engineer",
+    principal_kind: "human",
+    principal_roles: ["data_engineer"],
+    tenant_id: "canary",
+    dataset_version_id: null,
+    requested_class: null,
+    purpose: "a request made up for this test",
+    allowed: true,
+    reasons: [],
+    lease_id: null,
+    phase: "grant",
+    agent_run_id: null,
+    active: !waiting.includes(id),
+  }));
+  return { decisions, shown: decisions.length, total: decisions.length, limit: 15, offset: 0 };
+}
+
 test.describe("U75: the audit log says when given access is not in effect yet", () => {
+  // The rows are made up, so these tests never depend on the organisation having a grant to mark, and never skip.
   test("one allowed grant not yet active reads 'yes, taking effect', the rest 'yes'", async ({ page }) => {
     await loginAs(page, "canary-engineer");
-    let targetId: number | null = null;
-    await rewrite(page, "**/access-decisions**", (body) => {
-      const target = body.decisions.find((d: any) => d.phase === "grant" && d.allowed);
-      targetId = target ? target.id : null;
-      return {
-        ...body,
-        decisions: body.decisions.map((d: any) =>
-          d.id === targetId ? { ...d, active: false } : d.active === false ? { ...d, active: true } : d),
-      };
-    });
+    await page.route("**/access-decisions**", (route) => route.fulfill({ json: auditPage([2]) }));
     await page.goto("/audit");
     await expect(page.getByTestId("audit-rows")).toBeVisible();
-    test.skip(targetId === null, "no allowed grant in the audit log to mark");
-    await expect(page.getByTestId(`audit-result-${targetId}`)).toHaveText("yes, taking effect");
+    await expect(page.getByTestId("audit-result-2")).toHaveText("yes, taking effect");
+    await expect(page.getByTestId("audit-result-1")).toHaveText("yes");
+    await expect(page.getByTestId("audit-result-3")).toHaveText("yes");
     await expect(page.getByText("yes, taking effect", { exact: true })).toHaveCount(1);
   });
 
   test("with everything in effect nothing reads 'taking effect'", async ({ page }) => {
     await loginAs(page, "canary-engineer");
-    await rewrite(page, "**/access-decisions**", (body) => ({
-      ...body,
-      decisions: body.decisions.map((d: any) => (d.active === false ? { ...d, active: true } : d)),
-    }));
+    await page.route("**/access-decisions**", (route) => route.fulfill({ json: auditPage([]) }));
     await page.goto("/audit");
     await expect(page.getByTestId("audit-rows")).toBeVisible();
+    await expect(page.getByTestId("audit-result-1")).toHaveText("yes");
     await expect(page.getByText("yes, taking effect", { exact: true })).toHaveCount(0);
   });
 });

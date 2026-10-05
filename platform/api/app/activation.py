@@ -18,7 +18,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 
-from . import agents, grants, logs, temporal_client
+from . import agents, grants, logs, task_runs, temporal_client
 
 log = logs.get_logger("activation")
 
@@ -49,6 +49,12 @@ async def tick(state: dict) -> dict:
         await temporal_client.connect()
         if temporal_client.connected():
             log.info("connected to Temporal after start-up")
+    # A run still running past its task credential's lifetime can no longer finish, so it is ended before the status is read: its
+    # key then counts as ended and the print below leaves it out. A failure here must not stop the print.
+    try:
+        await asyncio.to_thread(task_runs.expire_stale)
+    except Exception:
+        log.exception("could not end runs that ran past their limit")
     status = await asyncio.to_thread(grants.activation_status)
     if _should_print(status):
         try:

@@ -11,6 +11,7 @@
  * showing the newest would understate who could have seen it.
  */
 
+import { INTAKE_ROLES, useHoldsRole } from "../../identity/mayDo";
 import { Fragment, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAccessPreview, useDatasetVersions, useDatasets } from "../../api/queries";
@@ -37,6 +38,28 @@ function day(timestamp: string): string {
  * at the moment the licence was read; anybody arriving later saw only the
  * corrected answer, with no sign the registration had said something else.
  */
+/**
+ * Whether this dataset is also stored as a table, which is what lets a standard tool read its rows and a legal export
+ * hand over only the rows for named people. A dataset of files shows nothing. A table dataset says so, and a table
+ * dataset with a version that has no table copy says that too, because that version cannot be filtered.
+ */
+function TableMarker({ d }: { d: DatasetRow }) {
+  if (!d.is_table) return null;
+  return d.table_missing ? (
+    <span
+      data-testid="table-missing"
+      title="Open a version to see why it has no table copy"
+      className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-normal text-amber-900"
+    >
+      a table, but not every version has a table copy
+    </span>
+  ) : (
+    <span data-testid="table-marker" className="ml-2 rounded bg-sky-100 px-1.5 py-0.5 text-xs font-normal text-sky-900">
+      a table
+    </span>
+  );
+}
+
 function Provenance({ d }: { d: DatasetRow }) {
   const licence = d.license_tag
     ? ` Licence ${d.license_tag}: ${licenceAllows(d.license_export_unmodified, d.license_export_modified)}.`
@@ -155,6 +178,7 @@ function useIsDesktop(): boolean {
 }
 
 export function Datasets() {
+  const mayBringIn = useHoldsRole(INTAKE_ROLES);
   const [q, setQ] = useState("");
   const [klass, setKlass] = useState("");
   const [modality, setModality] = useState("");
@@ -188,13 +212,15 @@ export function Datasets() {
       title="Datasets"
       description="The access level shown is the widest any version has reached, because that is what determines who could have seen it."
       actions={
-        <Link
-          to="/datasets/register"
-          data-testid="datasets-register-link"
-          className="rounded bg-indigo-500 hover:bg-indigo-800 px-3 py-1.5 text-sm font-medium text-white"
-        >
-          Bring a dataset in
-        </Link>
+        mayBringIn ? (
+          <Link
+            to="/datasets/register"
+            data-testid="datasets-register-link"
+            className="rounded bg-indigo-500 hover:bg-indigo-800 px-3 py-1.5 text-sm font-medium text-white"
+          >
+            Bring a dataset in
+          </Link>
+        ) : undefined
       }
     >
       <div className="mb-4 flex flex-wrap items-end gap-3 rounded border border-slate-200 bg-white p-3">
@@ -338,6 +364,7 @@ export function Datasets() {
                       <td className="px-4 py-2 font-medium">
                         {d.name}
                         <Provenance d={d} />
+                        <TableMarker d={d} />
                       </td>
                       <td className="whitespace-nowrap px-3 text-slate-600">
                         {d.modality?.length ? (
@@ -411,6 +438,7 @@ export function Datasets() {
                 <div className="font-medium">
                   {d.name}
                   <Provenance d={d} />
+                  <TableMarker d={d} />
                 </div>
                 <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
                   <dt className="text-slate-500">Kind</dt>

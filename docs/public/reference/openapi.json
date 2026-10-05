@@ -138,6 +138,36 @@
         "title": "ActionRunIn",
         "type": "object"
       },
+      "AddApprover": {
+        "properties": {
+          "person_id": {
+            "title": "Person Id",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          },
+          "valid_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid Until"
+          }
+        },
+        "required": [
+          "person_id"
+        ],
+        "title": "AddApprover",
+        "type": "object"
+      },
       "Appointment": {
         "properties": {
           "ended": {
@@ -252,6 +282,46 @@
         "title": "Body_upload_version_pipelines__pipeline_id__versions_upload_post",
         "type": "object"
       },
+      "CancelIn": {
+        "properties": {
+          "tenant_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
+          }
+        },
+        "title": "CancelIn",
+        "type": "object"
+      },
+      "CatalogTokenIn": {
+        "description": "What a person says when they ask for a token for their own tools.\n\nThe purpose is the same sentence a lease is approved for. A table opened\nwith this token is decided on it, exactly as a credential request is, so a\ntoken whose purpose is not the purpose of the person's lease opens nothing\nthat lease covers.",
+        "properties": {
+          "hours": {
+            "default": 8,
+            "exclusiveMinimum": 0.0,
+            "maximum": 72.0,
+            "title": "Hours",
+            "type": "number"
+          },
+          "purpose": {
+            "maxLength": 200,
+            "minLength": 3,
+            "title": "Purpose",
+            "type": "string"
+          }
+        },
+        "required": [
+          "purpose"
+        ],
+        "title": "CatalogTokenIn",
+        "type": "object"
+      },
       "ConfirmClassification": {
         "properties": {
           "confirmed_by": {
@@ -296,6 +366,11 @@
           "dataset_version_id": {
             "title": "Dataset Version Id",
             "type": "string"
+          },
+          "decide_only": {
+            "default": false,
+            "title": "Decide Only",
+            "type": "boolean"
           },
           "principal": {
             "title": "Principal",
@@ -379,6 +454,17 @@
       },
       "DatasetIn": {
         "properties": {
+          "derived_from_version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Derived From Version Id"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -424,6 +510,18 @@
             "title": "Record Count",
             "type": "integer"
           },
+          "records_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The object in object_manifest that holds this version's rows, which the platform also writes as a table. Its name chooses the shape: a name ending in .parquet is a Parquet file, one ending in .ndjson or .jsonl is one JSON row per line, and any other name is a JSON list of rows. A JSON list is read whole and is limited to 32 MB; the other two are read in batches and are limited to 2 GB, so a large table is sent as one of them. Parquet columns are matched to the contract by name and must have a fitting type. Leave it out for a version made of files.",
+            "title": "Records Key"
+          },
           "schema_id": {
             "title": "Schema Id",
             "type": "string"
@@ -436,6 +534,32 @@
             ],
             "title": "Storage Backend",
             "type": "string"
+          },
+          "table_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "inline",
+                  "background"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table Mode"
+          },
+          "table_required": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table Required"
           },
           "tenant_id": {
             "title": "Tenant Id",
@@ -504,6 +628,115 @@
         "title": "DeployAgent",
         "type": "object"
       },
+      "DerivationConfirmIn": {
+        "description": "The person's decision on a draft. Sensitivities may be raised and never\nlowered: a field already carries at least the sensitivity of what it was\ncomputed from.",
+        "properties": {
+          "sensitivities": {
+            "additionalProperties": {
+              "enum": [
+                "none",
+                "quasi",
+                "direct",
+                "phi"
+              ],
+              "type": "string"
+            },
+            "title": "Sensitivities",
+            "type": "object"
+          }
+        },
+        "title": "DerivationConfirmIn",
+        "type": "object"
+      },
+      "DerivationDraftIn": {
+        "description": "A request to make a new dataset from a query, before anything is run.",
+        "properties": {
+          "inputs": {
+            "items": {
+              "$ref": "#/components/schemas/DerivationInput"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Inputs",
+            "type": "array"
+          },
+          "primary_key": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Primary Key",
+            "type": "array"
+          },
+          "purpose": {
+            "maxLength": 200,
+            "minLength": 3,
+            "title": "Purpose",
+            "type": "string"
+          },
+          "sql": {
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Sql",
+            "type": "string"
+          },
+          "target_name": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{1,80}$",
+            "title": "Target Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "inputs",
+          "sql",
+          "target_name",
+          "primary_key",
+          "purpose"
+        ],
+        "title": "DerivationDraftIn",
+        "type": "object"
+      },
+      "DerivationInput": {
+        "description": "One dataset a derivation reads. The SQL refers to it by its alias, which\ndefaults to the dataset's name with anything that is not a letter or digit\nturned into an underscore.",
+        "properties": {
+          "alias": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,62}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alias"
+          },
+          "dataset": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Dataset",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "dataset"
+        ],
+        "title": "DerivationInput",
+        "type": "object"
+      },
       "EgressDecisionIn": {
         "properties": {
           "reason": {
@@ -548,6 +781,100 @@
           "status"
         ],
         "title": "EndPipelineRun",
+        "type": "object"
+      },
+      "ExportIn": {
+        "properties": {
+          "data_from": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data From"
+          },
+          "data_to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data To"
+          },
+          "dataset_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Dataset Ids",
+            "type": "array"
+          },
+          "demand_authority": {
+            "title": "Demand Authority",
+            "type": "string"
+          },
+          "demand_reference": {
+            "title": "Demand Reference",
+            "type": "string"
+          },
+          "demand_text": {
+            "title": "Demand Text",
+            "type": "string"
+          },
+          "demanded_on": {
+            "format": "date",
+            "title": "Demanded On",
+            "type": "string"
+          },
+          "filters": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/FilterIn"
+            },
+            "title": "Filters",
+            "type": "array"
+          },
+          "hold_id": {
+            "title": "Hold Id",
+            "type": "string"
+          },
+          "include_audit": {
+            "default": true,
+            "title": "Include Audit",
+            "type": "boolean"
+          },
+          "recipient_email": {
+            "title": "Recipient Email",
+            "type": "string"
+          },
+          "recipient_name": {
+            "title": "Recipient Name",
+            "type": "string"
+          },
+          "recipient_organisation": {
+            "title": "Recipient Organisation",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hold_id",
+          "demand_authority",
+          "demand_reference",
+          "demanded_on",
+          "demand_text",
+          "dataset_ids",
+          "recipient_name",
+          "recipient_organisation",
+          "recipient_email"
+        ],
+        "title": "ExportIn",
         "type": "object"
       },
       "FetchHuggingFace": {
@@ -624,6 +951,102 @@
         "title": "Field_",
         "type": "object"
       },
+      "FilterIn": {
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "dataset_id": {
+            "title": "Dataset Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dataset_id",
+          "column"
+        ],
+        "title": "FilterIn",
+        "type": "object"
+      },
+      "FinishIn": {
+        "properties": {
+          "blocking": {
+            "default": true,
+            "title": "Blocking",
+            "type": "boolean"
+          },
+          "metadata_location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata Location"
+          },
+          "outcome": {
+            "enum": [
+              "written",
+              "skipped",
+              "failed"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "record_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record Count"
+          },
+          "records_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Records Sha256"
+          },
+          "snapshot_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Id"
+          }
+        },
+        "required": [
+          "outcome"
+        ],
+        "title": "FinishIn",
+        "type": "object"
+      },
       "GateDecisionIn": {
         "properties": {
           "grant_roles": {
@@ -656,6 +1079,99 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HoldIn": {
+        "properties": {
+          "attorney_email": {
+            "title": "Attorney Email",
+            "type": "string"
+          },
+          "attorney_name": {
+            "title": "Attorney Name",
+            "type": "string"
+          },
+          "authority_reference": {
+            "title": "Authority Reference",
+            "type": "string"
+          },
+          "custodian_id": {
+            "title": "Custodian Id",
+            "type": "string"
+          },
+          "data_from": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data From"
+          },
+          "data_to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data To"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "issuing_authority": {
+            "title": "Issuing Authority",
+            "type": "string"
+          },
+          "matter_name": {
+            "title": "Matter Name",
+            "type": "string"
+          },
+          "matter_number": {
+            "title": "Matter Number",
+            "type": "string"
+          },
+          "notice_received_on": {
+            "format": "date",
+            "title": "Notice Received On",
+            "type": "string"
+          },
+          "preserve": {
+            "title": "Preserve",
+            "type": "string"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "triggering_event": {
+            "title": "Triggering Event",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "matter_name",
+          "matter_number",
+          "description",
+          "triggering_event",
+          "issuing_authority",
+          "authority_reference",
+          "attorney_name",
+          "attorney_email",
+          "notice_received_on",
+          "preserve",
+          "custodian_id"
+        ],
+        "title": "HoldIn",
         "type": "object"
       },
       "LeaseApprovalIn": {
@@ -807,6 +1323,25 @@
           "workflow_id"
         ],
         "title": "PipelineRunIn",
+        "type": "object"
+      },
+      "PreviewIn": {
+        "properties": {
+          "values": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "values"
+        ],
+        "title": "PreviewIn",
         "type": "object"
       },
       "PromotionIn": {
@@ -1126,6 +1661,54 @@
         "title": "RegisterPipeline",
         "type": "object"
       },
+      "ReleaseIn": {
+        "properties": {
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "ReleaseIn",
+        "type": "object"
+      },
+      "RemoveApprover": {
+        "properties": {
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "title": "RemoveApprover",
+        "type": "object"
+      },
+      "RetireIn": {
+        "properties": {
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "RetireIn",
+        "type": "object"
+      },
       "RoleRequest": {
         "properties": {
           "days": {
@@ -1382,6 +1965,19 @@
         "title": "VersionAccess",
         "type": "object"
       },
+      "WorkerIn": {
+        "properties": {
+          "dedicated": {
+            "title": "Dedicated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "dedicated"
+        ],
+        "title": "WorkerIn",
+        "type": "object"
+      },
       "WriteCredentialRequest": {
         "description": "A registered pipeline_action workload asking to write into the next\nversion-location for a dataset it names.\n\n`roles` stays required, the same shape as CredentialRequest, but is only\never the unregistered-caller fallback that endpoint already documents --\nthe endpoint below requires a *registered* pipeline_action workload\nbefore any of this is even read, so that fallback never actually fires\nhere. Narrower than CredentialRequest otherwise: no dataset_version_id\n(the version being written does not exist yet, that is the point), no\nagent_run_id or run_secret, since only pipeline_action -- a Type A\nworkload with a task_credential.py token -- can ever hold write access at\nall. `dataset_id` names which dataset's next version; the prefix itself\nis computed server-side from it, never taken from the caller.",
         "properties": {
@@ -1432,6 +2028,53 @@
           "task_credential"
         ],
         "title": "WriteCredentialRequest",
+        "type": "object"
+      },
+      "app__legal_export__DecideIn": {
+        "properties": {
+          "approve": {
+            "title": "Approve",
+            "type": "boolean"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "values": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "default": {},
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "approve"
+        ],
+        "title": "DecideIn",
+        "type": "object"
+      },
+      "app__lifecycle__DecideIn": {
+        "properties": {
+          "approve": {
+            "title": "Approve",
+            "type": "boolean"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "approve"
+        ],
+        "title": "DecideIn",
         "type": "object"
       }
     }
@@ -1640,6 +2283,24 @@
       "post": {
         "description": "Start an action run, keyed by an idempotency key.\n\nRe-submitting the same key returns the original run instead of starting a\nsecond one. This is what makes V6 checkable: kill the worker mid-action, let\nTemporal retry, and exactly one output version should exist afterwards.\n\nA manual run must name who triggered it, and a scheduled one must name its\nschedule instead; each is refused before the workflow even reaches this\nendpoint's insert, the same \"an unattributable run should not start\" logic\n`run_pipeline.py`'s CLI applies before starting the Temporal workflow at all.\nRetrying an existing idempotency key returns the original row unchanged\nregardless of what trigger fields this call carries: the row already exists,\nso nothing here is re-validated or re-attributed.",
         "operationId": "start_run_action_runs_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-worker-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Token"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -1678,7 +2339,7 @@
     },
     "/agent-versions/{version_id}/egress-status": {
       "get": {
-        "description": "What this version may call, and whether that has been approved.\n\nCalled by the agent's own runtime (`agent/tools.py`'s `fetch_url`), a\nworkload with no Kratos session to present, the same reason\n`GET /dataset-versions/{id}` (`main.py`) also takes no session -- a\nversion's requested hosts and approval state are not sensitive in the\nway tenant data is, and this is read on every network call an agent\nmakes, not once at deploy time. Scoped by version id alone, no tenant\ncheck: an agent already knows only its own `agent_version_id`, and a\nstranger who guessed one learns a host list and a state, nothing about\nany tenant's actual data.\n\nThe most recent approval decides, not \"any approval ever\", the same\ndefensive read `deploy` above and `_pending_gate` elsewhere both make.",
+        "description": "What this version may call, and whether that has been approved.\n\nCalled by the agent's own runtime (`agent/tools.py`'s `fetch_url`), a\nworkload with no Kratos session to present. (`GET /dataset-versions/{id}`\nused to take no session either, and no longer does: it carries a version's\nstorage keys, so it answers a session, the worker token or a run credential\nonly.) A version's requested hosts and approval state are not sensitive in the\nway tenant data is, and this is read on every network call an agent\nmakes, not once at deploy time. Scoped by version id alone, no tenant\ncheck: an agent already knows only its own `agent_version_id`, and a\nstranger who guessed one learns a host list and a state, nothing about\nany tenant's actual data.\n\nThe most recent approval decides, not \"any approval ever\", the same\ndefensive read `deploy` above and `_pending_gate` elsewhere both make.",
         "operationId": "egress_status_agent_versions__version_id__egress_status_get",
         "parameters": [
           {
@@ -1688,6 +2349,54 @@
             "schema": {
               "title": "Version Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-worker-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Token"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-task-credential",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Task-Credential"
             }
           }
         ],
@@ -2373,8 +3082,26 @@
     },
     "/credentials": {
       "post": {
-        "description": "Mint a prefix-scoped credential, or refuse and say why.\n\nThe order of operations matters and is not negotiable: decide, record the\ndecision, then act on it. Recording after acting would lose the audit trail\nfor exactly the requests that fail partway.\n\nThree outcomes: 200 with the key when access is allowed and in effect,\n403 when it is refused, and 202 when it is allowed but the storage\npermissions could not be updated yet. A 202 is never a refusal: the\nactivator finishes the job and resumes a run that parked on it.",
+        "description": "Mint a storage credential for one dataset version, or refuse and say why.\n\nThe order of operations matters and is not negotiable: decide, record the\ndecision, then act on it. Recording after acting would lose the audit trail\nfor exactly the requests that fail partway.\n\nThree outcomes: 200 with the key when access is allowed and in effect,\n403 when it is refused, and 202 when it is allowed but the storage\npermissions could not be updated yet. A 202 is never a refusal: the\nactivator finishes the job and resumes a run that parked on it.",
         "operationId": "request_credential_credentials_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-worker-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Token"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -2473,8 +3200,26 @@
         ]
       },
       "post": {
-        "description": "Seal a new dataset version.\n\nSealed on creation, which is why there is no update endpoint anywhere in\nthis file. The storage prefix encodes tenant, dataset and version and never\nthe class, so a later promotion changes a grant rather than moving bytes.",
+        "description": "Seal a new dataset version.\n\nSealed on creation, which is why there is no update endpoint anywhere in\nthis file. The storage prefix encodes tenant, dataset and version and never\nthe class, so a later promotion changes a grant rather than moving bytes.\n\nA version that names a records file is also written as an Iceberg table, before the row exists. A small one is\nwritten while this request waits. A large one is written by a worker, in a job (table_jobs.py): the answer is then\n202 with the job, the version number and folder are reserved, and the version is sealed, with its table inside it,\nwhen the job finishes. `table_mode` chooses; left out, the size of the records file does.\n\nOnly the platform's own workers may call this (the worker token). It names the organisation in its body and writes a\nversion into it, so a caller that could reach it without proving what it is could seal a version into any organisation,\nand start table jobs that hold a version number and a storage key. A person's data arrives through the upload endpoint,\nwhich seals in-process under their session.",
         "operationId": "create_version_dataset_versions_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-worker-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Token"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -2489,10 +3234,7 @@
           "201": {
             "content": {
               "application/json": {
-                "schema": {
-                  "title": "Response Create Version Dataset Versions Post",
-                  "type": "object"
-                }
+                "schema": {}
               }
             },
             "description": "Successful Response"
@@ -2513,7 +3255,7 @@
     },
     "/dataset-versions/{version_id}": {
       "get": {
-        "description": "One version, with the fields a detail screen needs.\n\n`version_class` deliberately carries only the class question. The name,\ncontent hash and record count are joined in here rather than added to the\nview, because widening the view would make every caller pay for columns most\nof them ignore, and the view's single purpose is what makes it trustworthy.\n\n`tenant_id` narrows it to one organisation, and a version belonging to\nanother is **not found** rather than forbidden. That distinction is the\npoint: 403 confirms the version exists, which is half of what somebody\nprobing ids was trying to learn, and this endpoint would otherwise hand out\ndataset names, classes and release histories to anybody who guessed one.\n\nThe parameter is optional, and omitting it searches every tenant. There is\nno authentication here, so nothing stops a caller leaving it out; what this\nprevents is the console showing one organisation another's metadata, not a\ndetermined request. The other three detail endpoints follow the same shape\nand the same limit.",
+        "description": "One version, with the fields a detail screen needs.\n\n`version_class` deliberately carries only the class question. The name,\ncontent hash and record count are joined in here rather than added to the\nview, because widening the view would make every caller pay for columns most\nof them ignore, and the view's single purpose is what makes it trustworthy.\n\nThe organisation comes from the caller's session (`auth.organisation_scope`), never from\nthe URL, and a version belonging to another is **not found** rather than forbidden. That\ndistinction is the point: 403 confirms the version exists, which is half of what somebody\nprobing ids was trying to learn. The platform's own workers send the worker token instead\nand name the organisation they act for. This endpoint also returns `object_manifest`, the\nstorage keys of the version's files, so it must never answer without one or the other.",
         "operationId": "get_version_dataset_versions__version_id__get",
         "parameters": [
           {
@@ -2539,6 +3281,38 @@
                 }
               ],
               "title": "Tenant Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-worker-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Token"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-task-credential",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Task-Credential"
             }
           }
         ],
@@ -2581,6 +3355,22 @@
               "title": "Version Id",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "x-worker-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Token"
+            }
           }
         ],
         "requestBody": {
@@ -2617,6 +3407,50 @@
           }
         },
         "summary": "Promote"
+      }
+    },
+    "/dataset-versions/{version_id}/table": {
+      "get": {
+        "description": "Whether this version is also stored as a table, and if it is not, why.\n\nA table copy is what lets a standard tool read the rows, and what a legal export needs to hand over only the rows\nfor named people. Narrowed to the caller's own organisation, answering 404 for anything else, as the other reads of\none version do.",
+        "operationId": "version_table_dataset_versions__version_id__table_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Version Table Dataset Versions  Version Id  Table Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Version Table",
+        "tags": [
+          "read"
+        ]
       }
     },
     "/dataset-versions/{version_id}/transitions": {
@@ -2788,6 +3622,24 @@
       },
       "post": {
         "operationId": "create_dataset_datasets_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-worker-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Token"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -2826,7 +3678,7 @@
     },
     "/datasets/awaiting-confirmation": {
       "get": {
-        "description": "Datasets whose sensitivity claim has not been agreed to yet.\n\nOnly `asserted` claims need this: the safe default carries no claim, and\n`verified_source` is already backed by something the platform fetched\nitself. Narrowed to `custodian` for the same reason `/lease-requests` is,\nso a custodian's queue lists arrivals they can actually act on.",
+        "description": "Datasets whose sensitivity claim has not been agreed to yet.\n\nOnly `asserted` claims need this: the safe default carries no claim, and\n`verified_source` is already backed by something the platform fetched\nitself. Narrowed to `custodian` for the same reason `/lease-requests` is,\nso an approver's queue lists arrivals they can actually act on. Those are\nthe claims made by somebody else about data their department owns\n(`classification_confirmation_decision`). A claim made by a department's\nonly approver is in nobody's queue until the department has a second\napprover, because nobody else may confirm it.\n\nOldest first, with the id breaking ties so two claims made at the same\nmoment never swap places between pages. `total` counts every dataset\nwaiting, not just this page, so a screen can say how many are not shown.",
         "operationId": "list_awaiting_confirmation_datasets_awaiting_confirmation_get",
         "parameters": [
           {
@@ -2852,7 +3704,19 @@
             "schema": {
               "default": 100,
               "maximum": 500,
+              "minimum": 1,
               "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
               "type": "integer"
             }
           }
@@ -2862,11 +3726,8 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "type": "object"
-                  },
                   "title": "Response List Awaiting Confirmation Datasets Awaiting Confirmation Get",
-                  "type": "array"
+                  "type": "object"
                 }
               }
             },
@@ -2934,7 +3795,7 @@
     },
     "/datasets/{dataset_id}": {
       "get": {
-        "description": "One dataset's own record.\n\nWhat the console reads to resume bringing data into a dataset that was\nregistered and then left, rather than sealed on the spot: registering\nand uploading were always two separate steps, but until now nothing let\na person come back to the second one. Narrowed to one organisation when\nasked, and answering \"no such dataset\" rather than \"not yours\" for a\ndataset in another tenant, the same non-disclosure posture the other\ndetail endpoints already use.",
+        "description": "One dataset's own record.\n\nWhat the console reads to resume bringing data into a dataset that was\nregistered and then left, rather than sealed on the spot: registering\nand uploading were always two separate steps, but until now nothing let\na person come back to the second one. Narrowed to the caller's organisation\n(`auth.organisation_scope`), and answering \"no such dataset\" rather than \"not\nyours\" for a dataset in another tenant, the same non-disclosure posture the other\ndetail endpoints already use.",
         "operationId": "get_dataset_datasets__dataset_id__get",
         "parameters": [
           {
@@ -2960,6 +3821,38 @@
                 }
               ],
               "title": "Tenant Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-worker-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Token"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-task-credential",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Task-Credential"
             }
           }
         ],
@@ -2994,7 +3887,7 @@
     },
     "/datasets/{dataset_id}/confirm-classification": {
       "post": {
-        "description": "The custodian agreeing with somebody's sensitivity claim.\n\nRefused for anybody who is not the custodian of the owning department, and\nrefused for the person who made the claim, by a check constraint as well as\nby the branch below. Until this happens the data cannot be released above\nthe class that was claimed for it.",
+        "description": "The custodian agreeing with somebody's sensitivity claim.\n\nDecided by the policy (`classification_confirmation_decision`): a data custodian who is a department approver of the owning department, never the\nperson who made the claim. Any one approver may confirm, and nobody who is not an approver of the owning department. When the claimant is the\ndepartment's only approver, the claim waits until a second approver is added. The person who made the claim is also refused by a check\nconstraint. Until this happens the data cannot be released above the class that was claimed for it.",
         "operationId": "confirm_datasets__dataset_id__confirm_classification_post",
         "parameters": [
           {
@@ -3330,6 +4223,38 @@
               "title": "Tenant Id",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "x-worker-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Token"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-task-credential",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Task-Credential"
+            }
           }
         ],
         "responses": {
@@ -3611,9 +4536,653 @@
         ]
       }
     },
+    "/departments/{department_id}/approver-candidates": {
+      "get": {
+        "description": "The people who could be added as an approver right now: the organisation's people who hold the data custodian role today and are not\nalready approvers of this department. For the approvers of the department, who are the only people who may add one.\n\n\"Hold the role today\" is worked out here, at the moment of asking, from the same live union the add route checks (the role a person has\npermanently plus any grant that has not been withdrawn or lapsed), so the list a person chooses from agrees with what the platform will accept.",
+        "operationId": "list_approver_candidates_departments__department_id__approver_candidates_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "department_id",
+            "required": true,
+            "schema": {
+              "title": "Department Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response List Approver Candidates Departments  Department Id  Approver Candidates Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Approver Candidates",
+        "tags": [
+          "departments"
+        ]
+      }
+    },
+    "/departments/{department_id}/approvers": {
+      "get": {
+        "description": "Who is listed as an approver of this department now, and whether each still holds the data custodian role (`holds_role`). One who does\nnot is listed but cannot act, and does not count. With `history`, everybody who ever answered, and who changed it and why.\n\nAnybody of the organisation can see who to ask. The history is for the department's own approvers and the data protection officer.",
+        "operationId": "list_approvers_departments__department_id__approvers_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "department_id",
+            "required": true,
+            "schema": {
+              "title": "Department Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "history",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "History",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response List Approvers Departments  Department Id  Approvers Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Approvers",
+        "tags": [
+          "departments"
+        ]
+      },
+      "post": {
+        "description": "Add an approver to a department. By a current approver, for a person who already holds the data custodian role.",
+        "operationId": "add_approver_departments__department_id__approvers_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "department_id",
+            "required": true,
+            "schema": {
+              "title": "Department Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddApprover"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Add Approver Departments  Department Id  Approvers Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Approver",
+        "tags": [
+          "departments"
+        ]
+      }
+    },
+    "/departments/{department_id}/approvers/{person_id}/remove": {
+      "post": {
+        "description": "Remove an approver, by a current approver of the same department. Refused for the last permanent one.",
+        "operationId": "remove_approver_departments__department_id__approvers__person_id__remove_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "department_id",
+            "required": true,
+            "schema": {
+              "title": "Department Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "person_id",
+            "required": true,
+            "schema": {
+              "title": "Person Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveApprover"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Remove Approver Departments  Department Id  Approvers  Person Id  Remove Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Approver",
+        "tags": [
+          "departments"
+        ]
+      }
+    },
+    "/derivations": {
+      "get": {
+        "operationId": "mine_derivations_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Mine Derivations Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Mine",
+        "tags": [
+          "derivations"
+        ]
+      },
+      "post": {
+        "description": "Answer a query with what it would read and what it would produce. Runs\nnothing and registers nothing.",
+        "operationId": "draft_derivations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DerivationDraftIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Draft Derivations Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Draft",
+        "tags": [
+          "derivations"
+        ]
+      }
+    },
+    "/derivations/{derivation_id}": {
+      "get": {
+        "operationId": "show_derivations__derivation_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "derivation_id",
+            "required": true,
+            "schema": {
+              "title": "Derivation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Show Derivations  Derivation Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Show",
+        "tags": [
+          "derivations"
+        ]
+      }
+    },
+    "/derivations/{derivation_id}/complete": {
+      "post": {
+        "description": "The run sealed a version. Checked here, not taken on trust: the version\nmust be this derivation's dataset and must have come from this run. Then the\nperson who asked is given access to the result for as long as their access\nto the inputs lasts.",
+        "operationId": "complete_derivations__derivation_id__complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "derivation_id",
+            "required": true,
+            "schema": {
+              "title": "Derivation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-worker-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Body",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Complete Derivations  Derivation Id  Complete Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Complete",
+        "tags": [
+          "derivations"
+        ]
+      }
+    },
+    "/derivations/{derivation_id}/confirm": {
+      "post": {
+        "description": "Register the result's shape and dataset, and start the run.",
+        "operationId": "confirm_derivations__derivation_id__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "derivation_id",
+            "required": true,
+            "schema": {
+              "title": "Derivation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DerivationConfirmIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Confirm Derivations  Derivation Id  Confirm Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm",
+        "tags": [
+          "derivations"
+        ]
+      }
+    },
+    "/derivations/{derivation_id}/fail": {
+      "post": {
+        "operationId": "fail_derivations__derivation_id__fail_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "derivation_id",
+            "required": true,
+            "schema": {
+              "title": "Derivation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-worker-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Body",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Fail Derivations  Derivation Id  Fail Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Fail",
+        "tags": [
+          "derivations"
+        ]
+      }
+    },
+    "/derivations/{derivation_id}/job": {
+      "get": {
+        "description": "What a worker needs to run one confirmed derivation.",
+        "operationId": "job_derivations__derivation_id__job_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "derivation_id",
+            "required": true,
+            "schema": {
+              "title": "Derivation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-worker-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Job Derivations  Derivation Id  Job Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Job",
+        "tags": [
+          "derivations"
+        ]
+      }
+    },
+    "/derivations/{derivation_id}/running": {
+      "post": {
+        "operationId": "running_derivations__derivation_id__running_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "derivation_id",
+            "required": true,
+            "schema": {
+              "title": "Derivation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-worker-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Body",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Running Derivations  Derivation Id  Running Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Running",
+        "tags": [
+          "derivations"
+        ]
+      }
+    },
     "/directory": {
       "get": {
-        "description": "The people and workloads the organisation registered.\n\nDeliberately not scoped to the caller's own tenant: `IdentityContext`'s\nown identity-resolution seam needs to find a session-resolved person in\nwhichever organisation they actually belong to, before their tenant is\nknown client-side, and every other organisation's roster is what a\ncustodian-chooser needs to render honestly (see the docstring below).\nAuthentication is still required -- only a real session may read it.\n\nThis is the answer to \"who exists\", and it is the platform's answer rather\nthan the console's. Before this endpoint the console carried its own list,\nwhich meant it could offer a custodian the database had never heard of and\nevery approval that person made would be refused by a foreign key.\n\nCustodians carry the department they hold, because a custodian without a\ndepartment can approve nothing and the console should be able to say so.\nThe department must be in the same tenant as the person: a custodian who\nappears in two organisations' department tables was listed twice, once per\ndepartment, which is how a chooser ends up offering the same person as two\ndifferent people.\n\nOnly live tenants by default. Verification runs as its own principals in the\ncanary tenant, and offering those alongside real people would put \"Canary\nengineer\" on the login screen of a customer's console. Pass `purpose=all` to\nsee every tenant, which is what an operator investigating the platform\nitself wants.",
+        "description": "The people and workloads the organisation registered.\n\nDeliberately not scoped to the caller's own tenant: `IdentityContext`'s\nown identity-resolution seam needs to find a session-resolved person in\nwhichever organisation they actually belong to, before their tenant is\nknown client-side, and every other organisation's roster is what a\ncustodian-chooser needs to render honestly (see the docstring below).\nAuthentication is still required -- only a real session may read it.\n\nThis is the answer to \"who exists\", and it is the platform's answer rather\nthan the console's. Before this endpoint the console carried its own list,\nwhich meant it could offer a custodian the database had never heard of and\nevery approval that person made would be refused by a foreign key.\n\nApprovers carry the departments they answer for (`approver_of`, with the\nfirst of them as `department_name`), because a custodian who answers for no\ndepartment can approve nothing and the console should be able to say so.\nA person who answers for several departments is listed once: listing them\nonce per department is how a chooser ends up offering the same person as\ntwo different people.\n\nOnly live tenants by default. Verification runs as its own principals in the\ncanary tenant, and offering those alongside real people would put \"Canary\nengineer\" on the login screen of a customer's console. Pass `purpose=all` to\nsee every tenant, which is what an operator investigating the platform\nitself wants.",
         "operationId": "list_directory_directory_get",
         "parameters": [
           {
@@ -4446,6 +6015,733 @@
         ]
       }
     },
+    "/iceberg/tokens": {
+      "get": {
+        "description": "The signed-in person's own tokens. Never the token itself.",
+        "operationId": "list_tokens_iceberg_tokens_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response List Tokens Iceberg Tokens Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Tokens",
+        "tags": [
+          "iceberg"
+        ]
+      },
+      "post": {
+        "description": "Give the signed-in person a token for their own tools.\n\nReturned once and never stored: only its hash is kept, so there is no way\nto read it back later, and a lost token is replaced, not recovered.",
+        "operationId": "issue_token_iceberg_tokens_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CatalogTokenIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Issue Token Iceberg Tokens Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Issue Token",
+        "tags": [
+          "iceberg"
+        ]
+      }
+    },
+    "/iceberg/tokens/{token_id}/revoke": {
+      "post": {
+        "description": "End one of the signed-in person's own tokens now.",
+        "operationId": "revoke_token_iceberg_tokens__token_id__revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token_id",
+            "required": true,
+            "schema": {
+              "title": "Token Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Revoke Token Iceberg Tokens  Token Id  Revoke Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Token",
+        "tags": [
+          "iceberg"
+        ]
+      }
+    },
+    "/iceberg/v1/config": {
+      "get": {
+        "description": "The warehouse is the organisation: whatever name a client asks for, the\ntoken's own organisation is what it gets.",
+        "operationId": "catalog_config_iceberg_v1_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Catalog Config Iceberg V1 Config Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Catalog Config",
+        "tags": [
+          "iceberg"
+        ]
+      }
+    },
+    "/iceberg/v1/oauth/tokens": {
+      "post": {
+        "description": "Not offered: send the token from POST /iceberg/tokens directly. Answered\nin the shape OAuth clients expect, so the failure is legible.",
+        "operationId": "oauth_tokens_iceberg_v1_oauth_tokens_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Oauth Tokens",
+        "tags": [
+          "iceberg"
+        ]
+      }
+    },
+    "/iceberg/v1/{prefix}/namespaces": {
+      "get": {
+        "operationId": "list_namespaces_iceberg_v1__prefix__namespaces_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "prefix",
+            "required": true,
+            "schema": {
+              "title": "Prefix",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response List Namespaces Iceberg V1  Prefix  Namespaces Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Namespaces",
+        "tags": [
+          "iceberg"
+        ]
+      }
+    },
+    "/iceberg/v1/{prefix}/namespaces/{namespace}": {
+      "get": {
+        "operationId": "get_namespace_iceberg_v1__prefix__namespaces__namespace__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "prefix",
+            "required": true,
+            "schema": {
+              "title": "Prefix",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Namespace",
+        "tags": [
+          "iceberg"
+        ]
+      },
+      "head": {
+        "operationId": "get_namespace_iceberg_v1__prefix__namespaces__namespace__head",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "prefix",
+            "required": true,
+            "schema": {
+              "title": "Prefix",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Namespace",
+        "tags": [
+          "iceberg"
+        ]
+      }
+    },
+    "/iceberg/v1/{prefix}/namespaces/{namespace}/tables": {
+      "get": {
+        "operationId": "list_tables_iceberg_v1__prefix__namespaces__namespace__tables_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "prefix",
+            "required": true,
+            "schema": {
+              "title": "Prefix",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response List Tables Iceberg V1  Prefix  Namespaces  Namespace  Tables Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Tables",
+        "tags": [
+          "iceberg"
+        ]
+      }
+    },
+    "/iceberg/v1/{prefix}/namespaces/{namespace}/tables/{table}": {
+      "get": {
+        "description": "Open one table: decide, record the decision, then hand over the key.\n\nThe decision, the audit rows and the key all come from request_credential,\nthe function behind POST /credentials, so a table opened here is recorded\nexactly as the same version read any other way would be.",
+        "operationId": "load_table_iceberg_v1__prefix__namespaces__namespace__tables__table__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "prefix",
+            "required": true,
+            "schema": {
+              "title": "Prefix",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "table",
+            "required": true,
+            "schema": {
+              "title": "Table",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Load Table",
+        "tags": [
+          "iceberg"
+        ]
+      },
+      "head": {
+        "description": "Open one table: decide, record the decision, then hand over the key.\n\nThe decision, the audit rows and the key all come from request_credential,\nthe function behind POST /credentials, so a table opened here is recorded\nexactly as the same version read any other way would be.",
+        "operationId": "load_table_iceberg_v1__prefix__namespaces__namespace__tables__table__head",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "prefix",
+            "required": true,
+            "schema": {
+              "title": "Prefix",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "table",
+            "required": true,
+            "schema": {
+              "title": "Table",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Load Table",
+        "tags": [
+          "iceberg"
+        ]
+      }
+    },
+    "/iceberg/v1/{prefix}/namespaces/{namespace}/tables/{table}/credentials": {
+      "get": {
+        "description": "The next key for a table a client already has open. Decided again, in\nfull, every time: this is where a read that outlasts its key either carries\non or is told, with the reason, that access has ended.",
+        "operationId": "load_credentials_iceberg_v1__prefix__namespaces__namespace__tables__table__credentials_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "prefix",
+            "required": true,
+            "schema": {
+              "title": "Prefix",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "table",
+            "required": true,
+            "schema": {
+              "title": "Table",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Load Credentials Iceberg V1  Prefix  Namespaces  Namespace  Tables  Table  Credentials Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Load Credentials",
+        "tags": [
+          "iceberg"
+        ]
+      }
+    },
+    "/iceberg/v1/{prefix}/namespaces/{namespace}/views": {
+      "get": {
+        "description": "There are no views. Answered, not refused, because some clients ask.",
+        "operationId": "list_views_iceberg_v1__prefix__namespaces__namespace__views_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "prefix",
+            "required": true,
+            "schema": {
+              "title": "Prefix",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response List Views Iceberg V1  Prefix  Namespaces  Namespace  Views Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Views",
+        "tags": [
+          "iceberg"
+        ]
+      }
+    },
+    "/iceberg/v1/{rest}": {
+      "delete": {
+        "operationId": "iceberg_refuse_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rest",
+            "required": true,
+            "schema": {
+              "title": "Rest",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": " Refuse Writes",
+        "tags": [
+          "iceberg"
+        ]
+      },
+      "patch": {
+        "operationId": "iceberg_refuse_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rest",
+            "required": true,
+            "schema": {
+              "title": "Rest",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": " Refuse Writes",
+        "tags": [
+          "iceberg"
+        ]
+      },
+      "post": {
+        "operationId": "iceberg_refuse_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rest",
+            "required": true,
+            "schema": {
+              "title": "Rest",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": " Refuse Writes",
+        "tags": [
+          "iceberg"
+        ]
+      },
+      "put": {
+        "operationId": "iceberg_refuse_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rest",
+            "required": true,
+            "schema": {
+              "title": "Rest",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": " Refuse Writes",
+        "tags": [
+          "iceberg"
+        ]
+      }
+    },
     "/lease-requests": {
       "get": {
         "description": "Lease requests, with the department that owns what was asked for, and\nthe total for real page controls.\n\n`custodian` narrows to requests that person can actually decide. Without it\na custodian's queue showed every pending request in the platform under a\nheading naming their own department, including requests for data owned by\nsomebody else and for data owned by nobody. A queue that lists work you\ncannot do is worse than an empty one.\n\nStates are returned together by default. A queue showing only pending\nrequests hides how the previous ones were decided, and that history is what\ntells a reviewer whether this one is unusual.\n\n`exclude_pending` exists for the console's own \"what you have decided\"\nlists, which want a page of history without the still-open queue mixed\nin. Filtering `state != \"pending\"` in the browser after the fact was\nthe old approach; it silently mis-paginates the moment only one page's\nworth of rows is fetched at a time, since a pending row taking one of\nthe 15 slots on a page means fewer than 15 decided rows actually show,\nand the reported total would count pending rows a \"decided\" page never\ndisplays. A real query parameter keeps the count and the rows in\nagreement, the same fix `/access-decisions`'s `resource` filter\nalready made for the same shape of problem.\n\n`version` is returned because what is granted is one version, not a dataset.\nTwo versions of the same dataset can sit at different sensitivities, so a\nrequest naming only the dataset asks the custodian to approve something\nthey cannot see the shape of.\n\n`requested_by`/`requested_by_label` are set only when a human asked on a\nworkload's behalf; the reading principal stays `lr.principal` regardless,\nsince a workload's identity is never inferred from who invoked it.",
@@ -4829,6 +7125,1010 @@
         "summary": "Revoke Lease"
       }
     },
+    "/legal-exports": {
+      "get": {
+        "operationId": "list_exports_legal_exports_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "hold_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Hold Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response List Exports Legal Exports Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Exports",
+        "tags": [
+          "legal-export"
+        ]
+      },
+      "post": {
+        "operationId": "request_export_legal_exports_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Request Export Legal Exports Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Request Export",
+        "tags": [
+          "legal-export"
+        ]
+      }
+    },
+    "/legal-exports/download/{token}": {
+      "get": {
+        "description": "Hand over the encrypted package to whoever holds a link, a limited number of times and for a limited time.\n\nThe token is the credential, so this needs no session. It opens nothing by itself: the package is encrypted.",
+        "operationId": "download_legal_exports_download__token__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download",
+        "tags": [
+          "legal-export"
+        ]
+      }
+    },
+    "/legal-exports/scope": {
+      "get": {
+        "description": "The datasets of a held organisation that an export could name, for choosing a scope. Names and sizes, never\ncontents, and only for an organisation with a legal hold in force.",
+        "operationId": "scope_legal_exports_scope_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "hold_id",
+            "required": true,
+            "schema": {
+              "title": "Hold Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Scope Legal Exports Scope Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Scope",
+        "tags": [
+          "legal-export"
+        ]
+      }
+    },
+    "/legal-exports/signing-key": {
+      "get": {
+        "description": "The public half of the key that signs every package's manifest, so a recipient can verify it.",
+        "operationId": "signing_key_legal_exports_signing_key_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Signing Key Legal Exports Signing Key Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Signing Key",
+        "tags": [
+          "legal-export"
+        ]
+      }
+    },
+    "/legal-exports/{export_id}/approve": {
+      "post": {
+        "operationId": "approve_legal_exports__export_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "title": "Export Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/app__legal_export__DecideIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Approve Legal Exports  Export Id  Approve Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve",
+        "tags": [
+          "legal-export"
+        ]
+      }
+    },
+    "/legal-exports/{export_id}/confirm": {
+      "post": {
+        "operationId": "confirm_legal_exports__export_id__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "title": "Export Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/app__legal_export__DecideIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Confirm Legal Exports  Export Id  Confirm Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm",
+        "tags": [
+          "legal-export"
+        ]
+      }
+    },
+    "/legal-exports/{export_id}/filter-preview": {
+      "post": {
+        "description": "For the custodian, before confirming: how many rows each filter would match, and which values matched none. Counts\nonly. The rows are never returned, and the values are not stored by asking.",
+        "operationId": "filter_preview_legal_exports__export_id__filter_preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "title": "Export Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Filter Preview Legal Exports  Export Id  Filter Preview Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Filter Preview",
+        "tags": [
+          "legal-export"
+        ]
+      }
+    },
+    "/legal-exports/{export_id}/links": {
+      "post": {
+        "operationId": "make_link_legal_exports__export_id__links_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "title": "Export Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Make Link Legal Exports  Export Id  Links Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Make Link",
+        "tags": [
+          "legal-export"
+        ]
+      }
+    },
+    "/legal-exports/{export_id}/manifest": {
+      "get": {
+        "operationId": "manifest_legal_exports__export_id__manifest_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "title": "Export Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Manifest Legal Exports  Export Id  Manifest Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Manifest",
+        "tags": [
+          "legal-export"
+        ]
+      }
+    },
+    "/legal-exports/{export_id}/passphrase": {
+      "post": {
+        "description": "The package's passphrase, to the hold's custodian, once. It is not kept after it is read.",
+        "operationId": "passphrase_legal_exports__export_id__passphrase_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "title": "Export Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Passphrase Legal Exports  Export Id  Passphrase Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Passphrase",
+        "tags": [
+          "legal-export"
+        ]
+      }
+    },
+    "/lifecycle/deletions": {
+      "get": {
+        "description": "What was left behind by each purge, for a platform administrator.",
+        "operationId": "deletions_lifecycle_deletions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Deletions Lifecycle Deletions Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Deletions",
+        "tags": [
+          "lifecycle"
+        ]
+      }
+    },
+    "/lifecycle/events": {
+      "get": {
+        "description": "What happened to an organisation's closing, newest first.",
+        "operationId": "events_lifecycle_events_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Events Lifecycle Events Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Events",
+        "tags": [
+          "lifecycle"
+        ]
+      }
+    },
+    "/lifecycle/holds": {
+      "get": {
+        "description": "Holds for a platform administrator, or the holds a custodian answers for.\n\nA hold carries the notice's contact details, so nobody else sees it.",
+        "operationId": "holds_lifecycle_holds_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenant Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Holds Lifecycle Holds Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Holds",
+        "tags": [
+          "lifecycle"
+        ]
+      },
+      "post": {
+        "description": "Record a legal hold on a whole organisation. It takes effect when a different\nplatform administrator approves it, and in the meantime it already stops a purge.",
+        "operationId": "place_hold_lifecycle_holds_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HoldIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Place Hold Lifecycle Holds Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Place Hold",
+        "tags": [
+          "lifecycle"
+        ]
+      }
+    },
+    "/lifecycle/holds/{hold_id}/acknowledge": {
+      "post": {
+        "description": "The temporary custodian confirms that they have read the notice and will answer for the records.",
+        "operationId": "acknowledge_hold_lifecycle_holds__hold_id__acknowledge_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hold_id",
+            "required": true,
+            "schema": {
+              "title": "Hold Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Acknowledge Hold Lifecycle Holds  Hold Id  Acknowledge Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Acknowledge Hold",
+        "tags": [
+          "lifecycle"
+        ]
+      }
+    },
+    "/lifecycle/holds/{hold_id}/decide": {
+      "post": {
+        "description": "Approve or decline a hold that a different platform administrator recorded.",
+        "operationId": "decide_hold_lifecycle_holds__hold_id__decide_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hold_id",
+            "required": true,
+            "schema": {
+              "title": "Hold Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/app__lifecycle__DecideIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Decide Hold Lifecycle Holds  Hold Id  Decide Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Decide Hold",
+        "tags": [
+          "lifecycle"
+        ]
+      }
+    },
+    "/lifecycle/holds/{hold_id}/release": {
+      "post": {
+        "description": "End a hold that is in force. The closing period starts again, so a release\nmade by mistake still leaves time before anything is deleted.",
+        "operationId": "release_hold_lifecycle_holds__hold_id__release_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hold_id",
+            "required": true,
+            "schema": {
+              "title": "Hold Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReleaseIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Release Hold Lifecycle Holds  Hold Id  Release Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Release Hold",
+        "tags": [
+          "lifecycle"
+        ]
+      }
+    },
+    "/lifecycle/organisation": {
+      "get": {
+        "description": "Where one organisation is in its closing. Open to its own people even while\nit is closing, because it is how they find out why they can do nothing.",
+        "operationId": "organisation_status_lifecycle_organisation_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenant Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Organisation Status Lifecycle Organisation Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Organisation Status",
+        "tags": [
+          "lifecycle"
+        ]
+      }
+    },
+    "/lifecycle/organisation/cancel": {
+      "post": {
+        "description": "Cancel a retirement while the retiring period is still running.",
+        "operationId": "cancel_lifecycle_organisation_cancel_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Cancel Lifecycle Organisation Cancel Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel",
+        "tags": [
+          "lifecycle"
+        ]
+      }
+    },
+    "/lifecycle/organisation/retire": {
+      "post": {
+        "description": "Start closing an organisation. Nothing is deleted yet: its people can read\nfor the retiring period and cancel, then there is a closing period after that.",
+        "operationId": "retire_lifecycle_organisation_retire_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetireIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Retire Lifecycle Organisation Retire Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retire",
+        "tags": [
+          "lifecycle"
+        ]
+      }
+    },
+    "/lifecycle/organisations": {
+      "get": {
+        "description": "Every organisation and where it is, for a platform administrator.\n\nDates and states only, never contents. An organisation closed before closing\nhad dates (nothing then deletes it) is left out unless `legacy` is set.",
+        "operationId": "organisations_lifecycle_organisations_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "legacy",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Legacy",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Organisations Lifecycle Organisations Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Organisations",
+        "tags": [
+          "lifecycle"
+        ]
+      }
+    },
+    "/lifecycle/sweep": {
+      "post": {
+        "description": "Do now what the timer does every few minutes. For a platform administrator.",
+        "operationId": "run_sweep_lifecycle_sweep_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Run Sweep Lifecycle Sweep Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Run Sweep",
+        "tags": [
+          "lifecycle"
+        ]
+      }
+    },
     "/lineage/{version_id}": {
       "get": {
         "operationId": "get_lineage_lineage__version_id__get",
@@ -4856,6 +8156,38 @@
                 }
               ],
               "title": "Tenant Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-worker-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Token"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-task-credential",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Task-Credential"
             }
           }
         ],
@@ -4887,7 +8219,7 @@
     },
     "/organisation": {
       "get": {
-        "description": "Departments, their custodians, and which datasets they own.\n\nAn unowned dataset is reported as such rather than omitted. Thirty-nine\ndatasets predate the organisation model, and nobody can approve access to\nthem until somebody takes ownership. Hiding that would make the gap look\nlike a smaller number of datasets rather than an unanswered question.",
+        "description": "Departments, their approvers, and which datasets they own.\n\nAn unowned dataset is reported as such rather than omitted. Thirty-nine\ndatasets predate the organisation model, and nobody can approve access to\nthem until somebody takes ownership. Hiding that would make the gap look\nlike a smaller number of datasets rather than an unanswered question.",
         "operationId": "organisation_organisation_get",
         "responses": {
           "200": {
@@ -5140,6 +8472,24 @@
       "post": {
         "description": "Open one pipeline run, so its steps can be found together later.\n\nEvery action_run the pipeline produces carries this id, and so does any\nworkflow the promotion later starts. Without it the only thread between a\nrun's steps is the lineage chain, because the idempotency key hashes the\nworkflow id beyond recovery.\n\nIdempotent on workflow_id, for the same reason `/action-runs` is idempotent\non its own key: Temporal replays a workflow after a crash, and a replay is\nthe same run rather than a second one.",
         "operationId": "start_pipeline_run_pipeline_runs_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-worker-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Token"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -5233,6 +8583,22 @@
               "title": "Run Id",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "x-worker-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Token"
+            }
           }
         ],
         "requestBody": {
@@ -5275,6 +8641,24 @@
       "get": {
         "description": "Which pipeline kinds this process knows how to start.\n\nMirrors worker/main.py's own registered-workflows list, the same\nreasoning as served_backends above: this process names the kind, that\nprocess names the workflow class backing it, and a verify script checks\nthe two agree rather than trusting a comment to keep them in step.",
         "operationId": "pipeline_kinds_pipeline_kinds_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-worker-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Token"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -5286,6 +8670,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Pipeline Kinds",
@@ -5298,6 +8692,24 @@
       "get": {
         "description": "Which object-storage backends the pipeline can read and write.\n\nExists so the worker's own answer can be compared with this one from\noutside both processes. The constant below mirrors the worker's, and a\nmirror nobody checks is a copy waiting to disagree.",
         "operationId": "served_backends_pipeline_served_backends_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-worker-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Token"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -5309,6 +8721,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Served Backends",
@@ -5608,6 +9030,24 @@
       "post": {
         "description": "Encrypt a record and store its wrapped key.\n\nThe ciphertext is returned rather than stored. The control plane holds keys\nand metadata; bulk bytes belong in object storage, and keeping the two apart\nis what makes key destruction sufficient for deletion.",
         "operationId": "seal_record_records_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-worker-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Token"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -5646,7 +9086,7 @@
     },
     "/records/{record_id}": {
       "delete": {
-        "description": "Delete a record by destroying its key.\n\nNothing is overwritten. The ciphertext stays in every sealed version that\nheld it and stops being readable in all of them at once, and the tombstone\nkeeps the fact of the record's existence so that erasure does not break the\naudit trail it was meant to serve.",
+        "description": "Delete a record by destroying its key.\n\nNothing is overwritten. The ciphertext stays in every sealed version that\nheld it and stops being readable in all of them at once, and the tombstone\nkeeps the fact of the record's existence so that erasure does not break the\naudit trail it was meant to serve.\n\nRefused while a legal hold is pending or in force over the organisation, because a hold exists to stop\nexactly this and the destruction cannot be undone. The request is kept, and carried out by the sweep once\nno hold stands (legal_export.honour_deferred_erasures).",
         "operationId": "destroy_record_records__record_id__delete",
         "parameters": [
           {
@@ -5656,6 +9096,22 @@
             "schema": {
               "title": "Record Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-worker-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Token"
             }
           }
         ],
@@ -5716,6 +9172,22 @@
               "title": "Ciphertext B64",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "x-worker-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Token"
+            }
           }
         ],
         "responses": {
@@ -5748,6 +9220,24 @@
       "post": {
         "description": "Register a schema contract.\n\nContracts are content addressed and never edited. Registering the same\nfields twice returns the existing row rather than creating a second one, so\na pipeline that re-registers on every run stays idempotent.",
         "operationId": "register_contract_schema_contracts_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-worker-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Token"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -5830,10 +9320,537 @@
         ]
       }
     },
+    "/table-jobs": {
+      "get": {
+        "operationId": "list_jobs_table_jobs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-worker-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Token"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-task-credential",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Task-Credential"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response List Jobs Table Jobs Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Jobs"
+      }
+    },
+    "/table-jobs/{job_id}": {
+      "get": {
+        "description": "Where one job stands. A job of another organisation is not found, not forbidden, as a version is.",
+        "operationId": "get_job_table_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-worker-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Token"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-task-credential",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Task-Credential"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Get Job Table Jobs  Job Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Job"
+      }
+    },
+    "/table-jobs/{job_id}/credentials": {
+      "post": {
+        "description": "The job's own storage key. 202 while the key is not yet in the live permissions document.",
+        "operationId": "credentials_table_jobs__job_id__credentials_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-task-credential",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Task-Credential"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Credentials"
+      }
+    },
+    "/table-jobs/{job_id}/finish": {
+      "post": {
+        "description": "The worker reports. The platform checks what it says, and seals the version or refuses it.",
+        "operationId": "finish_table_jobs__job_id__finish_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-task-credential",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Task-Credential"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinishIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Finish Table Jobs  Job Id  Finish Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Finish"
+      }
+    },
+    "/table-jobs/{job_id}/work": {
+      "get": {
+        "description": "What a worker needs to write one job's table. Asking for it marks the job running.",
+        "operationId": "work_table_jobs__job_id__work_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-task-credential",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Task-Credential"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Work Table Jobs  Job Id  Work Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Work"
+      }
+    },
+    "/tenants/{organisation_id}/table-worker": {
+      "get": {
+        "operationId": "get_worker_tenants__organisation_id__table_worker_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organisation_id",
+            "required": true,
+            "schema": {
+              "title": "Organisation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-worker-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Token"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-task-credential",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Task-Credential"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Get Worker Tenants  Organisation Id  Table Worker Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Worker"
+      },
+      "put": {
+        "description": "Give an organisation a worker of its own, or take it back to the shared pool. Platform administrators only.\n\nJobs already made stay on the line they were put on. Only the jobs made afterwards use the new setting.",
+        "operationId": "set_worker_tenants__organisation_id__table_worker_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organisation_id",
+            "required": true,
+            "schema": {
+              "title": "Organisation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkerIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Set Worker Tenants  Organisation Id  Table Worker Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Worker"
+      }
+    },
     "/write-credentials": {
       "post": {
         "description": "Mint a prefix-scoped write credential for a real pipeline task, or\nrefuse and say why.\n\nThe write-side counterpart to /credentials, and narrower: only a\n*registered* pipeline_action workload may even ask (no unregistered-\ncaller benefit of the doubt the way an unregistered human keeps at\n/credentials, since nothing legitimate is ever an unregistered\nworkload), and what it proves is not \"may read this\", it is \"is a real\ntask, of this tenant, writing into the next version-location for a\ndataset it names\" -- computed here, from versions.next_version(), never\nfrom anything the caller supplies. Same three-outcome shape as\n/credentials: 200 with the key when granted and in effect, 403 when\nrefused, 202 when granted but storage permissions have not caught up yet.",
         "operationId": "request_write_credential_write_credentials_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-worker-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Token"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {

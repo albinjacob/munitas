@@ -77,9 +77,23 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _mine(dataset: dict, identity: dict) -> None:
+    """A dataset of another organisation is not found, not forbidden, so its existence is not disclosed."""
+    if dataset["tenant_id"] != identity["tenant_id"]:
+        raise HTTPException(404, "no such dataset")
+
+
+def _require_intake_role(identity: dict) -> None:
+    """Bringing data in is a data engineer's job, or a data custodian's. Anybody else is refused, with the reason."""
+    permitted, reasons = opa.may_bring_in_data({"person": {"id": identity["id"], "roles": identity["roles"]}})
+    if not permitted:
+        raise HTTPException(403, {"reasons": reasons})
+
+
 def _dataset(dataset_id: str) -> dict:
     row = db.one(
-        """select d.*, dept.custodian, dept.name as department_name
+        """select d.*, dept.custodian, dept.name as department_name,
+                  case when dept.id is null then '{}'::text[] else active_department_approvers(dept.id) end as approvers
            from dataset d
            left join department dept on dept.id = d.department_id
            where d.id = %s""",
@@ -91,15 +105,15 @@ def _dataset(dataset_id: str) -> dict:
 
 
 @router.get("/datasets/{dataset_id}")
-def get_dataset(dataset_id: str, tenant_id: str | None = None) -> dict:
+def get_dataset(dataset_id: str, tenant_id: str | None = Depends(auth.organisation_scope)) -> dict:
     """One dataset's own record.
 
     What the console reads to resume bringing data into a dataset that was
     registered and then left, rather than sealed on the spot: registering
     and uploading were always two separate steps, but until now nothing let
-    a person come back to the second one. Narrowed to one organisation when
-    asked, and answering "no such dataset" rather than "not yours" for a
-    dataset in another tenant, the same non-disclosure posture the other
+    a person come back to the second one. Narrowed to the caller's organisation
+    (`auth.organisation_scope`), and answering "no such dataset" rather than "not
+    yours" for a dataset in another tenant, the same non-disclosure posture the other
     detail endpoints already use.
     """
     dataset = _dataset(dataset_id)
@@ -109,7 +123,7 @@ def get_dataset(dataset_id: str, tenant_id: str | None = None) -> dict:
 
 
 @router.post("/datasets/register", status_code=201)
-def register(body: RegisterDataset) -> dict:
+def register(body: RegisterDataset, identity: dict = Depends(auth.current_session)) -> dict:
     """Register a dataset and say where it came from.
 
     Registering exposes nothing, so it needs nobody's approval. It does need an
@@ -134,8 +148,10 @@ def register(body: RegisterDataset) -> dict:
     actual licence and overwrites it once the fetch runs, the same as
     `declared_class` is provisional until a custodian confirms it.
     """
+    auth.must_be(identity, tenant_id=body.tenant_id, person=body.registered_by)
+    _require_intake_role(identity)
     department = db.one(
-        "select id, custodian from department where id = %s and tenant_id = %s",
+        "select id, custodian, active_department_approvers(id) as approvers from department where id = %s and tenant_id = %s",
         (body.department_id, body.tenant_id),
     )
     if not department:
@@ -194,11 +210,11 @@ def register(body: RegisterDataset) -> dict:
         "declared_class": body.declared_class,
         "declaration_basis": basis,
         "needs_confirmation": basis == "asserted",
-        "custodian": department["custodian"],
+        "approvers": department["approvers"],
         "note": (
             "Nothing is readable yet. It becomes readable when the data is sealed "
-            "and, if you declared it less sensitive than the default, when the "
-            "custodian agrees with you."
+            "and, if you declared it less sensitive than the default, when a "
+            "department approver agrees with you."
         ),
     }
 
@@ -264,7 +280,7 @@ def _answer_key_facts(filename: str, payload: bytes) -> dict:
 
 
 @router.post("/datasets/{dataset_id}/files", status_code=201)
-async def upload(dataset_id: str, file: UploadFile = File(...)) -> dict:
+async def upload(dataset_id: str, file: UploadFile = File(...), identity: dict = Depends(auth.current_session)) -> dict:
     """Accept a file.
 
     The only endpoint in the platform that takes bytes from a person. It writes
@@ -272,6 +288,8 @@ async def upload(dataset_id: str, file: UploadFile = File(...)) -> dict:
     checksum, and returns nothing that could be used to read them back.
     """
     dataset = _dataset(dataset_id)
+    _mine(dataset, identity)
+    _require_intake_role(identity)
     if dataset["department_id"] is None:
         raise HTTPException(400, {"reasons": ["this dataset has no owning department"]})
 
@@ -388,6 +406,8 @@ def seal_audio(dataset_id: str,
     asserting a shape nothing checked.
     """
     dataset = _dataset(dataset_id)
+    _mine(dataset, identity)
+    _require_intake_role(identity)
 
     running = db.one(
         "select id from huggingface_fetch_job where dataset_id = %s and status = 'running'",
@@ -470,6 +490,7 @@ def seal_audio(dataset_id: str,
         # evidence about a record, not a record of its own, and the pipeline
         # sizes its own timeouts from this.
         record_count=len(records),
+        records_key=f"{prefix}/records.json",
     )
     return {**version, "records": len(records), "sealed_by": identity["id"]}
 
@@ -489,6 +510,8 @@ def withdraw_upload(dataset_id: str, source_id: str,
     already satisfied.
     """
     dataset = _dataset(dataset_id)
+    _mine(dataset, identity)
+    _require_intake_role(identity)
     row = db.one(
         """select id, locator, withdrawn_at from dataset_source
            where id = %s and dataset_id = %s""",
@@ -517,7 +540,7 @@ class FetchHuggingFace(BaseModel):
 
 
 @router.post("/datasets/{dataset_id}/fetch-huggingface", status_code=202)
-async def fetch_huggingface(dataset_id: str, body: FetchHuggingFace) -> dict:
+async def fetch_huggingface(dataset_id: str, body: FetchHuggingFace, identity: dict = Depends(auth.current_session)) -> dict:
     """Start fetching files from a public HuggingFace dataset repo, in the
     background.
 
@@ -542,6 +565,9 @@ async def fetch_huggingface(dataset_id: str, body: FetchHuggingFace) -> dict:
     `GET /datasets/{id}/huggingface-fetch-jobs`.
     """
     dataset = _dataset(dataset_id)
+    _mine(dataset, identity)
+    _require_intake_role(identity)
+    auth.must_be(identity, person=body.fetched_by)
     if dataset["department_id"] is None:
         raise HTTPException(400, {"reasons": ["this dataset has no owning department"]})
 
@@ -611,7 +637,7 @@ async def fetch_huggingface(dataset_id: str, body: FetchHuggingFace) -> dict:
 
 
 @router.post("/datasets/{dataset_id}/huggingface-fetch-jobs/{job_id}/cancel")
-async def cancel_huggingface_fetch(dataset_id: str, job_id: str) -> dict:
+async def cancel_huggingface_fetch(dataset_id: str, job_id: str, identity: dict = Depends(auth.current_session)) -> dict:
     """Stop a running HuggingFace fetch.
 
     Asks Temporal to cancel the workflow; the workflow itself
@@ -621,6 +647,8 @@ async def cancel_huggingface_fetch(dataset_id: str, job_id: str) -> dict:
     cancellation reaches the workflow are not undone: a later fetch of the
     same repo picks up from there.
     """
+    _mine(_dataset(dataset_id), identity)
+    _require_intake_role(identity)
     job = db.one(
         "select id, status, workflow_id from huggingface_fetch_job where id = %s and dataset_id = %s",
         (job_id, dataset_id),
@@ -642,13 +670,15 @@ async def cancel_huggingface_fetch(dataset_id: str, job_id: str) -> dict:
 
 
 @router.post("/datasets/{dataset_id}/seal", status_code=201)
-def seal(dataset_id: str) -> dict:
+def seal(dataset_id: str, identity: dict = Depends(auth.current_session)) -> dict:
     """Close the upload and create the first sealed version.
 
     Goes through the same sealing path the pipeline uses, so nothing arriving
     this way sidesteps immutability or the prefix rules.
     """
     dataset = _dataset(dataset_id)
+    _mine(dataset, identity)
+    _require_intake_role(identity)
 
     running = db.one(
         "select id from huggingface_fetch_job where dataset_id = %s and status = 'running'",
@@ -722,15 +752,18 @@ def seal(dataset_id: str) -> dict:
 
 
 @router.post("/datasets/{dataset_id}/confirm-classification")
-def confirm(dataset_id: str, body: ConfirmClassification) -> dict:
+def confirm(dataset_id: str, body: ConfirmClassification, identity: dict = Depends(auth.current_session)) -> dict:
     """The custodian agreeing with somebody's sensitivity claim.
 
-    Refused for anybody who is not the custodian of the owning department, and
-    refused for the person who made the claim, by a check constraint as well as
-    by the branch below. Until this happens the data cannot be released above
-    the class that was claimed for it.
+    Decided by the policy (`classification_confirmation_decision`): a data custodian who is a department approver of the owning department, never the
+    person who made the claim. Any one approver may confirm, and nobody who is not an approver of the owning department. When the claimant is the
+    department's only approver, the claim waits until a second approver is added. The person who made the claim is also refused by a check
+    constraint. Until this happens the data cannot be released above the class that was claimed for it.
     """
     dataset = _dataset(dataset_id)
+    _mine(dataset, identity)
+    # The custodian check below compares this name with the department's custodian, so it has to be the signed-in person's.
+    auth.must_be(identity, person=body.confirmed_by)
 
     if dataset["declaration_basis"] != "asserted":
         raise HTTPException(
@@ -741,19 +774,18 @@ def confirm(dataset_id: str, body: ConfirmClassification) -> dict:
             ]},
         )
 
-    if not dataset["custodian"]:
+    if not dataset["approvers"]:
         raise HTTPException(
-            409, {"reasons": ["this dataset has no owning department, so nobody can confirm"]}
+            409, {"reasons": ["this dataset has no owning department, or its department has no approver, so nobody can confirm"]}
         )
 
-    if body.confirmed_by != dataset["custodian"]:
-        raise HTTPException(
-            403,
-            {"reasons": [
-                f"this data is owned by {dataset['department_name']}, "
-                f"whose custodian is {dataset['custodian']}"
-            ]},
-        )
+    permitted, reasons = opa.may_confirm_classification({
+        "confirmer": {"id": identity["id"], "roles": identity["roles"]},
+        "claim": {"declared_by": dataset["declared_by"]},
+        "department": {"name": dataset["department_name"], "approvers": dataset["approvers"]},
+    })
+    if not permitted:
+        raise HTTPException(403, {"reasons": reasons})
 
     try:
         db.execute(

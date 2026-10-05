@@ -42,6 +42,14 @@ ALLOWED_FIELDS = {
     "outcome", "state", "status", "reason", "error", "error_type",
     "count", "seconds", "volumes_wanted", "volumes_reserved",
     "request_id", "lease_id", "identity",
+    # The id of a derivation (a query that makes a new dataset). An identifier
+    # of the same kind as dataset_id and run_id, so it says which one a line is
+    # about without saying anything about what the query read or produced.
+    "derivation_id",
+    # The id of a table job (a large table written by a worker), the line of work it is on (the name of a queue, which holds
+    # an organisation id and nothing else), and the version number it reserved. Identifiers of the same kind as derivation_id and
+    # dataset_version_id: they say which job a line is about without saying anything about the rows it is writing.
+    "job_id", "queue", "version",
 }
 
 EXTRA_CALL = re.compile(r"extra=\{(.*?)\}", re.S)

@@ -139,3 +139,21 @@ export function AuditIcon(props: SVGProps<SVGSVGElement>) {
     </Icon>
   );
 }
+
+export function ClosingIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <circle cx="10" cy="10" r="7" />
+      <path d="M10 6v4.5l3 1.5" />
+    </Icon>
+  );
+}
+
+export function HoldIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M10 3 4 5.5V10c0 3.5 2.4 6 6 7 3.6-1 6-3.5 6-7V5.5L10 3Z" />
+      <path d="M7.5 10 9.5 12l3.5-3.5" />
+    </Icon>
+  );
+}

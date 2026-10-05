@@ -33,6 +33,7 @@ import { ClassBadge } from "../../components/ClassBadge";
 import { Empty, Failure, Loading, Section } from "../../components/states";
 import { CopyableHash } from "../../components/CopyableHash";
 import { RequestAccess } from "./RequestAccess";
+import { useVersionTable } from "../../api/queries";
 import { PORTS } from "../../config/ports";
 
 const TEMPORAL = `http://localhost:${PORTS.temporal_ui}`;
@@ -62,6 +63,7 @@ export function VersionDetail() {
   const { principal } = useIdentity();
   const version = useVersion(versionId);
   const transitions = useTransitions(versionId);
+  const table = useVersionTable(versionId);
   const lineage = useLineage(versionId);
   const access = useAccessPreview({ versionIds: versionId ? [versionId] : [] });
   const myRequests = useLeaseRequests(undefined);
@@ -191,6 +193,41 @@ export function VersionDetail() {
             </>
           )}
         </dl>
+      </Section>
+
+      <Section
+        title="Stored as a table"
+        description="Whether the rows of this version are also written as a table that a standard tool can read, and that a legal export can filter to the rows for named people."
+      >
+        {table.isLoading ? (
+          <Loading what="the table copy" />
+        ) : table.error ? (
+          <Failure error={table.error} what="whether this version is stored as a table" />
+        ) : table.data!.projected ? (
+          <div data-testid="table-copy" className="rounded border border-slate-200 bg-white p-4 text-sm">
+            <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-900">Yes, as a table</span>
+            <p className="mt-2 text-slate-700">
+              The table <code className="font-mono text-xs">{table.data!.table}</code> holds{" "}
+              <strong>{table.data!.rows} rows</strong>, written when this version was sealed (snapshot {table.data!.snapshot_id}). A
+              standard tool such as DuckDB can read it, and a legal export can hand over only the rows for named people.
+            </p>
+          </div>
+        ) : (
+          <div data-testid="table-copy" className="rounded border border-slate-200 bg-white p-4 text-sm">
+            <span
+              className={`rounded px-2 py-0.5 text-xs font-medium ${
+                table.data!.outcome === "failed" ? "bg-red-100 text-red-900" :
+                table.data!.outcome === "not_requested" ? "bg-slate-200 text-slate-800" : "bg-amber-100 text-amber-900"
+              }`}
+            >
+              {table.data!.outcome === "not_requested" ? "Files, not a table" : "No table copy"}
+            </span>
+            <p className="mt-2 text-slate-700">{table.data!.reason}</p>
+            <p className="mt-1 text-xs text-slate-500">
+              A legal export can hand this version over whole, but cannot filter it to the rows for named people.
+            </p>
+          </div>
+        )}
       </Section>
 
       {mayRunPipeline && (

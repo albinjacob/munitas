@@ -100,6 +100,11 @@ SANDBOX_TASK_QUEUE = os.environ.get(
 # reason HuggingFace ingestion does above: unrelated work should not wait
 # behind each other.
 HOUSEKEEPING_TASK_QUEUE = "munitas-housekeeping"
+# A confirmed derivation (derivation_workflow.py). Its own queue so a query is never
+# stuck behind the pipeline, which runs one activity at a time for the GPU.
+DERIVATION_TASK_QUEUE = "munitas-derivation"
+# The image a derivation's three containers run from (worker/derive/Dockerfile).
+DERIVE_IMAGE = os.environ.get("MUNITAS_DERIVE_IMAGE", "munitas-derive-runner:1")
 
 # The worker's one direct database connection. Everything else the pipeline
 # produces goes through the control plane API (see `platform_client.py`'s
@@ -259,8 +264,8 @@ def require_corpus_dir() -> Path:
 # The pipeline runs inside the boundary, so it holds the one role whose floor
 # reaches RAW. Nothing else in the system does.
 PIPELINE_ROLE = "pipeline_action"
-PIPELINE_KEY = os.environ.get("S3_PIPELINE_KEY", "pipeline-action")
-PIPELINE_SECRET = os.environ.get("S3_PIPELINE_SECRET", "pipeline-action-secret")
+# No storage key here. Every task reads and writes with a key the control plane gives it for that task alone (platform_client.step_reader
+# and s3_scoped_write), and not one set in this process's environment that opened a whole bucket.
 # No PIPELINE_PRINCIPAL constant. One worker process serves every tenant's
 # runs (TASK_QUEUE above is one shared queue, not one per tenant), so a
 # single config value naming the workload to assert would claim whichever

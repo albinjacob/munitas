@@ -37,7 +37,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, API_BASE } from "../api/client";
 import { describe, isAppointed, type DirectoryEntry, type Principal } from "./principals";
-import { currentSession, logout } from "./kratos";
+import { currentSession, logout, type Session } from "./kratos";
 
 interface IdentityValue {
   /**
@@ -84,6 +84,12 @@ interface IdentityValue {
    * the failure this platform exists to prevent.
    */
   tenant: string | undefined;
+  /**
+   * Set when the signed-in person belongs to an organisation that is closing, and is not a
+   * platform administrator. The platform refuses everything they ask for, so the console shows a
+   * notice instead of its usual screens, and does not load the directory, which it would refuse too.
+   */
+  closed: Session | null;
   loading: boolean;
   error: unknown;
   /** True only when a real, Kratos-verified session resolved to somebody. */
@@ -118,11 +124,18 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
   // when a session later appears. That left `principal` stuck null forever
   // after a real, successful login, which App.tsx's `!principal` guard read
   // as still signed out and bounced back to /auth/login indefinitely.
+  const closed =
+    session.data &&
+    ["closing", "purge_due", "purged"].includes(session.data.phase) &&
+    !session.data.roles.includes("platform_admin")
+      ? session.data
+      : null;
+
   const directory = useQuery({
     queryKey: ["directory", "human", "all"],
     queryFn: () =>
       api.get<DirectoryEntry[]>("/directory", { kind: "human", purpose: "all" }),
-    enabled: Boolean(session.data),
+    enabled: Boolean(session.data) && !closed,
     staleTime: 60_000,
   });
 
@@ -175,15 +188,16 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
       retained,
       clear,
       refreshSession,
-      tenant: principal?.tenant_id,
-      loading: directory.isLoading || session.isLoading,
+      tenant: principal?.tenant_id ?? closed?.tenant_id,
+      closed,
+      loading: (directory.isLoading && !closed) || session.isLoading,
       error: directory.error ?? session.error,
       authenticated: Boolean(session.data),
     };
   }, [
     principals, retained, everyone, clear, refreshSession,
     directory.isLoading, directory.error,
-    session.data, session.isLoading, session.error,
+    session.data, session.isLoading, session.error, closed,
   ]);
 
   return (

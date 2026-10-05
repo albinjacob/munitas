@@ -25,7 +25,7 @@ import uuid
 
 import psycopg
 
-from common import (CANARY, ENGINEER, api, bearer_for, check, db,
+from common import (CANARY, ENGINEER, WORKER_HEADERS, api, bearer_for, check, db,
                      fixture_contract, fixture_tenant, fixture_version,
                      heading, require_api, summary)
 
@@ -39,6 +39,23 @@ EXEMPT = {
     "storage_reclamation",
     # Closing and reopening a tenant has to remain possible.
     "tenant",
+    # A closed organisation's records stay readable, and opening one through the
+    # catalog records which key was asked for. The row holds no records and
+    # grants nothing a lease or a role had not already decided.
+    "catalog_key",
+    # Holds are placed on organisations that are already closed, and the record of a
+    # closing is written after it. Each has its own rules instead: a hold needs two
+    # different administrators (U99), and neither can be deleted except by a purge
+    # that the database itself says is due (U100).
+    "legal_hold",
+    "lifecycle_event",
+    "tenant_deletion_record",
+    # An export is made for an organisation that is already closed, and an erasure held back by a hold is kept
+    # until the hold ends. Each follows the same rules as a hold: removed only with the organisation.
+    "legal_export",
+    "legal_export_file",
+    "legal_export_link",
+    "deferred_erasure",
 }
 
 
@@ -71,7 +88,8 @@ def make_retired_fixture() -> dict:
             (person_id, tenant_id, version["id"]),
         )
         conn.execute(
-            "update tenant set purpose = 'retired' where id = %s", (tenant_id,)
+            "update tenant set purpose = 'retired', retired_at = now(), retiring_until = now(), "
+            "closing_until = now() + interval '1 day' where id = %s", (tenant_id,)
         )
 
     return {
@@ -178,7 +196,7 @@ def run_checks(RETIRED: str) -> int:
         "select id from dataset_version where tenant_id = %s limit 1", (RETIRED,)
     )
     if version:
-        lineage = api("GET", f"/lineage/{version['id']}")
+        lineage = api("GET", f"/lineage/{version['id']}", headers=WORKER_HEADERS)
         check("and the lineage of a version inside it still answers",
               lineage.status_code == 200, f"HTTP {lineage.status_code}")
     else:

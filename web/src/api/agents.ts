@@ -284,6 +284,8 @@ export function useUploadAgentVersion(agentId: string) {
       const response = await fetch(`${API_BASE}/agents/${agentId}/versions/upload`, {
         method: "POST",
         body: form,
+        // The platform registers the version as the signed-in person, so the session goes with it.
+        credentials: "include",
       });
       const text = await response.text();
       const parsed = text ? JSON.parse(text) : null;

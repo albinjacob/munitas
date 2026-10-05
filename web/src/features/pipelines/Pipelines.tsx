@@ -8,6 +8,7 @@
  * version's own "Run a pipeline" picker once registered here.
  */
 
+import { CODE_ROLES, useHoldsRole } from "../../identity/mayDo";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { usePipelines } from "../../api/dag_pipelines";
@@ -17,6 +18,7 @@ import { Pagination } from "../../components/Pagination";
 const PAGE_SIZE = 15;
 
 export function Pipelines() {
+  const mayRegister = useHoldsRole(CODE_ROLES);
   const [page, setPage] = useState(1);
   const pipelines = usePipelines(PAGE_SIZE, (page - 1) * PAGE_SIZE);
 
@@ -26,13 +28,15 @@ export function Pipelines() {
       title="Pipelines"
       description="Registered by end users, the same way an agent is. A DAG of steps, versioned and content-addressed, not asserted."
       actions={
-        <Link
-          to="/pipelines/register"
-          data-testid="pipelines-register-link"
-          className="rounded bg-indigo-500 hover:bg-indigo-800 px-3 py-1.5 text-sm font-medium text-white"
-        >
-          Register a pipeline
-        </Link>
+        mayRegister ? (
+          <Link
+            to="/pipelines/register"
+            data-testid="pipelines-register-link"
+            className="rounded bg-indigo-500 hover:bg-indigo-800 px-3 py-1.5 text-sm font-medium text-white"
+          >
+            Register a pipeline
+          </Link>
+        ) : undefined
       }
     >
       {pipelines.isLoading ? (

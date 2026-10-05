@@ -1,0 +1,8 @@
+# The table worker: what it needs to talk to Temporal and the control plane, and to write a table. Pinned to what the table
+# writing was tried against in the control plane (platform/api/requirements.txt), because the same library runs in both.
+temporalio==1.7.0
+httpx==0.27.2
+boto3==1.35.24
+pyiceberg[pyarrow]==0.12.0
+pyarrow==25.0.1
+sqlalchemy==2.1.1

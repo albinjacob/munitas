@@ -83,6 +83,8 @@ export interface Session {
   label: string;
   kind: string;
   roles: string[];
+  /** Where the organisation is in its closing. Closed to its people from "closing" on. */
+  phase: string;
   session_id: string;
   authenticated_at: string;
 }

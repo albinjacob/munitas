@@ -57,8 +57,61 @@ export interface StoragePermissions {
   parked_runs: number;
 }
 
+/** How many versions are also stored as tables, and where one was meant to be and is not. */
+export interface TableCopies {
+  projected: number;
+  /** An error the platform did not recognise while writing a table. Needs somebody. */
+  failed: number;
+  /** A stated reason, such as rows that do not fit their contract, a file too large, or files on R2. */
+  skipped: number;
+  /** Versions of files, which were never meant to be tables. */
+  files: number;
+  /** Sealed before the platform wrote reasons down, so it cannot say. */
+  unrecorded: number;
+  alert: boolean;
+  lacking: {
+    dataset_version_id: string;
+    tenant_id: string;
+    /** Named only in an organisation's own view. */
+    dataset_name?: string;
+    version?: number;
+    outcome: "failed" | "skipped";
+    reason: string;
+    noted_at: string;
+  }[];
+}
+
+/** Large tables being written by a worker, and the ones that are not moving. */
+export interface TableJobs {
+  pending: number;
+  running: number;
+  /** The last seven days. */
+  sealed: number;
+  refused: number;
+  expired: number;
+  /** Waiting longer than `stall_seconds` for a worker. */
+  stalled: number;
+  stall_seconds: number;
+  alert: boolean;
+  waiting: {
+    job_id: string;
+    tenant_id: string;
+    /** Named only in an organisation's own view. */
+    dataset_name?: string;
+    version: number;
+    status: "pending" | "running";
+    /** True when the job is on an organisation's own line of work and waits for that organisation's worker only. */
+    dedicated_worker: boolean;
+    queue: string;
+    waiting_seconds: number;
+    stalled: boolean;
+  }[];
+}
+
 export interface PlatformHousekeeping {
   scope: "platform";
+  table_copies: TableCopies;
+  table_jobs: TableJobs;
   storage_permissions: StoragePermissions;
   /** Where SeaweedFS keeps its files on the host, or "" if unstated. */
   storage_path: string;
@@ -81,6 +134,8 @@ export interface ReclaimedRow {
 export interface TenantHousekeeping {
   scope: "tenant";
   tenant_id: string;
+  table_copies: TableCopies;
+  table_jobs: TableJobs;
   reclaimed: ReclaimedRow[];
 }
 

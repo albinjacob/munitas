@@ -98,7 +98,8 @@ export function useUploadPipelineVersion(pipelineId: string) {
       form.append("registered_by", body.registeredBy);
       const response = await fetch(
         `${API_BASE}/pipelines/${pipelineId}/versions/upload`,
-        { method: "POST", body: form },
+        // The platform registers the version as the signed-in person, so the session goes with it.
+        { method: "POST", body: form, credentials: "include" },
       );
       const text = await response.text();
       const parsed = text ? JSON.parse(text) : null;

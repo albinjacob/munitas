@@ -27,7 +27,7 @@ every tool call checked against that same policy engine.
 | Policy engine (Open Policy Agent) | Evaluates every access, approval, export, and release decision, and logs a reason for every allow and deny |
 | Worker | Runs pipelines and AI agents; the only thing that reads or writes a dataset's actual bytes on the platform's behalf |
 | Database | Records every dataset version, every access decision (including denials), and the append-only history that answers what was allowed on any past date |
-| Object storage | Where the underlying files live, reached only through prefix-scoped, time-limited credentials the API mints, never a standing key |
+| Object storage | Where the underlying files live, reached only through credentials the API mints. Each is scoped to one organisation's own bucket, and those issued for a lease or for a single task are limited to the folders involved and end with it |
 | Sandboxed agent run | Executes an agent's own uploaded code on a network with no route out, so what it may reach is a property of the network itself, not a rule that has to be remembered |
 
 ---
@@ -90,7 +90,7 @@ in the stack requires a commercial licence to run or extend.
 
 | Component | Role |
 | --- | --- |
-| SeaweedFS or Cloudflare R2 | S3-compatible object storage, selected per organisation. Credentials are scoped to a prefix, which is how an access level is enforced physically, not just by convention |
+| SeaweedFS or Cloudflare R2 | S3-compatible object storage, selected per organisation. Credentials are scoped to one organisation's bucket and, for a lease or a single task, to specific folders, which is how access is enforced physically and not only by convention |
 | PostgreSQL (with pgvector) | Dataset versions, access-level history, pipeline runs, leases, and the audit log; also the vector store for near-duplicate and contamination checks |
 
 **Control and policy**

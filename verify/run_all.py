@@ -67,6 +67,33 @@ SCRIPTS = [
     ("U75 approved access takes effect, and the platform retries until it does", "v75_activation.py"),
     ("U78 people see what they can read, and the preview agrees with the check", "v78_access_preview.py"),
     ("U85 writing as pipeline_action needs the same proof reading does", "v82_write_credential_compiler.py"),
+    ("U90 a sealed tabular version is also an Iceberg table that agrees with the register", "v90_iceberg_projection.py"),
+    ("U91 the Iceberg catalog shows and opens only what a person may read, and ends with their lease", "v91_iceberg_catalog.py"),
+    ("U94 a query over existing datasets is drafted and confirmed on terms, never run unchecked", "v94_derivation_draft.py"),
+    ("U98 closing an organisation: who may start it and stop it, and what its people can do meanwhile", "v98_organisation_closing.py"),
+    ("U99 a legal hold needs two different administrators and stops the deletion while it stands", "v99_legal_hold.py"),
+    ("U100 a due and unheld organisation is deleted completely, and nothing else can be", "v100_purge.py"),
+    ("U102 records are produced for a legal matter only with three different people, and nothing is erased meanwhile", "v102_legal_export_rules.py"),
+    ("U103 a legal export is built, signed, delivered and opened, and cannot be altered or opened wrongly", "v103_legal_export_package.py"),
+    ("U104 a table is handed over as the rows for people the custodian names, never whole", "v104_legal_export_filter.py"),
+    ("U105 whether a version is also stored as a table, and why not, is on record and readable", "v105_table_copy_visible.py"),
+    ("U106 an unexpected error while writing a table never stops a seal and never quotes a value", "v106_projection_unexpected_failure.py"),
+    ("U107 a version that must be a table is refused when its table cannot be written, and nothing is left behind", "v107_table_required.py"),
+    ("U108 a large table is read in batches and written a file at a time, from lines of JSON or from Parquet", "v108_large_tables.py"),
+    ("U109 a large table is written by a worker in a job, and the platform seals the version when the worker reports", "v109_table_jobs.py"),
+    ("U111 sealing a version is the platform's own workers' act, and nobody else can do it", "v111_seal_requires_worker.py"),
+    ("U112 no storage key opens more than one organisation's data, and the pipeline's is one key per organisation", "v112_pipeline_key_per_organisation.py"),
+    ("U113 every route knows who is calling, and the ones that act for a person act as that person", "v113_every_route_has_a_caller.py"),
+    ("U114 a derivation run reads with a key of its own, which opens only its inputs and ends with the run", "v114_task_read_keys.py"),
+    ("U116 a pipeline run and an agent run read with a key of their own, which opens only what was allowed and ends with the task", "v116_pipeline_and_agent_read_keys.py"),
+    ("U117 a writer is handed a key for its one output folder, and not the pipeline role's key", "v117_writer_keys.py"),
+    ("U118 a dataset made from a version belongs to the department of the dataset that version is in", "v118_outputs_take_the_inputs_department.py"),
+    ("U119 the canary tidy works on the canary tenant and refuses everything else, at every point", "v119_canary_tidy_is_canary_only.py"),
+    ("U120 the custodian's queue says how many claims are waiting and can be read page by page", "v120_custodian_queue_total_and_paging.py"),
+    ("U124 the check that fails a run for leaving test tenants behind flags the right ones", "v124_leftover_tenant_check.py"),
+    ("U125 what is checked after a run's cleanup is kept on the history page as a second line tied to that run", "v125_history_keeps_after_run_results.py"),
+    ("U126 who may bring data in, register code and confirm a claim, and the second approver when the only approver made the claim", "v126_roles_on_person_routes.py"),
+    ("U127 a department has several approvers, any one of whom may act, and approvers change who they are, on the record", "v127_department_approvers.py"),
 ]
 
 here = Path(__file__).parent
@@ -185,6 +212,10 @@ print("  rather than inside this image:")
 print("    .venv\\Scripts\\python.exe verify\\v29_reclamation.py")
 print("  U47 drives scripts/admin/cleanup-dataset.py, the same reason:")
 print("    .venv\\Scripts\\python.exe verify\\v47_cleanup_dataset.py")
+print("  U121 drives scripts/admin/close-finished-pipeline-runs.py, the same reason:")
+print("    .venv\\Scripts\\python.exe verify\\v121_closing_runs_twice_changes_nothing.py")
+print("  U122 calls the scheduled sweep's own function and reads its schedule from Temporal, so it runs on the host:")
+print("    .venv\\Scripts\\python.exe verify\\v122_run_endings_say_where_they_came_from.py")
 print("  U49 drives scripts/admin/register-agent-version.py, the same reason:")
 print("    .venv\\Scripts\\python.exe verify\\v49_external_agent_version.py")
 print("  U52 drives scripts/admin/create-tenant.py, scripts/admin/retire-tenant.py and scripts/admin/nuke-tenant.py, the")
@@ -217,6 +248,10 @@ print("    .venv\\Scripts\\python.exe verify\\v68_production_case_no_ground_trut
 print("  U73 starts the worker entry points on Windows and inside WSL to prove")
 print("  they refuse a work directory they cannot use, so it runs on the host:")
 print("    .venv\\Scripts\\python.exe verify\\v73_work_dir_refused.py")
+print("  U95 runs real queries through the host worker, the sandbox worker and the query")
+print("  container, so it needs both workers and the image built (RUNBOOK, \"Running a query")
+print("  to make a new dataset\"). U96 runs on the host with no Docker:")
+print("    .venv\\Scripts\\python.exe verify\\v96_reap_leftover_containers.py")
 print("  U46's checks past the first two need the HuggingFace ingestion worker")
 print("  running on the host, or they report a skip rather than a failure:")
 print("    .venv\\Scripts\\python.exe -m worker.main")

@@ -21,6 +21,7 @@ verdict is printed whatever it says.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import uuid
 from pathlib import Path
@@ -38,6 +39,7 @@ from agent.tools import ToolContext  # noqa: E402
 from ports_config import PORTS  # noqa: E402
 
 API = f"http://localhost:{PORTS['munitas_api_http']}"
+WORKER_HEADERS = {"x-worker-token": os.environ.get("MUNITAS_WORKER_TOKEN", "dev-worker-token-not-for-production")}
 PG_DSN = f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform"
 
 # The canary tenant, seeded by infra/postgres/seed-canary.sql.
@@ -58,23 +60,23 @@ def fixture() -> tuple[str, str]:
                values (%s,'shared',%s,'canary') on conflict (id) do nothing""",
             (TENANT, f"key/{TENANT}"),
         )
-    contract = httpx.post(f"{API}/schema-contracts", json={
+    contract = httpx.post(f"{API}/schema-contracts", headers=WORKER_HEADERS, json={
         "tenant_id": TENANT, "name": "injection-fixture",
         "fields": [{"name": "record_id", "type": "string", "added_by": "verify"}],
         "primary_key": ["record_id"],
     }, timeout=20.0).json()["id"]
 
     def make(klass: str) -> str:
-        dataset = httpx.post(f"{API}/datasets", json={
+        dataset = httpx.post(f"{API}/datasets", headers=WORKER_HEADERS, json={
             "tenant_id": TENANT, "name": f"inj-{uuid.uuid4().hex[:8]}",
         }, timeout=20.0).json()["id"]
-        return httpx.post(f"{API}/dataset-versions", json={
+        return httpx.post(f"{API}/dataset-versions", headers=WORKER_HEADERS, json={
             "tenant_id": TENANT, "dataset_id": dataset, "schema_id": contract,
             "visibility_class": klass, "record_count": 1,
         }, timeout=20.0).json()["id"]
 
     in_scope = make("UNDER_REVIEW")
-    httpx.post(f"{API}/dataset-versions/{in_scope}/promote", json={
+    httpx.post(f"{API}/dataset-versions/{in_scope}/promote", headers=WORKER_HEADERS, json={
         "to_class": "PUBLISHED", "decided_by": "verify-suite", "decided_by_kind": "workload",
         "gate_evidence": {"note": "injection fixture"}, "grant_roles": ["agent_runtime"],
     }, timeout=20.0)

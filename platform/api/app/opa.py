@@ -65,6 +65,54 @@ def may_start_pipeline(payload: dict) -> tuple[bool, list[str]]:
     return _ask(_PIPELINE_START_PATH, payload)
 
 
+_INTAKE_PATH = "/v1/data/munitas/access/intake_decision"
+
+
+def may_bring_in_data(payload: dict) -> tuple[bool, list[str]]:
+    """May this person register a dataset, put files into one, fetch one from outside, seal it or withdraw an upload?
+
+    The data engineer, whose job it is, and the data custodian, who owns the data. Not the researcher, the data protection officer, the
+    reviewer, the network architect, or the platform administrator, who holds no access to what an organisation keeps.
+    """
+    return _ask(_INTAKE_PATH, payload)
+
+
+_CODE_REGISTRATION_PATH = "/v1/data/munitas/access/code_registration_decision"
+
+
+def may_register_code(payload: dict) -> tuple[bool, list[str]]:
+    """May this person register an agent, an agent version, a pipeline or a pipeline version? The data engineer alone."""
+    return _ask(_CODE_REGISTRATION_PATH, payload)
+
+
+_CONFIRMATION_PATH = "/v1/data/munitas/access/classification_confirmation_decision"
+
+
+def may_confirm_classification(payload: dict) -> tuple[bool, list[str]]:
+    """May this person confirm somebody's sensitivity claim?
+
+    A department approver of the owning department, never the person who made the claim, and nobody who is not an approver. When the claim
+    was made by the department's only approver, nobody can confirm it until the department has a second approver.
+    """
+    return _ask(_CONFIRMATION_PATH, payload)
+
+
+_APPROVER_ADDITION_PATH = "/v1/data/munitas/access/approver_addition_decision"
+
+
+def may_add_department_approver(payload: dict) -> tuple[bool, list[str]]:
+    """May this person add another approver to a department? A current approver, for a person who already holds the data custodian role."""
+    return _ask(_APPROVER_ADDITION_PATH, payload)
+
+
+_APPROVER_REMOVAL_PATH = "/v1/data/munitas/access/approver_removal_decision"
+
+
+def may_remove_department_approver(payload: dict) -> tuple[bool, list[str]]:
+    """May this person remove an approver from a department? A current approver, and never the last permanent one."""
+    return _ask(_APPROVER_REMOVAL_PATH, payload)
+
+
 _EGRESS_APPROVAL_PATH = "/v1/data/munitas/access/egress_approval_decision"
 
 
@@ -147,6 +195,100 @@ def may_free_storage(payload: dict) -> tuple[bool, list[str]]:
     the run: reporting a problem is not authority to act on it.
     """
     return _ask(_FREE_STORAGE_PATH, payload)
+
+
+_RETIRE_PATH = "/v1/data/munitas/access/retire_decision"
+_CANCEL_PATH = "/v1/data/munitas/access/cancel_decision"
+_PLACE_HOLD_PATH = "/v1/data/munitas/access/place_hold_decision"
+_DECIDE_HOLD_PATH = "/v1/data/munitas/access/decide_hold_decision"
+_RELEASE_HOLD_PATH = "/v1/data/munitas/access/release_hold_decision"
+_SEE_LIFECYCLE_PATH = "/v1/data/munitas/access/see_lifecycle_decision"
+
+
+def may_retire(payload: dict) -> tuple[bool, list[str]]:
+    """May this principal start closing this organisation?
+
+    Starting it begins a countdown that ends in everything inside the organisation
+    being deleted, so it belongs to the organisation's own data custodians and to a
+    platform administrator acting on its written instruction, and it needs a reason.
+    """
+    return _ask(_RETIRE_PATH, payload)
+
+
+def may_cancel_retirement(payload: dict) -> tuple[bool, list[str]]:
+    """May this principal stop an organisation's closing while it can still be stopped?"""
+    return _ask(_CANCEL_PATH, payload)
+
+
+def may_place_hold(payload: dict) -> tuple[bool, list[str]]:
+    """May this principal record a legal hold, and does the notice say enough?
+
+    A hold overrides the organisation's wishes, so no member of the organisation
+    places one. The refusal names every part of the notice that is missing.
+    """
+    return _ask(_PLACE_HOLD_PATH, payload)
+
+
+def may_decide_hold(payload: dict) -> tuple[bool, list[str]]:
+    """May this principal approve or decline a hold somebody else placed?
+
+    A different platform administrator from the one who placed it, the same
+    shape as a lease, where nobody approves their own.
+    """
+    return _ask(_DECIDE_HOLD_PATH, payload)
+
+
+def may_release_hold(payload: dict) -> tuple[bool, list[str]]:
+    """May this principal end a hold that is in force, with a reason on record?"""
+    return _ask(_RELEASE_HOLD_PATH, payload)
+
+
+def may_see_lifecycle(payload: dict) -> tuple[bool, list[str]]:
+    """May this principal see where an organisation is in its closing?"""
+    return _ask(_SEE_LIFECYCLE_PATH, payload)
+
+
+_TABLE_WORKER_PATH = "/v1/data/munitas/access/table_worker_decision"
+
+
+def may_set_table_worker(payload: dict) -> tuple[bool, list[str]]:
+    """May this principal give an organisation a table worker of its own, or take it back?"""
+    return _ask(_TABLE_WORKER_PATH, payload)
+
+
+_EXPORT_REQUEST_PATH = "/v1/data/munitas/access/export_request_decision"
+_EXPORT_APPROVAL_PATH = "/v1/data/munitas/access/export_approval_decision"
+_EXPORT_CONFIRMATION_PATH = "/v1/data/munitas/access/export_confirmation_decision"
+_EXPORT_LINK_PATH = "/v1/data/munitas/access/export_link_decision"
+_EXPORT_PASSPHRASE_PATH = "/v1/data/munitas/access/export_passphrase_decision"
+
+
+def may_request_export(payload: dict) -> tuple[bool, list[str]]:
+    """May this principal ask for an organisation's records to be produced for a legal matter?
+
+    Only a platform administrator, only while a legal hold is in force, and only with the demand and the
+    recipient written down. The refusal names what is missing."""
+    return _ask(_EXPORT_REQUEST_PATH, payload)
+
+
+def may_approve_export(payload: dict) -> tuple[bool, list[str]]:
+    """May this principal approve an export? A different platform administrator from the one who asked."""
+    return _ask(_EXPORT_APPROVAL_PATH, payload)
+
+
+def may_confirm_export(payload: dict) -> tuple[bool, list[str]]:
+    """May this principal confirm what an export holds? Only the custodian the hold names."""
+    return _ask(_EXPORT_CONFIRMATION_PATH, payload)
+
+
+def may_link_export(payload: dict) -> tuple[bool, list[str]]:
+    """May this principal make a download link for a ready package?"""
+    return _ask(_EXPORT_LINK_PATH, payload)
+
+
+def may_read_passphrase(payload: dict) -> tuple[bool, list[str]]:
+    """May this principal be given a package's passphrase? The hold's custodian, once."""
+    return _ask(_EXPORT_PASSPHRASE_PATH, payload)
 
 
 _EXPORT_PATH = "/v1/data/munitas/access/export_decision"

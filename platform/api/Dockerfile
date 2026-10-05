@@ -9,6 +9,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY api/app ./app
 COPY crypto ./crypto
+# The library that writes a version's rows as a table: shared with the table worker, which has no database.
+COPY tablewriter ./tablewriter
 
 # The schema generator ships with the code it describes, so it can be run
 # where the API's dependencies already are rather than needing a second copy

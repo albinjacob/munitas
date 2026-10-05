@@ -74,17 +74,19 @@ def _access_preflight(agent: dict, dataset_version_id: str) -> dict:
     })
 
     custodian = db.one(
-        "select custodian, department_name, dataset_name from version_custodian "
+        "select approvers, department_name, dataset_name from version_custodian "
         "where dataset_version_id = %s",
         (dataset_version_id,),
     ) or {}
 
+    # Whoever may decide: every department approver, by name, since any one of them can.
     approver = None
-    if custodian.get("custodian"):
+    if custodian.get("approvers"):
         row = db.one(
-            "select label from directory where id = %s", (custodian["custodian"],)
+            "select string_agg(label, ', ' order by label) as labels from directory where id = any(%s)",
+            (custodian["approvers"],),
         )
-        approver = row["label"] if row else custodian["custodian"]
+        approver = (row or {}).get("labels") or ", ".join(custodian["approvers"])
 
     return {
         "dataset_version_id": dataset_version_id,
@@ -218,7 +220,7 @@ def _slugify(name: str) -> str:
 
 
 @router.post("/agents/register", status_code=201)
-def register(body: RegisterAgent) -> dict:
+def register(body: RegisterAgent, identity: dict = Depends(auth.current_session)) -> dict:
     """Register an agent, and its own runtime identity along with it.
 
     No version yet, so nothing can run as this agent until one is
@@ -235,6 +237,8 @@ def register(body: RegisterAgent) -> dict:
     closes. It means their tool calls cannot be told apart in the audit log,
     and a lease granted for one silently covers the other too.
     """
+    auth.must_be(identity, tenant_id=body.tenant_id, person=body.registered_by)
+    auth.require_code_registration_role(identity)
     if not db.one(
         "select id from directory where id = %s and tenant_id = %s",
         (body.registered_by, body.tenant_id),
@@ -277,7 +281,7 @@ def register(body: RegisterAgent) -> dict:
 
 
 @router.post("/agents/{agent_id}/versions", status_code=201)
-def register_version(agent_id: str, body: RegisterAgentVersion) -> dict:
+def register_version(agent_id: str, body: RegisterAgentVersion, identity: dict = Depends(auth.current_session)) -> dict:
     """Register and seal a version in one call.
 
     Sealed on creation, the same as a dataset version, and for the same
@@ -285,6 +289,10 @@ def register_version(agent_id: str, body: RegisterAgentVersion) -> dict:
     could edit after the fact proves nothing about what actually ran.
     """
     agent = _agent(agent_id)
+    if agent["tenant_id"] != identity["tenant_id"]:
+        raise HTTPException(404, "no such agent")
+    auth.must_be(identity, person=body.registered_by)
+    auth.require_code_registration_role(identity)
 
     if not db.one(
         "select id from directory where id = %s and tenant_id = %s",
@@ -470,13 +478,14 @@ def refuse_egress_hosts(approval_id: str, body: EgressDecisionIn,
 
 
 @router.get("/agent-versions/{version_id}/egress-status")
-def egress_status(version_id: str) -> dict:
+def egress_status(version_id: str, scope: str | None = Depends(auth.organisation_scope)) -> dict:
     """What this version may call, and whether that has been approved.
 
     Called by the agent's own runtime (`agent/tools.py`'s `fetch_url`), a
-    workload with no Kratos session to present, the same reason
-    `GET /dataset-versions/{id}` (`main.py`) also takes no session -- a
-    version's requested hosts and approval state are not sensitive in the
+    workload with no Kratos session to present. (`GET /dataset-versions/{id}`
+    used to take no session either, and no longer does: it carries a version's
+    storage keys, so it answers a session, the worker token or a run credential
+    only.) A version's requested hosts and approval state are not sensitive in the
     way tenant data is, and this is read on every network call an agent
     makes, not once at deploy time. Scoped by version id alone, no tenant
     check: an agent already knows only its own `agent_version_id`, and a
@@ -487,10 +496,12 @@ def egress_status(version_id: str) -> dict:
     defensive read `deploy` above and `_pending_gate` elsewhere both make.
     """
     version = db.one(
-        "select requested_hosts from agent_version where id = %s",
+        "select requested_hosts, tenant_id from agent_version where id = %s",
         (version_id,),
     )
-    if not version:
+    # Answered to the agent's own run credential (it names the organisation), a session, or a worker, and a version of
+    # another organisation is not found rather than refused.
+    if not version or (scope is not None and version["tenant_id"] != scope):
         raise HTTPException(404, "no such agent version")
 
     approval = db.one(
@@ -561,13 +572,13 @@ async def _start_waiting_on_access(agent: dict, agent_id: str, run_id: str,
     # anyway would park the run behind a decision no one can make, so this is
     # refused up front and says which thing is missing.
     custodian = db.one(
-        "select custodian from version_custodian where dataset_version_id = %s",
+        "select approvers from version_custodian where dataset_version_id = %s",
         (body.dataset_version_id,),
     ) or {}
-    if not custodian.get("custodian"):
+    if not custodian.get("approvers"):
         raise HTTPException(409, {"reasons": [
-            "that dataset has no owning department, so there is no custodian "
-            "who could grant this agent access to it"
+            "that dataset has no owning department, or its department has no approver, "
+            "so nobody could grant this agent access to it"
         ]})
 
     request_id = str(uuid.uuid4())

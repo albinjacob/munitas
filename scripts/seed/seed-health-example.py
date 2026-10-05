@@ -8,8 +8,10 @@ another.
 The result was a console that opened onto an empty platform. Every screen was
 correct and every screen was blank, which is the least useful way to be right.
 So this script adds enough for each screen to have something true to show:
-datasets in both departments, a promotion, a refusal, and a request waiting on a
-decision.
+datasets in both departments, a promotion, a refusal, and a request already
+decided. A request left waiting on a decision is added only when asked for
+(--sample-queue): every real flow files its own request, so one left waiting by
+default is noise that each of them has to work around.
 
 Everything here goes through the control plane, never straight into the
 database. A fixture that inserts rows behind the API can create states the API
@@ -20,21 +22,29 @@ Idempotent: it looks for its own datasets by name first and does nothing if they
 are already there.
 
     .venv\\Scripts\\python.exe scripts/seed/seed-health-example.py
+    .venv\\Scripts\\python.exe scripts/seed/seed-health-example.py --sample-queue
+
+The second form also leaves one request waiting for Hartley, so the custodian's
+page has something to approve when it is opened by hand.
 """
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
 import httpx
 
-from seed_common import bearer_for, expect
+from seed_common import acting_headers, bearer_for, expect
 # seed_common's own import above already inserted the repo root onto sys.path.
 from ports_config import PORTS  # noqa: E402
 
 API = f"http://localhost:{PORTS['munitas_api_http']}"
+WORKER_HEADERS = {"x-worker-token": os.environ.get("MUNITAS_WORKER_TOKEN", "dev-worker-token-not-for-production")}
 TENANT = "health"
+# Only when asked for: see the module docstring.
+SAMPLE_QUEUE = "--sample-queue" in sys.argv
 
 CARDIOLOGY = "Cardiology"
 RADIOLOGY = "Radiology"
@@ -66,10 +76,14 @@ TRAINER = "svc-trainer"
 
 
 def post(path: str, **kwargs) -> httpx.Response:
+    if "headers" not in kwargs and (found := acting_headers("POST", path, kwargs)):
+        kwargs["headers"] = found
     return httpx.post(f"{API}{path}", timeout=30.0, **kwargs)
 
 
 def get(path: str, **kwargs) -> httpx.Response:
+    if "headers" not in kwargs and (found := acting_headers("GET", path, kwargs)):
+        kwargs["headers"] = found
     return httpx.get(f"{API}{path}", timeout=30.0, **kwargs)
 
 
@@ -127,7 +141,7 @@ def dataset(name: str, department_id: str, modality: list[str]) -> str:
 
 
 def version(dataset_id: str, schema_id: str, klass: str, records: int) -> str:
-    r = post("/dataset-versions", json={
+    r = post("/dataset-versions", headers=WORKER_HEADERS, json={
         "tenant_id": TENANT,
         "dataset_id": dataset_id,
         "schema_id": schema_id,
@@ -305,21 +319,23 @@ def main() -> int:
     print("  the de-identification pipeline asked for the same version and was granted it")
 
     # A request waiting on a decision, so the custodian's queue is not empty when
-    # somebody logs in as Hartley. Left pending on purpose: the approve button is
-    # the thing worth showing.
-    request = post("/leases/requests", json={
-        "tenant_id": TENANT,
-        "principal": RESEARCHER,
-        "dataset_version_id": raw_v,
-        "purpose": "arrhythmia detection study",
-        "justification":
-            "Measuring how much recall the de-identification costs needs the "
-            "original audio for a sample of 40 encounters.",
-        "ttl_hours": 72,
-    }, headers=bearer_for(RESEARCHER))
-    expect(request, 201,
-           doing=f"the researcher's access request to {CUSTODIAN_CARDIOLOGY}")
-    print(f"  a researcher asked {CUSTODIAN_CARDIOLOGY} for access, still pending")
+    # somebody logs in as Hartley by hand. Only when asked for (--sample-queue):
+    # nothing else uses it, and every real flow files its own request, so by default
+    # it would only be one more row each of them has to work around.
+    if SAMPLE_QUEUE:
+        request = post("/leases/requests", json={
+            "tenant_id": TENANT,
+            "principal": RESEARCHER,
+            "dataset_version_id": raw_v,
+            "purpose": "arrhythmia detection study",
+            "justification":
+                "Measuring how much recall the de-identification costs needs the "
+                "original audio for a sample of 40 encounters.",
+            "ttl_hours": 72,
+        }, headers=bearer_for(RESEARCHER))
+        expect(request, 201,
+               doing=f"the researcher's access request to {CUSTODIAN_CARDIOLOGY}")
+        print(f"  a researcher asked {CUSTODIAN_CARDIOLOGY} for access, still pending")
 
     # One already decided, so the queue shows a history rather than a single row
     # with no precedent.
@@ -342,8 +358,9 @@ def main() -> int:
     print(f"  an earlier request was approved by {CUSTODIAN_CARDIOLOGY}")
 
     print(f"\nDone. Open the console and act as one of {TENANT}'s people.")
-    print(f"{CUSTODIAN_CARDIOLOGY} has a request waiting; {ENGINEER} and "
-          f"{CUSTODIAN_RADIOLOGY} see their own departments.")
+    waiting = (f"{CUSTODIAN_CARDIOLOGY} has a request waiting; " if SAMPLE_QUEUE
+               else "Nothing is left waiting (use --sample-queue to add one); ")
+    print(f"{waiting}{ENGINEER} and {CUSTODIAN_RADIOLOGY} see their own departments.")
     return 0
 
 

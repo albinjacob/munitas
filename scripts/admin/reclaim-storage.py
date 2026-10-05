@@ -8,7 +8,10 @@ bytes are the problem and the rows are not. Roughly 100 kB of rows per version
 means even a hundred thousand versions would be a few hundred megabytes of
 metadata.
 
-Deleting the versions is not an option and never will be. A sealed version
+Deleting the versions is not an option through the platform and never will be.
+(The canary tenant, which holds only the verification suite's own fixtures, has its old
+ones cleared by scripts/admin/tidy-canary.py, a test-harness tool guarded to touch that
+tenant and nothing else. Nothing here changes for any other tenant.) A sealed version
 cannot be removed: `delete` against one returns `DELETE 0` because a rewrite rule
 in the schema turns it into a no-op. That is not an obstacle to work around, it
 is the guarantee V1 verifies. A version that could be deleted by whoever could

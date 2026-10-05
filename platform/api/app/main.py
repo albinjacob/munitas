@@ -20,7 +20,7 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from psycopg import errors as pg_errors
@@ -28,9 +28,10 @@ from psycopg import errors as pg_errors
 from crypto import DestroyedKeyError, EnvelopeCrypto
 
 from . import (access_preview, activation, agent_upload, agents, auth, config,
-              dag_pipelines, db, external_accounts, grants, housekeeping, ingest,
-              logs, models, opa, people, pipeline, r2, read_models, seaweed,
-              storage, task_credential, temporal_client, versions)
+              dag_pipelines, db, department_approvers, derivations, external_accounts, grants, housekeeping, iceberg,
+              iceberg_catalog, ingest, legal_export, lifecycle, logs, models, opa, people, pipeline, r2,
+              read_models, seaweed, storage, table_jobs, task_credential, temporal_client,
+              versions)
 
 log = logs.get_logger("main")
 
@@ -58,12 +59,15 @@ async def lifespan(app: FastAPI):
                   extra={"reason": str(exc)})
     await temporal_client.connect()
     activator = asyncio.create_task(activation.run_forever())
+    closer = asyncio.create_task(lifecycle.run_forever())
+    dispatcher = asyncio.create_task(table_jobs.run_forever())
     yield
-    activator.cancel()
-    try:
-        await activator
-    except asyncio.CancelledError:
-        pass
+    for task in (activator, closer, dispatcher):
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
     db.pool.close()
 
 
@@ -109,6 +113,7 @@ app.add_middleware(
 app.include_router(read_models.router)
 app.include_router(housekeeping.router)
 app.include_router(people.router)
+app.include_router(department_approvers.router)
 app.include_router(ingest.router)
 app.include_router(external_accounts.router)
 app.include_router(agents.router)
@@ -117,6 +122,25 @@ app.include_router(dag_pipelines.router)
 app.include_router(auth.router)
 app.include_router(pipeline.router)
 app.include_router(access_preview.router)
+app.include_router(iceberg_catalog.router)
+app.include_router(derivations.router)
+app.include_router(lifecycle.router)
+app.include_router(legal_export.router)
+app.include_router(table_jobs.router)
+# The catalog answers in the shape Iceberg clients read, not FastAPI's default.
+app.add_exception_handler(iceberg_catalog.CatalogError, iceberg_catalog.handle_error)
+
+
+@app.exception_handler(iceberg.TableRequired)
+def table_required(request, exc: iceberg.TableRequired):
+    """A version that had to be a table was not sealed. Its number is unused and nothing was left behind."""
+    return JSONResponse(
+        status_code=422 if exc.outcome == "skipped" else 503,
+        content={"detail": {"reasons": [
+            exc.reason,
+            "The version was not sealed and its number is unused. Fix that and seal it again, or seal it with "
+            "table_required set to false to keep the files without a table."], "table_outcome": exc.outcome}},
+    )
 
 
 @app.exception_handler(pg_errors.ReadOnlySqlTransaction)
@@ -165,7 +189,7 @@ def health() -> dict:
 
 
 @app.post("/schema-contracts", status_code=201)
-def register_contract(body: models.SchemaContractIn) -> dict:
+def register_contract(body: models.SchemaContractIn, _worker: None = Depends(auth.worker_only)) -> dict:
     """Register a schema contract.
 
     Contracts are content addressed and never edited. Registering the same
@@ -188,22 +212,32 @@ def register_contract(body: models.SchemaContractIn) -> dict:
 
 
 @app.post("/datasets", status_code=201)
-def create_dataset(body: models.DatasetIn) -> dict:
+def create_dataset(body: models.DatasetIn, _worker: None = Depends(auth.worker_only)) -> dict:
     existing = db.one(
         "select id from dataset where tenant_id = %s and name = %s",
         (body.tenant_id, body.name),
     )
     if existing:
         return {"id": str(existing["id"]), "created": False}
+    # A dataset made from a version belongs to the department of the dataset that version is in, so whoever is accountable for the
+    # input is accountable for what is made from it, and access to it can be approved. The version must be one of this organisation's.
+    department_id = None
+    if body.derived_from_version_id:
+        source = db.one(
+            """select d.department_id, v.tenant_id from dataset_version v join dataset d on d.id = v.dataset_id
+                where v.id = %s""", (body.derived_from_version_id,))
+        if not source or source["tenant_id"] != body.tenant_id:
+            raise HTTPException(422, {"reasons": ["the version this dataset is made from does not exist in this organisation"]})
+        department_id = source["department_id"]
     row = db.execute(
-        "insert into dataset (id, tenant_id, name) values (%s, %s, %s) returning id",
-        (_uuid(), body.tenant_id, body.name),
+        "insert into dataset (id, tenant_id, name, department_id) values (%s, %s, %s, %s) returning id",
+        (_uuid(), body.tenant_id, body.name, department_id),
     )
     return {"id": str(row["id"]), "created": True}
 
 
 @app.post("/action-runs", status_code=201)
-def start_run(body: models.ActionRunIn) -> dict:
+def start_run(body: models.ActionRunIn, _worker: None = Depends(auth.worker_only)) -> dict:
     """Start an action run, keyed by an idempotency key.
 
     Re-submitting the same key returns the original run instead of starting a
@@ -279,7 +313,7 @@ def start_run(body: models.ActionRunIn) -> dict:
 
 
 @app.post("/pipeline-runs", status_code=201)
-def start_pipeline_run(body: models.PipelineRunIn) -> dict:
+def start_pipeline_run(body: models.PipelineRunIn, _worker: None = Depends(auth.worker_only)) -> dict:
     """Open one pipeline run, so its steps can be found together later.
 
     Every action_run the pipeline produces carries this id, and so does any
@@ -325,7 +359,7 @@ def start_pipeline_run(body: models.PipelineRunIn) -> dict:
 
 
 @app.post("/pipeline-runs/{run_id}/end")
-def end_pipeline_run(run_id: str, body: models.EndPipelineRun) -> dict:
+def end_pipeline_run(run_id: str, body: models.EndPipelineRun, _worker: None = Depends(auth.worker_only)) -> dict:
     """Mark a pipeline run finished, and record how it ended.
 
     Called by the workflow itself as it finishes. The outcome is kept here,
@@ -341,6 +375,7 @@ def end_pipeline_run(run_id: str, body: models.EndPipelineRun) -> dict:
         """update pipeline_run
               set status = case when ended_at is null then %s else status end,
                   error = case when ended_at is null then %s else error end,
+                  ended_source = coalesce(ended_source, 'workflow'),
                   ended_at = coalesce(ended_at, now())
             where id = %s
         returning ended_at, status""",
@@ -353,7 +388,7 @@ def end_pipeline_run(run_id: str, body: models.EndPipelineRun) -> dict:
 
 
 @app.get("/datasets/{dataset_id}/next-version")
-def next_version(dataset_id: str, tenant_id: str) -> dict:
+def next_version(dataset_id: str, tenant_id: str, scope: str | None = Depends(auth.organisation_scope)) -> dict:
     """Tell a producer where the next version's objects must be written.
 
     A pipeline has to write its objects before it can seal a version, but the
@@ -377,11 +412,11 @@ def next_version(dataset_id: str, tenant_id: str) -> dict:
     shared bucket hides it, which is why it went unnoticed until a tenant with
     its own provisioned bucket was asked the question.
     """
-    row = db.one(
-        "select coalesce(max(version), 0) as v from dataset_version where dataset_id = %s",
-        (dataset_id,),
-    )
-    version = row["v"] + 1
+    # Where the next version's objects go names an organisation's bucket and folder: a producer is told its own, and an
+    # organisation's name in the URL is not a way to ask for another's.
+    if scope is not None and tenant_id != scope:
+        raise HTTPException(404, "no such dataset")
+    version = versions.next_version(tenant_id, dataset_id)["version"]
 
     dataset = db.one(
         "select storage_backend from dataset where id = %s", (dataset_id,)
@@ -416,54 +451,35 @@ def next_version(dataset_id: str, tenant_id: str) -> dict:
 
 
 @app.post("/dataset-versions", status_code=201)
-def create_version(body: models.DatasetVersionIn) -> dict:
+def create_version(body: models.DatasetVersionIn, _worker: None = Depends(auth.worker_only)):
     """Seal a new dataset version.
 
     Sealed on creation, which is why there is no update endpoint anywhere in
     this file. The storage prefix encodes tenant, dataset and version and never
     the class, so a later promotion changes a grant rather than moving bytes.
+
+    A version that names a records file is also written as an Iceberg table, before the row exists. A small one is
+    written while this request waits. A large one is written by a worker, in a job (table_jobs.py): the answer is then
+    202 with the job, the version number and folder are reserved, and the version is sealed, with its table inside it,
+    when the job finishes. `table_mode` chooses; left out, the size of the records file does.
+
+    Only the platform's own workers may call this (the worker token). It names the organisation in its body and writes a
+    version into it, so a caller that could reach it without proving what it is could seal a version into any organisation,
+    and start table jobs that hold a version number and a storage key. A person's data arrives through the upload endpoint,
+    which seals in-process under their session.
     """
-    latest = db.one(
-        "select coalesce(max(version), 0) as v from dataset_version where dataset_id = %s",
-        (body.dataset_id,),
-    )
-    version = latest["v"] + 1
-    prefix = f"{body.tenant_id}/{body.dataset_id}/v{version}"
-    content_hash = _hash(
-        {"manifest": body.object_manifest, "count": body.record_count, "prefix": prefix}
-    )
-
-    row = db.execute(
-        """insert into dataset_version
-             (id, tenant_id, dataset_id, version, visibility_class,
-              storage_prefix, storage_backend, object_manifest, schema_id,
-              produced_by_run, record_count, content_hash, sealed)
-           values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, true)
-           returning id""",
-        (_uuid(), body.tenant_id, body.dataset_id, version,
-         body.visibility_class, prefix, body.storage_backend,
-         json.dumps(body.object_manifest), body.schema_id, body.produced_by_run,
-         body.record_count, content_hash),
-    )
-    version_id = str(row["id"])
-
-    if body.produced_by_run:
-        db.execute(
-            "update action_run set output_version = %s, status = 'succeeded', ended_at = now() where id = %s",
-            (version_id, body.produced_by_run),
-        )
-
-    return {
-        "id": version_id,
-        "version": version,
-        "storage_prefix": prefix,
-        "content_hash": content_hash,
-        "sealed": True,
-    }
+    started = table_jobs.maybe_start(body)
+    if started is not None:
+        return started
+    return versions.seal(
+        tenant_id=body.tenant_id, dataset_id=body.dataset_id, schema_id=body.schema_id,
+        visibility_class=body.visibility_class, storage_backend=body.storage_backend,
+        object_manifest=body.object_manifest, record_count=body.record_count,
+        produced_by_run=body.produced_by_run, records_key=body.records_key, table_required=body.table_required)
 
 
 @app.get("/dataset-versions/{version_id}")
-def get_version(version_id: str, tenant_id: str | None = None) -> dict:
+def get_version(version_id: str, tenant_id: str | None = Depends(auth.organisation_scope)) -> dict:
     """One version, with the fields a detail screen needs.
 
     `version_class` deliberately carries only the class question. The name,
@@ -471,17 +487,12 @@ def get_version(version_id: str, tenant_id: str | None = None) -> dict:
     view, because widening the view would make every caller pay for columns most
     of them ignore, and the view's single purpose is what makes it trustworthy.
 
-    `tenant_id` narrows it to one organisation, and a version belonging to
-    another is **not found** rather than forbidden. That distinction is the
-    point: 403 confirms the version exists, which is half of what somebody
-    probing ids was trying to learn, and this endpoint would otherwise hand out
-    dataset names, classes and release histories to anybody who guessed one.
-
-    The parameter is optional, and omitting it searches every tenant. There is
-    no authentication here, so nothing stops a caller leaving it out; what this
-    prevents is the console showing one organisation another's metadata, not a
-    determined request. The other three detail endpoints follow the same shape
-    and the same limit.
+    The organisation comes from the caller's session (`auth.organisation_scope`), never from
+    the URL, and a version belonging to another is **not found** rather than forbidden. That
+    distinction is the point: 403 confirms the version exists, which is half of what somebody
+    probing ids was trying to learn. The platform's own workers send the worker token instead
+    and name the organisation they act for. This endpoint also returns `object_manifest`, the
+    storage keys of the version's files, so it must never answer without one or the other.
     """
     row = db.one(
         """select vc.*, d.name as dataset_name,
@@ -500,7 +511,7 @@ def get_version(version_id: str, tenant_id: str | None = None) -> dict:
 
 
 @app.get("/lineage/{version_id}")
-def get_lineage(version_id: str, tenant_id: str | None = None) -> dict:
+def get_lineage(version_id: str, tenant_id: str | None = Depends(auth.organisation_scope)) -> dict:
     row = db.one(
         """select l.* from lineage l
            join dataset_version dv on dv.id = l.dataset_version_id
@@ -609,7 +620,7 @@ async def approve_lease(
 
     # Who is entitled to approve this, according to the asset's owner.
     custodian = db.one(
-        "select custodian, department_name, dataset_name from version_custodian "
+        "select approvers, department_name, dataset_name from version_custodian "
         "where dataset_version_id = %s",
         (req["dataset_version_id"],),
     ) or {}
@@ -637,7 +648,7 @@ async def approve_lease(
         },
         "asset": {
             "dataset_version": str(req["dataset_version_id"]),
-            "custodian": custodian.get("custodian"),
+            "approvers": custodian.get("approvers") or [],
         },
     })
     if not permitted:
@@ -722,7 +733,7 @@ async def reject_lease(request_id: str, body: models.LeaseRejection,
         raise HTTPException(409, f"request already {req['state']}")
 
     custodian = db.one(
-        "select custodian, department_name from version_custodian "
+        "select approvers, department_name from version_custodian "
         "where dataset_version_id = %s",
         (req["dataset_version_id"],),
     ) or {}
@@ -736,7 +747,7 @@ async def reject_lease(request_id: str, body: models.LeaseRejection,
         },
         "asset": {
             "dataset_version": str(req["dataset_version_id"]),
-            "custodian": custodian.get("custodian"),
+            "approvers": custodian.get("approvers") or [],
         },
     })
     if not permitted:
@@ -777,7 +788,7 @@ def revoke_lease(lease_id: str, identity: dict = Depends(auth.current_session)) 
         raise HTTPException(404, "no such lease")
 
     custodian = db.one(
-        "select custodian from version_custodian where dataset_version_id = %s",
+        "select approvers from version_custodian where dataset_version_id = %s",
         (lease["dataset_version_id"],),
     ) or {}
 
@@ -790,7 +801,7 @@ def revoke_lease(lease_id: str, identity: dict = Depends(auth.current_session)) 
         },
         "asset": {
             "dataset_version": str(lease["dataset_version_id"]),
-            "custodian": custodian.get("custodian"),
+            "approvers": custodian.get("approvers") or [],
         },
     })
     if not permitted:
@@ -803,6 +814,24 @@ def revoke_lease(lease_id: str, identity: dict = Depends(auth.current_session)) 
     )
     if not row:
         raise HTTPException(404, "no such lease")
+    # What the person made from this version while the lease lasted was made
+    # on its authority, and the lease they were given to read it goes with it.
+    db.execute(
+        """update access_lease set revoked = true, revoked_by = %s, revoked_at = now()
+            where revoked = false and derivation_id in
+                  (select id from derivation where submitted_by = %s and inputs @> %s::jsonb)""",
+        (identity["id"], lease["principal"],
+         json.dumps([{"version_id": str(lease["dataset_version_id"])}])))
+    # Print now, as an approval does, so the lease's key stops working now and not
+    # at whatever print comes next. If the print fails the revocation still stands
+    # (it is in the register and the policy refuses the lease at once); the
+    # activator counts the ended lease and retries until the key is gone.
+    try:
+        grants.reconcile(trigger="revocation")
+    except Exception as exc:
+        log.error("storage permissions could not be printed after a revocation; "
+                  "the activator will keep trying",
+                  extra={"lease_id": lease_id, "error_type": type(exc).__name__})
     return {"id": lease_id, "revoked": True}
 
 
@@ -838,6 +867,39 @@ def _record_decision(
          body.dataset_version_id, version["current_class"], body.purpose,
          allowed, reasons, phase, body.agent_run_id),
     )
+
+
+def _task_is_running(kind: str, task_id: str) -> bool:
+    """Whether the task a credential names is still going: an action run that is running, a pipeline run that has not ended, or a
+    Hugging Face fetch job that is running."""
+    sql = {
+        "action_run": "select 1 as x from action_run where id = %s and status = 'running'",
+        "pipeline_run": "select 1 as x from pipeline_run where id = %s and ended_at is null",
+        "huggingface_fetch_job": "select 1 as x from huggingface_fetch_job where id = %s and status = 'running'",
+    }.get(kind)
+    return bool(sql and db.one(sql, (task_id,)))
+
+
+def _live_task(pipeline_claim, agent_claim) -> tuple[str, str] | None:
+    """The task behind a verified task credential, when it is one that reads with a key of its own and is still alive; otherwise None.
+
+    Three kinds: a running action run (a derivation, or a step of a pipeline), a pipeline run, and an agent run. None of them lists,
+    which is what a key limited to folders needs, since storage authorises a listing on the whole bucket only: each reads an object by
+    its exact key.
+    """
+    if agent_claim and agent_claim.task_kind == "agent_run":
+        row = db.one("select id::text as id from agent_run where id = %s and status = any(%s)",
+                     (agent_claim.task_id, list(grants.LIVE_AGENT_STATUSES)))
+        return ("agent_run", row["id"]) if row else None
+    if not pipeline_claim:
+        return None
+    if pipeline_claim.task_kind == "pipeline_run":
+        row = db.one("select id::text as id from pipeline_run where id = %s and ended_at is null", (pipeline_claim.task_id,))
+        return ("pipeline_run", row["id"]) if row else None
+    if pipeline_claim.task_kind == "action_run":
+        row = db.one("select id::text as id from action_run where id = %s and status = 'running'", (pipeline_claim.task_id,))
+        return ("action_run", row["id"]) if row else None
+    return None
 
 
 def _granting_lease(principal: str, version_id: str, purpose: str) -> str | None:
@@ -924,6 +986,11 @@ def _resolve_pipeline_task(
             if run["source_version_id"]:
                 input_versions.add(str(run["source_version_id"]))
             input_versions |= {str(v) for v in (run["input_versions"] or [])}
+            # And the versions its own steps sealed: the step that scores the result reads the output of the steps before it, which
+            # are not inputs the run began with. They are the run's own work, found from the runs that carry its id.
+            input_versions |= {str(r["id"]) for r in db.all_rows(
+                """select dv.id from dataset_version dv join action_run ar on ar.id = dv.produced_by_run
+                    where ar.pipeline_run_id = %s""", (claim.task_id,))}
     else:
         # huggingface_fetch_job carries no dataset version at all -- it
         # writes new files in, never reads one -- so input_versions stays
@@ -947,9 +1014,32 @@ def _resolve_pipeline_task(
     return claim, run, input_versions
 
 
+def _authenticate_credential_request(body: models.CredentialRequest, request: Request, x_worker_token: str | None) -> None:
+    """Who is asking, before what they ask for is decided.
+
+    The decision below is made for a principal NAMED in the body, so without this anybody could name any principal. A request
+    is accepted from the platform's own worker (a workspace or a worker acting for the principal), from a task that holds the
+    signed credential minted for it and names itself, or from the signed-in person it is for. Each of those is still decided
+    afterwards: the worker token says who is calling, and does not say the principal may read."""
+    if config.WORKER_TOKEN and x_worker_token == config.WORKER_TOKEN:
+        return
+    proof = body.run_secret or body.task_credential
+    if proof:
+        try:
+            claim = task_credential.verify(proof)
+        except task_credential.InvalidTaskCredential as exc:
+            raise HTTPException(403, {"allowed": False, "reasons": [f"task credential rejected: {exc}"]}) from exc
+        if claim.principal != body.principal:
+            raise HTTPException(403, {"allowed": False, "reasons": ["this credential is not for the principal that is asking"]})
+        return
+    caller = auth.current_session(request)
+    if body.principal_kind != "human" or caller["id"] != body.principal:
+        raise HTTPException(403, {"allowed": False, "reasons": ["you can only ask for a credential as yourself"]})
+
+
 @app.post("/credentials")
-def request_credential(body: models.CredentialRequest):
-    """Mint a prefix-scoped credential, or refuse and say why.
+def request_credential(body: models.CredentialRequest, request: Request, x_worker_token: str | None = Header(default=None)):
+    """Mint a storage credential for one dataset version, or refuse and say why.
 
     The order of operations matters and is not negotiable: decide, record the
     decision, then act on it. Recording after acting would lose the audit trail
@@ -960,6 +1050,16 @@ def request_credential(body: models.CredentialRequest):
     permissions could not be updated yet. A 202 is never a refusal: the
     activator finishes the job and resumes a run that parked on it.
     """
+    _authenticate_credential_request(body, request, x_worker_token)
+    return decide_credential(body)
+
+
+def decide_credential(body: models.CredentialRequest):
+    """The decision behind POST /credentials, for a caller that has already been authenticated.
+
+    The route authenticates (who is asking), and this decides (may they read), records the decision and mints the key. The Iceberg
+    catalog calls this directly: the person is already known to it from the token they presented, so it has no request of its
+    own to authenticate and must not be made to pretend it has."""
     version = db.one(
         "select * from version_class where dataset_version_id = %s",
         (body.dataset_version_id,),
@@ -1022,6 +1122,7 @@ def request_credential(body: models.CredentialRequest):
     # before this change. That is real, and separate, larger work -- the
     # same shape of fix as this one, generalized to a kind of task this
     # platform does not yet spawn with anything to check a claim against.
+    agent_claim = None
     if registered and "agent_runtime" in (registered["roles"] or []):
         # Naming a real run is not proof of being its code: anything that
         # could read or guess a run id could otherwise ask for that run's
@@ -1071,6 +1172,7 @@ def request_credential(body: models.CredentialRequest):
             reasons = ["dataset version is outside the scope this run was launched for"]
             _record_decision(body, version, "policy", False, reasons)
             raise HTTPException(403, {"allowed": False, "reasons": reasons})
+        agent_claim = claim
 
     # `pipeline_action`'s equivalent of the block above: a registered
     # workload naming this role must present the task_credential.py token
@@ -1089,9 +1191,10 @@ def request_credential(body: models.CredentialRequest):
     # way -- a pipeline step, or a whole pipeline run, can have several
     # inputs, so this is membership, not the single exact match agent_run
     # uses.
+    pipeline_claim = None
     if registered and "pipeline_action" in (registered["roles"] or []):
         try:
-            _claim, _run, input_versions = _resolve_pipeline_task(
+            pipeline_claim, _run, input_versions = _resolve_pipeline_task(
                 body.task_credential, body.principal, acting_tenant
             )
         except HTTPException as exc:
@@ -1147,6 +1250,23 @@ def request_credential(body: models.CredentialRequest):
             403, {"allowed": False, "reasons": reasons, "class": version["current_class"]}
         )
 
+    if body.decide_only:
+        if body.principal_kind != "human":
+            raise HTTPException(422, {"allowed": False, "reasons": [
+                "only a person can ask for a decision without a key; a workload needs the key"]})
+        # No key is minted here. The caller is a workspace that issues its own,
+        # and it writes the grant row when it has.
+        return {"allowed": True, "decide_only": True, "class": version["current_class"]}
+
+    # The pipeline role's and the agent role's own keys open nothing: their reads are served by the key of the task that asks. So a
+    # caller acting as either role without a running task has nothing to be given, and is told so, instead of being handed a key that
+    # fails at storage. This also ends a claim of the role by a caller the directory does not know as that kind of workload.
+    if (any(role in grants.TASK_KEYED_ROLES for role in effective_roles) and version["storage_backend"] == "seaweedfs"
+            and not _live_task(pipeline_claim, agent_claim)):
+        reasons = ["the task this credential was requested for is no longer running, or none was named"]
+        _record_decision(body, version, "grant", False, reasons)
+        raise HTTPException(403, {"allowed": False, "reasons": reasons})
+
     # Policy said yes. Whether the grant can actually be applied is a separate
     # question with a separate answer, and it gets its own audit row either way.
     #
@@ -1187,13 +1307,31 @@ def request_credential(body: models.CredentialRequest):
     # emits its identity in the same pass. SeaweedFS only: R2 already mints a
     # scoped credential that expires by itself, so it needs none of this.
     lease_id = None
+    task = None
     if version["storage_backend"] == "seaweedfs":
-        lease_id = _granting_lease(body.principal, body.dataset_version_id, body.purpose)
-        if lease_id:
-            leased = grants.identity_for_lease(lease_id, acting_tenant)
-            creds = {**creds, "access_key": leased["access_key"],
-                     "secret_key": leased["secret_key"]}
-    creds["identity"] = "lease" if lease_id else "role"
+        # A derivation run, a pipeline run and an agent run each read with a key of their own, which opens only the inputs the platform has
+        # allowed that task, and not with the role's key, which opens the organisation's whole bucket. The grant is recorded before the key
+        # is handed back, in the order a lease and a write grant keep, and the print below compiles it.
+        task = _live_task(pipeline_claim, agent_claim)
+        if task:
+            kind, task_id = task
+            column = grants.TASK_COLUMNS[kind]  # a fixed set of names, never anything a caller supplied
+            db.execute(
+                f"""insert into task_read_grant (id, tenant_id, {column}, dataset_version_id)
+                   values (%s, %s, %s, %s)
+                   on conflict ({column}, dataset_version_id) where {column} is not null
+                   do update set renewed_at = now()""",
+                (_uuid(), acting_tenant, task_id, body.dataset_version_id),
+            )
+            own = grants.identity_for_task(kind, task_id, acting_tenant)
+            creds = {**creds, "access_key": own["access_key"], "secret_key": own["secret_key"]}
+        else:
+            lease_id = _granting_lease(body.principal, body.dataset_version_id, body.purpose)
+            if lease_id:
+                leased = grants.identity_for_lease(lease_id, acting_tenant)
+                creds = {**creds, "access_key": leased["access_key"],
+                         "secret_key": leased["secret_key"]}
+    creds["identity"] = "task" if task else "lease" if lease_id else "role"
 
     # The grant exists only once the document is compiled with this decision
     # in the register: nothing else writes it. So the key is handed back only
@@ -1236,7 +1374,7 @@ def request_credential(body: models.CredentialRequest):
 
 
 @app.post("/write-credentials")
-def request_write_credential(body: models.WriteCredentialRequest):
+def request_write_credential(body: models.WriteCredentialRequest, _worker: None = Depends(auth.worker_only)):
     """Mint a prefix-scoped write credential for a real pipeline task, or
     refuse and say why.
 
@@ -1297,7 +1435,7 @@ def request_write_credential(body: models.WriteCredentialRequest):
         """insert into write_grant
              (id, tenant_id, role, bucket, storage_prefix, task_kind, task_id, principal)
            values (%s, %s, %s, %s, %s, %s, %s, %s)
-           on conflict (tenant_id, task_kind, task_id, storage_prefix) do nothing""",
+           on conflict (tenant_id, task_kind, task_id, storage_prefix) do update set renewed_at = now()""",
         (_uuid(), acting_tenant, role, bucket, reserved["storage_prefix"],
          claim.task_kind, claim.task_id, body.principal),
     )
@@ -1314,6 +1452,18 @@ def request_write_credential(body: models.WriteCredentialRequest):
                 "role, so nothing was granted. Both facts are in the audit log."
             ),
         }) from exc
+
+    # On SeaweedFS the writer receives a key of its own for this task: Write on the one folder reserved above, and nothing else. It is
+    # not the pipeline role's key, which opens the organisation's whole bucket for reading. The key lives while the task does and while
+    # the task keeps asking (see grants._minted_identities), so a task that is already over is refused here and not handed a key that
+    # opens nothing.
+    if backend == "seaweedfs":
+        if not _task_is_running(claim.task_kind, claim.task_id):
+            raise HTTPException(403, {"allowed": False, "reasons": [
+                "the task this credential was requested for is no longer running"]})
+        own = grants.identity_for_task(claim.task_kind, claim.task_id, acting_tenant)
+        creds = {**creds, "access_key": own["access_key"], "secret_key": own["secret_key"]}
+    creds["identity"] = "task" if backend == "seaweedfs" else "role"
 
     if backend == "seaweedfs":
         try:
@@ -1507,7 +1657,7 @@ def _perform_promotion(version_id: str, to_class: str, decided_by: str,
 
 
 @app.post("/dataset-versions/{version_id}/promote")
-def promote(version_id: str, body: models.PromotionIn) -> dict:
+def promote(version_id: str, body: models.PromotionIn, _worker: None = Depends(auth.worker_only)) -> dict:
     """Promote a version to a less restricted class.
 
     This is the workload-triggered path, and it still trusts the identity its
@@ -1527,7 +1677,7 @@ def promote(version_id: str, body: models.PromotionIn) -> dict:
 
 
 @app.post("/records", status_code=201)
-def seal_record(body: models.RecordSealIn) -> dict:
+def seal_record(body: models.RecordSealIn, _worker: None = Depends(auth.worker_only)) -> dict:
     """Encrypt a record and store its wrapped key.
 
     The ciphertext is returned rather than stored. The control plane holds keys
@@ -1548,7 +1698,7 @@ def seal_record(body: models.RecordSealIn) -> dict:
 
 
 @app.post("/records/{record_id}/open")
-def open_record(record_id: str, ciphertext_b64: str) -> dict:
+def open_record(record_id: str, ciphertext_b64: str, _worker: None = Depends(auth.worker_only)) -> dict:
     row = db.one(
         "select tenant_id, wrapped_key, destroyed_at from record_key where record_id = %s",
         (record_id,),
@@ -1568,14 +1718,37 @@ def open_record(record_id: str, ciphertext_b64: str) -> dict:
 
 
 @app.delete("/records/{record_id}")
-def destroy_record(record_id: str, body: models.RecordDestroyIn) -> dict:
+def destroy_record(record_id: str, body: models.RecordDestroyIn, caller: dict = Depends(auth.person_or_worker)) -> dict:
     """Delete a record by destroying its key.
 
     Nothing is overwritten. The ciphertext stays in every sealed version that
     held it and stops being readable in all of them at once, and the tombstone
     keeps the fact of the record's existence so that erasure does not break the
     audit trail it was meant to serve.
+
+    Refused while a legal hold is pending or in force over the organisation, because a hold exists to stop
+    exactly this and the destruction cannot be undone. The request is kept, and carried out by the sweep once
+    no hold stands (legal_export.honour_deferred_erasures).
     """
+    owner = db.one("select tenant_id from record_key where record_id = %s", (record_id,))
+    tenant_of = owner["tenant_id"] if owner else body.tenant_id
+    # Destroying a key cannot be undone. A person may do it for their own organisation's record and as themselves; which
+    # roles may is a policy decision that has not been made, so any signed-in person of the organisation can for now.
+    auth.must_be(caller, tenant_id=tenant_of, person=body.requested_by)
+    held = db.one("select tenant_hold_state(%s) as state", (tenant_of,))["state"]
+    if held != "none":
+        db.execute(
+            """insert into deferred_erasure (record_id, tenant_id, reason, requested_by)
+               values (%s, %s, %s, %s) on conflict (record_id) do nothing returning record_id""",
+            (record_id, tenant_of, body.reason, body.requested_by))
+        reasons = ["a legal hold stands over this organisation, so no record is erased while it does",
+                   "the request is kept and is carried out when no hold stands"]
+        db.execute(
+            """insert into access_decision (principal, principal_kind, principal_roles, tenant_id, purpose, allowed,
+                      reasons, phase)
+               values (%s, 'human', '{}', %s, 'erasure of a record', false, %s, 'policy')""",
+            (body.requested_by, tenant_of, reasons))
+        raise HTTPException(409, {"reasons": reasons, "deferred": True})
     row = db.execute(
         """update record_key
              set wrapped_key = null, destroyed_at = now()

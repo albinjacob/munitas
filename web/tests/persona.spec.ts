@@ -20,7 +20,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
-import { loginAs } from "./auth-helpers";
+import { bearerFor, loginAs } from "./auth-helpers";
 import { API_BASE } from "../config/ports";
 
 const API = API_BASE;
@@ -55,14 +55,16 @@ test.describe("U13: the administrator sees everything and reads nothing extra", 
     // In Priya's own organisation. Any raw version would do for the class rule,
     // but one belonging to somebody else is refused for the tenant instead, and
     // the assertion below is specifically about the class.
+    const priya = await bearerFor("ops-priya");
     const versions = await fetch(
       `${API}/dataset-versions?current_class=RAW&limit=1&tenant_id=health`,
+      { headers: priya },
     ).then((r) => r.json());
     test.skip(!versions.length, "no RAW version exists in health");
 
     const response = await fetch(`${API}/credentials`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...priya },
       body: JSON.stringify({
         principal: "ops-priya",
         principal_kind: "human",

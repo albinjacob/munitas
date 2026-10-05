@@ -33,6 +33,13 @@ TAG_LABELS = {
     "pipeline": "Pipeline runs",
     "external-accounts": "External accounts",
     "auth": "Auth",
+    "people": "People and roles",
+    "departments": "Departments and their approvers",
+    "housekeeping": "Storage housekeeping",
+    "derivations": "Derived datasets (a query over existing ones)",
+    "lifecycle": "Closing an organisation, and legal holds",
+    "legal-export": "Legal export (records produced for a legal matter)",
+    "iceberg": "Iceberg catalog (for DuckDB, PyIceberg and other standard tools)",
 }
 TAG_ORDER = list(TAG_LABELS.keys())
 
@@ -176,6 +183,12 @@ def main() -> None:
             op = ops[method]
             tag = (op.get("tags") or ["(untagged)"])[0]
             by_tag.setdefault(tag, []).append((path, method, op))
+
+    # A tag with no label above would otherwise vanish from the page without a
+    # word, which is how a whole router once went unrendered.
+    unlabelled = sorted(t for t in by_tag if t not in TAG_LABELS)
+    if unlabelled:
+        raise SystemExit(f"tags with no entry in TAG_LABELS: {unlabelled}")
 
     for items in by_tag.values():
         items.sort(key=lambda t: t[0])

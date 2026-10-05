@@ -45,9 +45,22 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from common import (ADMIN, api, check, db, heading, require_api,
-                    s3_client, summary)
 from ports_config import PORTS  # noqa: E402
+
+# Run from the host, so the services are on localhost. Anything already set wins.
+os.environ.setdefault("PG_DSN", f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform")
+os.environ.setdefault("MUNITAS_VERIFY_KRATOS", f"http://localhost:{PORTS['kratos_public']}")
+os.environ.setdefault("MUNITAS_VERIFY_KRATOS_ADMIN", f"http://localhost:{PORTS['kratos_admin']}")
+os.environ.setdefault("S3_ENDPOINT", f"http://localhost:{PORTS['seaweedfs_s3']}")
+
+import httpx  # noqa: E402
+
+from common import (ADMIN, api, check, db, fixture_tenant, heading,  # noqa: E402
+                    require_api, s3_client, summary)
+from lifecycle_fixture import KRATOS_ADMIN, give_login  # noqa: E402
+
+# Sign-ins this run made for the people it acts as, removed when it ends.
+LOGINS: list[str] = []
 
 if os.environ.get("MUNITAS_CORPUS"):
     CORPUS = Path(os.environ["MUNITAS_CORPUS"])
@@ -75,12 +88,11 @@ def provisioned_tenant() -> tuple[str, str] | None:
     interfered.
     """
     tenant = f"pipeline-probe-{uuid.uuid4().hex[:8]}"
-    with db() as conn:
-        conn.execute(
-            """insert into tenant (id, isolation_level, key_ref, purpose)
-               values (%s, 'shared', %s, 'canary')""",
-            (tenant, f"key/{tenant}"),
-        )
+    # Declared disposable at creation, while it is empty (the `pipeline-probe-` prefix is in common.py's list, which is what
+    # `fixture_tenant` reads). Its sealed versions then delete like any other row, and the nightly sweep removes the tenant and its
+    # bucket. As `canary` it was kept for good, one more every run, because a sealed version cannot be deleted from a tenant that has
+    # not declared itself disposable and a tenant that already holds one cannot declare it now.
+    fixture_tenant(tenant)
 
     # Provisioning happens on a tenant's first write. Asking where the next
     # version goes is that first write, and it is the platform's own path
@@ -106,13 +118,16 @@ def seeded_for(tenant: str) -> tuple[str, str, str] | None:
     with db() as conn:
         # People first: department.custodian is a foreign key into directory,
         # so creating the department before the person it names fails.
-        for who, roles in ((f"{tenant}-custodian", "{data_custodian}"),
-                           (f"{tenant}-engineer", "{pipeline_operator}")):
+        # The third is the workload the worker acts as for this tenant's runs (`<tenant>-pipeline`); without it the platform answers
+        # a read with "no such workload is registered".
+        for who, kind, roles in ((f"{tenant}-custodian", "human", "{data_custodian}"),
+                                 (f"{tenant}-engineer", "human", "{pipeline_operator}"),
+                                 (f"{tenant}-pipeline", "workload", "{pipeline_action}")):
             conn.execute(
                 """insert into directory (id, tenant_id, label, kind, roles)
-                   values (%s, %s, %s, 'human', %s)
+                   values (%s, %s, %s, %s, %s)
                    on conflict (id) do nothing""",
-                (who, tenant, who, roles),
+                (who, tenant, who, kind, roles),
             )
 
         dept = conn.execute(
@@ -139,6 +154,9 @@ def seeded_for(tenant: str) -> tuple[str, str, str] | None:
                    on conflict (tenant_id, name) do nothing""",
                 (str(uuid.uuid4()), tenant, name, output_class),
             )
+    # The platform registers a dataset, and takes its files, as the person who is signed in, so the engineer needs a real login.
+    with db() as conn:
+        LOGINS.append(give_login(conn, f"{tenant}-engineer", "Pipeline engineer"))
     return dept_id, f"{tenant}-engineer", f"{tenant}-custodian"
 
 
@@ -266,6 +284,14 @@ def keys_under(bucket: str, prefix: str) -> list[str]:
 
 
 def main() -> int:
+    try:
+        return checks()
+    finally:
+        for identity in LOGINS:
+            httpx.delete(f"{KRATOS_ADMIN}/admin/identities/{identity}", timeout=10.0)
+
+
+def checks() -> int:
     require_api()
 
     heading("U63a: a tenant with its own bucket, and a run started for it")

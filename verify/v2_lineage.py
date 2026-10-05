@@ -10,7 +10,7 @@ from __future__ import annotations
 import sys
 import uuid
 
-from common import (ENGINEER, api, check, db, fixture_contract, fixture_tenant,
+from common import (ENGINEER, WORKER_HEADERS, api, check, db, fixture_contract, fixture_tenant,
                     fixture_version, heading, require_api, summary)
 
 
@@ -62,7 +62,7 @@ def main() -> int:
 
     heading("V2: lineage resolves in one query")
 
-    r = api("GET", f"/lineage/{out_version}")
+    r = api("GET", f"/lineage/{out_version}", headers=WORKER_HEADERS)
     check("lineage endpoint answers", r.status_code == 200, f"HTTP {r.status_code}")
     row = r.json() if r.status_code == 200 else {}
 

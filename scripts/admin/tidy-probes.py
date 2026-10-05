@@ -207,6 +207,7 @@ def run_sweep(min_age_hours: int = 0, apply: bool = False) -> dict:
     client = s3()
     found: list[dict] = []
     removed: list[str] = []
+    failed: list[dict] = []
     freed_objects = 0
 
     with psycopg.connect(PG_DSN, row_factory=dict_row) as conn:
@@ -225,17 +226,24 @@ def run_sweep(min_age_hours: int = 0, apply: bool = False) -> dict:
             })
             if not apply:
                 continue
-            for b in buckets:
-                freed_objects += empty_bucket(client, b)
-            delete_tenant(conn, c["id"])
-            removed.append(c["id"])
-
-        if apply:
-            conn.commit()
+            # One tenant at a time, each in a transaction of its own and committed as soon as it is done, so a tenant that cannot be
+            # deleted is reported and left for the next run, and the ones after it are still cleared. (The bucket goes first; one
+            # already gone is treated as emptied, so a retry after a failed delete still works.)
+            try:
+                for b in buckets:
+                    freed_objects += empty_bucket(client, b)
+                with conn.transaction():
+                    delete_tenant(conn, c["id"])
+                conn.commit()
+                removed.append(c["id"])
+            except Exception as exc:  # noqa: BLE001 - reported in the result, and the exit code, not swallowed
+                conn.rollback()
+                failed.append({"id": c["id"], "reason": f"{type(exc).__name__}: {str(exc).splitlines()[0] if str(exc) else ''}"[:300]})
 
     return {
         "found": found,
         "removed": removed,
+        "failed": failed,
         "freed_objects": freed_objects,
         "applied": apply,
         "min_age_hours": min_age_hours,
@@ -268,7 +276,9 @@ def main() -> int:
 
     print(f"\nRemoved {len(result['removed'])} tenant(s) and "
           f"{result['freed_objects']} object(s).")
-    return 0
+    for f in result["failed"]:
+        print(f"  NOT removed, left for the next run: {f['id']}: {f['reason']}")
+    return 1 if result["failed"] else 0
 
 
 if __name__ == "__main__":
