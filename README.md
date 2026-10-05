@@ -13,6 +13,10 @@ instead of a different tool for each piece.
 Munitas is a governed data platform: it keeps the data, and every read of it
 is decided by policy and recorded with its reason.
 
+*Munitas* is built from the Latin *munire*, "to fortify or protect", in the pattern of *veritas* and
+*libertas*: the state of being protected. It names what the platform is for. Datasets, AI agents and the
+record of what happened to them are protected by guarantees that cannot be quietly bypassed.
+
 ---
 
 ## Basic concepts

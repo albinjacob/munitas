@@ -71,6 +71,10 @@ def render() -> str:
   <p class="lede">Munitas is a governed data platform. It decides who may read which piece of data, for what
   purpose and for how long, and it keeps a permanent record of every decision. Each walkthrough below follows
   one real story, step by step, with real screens from the Munitas console.</p>
+  <p class="lede" style="margin-top:0.9em"><em>Munitas</em> is built from the Latin <em>munire</em>, &ldquo;to fortify or protect&rdquo;, in the pattern of
+  <em>veritas</em> and <em>libertas</em>: the state of being protected. It names what the platform is for.
+  Datasets, AI agents and the record of what happened to them are protected by guarantees that cannot be
+  quietly bypassed.</p>
 </header>
 <div class="wrap">
 <section class="before">
