@@ -2,9 +2,10 @@
  * U75 on screen: approved storage access that has not taken effect yet.
  *
  * The real states need storage permissions failing to print, which means
- * stopping storage (verify/v76_activation_live.py does that, by hand). These
- * tests load the real pages with real data and change only the fields that
- * say whether access is in effect, as the responses arrive in the browser.
+ * stopping storage (verify/v76_activation_live.py does that, by hand). The
+ * audit-log tests load the real page and change only the fields that say
+ * whether access is in effect, as the responses arrive in the browser; the
+ * parked-run test makes up the agent and its run entirely.
  * So what they prove is that each screen shows those states correctly when
  * the API reports them, not that the API reports them; U75 and U76 prove
  * that half.
@@ -105,28 +106,46 @@ test.describe("U75: the housekeeping screen raises an outage, not individual run
 
 test.describe("U75: a parked run says it is waiting for access, not stuck", () => {
   test("the run reads 'access taking effect' and explains itself", async ({ page }) => {
-    await loginAs(page, "canary-engineer");
-    const { agents } = await page.request
-      .get(`${API}/agents?tenant_id=canary`)
-      .then((r) => r.json());
-    let agentId: string | null = null;
-    for (const agent of agents.slice(0, 40)) {
-      const runs = await page.request
-        .get(`${API}/agents/${agent.id}/runs?tenant_id=canary`)
-        .then((r) => r.json());
-      if (Array.isArray(runs) && runs.length) {
-        agentId = agent.id;
-        break;
-      }
-    }
-    test.skip(!agentId, "no canary agent has a run to show");
+    // The agent, its deployed version and its run are all made up here, so the test does not depend on which
+    // agents the organisation happens to hold today. The page shows runs only for an agent with a deployed version.
+    const agentId = "stub-agent";
+    const versionId = "stub-agent-version";
+    const runId = "stub-run";
+    const agent = {
+      id: agentId,
+      tenant_id: "canary",
+      name: "stub-agent",
+      purpose: "an agent made up for this test",
+      principal_id: "canary-agent",
+      created_at: minutesAgo(60),
+      department_name: null,
+      registered_by_label: "Canary engineer",
+      version_count: 1,
+      latest_version: 1,
+      latest_code_hash: "git:stub",
+      versions: [
+        {
+          id: versionId, version: 1, code_hash: "git:stub", source_path: "/stub", image_digest: "native:stub",
+          model_id: "none", tool_scope: [], content_hash: "sha256:stub", sealed: true, created_at: minutesAgo(60),
+          registered_by_label: "Canary engineer", sandboxed: false, entrypoint: "", requested_hosts: [],
+          egress_approval_id: null, egress_state: null,
+        },
+      ],
+      active_version: { agent_version_id: versionId, deployed_at: minutesAgo(50) },
+    };
+    const run = {
+      id: runId, agent_version_id: versionId, agent_version: 1, status: "awaiting_activation",
+      purpose: "a run made up for this test", requested_by: "canary-engineer", requested_by_label: "Canary engineer",
+      tool_calls: 0, halted_reason: null, error: null, started_at: minutesAgo(5), ended_at: null,
+      approved_by: "canary-custodian", approved_at: minutesAgo(2), lease_request_id: null, findings: [],
+      execution_mode: "native",
+    };
 
-    let runId = "";
-    await rewrite(page, `**/agents/${agentId}/runs**`, (runs) => {
-      runId = runs[0].id;
-      return [{ ...runs[0], status: "awaiting_activation", ended_at: null }, ...runs.slice(1)];
-    });
+    await loginAs(page, "canary-engineer");
+    await page.route(`**/agents/${agentId}/runs**`, (route) => route.fulfill({ json: [run] }));
+    await page.route(`**/agents/${agentId}?**`, (route) => route.fulfill({ json: agent }));
     await page.goto(`/agents/${agentId}`);
+
     const row = page.getByTestId("agent-runs").locator("li").first();
     await expect(row).toContainText("access taking effect");
     await expect(page.getByTestId(`run-activation-${runId}`)).toHaveText(
