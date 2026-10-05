@@ -228,6 +228,30 @@ jobs:
           echo "Skipped checks (not passes): $skipped"
           exit $code
 
+      - name: Report memory use
+        # So a memory question is answered by a measurement. The host worker has no limit of its own, so its peak resident
+        # memory (VmHWM) is read from the kernel; each container's peak comes from its cgroup where the runner's kernel keeps
+        # one. A value that cannot be read says so and never fails the job.
+        if: always()
+        run: |
+          {
+            echo "### Memory use"
+            echo "Runner: $(free -m | awk '/^Mem:/ {print $2}') MB in total, $(nproc) CPUs"
+            if [ -r "/proc/$(cat worker.pid 2>/dev/null)/status" ]; then
+              echo "- Host worker, peak resident memory: $(awk '/VmHWM/ {printf "%d", $2/1024}' "/proc/$(cat worker.pid)/status") MB (no limit)"
+            else
+              echo "- Host worker: no longer running, peak not readable"
+            fi
+            for id in $(docker compose ps -q 2>/dev/null); do
+              name=$(docker inspect --format '{{index .Config.Labels "com.docker.compose.service"}}' "$id")
+              limit=$(docker inspect --format '{{.HostConfig.Memory}}' "$id")
+              peak_file=$(ls /sys/fs/cgroup/system.slice/docker-"$id".scope/memory.peak 2>/dev/null | head -1)
+              if [ -n "$peak_file" ]; then peak="$(( $(cat "$peak_file") / 1048576 )) MB"; else peak="not readable on this runner"; fi
+              if [ "$limit" = "0" ]; then cap="no limit"; else cap="limit $(( limit / 1048576 )) MB"; fi
+              echo "- $name, peak: $peak ($cap)"
+            done
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: Show service logs on failure
         if: failure()
         run: |
