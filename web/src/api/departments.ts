@@ -1,9 +1,8 @@
 /**
  * A department's approvers: the data custodians who may approve access to its data and confirm claims about it.
  *
- * The platform decides who may change the list and refuses with its reasons, which the forms show. The list a person can choose from is
- * only a convenience: somebody who holds the Data custodian role through an approved request and not by being set up with it can still be added,
- * and the platform checks the role itself.
+ * The platform decides who may change the list and refuses with its reasons, which the forms show. The list a person can choose from comes from
+ * the platform too, worked out when the form is opened, so it agrees with what the platform will accept.
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -33,6 +32,20 @@ export function useApproverHistory(departmentId: string, enabled: boolean) {
     queryKey: ["department-approvers", departmentId, "history"],
     queryFn: () =>
       api.get<{ history: ApproverHistoryRow[] }>(`/departments/${departmentId}/approvers`, { history: true }),
+    enabled,
+  });
+}
+
+export interface ApproverCandidate {
+  person_id: string;
+  label: string;
+}
+
+/** The people who can be added to a department right now, as the platform sees them. Only an approver may ask. */
+export function useApproverCandidates(departmentId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["department-approvers", departmentId, "candidates"],
+    queryFn: () => api.get<{ candidates: ApproverCandidate[] }>(`/departments/${departmentId}/approver-candidates`),
     enabled,
   });
 }

@@ -4536,6 +4536,50 @@
         ]
       }
     },
+    "/departments/{department_id}/approver-candidates": {
+      "get": {
+        "description": "The people who could be added as an approver right now: the organisation's people who hold the data custodian role today and are not\nalready approvers of this department. For the approvers of the department, who are the only people who may add one.\n\n\"Hold the role today\" is worked out here, at the moment of asking, from the same live union the add route checks (the role a person has\npermanently plus any grant that has not been withdrawn or lapsed), so the list a person chooses from agrees with what the platform will accept.",
+        "operationId": "list_approver_candidates_departments__department_id__approver_candidates_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "department_id",
+            "required": true,
+            "schema": {
+              "title": "Department Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response List Approver Candidates Departments  Department Id  Approver Candidates Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Approver Candidates",
+        "tags": [
+          "departments"
+        ]
+      }
+    },
     "/departments/{department_id}/approvers": {
       "get": {
         "description": "Who answers for this department now. With `history`, everybody who ever did, and who changed it and why.\n\nAnybody of the organisation can see who to ask. The history is for the department's own approvers and the data protection officer.",

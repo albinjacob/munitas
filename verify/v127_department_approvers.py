@@ -138,6 +138,20 @@ def main() -> int:
         check("a current approver adds a custodian", added.status_code == 201, f"{added.status_code} {added.text[:100]}")
         check("and the department now has two approvers", sorted(approvers(cardiology)) == sorted([c1, c2]), str(approvers(cardiology)))
 
+        heading("The platform says who can be added")
+        def candidates(who: str):
+            return call(who, "GET", f"/departments/{cardiology}/approver-candidates")
+        for who, label in ((member, "a member"), (engineer, "an engineer"), (dpo, "the data protection officer"), (c3, "a custodian of another department")):
+            r = candidates(who)
+            check(f"{label} may not ask who can be added", r.status_code == 403, f"{r.status_code} {reasons(r)}")
+        listed = [p["person_id"] for p in candidates(c1).json()["candidates"]]
+        check("an approver is offered the custodians who are not approvers yet", c3 in listed and c4 in listed, str(listed))
+        check("and nobody who is already an approver", c1 not in listed and c2 not in listed, str(listed))
+        check("and nobody who does not hold the custodian role", member not in listed and engineer not in listed and dpo not in listed, str(listed))
+        check("every person offered is accepted when added", add(c1, cardiology, c4, reason="trial").status_code == 201)
+        check("and drops off the list once added", c4 not in [p["person_id"] for p in candidates(c1).json()["candidates"]])
+        check("the department goes back to two approvers", remove(c1, cardiology, c4, reason="trial over").status_code == 200)
+
         heading("Any one approver can act, so one person away does not block the department")
         by_engineer = claim(engineer, cardiology)
         check("a claim by an engineer is confirmed by the second approver", confirm(c2, by_engineer).status_code == 200)

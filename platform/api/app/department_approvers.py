@@ -109,6 +109,31 @@ def list_approvers(department_id: str, history: bool = False, identity: dict = D
     return result
 
 
+@router.get("/departments/{department_id}/approver-candidates")
+def list_approver_candidates(department_id: str, identity: dict = Depends(auth.current_session)) -> dict:
+    """The people who could be added as an approver right now: the organisation's people who hold the data custodian role today and are not
+    already approvers of this department. For the approvers of the department, who are the only people who may add one.
+
+    "Hold the role today" is worked out here, at the moment of asking, from the same live union the add route checks (the role a person has
+    permanently plus any grant that has not been withdrawn or lapsed), so the list a person chooses from agrees with what the platform will accept."""
+    _department(department_id, identity)
+    current = [a["person_id"] for a in _approvers(department_id)]
+    if identity["id"] not in current or "data_custodian" not in identity["roles"]:
+        raise HTTPException(403, {"reasons": ["only an approver of this department, who holds the data custodian role, may see who can be added"]})
+    rows = db.all_rows(
+        """select d.id as person_id, d.label
+             from directory d
+            where d.tenant_id = %s and d.kind = 'human' and d.ended_at is null
+              and not (d.id = any(%s))
+              and ('data_custodian' = any(d.roles)
+                   or exists (select 1 from role_grant g
+                               where g.principal = d.id and g.role = 'data_custodian' and not g.revoked and g.expires_at > now()))
+            order by d.label""",
+        (identity["tenant_id"], current),
+    )
+    return {"candidates": rows}
+
+
 @router.post("/departments/{department_id}/approvers", status_code=201)
 def add_approver(department_id: str, body: AddApprover, identity: dict = Depends(auth.current_session)) -> dict:
     """Add an approver to a department. By a current approver, for a person who already holds the data custodian role."""

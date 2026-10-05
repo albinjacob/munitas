@@ -12,6 +12,7 @@ import { useIdentity } from "../../identity/IdentityContext";
 import { useOrganisation } from "../../api/queries";
 import {
   useAddApprover,
+  useApproverCandidates,
   useApproverHistory,
   useRemoveApprover,
 } from "../../api/departments";
@@ -54,7 +55,7 @@ export function Departments() {
 }
 
 function DepartmentCard({ department }: { department: Department }) {
-  const { principal, everyone } = useIdentity();
+  const { principal } = useIdentity();
   const add = useAddApprover();
   const remove = useRemoveApprover();
 
@@ -71,14 +72,9 @@ function DepartmentCard({ department }: { department: Department }) {
   const [removing, setRemoving] = useState<string | null>(null);
   const [removeReason, setRemoveReason] = useState("");
 
-  // Only people who already hold the Data custodian role and are not already approvers. The platform checks the role itself.
-  const candidates = everyone.filter(
-    (p) =>
-      p.tenant_id === principal?.tenant_id &&
-      p.kind === "human" &&
-      p.roles.includes("data_custodian") &&
-      !approverIds.includes(p.id),
-  );
+  // Only people who hold the Data custodian role today and are not already approvers, as the platform works it out.
+  const candidatesQuery = useApproverCandidates(department.id, iAmApprover);
+  const candidates = candidatesQuery.data?.candidates ?? [];
 
   return (
     <div data-testid={`department-${department.id}`} className="rounded border border-slate-200 bg-white p-4">
@@ -201,7 +197,7 @@ function DepartmentCard({ department }: { department: Department }) {
               >
                 <option value="">Choose a data custodian</option>
                 {candidates.map((p) => (
-                  <option key={p.id} value={p.id}>
+                  <option key={p.person_id} value={p.person_id}>
                     {p.label}
                   </option>
                 ))}
