@@ -360,8 +360,7 @@
     a permanent record of every dataset, every pipeline step that touched it, and
     every AI agent that read it. Each claim on this page is checked by an automated
     script that runs against the live system, so nothing here rests on a promise.
-    Two example organisations, health and finance, run throughout this page and
-    the guided walkthroughs in section 13, for illustration.
+    Three example organisations run throughout this page and the guided walkthroughs in section 13, for illustration: a health organisation, a finance organisation, and a small clinic used to show closing down an account.
   </p>
   <div class="seal-row">
     <span class="seal"><span class="dot"></span> Every capability below is checked by a script that runs against the live system</span>
@@ -427,6 +426,9 @@
       <li>Store each organisation's data in its own isolated bucket, and on Cloudflare R2 its own short-lived credential, so a leaked credential reaches one customer rather than all of them.</li>
       <li>Let a sandboxed agent read the real dataset it was scoped to, through a copy it fetches itself over an isolated network, capped in size before a single byte moves.</li>
       <li>Change who holds which role only through two people: one asks and says why, another decides, and the role lapses rather than lasting because nobody looked. The administrator who runs the platform is not one of the people who may decide.</li>
+      <li>Let a department have several approvers, any one of whom may decide, with every change to the list recorded alongside who made it and why.</li>
+      <li>Make a new dataset from a query over an existing one. The new dataset is kept as restricted as its source, and withdrawing access to the source closes it too.</li>
+      <li>Close down a customer account in two stages, hold it back while a legal matter is open, and produce its records as an encrypted, signed package that no single administrator can request and approve alone.</li>
       <li>Show what storage each organisation is using, on which backend, and free what is no longer needed, rehearsing exactly what would be removed before removing it.</li>
       <li>Write one line of log per event carrying identifiers and never contents, with anything resembling a secret redacted before it is written.</li>
     </ul>
@@ -443,7 +445,7 @@
   </p>
   <div class="card">
     <span class="tag">BUILT</span>
-    <p>Registering, versioning and locking datasets. One built-in seven-step pipeline that removes personal information from speech recordings. Widening who may read a dataset. Requesting and approving access. Keeping separate customers' data apart, and closing an account without deleting its history, or deleting it permanently and completely. Registering, versioning, deploying and running AI agents, including a human approval step and, for sandboxed agents, a scoped copy of the real dataset they were granted. Permanent deletion of a person's records. A full audit trail. Importing datasets from HuggingFace in the background, using each person's own account, with export rules read from the dataset's licence. Real sign-in through Ory Kratos for every human role. A choice of storage backend per organisation, SeaweedFS or Cloudflare R2, each isolated per customer.</p>
+    <p>Registering, versioning and locking datasets. A built-in seven-step pipeline that removes personal information from speech recordings, and the ability for an organisation to register its own pipelines. Widening who may read a dataset. Requesting and approving access. Keeping separate customers' data apart, and closing down an account in two stages, with legal holds and a signed package of records for a legal matter. Several approvers per department, any one of whom may decide. Making a new dataset from a query, kept as restricted as its source. Registering, versioning, deploying and running AI agents, including a human approval step and, for sandboxed agents, a scoped copy of the real dataset they were granted. Permanent deletion of a person's records. A full audit trail. Importing datasets from HuggingFace in the background, using each person's own account, with export rules read from the dataset's licence. Real sign-in through Ory Kratos for every human role. A choice of storage backend per organisation, SeaweedFS or Cloudflare R2, each isolated per customer.</p>
   </div>
   <p class="measure">
     The goal is the one a title document serves for a property: proof of what is
@@ -456,9 +458,7 @@
   <p class="eyebrow">03 &middot; Architecture</p>
   <h2 class="measure">Every request passes the policy engine, and there is no way around it</h2>
   <p class="measure">
-    The web console and the background worker both go through the API. Only the
-    API talks directly to the database, the file storage and the policy engine, so
-    there is a single place where access rules are applied. The agent runtime sits
+    The web console and the background worker both go through the API. Only the API talks directly to the database and the policy engine, so there is a single place where access rules are applied. Anything else that touches file storage does so with a key the API issued for one task. The agent runtime sits
     on a network of its own that has no route to the internet. That isolation is a
     property of how the network is configured, not a rule the code is trusted to
     follow. Every read the agent attempts is still checked by the policy engine,
@@ -760,14 +760,13 @@
 
 <section id="personas">
   <p class="eyebrow">09 &middot; Who uses it</p>
-  <h2 class="measure">Seven kinds of role, shown through one example organisation</h2>
+  <h2 class="measure">Six kinds of role, shown through one example organisation</h2>
   <p class="measure">
     Every organisation on Munitas is staffed by people in these same kinds of
     role: someone who brings data in, someone accountable for each department's
     data, someone who asks to read it, an administrator who runs the platform
     itself, and so on. The table below shows one worked example, the cast from
-    the health organisation used throughout this page: Hartley and Okonjo each
-    custodian a different department (Cardiology and Radiology), Devi brings
+    the health organisation used throughout this page: Hartley and Okonjo are each a data custodian for a different department (Cardiology and Radiology), Devi brings
     data in, Sam asks to read it, Priya administers the platform, Nakamura
     oversees data protection, and Imani reviews what the de-identification
     pipeline could not confirm on its own. The finance organisation, covered in
@@ -794,13 +793,9 @@
   </div>
   <p class="measure" style="font-size:0.9rem;">
     Hartley and Okonjo answer for different departments, and that
-    is the point rather than an accident of the example. Hartley can approve
-    access to Cardiology's data and cannot approve access to Radiology's, and
-    Okonjo the reverse. Ownership is what decides who may say yes, so a request
+    is the point rather than an accident of the example. Hartley can approve access to Cardiology's data and cannot approve access to Radiology's, and Okonjo the reverse. Each is one of the approvers of their own department. Ownership is what decides who may say yes, so a request
     goes to the people accountable for that particular data rather than to
-    whoever happens to be senior or available. A department can name several
-    approvers, and any one of them can decide, so one person being away does
-    not hold up a request.
+    whoever happens to be senior or available. A department can name several approvers, and any one of them can decide, so one person being away does not hold up a request. Every change to the list is recorded with who made it and why, and a person counts as an approver only while they hold the data custodian role.
   </p>
   <p class="measure" style="font-size:0.9rem;">
     Every person has the same default, including the administrator. Anything more
@@ -820,9 +815,7 @@
     Imani decides a different question from the custodians, and only that one.
     A custodian decides who may read a dataset. Imani decides whether what the
     pipeline produced is de-identified well enough to be released more widely at
-    all, which nobody else in the table may decide. She reads the identifiers that
-    survived redaction, because that is the material the judgement is made on, and
-    she reads no dataset any other member of staff could not.
+    all, which nobody else in the table may decide. Imani reads the identifiers that survived redaction, because that is the material the judgement is made on, and reads no dataset any other member of staff could not.
   </p>
 </section>
 
@@ -847,12 +840,12 @@
         <li data-n="1">Registers a new dataset, naming the department that owns it and where the data came from. The registration is refused if the department does not exist or the origin is left unstated.</li>
         <li data-n="2">Loads the data in, either by uploading files or by importing from HuggingFace. The import runs in the background, so the screen responds immediately no matter how large the source is.</li>
         <li data-n="3">Locks the version once loading has finished. The system refuses to lock it while an import is still running, so a version can never be sealed halfway through arriving.</li>
-        <li data-n="4">Uploads recordings for de-identification and seals them as recordings rather than as anonymous files. The platform reads each one and tells her its length and sample rate, so a truncated file is refused as she adds it instead of surfacing later. If the set is incomplete, sealing is refused with every problem listed at once and nothing is sealed.</li>
-        <li data-n="5">Starts the de-identification herself, from the screen she just sealed on, instead of asking whoever has a terminal on the machine that does the work. She is refused, in writing and before anything starts, if the version holds ordinary files rather than recordings, if a recording arrived without the answer key the scoring needs, or if nothing is running to do the work. A refused start leaves nothing behind to clean up.</li>
-        <li data-n="6">Follows the run on its own page while it happens, step by step, rather than waiting without knowing whether it is working or stuck. At the end she is told it is waiting on a reviewer, and that she cannot be that reviewer, because she is the one who started it.</li>
+        <li data-n="4">Uploads recordings for de-identification and seals them as recordings rather than as anonymous files. The platform reads each one and tells Devi its length and sample rate, so a truncated file is refused as it is added instead of surfacing later. If the set is incomplete, sealing is refused with every problem listed at once and nothing is sealed.</li>
+        <li data-n="5">Starts the de-identification personally, from the screen where the recordings were just sealed, instead of asking whoever has a terminal on the machine that does the work. Devi is refused, in writing and before anything starts, if the version holds ordinary files rather than recordings, if a recording arrived without the answer key the scoring needs, or if nothing is running to do the work. A refused start leaves nothing behind to clean up.</li>
+        <li data-n="6">Follows the run on its own page while it happens, step by step, rather than waiting without knowing whether it is working or stuck. At the end Devi is told it is waiting on a reviewer, and that Devi cannot be that reviewer, because Devi is the one who started it.</li>
         <li data-n="7">Does not read the sensitive data the pipeline later produces from it. Running the loading process does not grant access to the results.</li>
-        <li data-n="8">Starts the triage agent against the review queue the pipeline left behind. She opens the agent, picks that dataset version, and says what the run is for.</li>
-        <li data-n="9">Is told before she starts that the agent cannot read that data, which custodian would be asked, and that the request will be filed in her name. Nothing is asked of anybody until she confirms.</li>
+        <li data-n="8">Starts the triage agent against the review queue the pipeline left behind. Devi opens the agent, picks that dataset version, and says what the run is for.</li>
+        <li data-n="9">Is told before starting that the agent cannot read that data, which custodian would be asked, and that the request will be filed in Devi's name. Nothing is asked of anybody until Devi confirms.</li>
         <li data-n="10">Sees the run listed as waiting for data access rather than as running. It has not begun, the screen does not pretend otherwise, and it moves only when the custodian decides.</li>
       </ol>
       <div class="without"><strong>Without this:</strong> data arrives via a script somebody ran once, its origin is recorded in a wiki page if at all, and nobody can later establish whether a dataset was finalised before or after the last file landed.</div>
@@ -866,12 +859,12 @@
     </summary>
     <div class="persona-body">
       <ol class="flow">
-        <li data-n="1">Checks claims about how sensitive a dataset is. If whoever registered it said the data is less sensitive than the cautious default, a custodian has to agree before that claim takes effect.</li>
+        <li data-n="1">Checks claims about how sensitive a dataset is. If whoever registered it said the data is less sensitive than the cautious default, an approver of the owning department has to agree before that claim takes effect. A custodian may also bring data in, but never confirms their own claim: another approver of the department does, and a claim made by a department's only approver waits until a second approver has been added.</li>
         <li data-n="2">Reviews access requests for Cardiology's datasets. Each request names a specific dataset version, what it will be used for, and why that use needs this data.</li>
-        <li data-n="3">Is refused if she tries to approve a request for Radiology's data, because Okonjo owns that department and she does not. Ownership is what grants the authority.</li>
-        <li data-n="4">Approves or refuses. She cannot approve her own request, or one somebody filed on her behalf. Both the policy engine and the database enforce this independently.</li>
+        <li data-n="3">Is refused when trying to approve a request for Radiology's data, because Okonjo is an approver of that department and Hartley is not. Ownership is what grants the authority.</li>
+        <li data-n="4">Approves or refuses. Hartley cannot approve a request of their own, or one somebody filed on their behalf. Both the policy engine and the database enforce this independently.</li>
         <li data-n="5">Sees a written reason with every refusal, naming which rule caused it, rather than only an error code.</li>
-        <li data-n="6">Sees requests made for an agent in the same queue as requests made for a person, showing which agent will read the data and which engineer asked for it. Approving one starts the waiting run; refusing it closes that run with her reason attached, so nothing is left waiting on a decision that has already been made.</li>
+        <li data-n="6">Sees requests made for an agent in the same queue as requests made for a person, showing which agent will read the data and which engineer asked for it. Approving one starts the waiting run; refusing it closes that run with Hartley's reason attached, so nothing is left waiting on a decision that has already been made.</li>
       </ol>
       <div class="without"><strong>Without this:</strong> access is granted in a chat message, with no lasting record of who asked, what for, or what they actually received. Whoever answers first becomes the approver, regardless of whether the data was theirs to give, and the rule against approving your own request exists only on paper.</div>
     </div>
@@ -887,7 +880,7 @@
         <li data-n="1">Requests access to one specific dataset version, stating what the work is for and why it needs that data. Blanket requests for a whole department are not possible.</li>
         <li data-n="2">Waits for an approver of the department that owns the data. Only the approvers of that department can say yes, and any one of them can.</li>
         <li data-n="3">Asks the system for access once approved. It checks whether the role already allows this, and if not, whether an approved and still-valid grant covers it.</li>
-        <li data-n="4">Receives a credential for its own organisation's storage only, and only after the decision has been written to the audit record. A credential that rests on an approved lease opens that one dataset version and stops working when the lease ends.</li>
+        <li data-n="4">Receives a credential for their own organisation's storage only, and only after the decision has been written to the audit record. A credential that rests on an approved lease opens that one dataset version and stops working when the lease ends.</li>
       </ol>
       <div class="without"><strong>Without this:</strong> finding out who can currently read a dataset means asking everyone who might hold a key, and access granted for a short project quietly continues working long after the project ends.</div>
     </div>
@@ -900,9 +893,9 @@
     </summary>
     <div class="persona-body">
       <ol class="flow">
-        <li data-n="1">Keeps the platform running: starting services, monitoring jobs and traces, and freeing up storage. She does that last one from a screen rather than from a shell: what each organisation is using, on which storage backend, what can be freed, and a rehearsal of exactly what a clean-up would remove before anything is removed.</li>
-        <li data-n="2">Closes a customer account when the relationship ends. From that point nothing new can be written, but everything already recorded stays readable, so the audit history outlives the contract. If a customer relationship needs to end completely rather than just close, a separate, deliberately alarming permanent-deletion path exists for that, and refuses to run against an active customer without an explicit override.</li>
-        <li data-n="3">Holds the most powerful account in the system, and deliberately has no standing access to the data it protects and no ability to approve access requests for anyone, including herself.</li>
+        <li data-n="1">Keeps the platform running: starting services, monitoring jobs and traces, and freeing up storage. The last of these is done from a screen rather than from a shell: what each organisation is using, on which storage backend, what can be freed, and a rehearsal of exactly what a clean-up would remove before anything is removed.</li>
+        <li data-n="2">Closes a customer account when the relationship ends, in two stages. For the first 15 days the account is read-only, and the organisation's custodian can still cancel. For the next 15 days it is closed. After that everything inside it is deleted, unless a legal hold stands, and only a short record that the deletion happened is kept. A legal hold is recorded by one administrator and approved by a different one. Records for a legal matter are produced the same way: one administrator asks, a different one approves, and the custodian named by the hold confirms the scope. Nobody reads the records themselves, because the result is an encrypted, signed package.</li>
+        <li data-n="3">Holds the most powerful account in the system, and deliberately has no standing access to the data it protects and no ability to approve access requests for anyone, including Priya.</li>
         <li data-n="4">Cannot change who holds which role, either. Anybody may ask to hold one and somebody else decides it, so the account that runs the system is not also the account that decides who may read what. The role that administers roles cannot be obtained from the running system at all: a second administrator is made the way the first one was, deliberately and from outside.</li>
       </ol>
       <div class="without"><strong>Without this:</strong> whoever can restart the services can usually also read everything those services protect. The account most worth attacking becomes the one with the fewest restrictions on it.</div>
@@ -916,9 +909,9 @@
     </summary>
     <div class="persona-body">
       <ol class="flow">
-        <li data-n="1">Reads every access decision the platform has recorded, both grants and refusals, across every department and customer she is responsible for overseeing.</li>
+        <li data-n="1">Reads every access decision the platform has recorded, both grants and refusals, across every department and customer Nakamura is responsible for overseeing.</li>
         <li data-n="2">Reads no more of the underlying data than any other member of staff. Being able to review decisions is kept separate from being able to see what those decisions were about.</li>
-        <li data-n="3">Cannot approve access requests. This keeps her oversight independent of the decisions she is meant to be reviewing.</li>
+        <li data-n="3">Cannot approve access requests. This keeps the oversight independent of the decisions being reviewed.</li>
       </ol>
       <div class="without"><strong>Without this:</strong> oversight depends on asking engineers to extract logs whenever a question comes up, and the person reviewing access decisions may well be one of the people making them.</div>
     </div>
@@ -933,10 +926,10 @@
       <ol class="flow">
         <li data-n="1">Opens a queue of finished pipeline runs waiting on a decision. Each one shows what the run scored, what the check recommends, and why it recommends it.</li>
         <li data-n="2">Reads the identifiers that survived redaction, one row each: which record and which character positions it sat at, what kind of identifier it was, how much of it was removed, and how it failed. This is the material the judgement is made on, so it is shown rather than summarised into a score.</li>
-        <li data-n="3">Promotes the result, or holds it back. Either way she writes a reason, and neither is possible without one.</li>
-        <li data-n="4">Cannot decide a run she started herself. The database refuses it, not only the interface.</li>
+        <li data-n="3">Promotes the result, or holds it back. Either way Imani writes a reason, and neither is possible without one.</li>
+        <li data-n="4">Cannot decide a run Imani started. The database refuses it, not only the interface.</li>
         <li data-n="5">Is the only role that may make this call. A custodian owns the data and would be judging their own department's output; an administrator operates the system and holds no standing access to what it protects; and the data protection officer is the one later asked whether the release was sound, which is not a question you can answer about your own signature.</li>
-        <li data-n="6">Is under no deadline, and neither is the queue. Nothing expires, escalates or promotes itself while a decision is outstanding, which is also why nothing yet chases her when one has been waiting too long.</li>
+        <li data-n="6">Is under no deadline, and neither is the queue. Nothing expires, escalates or promotes itself while a decision is outstanding, which is also why nothing yet chases Imani when one has been waiting too long.</li>
       </ol>
       <div class="without"><strong>Without this:</strong> either a threshold releases data on its own, so a number stands in for a judgement about identifiers nobody looked at, or the release is agreed informally and there is no record of who accepted the risk, on what evidence, or when.</div>
     </div>
