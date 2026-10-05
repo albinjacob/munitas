@@ -20,6 +20,10 @@ web/playwright-report/
 # a generated file, edit config.json and re-render instead of this one.
 infra/kratos/kratos.yml
 
+# The key service's master key, made on this machine by start-dev.ps1. Never commit it: anyone holding it can open every key.
+infra/secrets/*
+!infra/secrets/.gitkeep
+
 # The quickstart worker's own scratch space, if MUNITAS_HOST_WORK_DIR
 # points inside the checkout. Machine-local, same reasoning as verify/history/.
 quickstart-work/

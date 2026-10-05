@@ -1439,3 +1439,27 @@ export_passphrase_decision := {
 	"allow": may_read_passphrase,
 	"reasons": [r | some r in passphrase_reason],
 }
+
+# ----------------------------------------- reading what was locked for a person --
+
+# A table sealed under a privacy contract has columns locked under each person's own key. Reading them back is a decision of its own: a
+# permitted reader gets the values, anybody else is refused and the refusal is recorded. Only the data custodian, who answers for the
+# data, may. A researcher reads de-identified data, the data protection officer decides and does not read, and the platform
+# administrator has visibility without access.
+locked_column_readers := {"data_custodian"}
+
+default may_read_locked_columns := false
+
+may_read_locked_columns if {
+	some role in input.person.roles
+	locked_column_readers[role]
+}
+
+locked_columns_reason contains "this person holds no role that may read locked columns (a data custodian)" if {
+	not may_read_locked_columns
+}
+
+locked_columns_decision := {
+	"allow": may_read_locked_columns,
+	"reasons": [r | some r in locked_columns_reason],
+}

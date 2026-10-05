@@ -54,6 +54,11 @@ jobs:
         # /etc/config/kratos/kratos.yml: no such file or directory".
         run: python3 scripts/render_ports_env.py
 
+      - name: Make the key service master key
+        # A file the API container mounts and never part of the repository. Locally start-dev.ps1 makes it. The checks on a person's
+        # keys (U128) read it through the API, so it must exist before the stack comes up.
+        run: head -c 32 /dev/urandom > infra/secrets/key_service_master
+
       - name: Bring up the backend stack
         # table-worker writes large tables in a job (U109 needs it); locally a plain `docker compose up -d` starts it.
         run: docker compose up -d postgres seaweedfs temporal opa kratos-migrate kratos munitas-api table-worker

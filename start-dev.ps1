@@ -75,6 +75,18 @@ Measure-Step "Render ports (config.json -> .env, kratos.yml)" {
     & $portsPython (Join-Path $PSScriptRoot "scripts\render_ports_env.py")
     if ($LASTEXITCODE -ne 0) { throw "scripts\render_ports_env.py failed; fix config.json and try again." }
 }
+# The master key of the key service that holds each person's key is a file, never an environment variable. Made once, here, with random
+# bytes and kept for the life of the checkout: a new one would leave every key already made unopenable. Local only (gitignored).
+Measure-Step "Key service master key (infra\secrets)" {
+    $keyFile = Join-Path $PSScriptRoot "infra\secrets\key_service_master"
+    New-Item -ItemType Directory -Force (Split-Path $keyFile) | Out-Null
+    if (-not (Test-Path $keyFile)) {
+        $bytes = New-Object byte[] 32
+        [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+        [System.IO.File]::WriteAllBytes($keyFile, $bytes)
+        Write-Line "Made the key service master key at infra\secrets\key_service_master. Back it up: without it, locked data cannot be opened."
+    }
+}
 $Ports = Get-Content (Join-Path $PSScriptRoot "config.json") | ConvertFrom-Json
 
 $backendOk = $false

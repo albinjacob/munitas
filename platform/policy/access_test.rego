@@ -1690,3 +1690,25 @@ test_standing_bucket_access_is_held_only_in_the_roles_own_organisation if {
 test_the_pipeline_holds_its_standing_access_in_its_own_organisation if {
 	access.storage_roles.pipeline_action.scope == "own_tenant"
 }
+
+test_custodian_may_read_locked_columns if {
+	access.may_read_locked_columns with input as {"person": {"id": "x", "roles": ["data_custodian"]}}
+}
+
+test_roles_that_may_not_read_locked_columns if {
+	every role in ["notebook_explore", "pipeline_operator", "dpo", "analyst", "network_architect", "platform_admin"] {
+		not access.may_read_locked_columns with input as {"person": {"id": "x", "roles": [role]}}
+	}
+}
+
+test_locked_columns_refusal_says_why if {
+	decision := access.locked_columns_decision with input as {"person": {"id": "x", "roles": ["notebook_explore"]}}
+	decision.allow == false
+	"this person holds no role that may read locked columns (a data custodian)" in decision.reasons
+}
+
+test_locked_columns_allowance_has_no_reasons if {
+	decision := access.locked_columns_decision with input as {"person": {"id": "x", "roles": ["data_custodian"]}}
+	decision.allow == true
+	count(decision.reasons) == 0
+}

@@ -305,6 +305,18 @@ def may_export(payload: dict) -> tuple[bool, list[str]]:
     return _ask(_EXPORT_PATH, payload)
 
 
+_LOCKED_COLUMNS_PATH = "/v1/data/munitas/access/locked_columns_decision"
+
+
+def may_read_locked_columns(payload: dict) -> tuple[bool, list[str]]:
+    """May this person read the columns of a table that were locked under each person's own key?
+
+    The data custodian, who answers for the data. Not the researcher, the data protection officer, the data engineer or the platform
+    administrator.
+    """
+    return _ask(_LOCKED_COLUMNS_PATH, payload)
+
+
 def evaluate(payload: dict) -> tuple[bool, list[str]]:
     """Return (allowed, reasons). Reasons are present either way."""
     return _ask(_DECISION_PATH, payload)

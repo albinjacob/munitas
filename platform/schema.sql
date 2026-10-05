@@ -734,6 +734,70 @@ create table if not exists tombstone (
   at          timestamptz not null default now()
 );
 
+-- ------------------------------------------- keys for one person's data --
+
+-- Erasing a person: the columns that identify them are locked under a key made for that person, and erasure destroys the key. The sealed
+-- files and their fingerprints never change. Four keys are involved: the master key (a mounted file, never in the database), an
+-- organisation key (random, wrapped by the master key), a lookup secret (derived from the organisation key) and a person key (random,
+-- wrapped by the organisation key). Only the wrapped forms are ever stored here.
+
+-- One random key per organisation, stored wrapped by the master key. Destroying it ends every person's key in that organisation.
+create table if not exists org_key (
+  tenant_id     text primary key references tenant(id),
+  wrapped_key   bytea,                        -- null once destroyed
+  destroyed_at  timestamptz,
+  created_at    timestamptz not null default now()
+);
+
+-- Finds a person from an identifier without storing the identifier: the blind index is HMAC(lookup secret, kind | value). Only a table,
+-- never a vault. Deleted on erasure, so the identifier finds nobody afterwards.
+create table if not exists subject_lookup (
+  tenant_id     text not null references tenant(id),
+  blind_index   text not null,
+  person_code   text not null,
+  created_at    timestamptz not null default now(),
+  primary key (tenant_id, blind_index),
+  unique (tenant_id, person_code)
+);
+
+-- One key per person, stored only wrapped by the organisation key. The row stays after erasure, with no key material, so a reader can be
+-- told when the person was erased.
+create table if not exists subject_key (
+  tenant_id     text not null references tenant(id),
+  person_code   text not null,
+  wrapped_key   bytea,                        -- null once destroyed
+  destroyed_at  timestamptz,
+  created_at    timestamptz not null default now(),
+  primary key (tenant_id, person_code),
+  constraint subject_key_destroyed check ((wrapped_key is null) = (destroyed_at is not null))
+);
+
+-- Every use of a key: made, unwrapped, destroyed. Append only.
+create table if not exists key_use_log (
+  id            bigserial primary key,
+  tenant_id     text not null references tenant(id),
+  person_code   text,
+  action        text not null check (action in ('make_org','make_person','unwrap','destroy')),
+  actor         text not null,
+  purpose       text,
+  at            timestamptz not null default now()
+);
+create index if not exists key_use_log_tenant_idx on key_use_log (tenant_id, at);
+
+-- The privacy contract a table was sealed under: an Open Data Contract Standard document with the Munitas profile. The version it governs
+-- points at it through the schema contract's id, which both rows share.
+create table if not exists privacy_contract (
+  id            uuid primary key,
+  tenant_id     text not null references tenant(id),
+  name          text not null,
+  version       text not null,
+  document      jsonb not null,
+  schema_id     uuid not null references schema_contract(id),
+  content_hash  text not null,
+  created_at    timestamptz not null default now(),
+  unique (tenant_id, schema_id)
+);
+
 -- ------------------------------------------------- reclaiming object bytes --
 
 -- One row per dataset version whose stored objects were deleted to free space.
@@ -799,7 +863,8 @@ begin
   foreach t in array array[
     'schema_contract','dataset','dataset_version','dataset_action','action_run',
     'lease_request','access_lease','department','project','directory',
-    'record_key','tombstone','datasink','write_grant'
+    'record_key','tombstone','datasink','write_grant',
+    'org_key','subject_lookup','subject_key','privacy_contract'
   ] loop
     execute format('drop trigger if exists %I on %I', 'refuse_retired_' || t, t);
     execute format(

@@ -29,7 +29,7 @@ from crypto import DestroyedKeyError, EnvelopeCrypto
 
 from . import (access_preview, activation, agent_upload, agents, auth, config,
               dag_pipelines, db, department_approvers, derivations, external_accounts, grants, housekeeping, iceberg,
-              iceberg_catalog, ingest, legal_export, lifecycle, logs, models, opa, people, pipeline, r2,
+              iceberg_catalog, ingest, legal_export, lifecycle, logs, models, opa, people, person_routes, pipeline, r2,
               read_models, seaweed, storage, table_jobs, task_credential, temporal_client,
               versions)
 
@@ -127,6 +127,7 @@ app.include_router(derivations.router)
 app.include_router(lifecycle.router)
 app.include_router(legal_export.router)
 app.include_router(table_jobs.router)
+app.include_router(person_routes.router)
 # The catalog answers in the shape Iceberg clients read, not FastAPI's default.
 app.add_exception_handler(iceberg_catalog.CatalogError, iceberg_catalog.handle_error)
 

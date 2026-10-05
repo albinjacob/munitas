@@ -94,6 +94,7 @@ SCRIPTS = [
     ("U125 what is checked after a run's cleanup is kept on the history page as a second line tied to that run", "v125_history_keeps_after_run_results.py"),
     ("U126 who may bring data in, register code and confirm a claim, and the second approver when the only approver made the claim", "v126_roles_on_person_routes.py"),
     ("U127 a department has several approvers, any one of whom may act, and approvers change who they are, on the record", "v127_department_approvers.py"),
+    ("U128 one person's data is locked under a key of their own, and erasing the person destroys that key and nothing else", "v128_person_keys_erasure.py"),
 ]
 
 here = Path(__file__).parent

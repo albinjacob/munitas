@@ -44,6 +44,10 @@ ROLE_STORAGE_KEYS = {
     'notebook_explore': _pair('S3_NOTEBOOK_EXPLORE', 'notebook-explore', 'notebook-explore-secret'),
     'agent_runtime': _pair('S3_AGENT_RUNTIME', 'agent-runtime', 'agent-runtime-secret'),
 }
+# The master key of the key service that holds each person's key (person_keys.py), read from a mounted file and never from the
+# environment or the database. Not required at startup: the platform runs without it, and the routes that need it say so.
+KEY_SERVICE_MASTER_FILE = os.environ.get("MUNITAS_KEY_SERVICE_MASTER_FILE", "/run/secrets/key_service_master")
+
 FILER_URL = os.environ.get("MUNITAS_FILER_URL", "http://seaweedfs:8888")
 MASTER_URL = os.environ.get("MUNITAS_MASTER_URL", "http://seaweedfs:9333")
 

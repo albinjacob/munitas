@@ -332,6 +332,9 @@ services:
       # Verification scripts run in here so they sign S3 requests properly and
       # see the same network the platform does.
       - ./verify:/verify:ro
+      # The key service's master key, a file this machine made (start-dev.ps1) and never part of the repository. Read-only.
+      # The API starts without it; only the routes that lock a person's data need it.
+      - ./infra/secrets:/run/secrets:ro
       # The tool a recipient uses to open a legal export, so a check can use the real one.
       - ./scripts/client:/client:ro
       # The canary-only tidy, so a check can prove it refuses everything that is not the canary tenant.
