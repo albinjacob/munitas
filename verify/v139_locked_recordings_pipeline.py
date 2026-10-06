@@ -17,6 +17,7 @@ It needs `python -m worker.main` running on the machine with the graphics card. 
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 import uuid
@@ -113,6 +114,15 @@ def main() -> int:
     audio_openings = [r for r in log if "open a recording" in r["purpose"] and "answer key" not in r["purpose"]]
     check("each recording was opened at least once for the speech and redaction steps", len(audio_openings) >= 2, str(len(audio_openings)))
     check("the log names both patients, by code only", len({r["person_code"] for r in log}) == 2)
+
+    heading("No plain copy of a recording is left on this machine")
+    work = Path(os.environ["MUNITAS_DATA"]) / "work"
+    with db() as conn:
+        prefix = conn.execute("select storage_prefix from dataset_version where id = %s", (version,)).fetchone()["storage_prefix"]
+    left = sorted(p.name for p in work.glob(prefix.replace("/", "_") + "_*"))
+    check("the recordings the speech step opened were removed when it was done with them", left == [], str(left))
+    redacted = sorted(p.name for p in work.glob("redacted_c-000*.wav"))
+    check("and so were the redacted files, once they were stored", redacted == [], str(redacted))
 
     heading("A patient who was erased is left out of the next run")
     with db() as conn:

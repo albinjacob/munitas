@@ -429,11 +429,16 @@ def transcribe(params: dict) -> dict:
             activity.heartbeat(row["record_id"])
             continue
 
-        segments = backend.transcribe(local)
-        words, pieces = [], []
-        for segment in segments:
-            pieces.append(segment["text"])
-            words.extend(segment["words"])
+        # The plain copy of the recording exists only while it is being heard: it is removed when the model is done with it, whether that worked
+        # or not, so destroying a patient's key is not undone by a copy left on this machine's disk.
+        try:
+            segments = backend.transcribe(local)
+            words, pieces = [], []
+            for segment in segments:
+                pieces.append(segment["text"])
+                words.extend(segment["words"])
+        finally:
+            local.unlink(missing_ok=True)
 
         transcript = "".join(pieces).strip()
         result = {
@@ -695,12 +700,19 @@ def redact(params: dict) -> dict:
                 left_out.append(row["record_id"])
                 activity.heartbeat(row["record_id"])
                 continue
-            audio, rate = sf.read(str(local), dtype="int16")
+            # As in transcribe: the plain copy is removed as soon as it has been read, and the redacted file once it is stored.
+            try:
+                audio, rate = sf.read(str(local), dtype="int16")
+            finally:
+                local.unlink(missing_ok=True)
             masked = redact_audio(np.asarray(audio), rate, time_spans)
             out_path = config.WORK / f"redacted_{row['record_id']}.wav"
-            sf.write(str(out_path), masked, rate)
-            redacted_key = _key(params["prefix"], f"{row['record_id']}.redacted.wav")
-            manifest.append(cp.put_file(write_client, redacted_key, out_path, params["bucket"]))
+            try:
+                sf.write(str(out_path), masked, rate)
+                redacted_key = _key(params["prefix"], f"{row['record_id']}.redacted.wav")
+                manifest.append(cp.put_file(write_client, redacted_key, out_path, params["bucket"]))
+            finally:
+                out_path.unlink(missing_ok=True)
 
         out_rows.append({
             "record_id": row["record_id"],
