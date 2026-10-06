@@ -3592,6 +3592,50 @@
         ]
       }
     },
+    "/dataset-versions/{version_id}/locking": {
+      "get": {
+        "description": "What a screen needs to show a locked table to the caller: its columns and how each is treated, what they may do, their lease, the limits.\n\nNever a value. Asking records nothing: looking at a screen is not reading what was locked.",
+        "operationId": "locking_dataset_versions__version_id__locking_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Locking Dataset Versions  Version Id  Locking Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Locking",
+        "tags": [
+          "person keys"
+        ]
+      }
+    },
     "/dataset-versions/{version_id}/person-rows": {
       "get": {
         "description": "The rows of a table sealed under a privacy contract, with the locked columns opened for somebody the policy lets.\n\nThe owning department's approvers read every row (\"mode\": \"full\"). Anybody else reads only the fixed sample their current lease opens\n(\"mode\": \"sample\"). A person who was erased has an erased marker where their locked values were. The decision is recorded either way.",
