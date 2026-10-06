@@ -798,6 +798,42 @@ create table if not exists privacy_contract (
   unique (tenant_id, schema_id)
 );
 
+-- ------------------------------------- leases on locked columns ---------------
+
+-- A person who is not the owning department's approver sees a table's locked columns only through a lease: a purpose, an approver who is
+-- not the person asking, a short life and a row cap. Separate from access_lease on purpose: that one opens files through a storage
+-- credential, this one opens locked columns through the key service, and sharing a table would tie two different rules together.
+-- The longest life and the highest row cap are decided in policy (access.rego), once.
+create table if not exists locked_column_lease (
+  id                  uuid primary key,
+  tenant_id           text not null references tenant(id),
+  principal           text not null,
+  dataset_version_id  uuid not null references dataset_version(id),
+  purpose             text not null check (purpose <> ''),
+  days                int not null check (days >= 1),
+  row_limit           int not null check (row_limit >= 1),
+  status              text not null default 'requested' check (status in ('requested','approved','declined','revoked')),
+  requested_at        timestamptz not null default now(),
+  decided_by          text,
+  decided_at          timestamptz,
+  decision_note       text,
+  expires_at          timestamptz,
+  revoked_by          text,
+  revoked_at          timestamptz,
+  -- Separation of duties, in the schema rather than in a review process.
+  constraint locked_lease_no_self_approval check (decided_by is null or decided_by <> principal),
+  constraint locked_lease_decided_once check ((status = 'requested') = (decided_by is null)),
+  constraint locked_lease_approved_has_an_end check (status not in ('approved', 'revoked') or expires_at is not null),
+  constraint locked_lease_revoked_says_who check ((status = 'revoked') = (revoked_by is not null))
+);
+-- One waiting request per person and version, so a pile of asks cannot be used to collect more rows than one lease allows.
+create unique index if not exists locked_column_lease_one_waiting
+  on locked_column_lease (principal, dataset_version_id) where status = 'requested';
+create index if not exists locked_column_lease_version_idx on locked_column_lease (tenant_id, dataset_version_id);
+
+-- Which lease a locked-column read was made under. A column of its own and not access_decision.lease_id, which names an access_lease.
+alter table access_decision add column if not exists locked_column_lease_id uuid;
+
 -- ------------------------------------------------- reclaiming object bytes --
 
 -- One row per dataset version whose stored objects were deleted to free space.
@@ -864,7 +900,7 @@ begin
     'schema_contract','dataset','dataset_version','dataset_action','action_run',
     'lease_request','access_lease','department','project','directory',
     'record_key','tombstone','datasink','write_grant',
-    'org_key','subject_lookup','subject_key','privacy_contract'
+    'org_key','subject_lookup','subject_key','privacy_contract','locked_column_lease'
   ] loop
     execute format('drop trigger if exists %I on %I', 'refuse_retired_' || t, t);
     execute format(

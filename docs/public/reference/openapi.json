@@ -1256,6 +1256,52 @@
         "title": "LeaseRequestIn",
         "type": "object"
       },
+      "LockedColumnLeaseDecisionIn": {
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "title": "LockedColumnLeaseDecisionIn",
+        "type": "object"
+      },
+      "LockedColumnLeaseRequestIn": {
+        "properties": {
+          "dataset_version_id": {
+            "title": "Dataset Version Id",
+            "type": "string"
+          },
+          "days": {
+            "title": "Days",
+            "type": "integer"
+          },
+          "purpose": {
+            "title": "Purpose",
+            "type": "string"
+          },
+          "rows": {
+            "description": "How many rows the lease opens",
+            "title": "Rows",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "dataset_version_id",
+          "purpose",
+          "days",
+          "rows"
+        ],
+        "title": "LockedColumnLeaseRequestIn",
+        "type": "object"
+      },
       "PipelineRunIn": {
         "properties": {
           "dataset": {
@@ -3078,6 +3124,51 @@
         ]
       }
     },
+    "/audit/locked-columns": {
+      "get": {
+        "description": "How locking was used in the caller's organisation: reads and refusals, key uses, leases, contract treatments and erasures.\n\nFor the privacy auditor and the data protection officer. Never a name, a value or an identifier.",
+        "operationId": "audit_locked_columns_audit_locked_columns_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Audit Locked Columns Audit Locked Columns Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Audit Locked Columns",
+        "tags": [
+          "person keys"
+        ]
+      }
+    },
     "/auth/whoami": {
       "get": {
         "description": "Prove the mechanism: a real session resolves to a real directory row.\n\nNothing downstream reads this endpoint yet. It exists so the login flow\ncan be verified end to end (console logs in, calls this, sees its own\nidentity come back) before anything is wired to depend on it.",
@@ -3365,7 +3456,7 @@
     },
     "/dataset-versions/{version_id}/person-rows": {
       "get": {
-        "description": "The rows of a table sealed under a privacy contract, with the locked columns opened for a permitted reader.\n\nA person who was erased has an erased marker where their locked values were. The decision is recorded either way.",
+        "description": "The rows of a table sealed under a privacy contract, with the locked columns opened for somebody the policy lets.\n\nThe owning department's approvers read every row (\"mode\": \"full\"). Anybody else reads only the fixed sample their current lease opens\n(\"mode\": \"sample\"). A person who was erased has an erased marker where their locked values were. The decision is recorded either way.",
         "operationId": "person_rows_dataset_versions__version_id__person_rows_get",
         "parameters": [
           {
@@ -8334,6 +8425,236 @@
           }
         },
         "summary": "Get Lineage"
+      }
+    },
+    "/locked-column-leases": {
+      "get": {
+        "description": "The person's own leases, and the requests waiting for them as an approver of the department that owns the data.",
+        "operationId": "list_leases_locked_column_leases_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response List Leases Locked Column Leases Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Leases",
+        "tags": [
+          "person keys"
+        ]
+      },
+      "post": {
+        "description": "Ask for a lease on a table's locked columns: a purpose, up to 7 days, up to 20 rows. A department approver decides it.",
+        "operationId": "request_lease_locked_column_leases_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LockedColumnLeaseRequestIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Request Lease Locked Column Leases Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Request Lease",
+        "tags": [
+          "person keys"
+        ]
+      }
+    },
+    "/locked-column-leases/{lease_id}/approve": {
+      "post": {
+        "description": "Approve a request. Only an approver of the department that owns the data, and never the person who asked.",
+        "operationId": "approve_lease_locked_column_leases__lease_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "lease_id",
+            "required": true,
+            "schema": {
+              "title": "Lease Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/LockedColumnLeaseDecisionIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Approve Lease Locked Column Leases  Lease Id  Approve Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve Lease",
+        "tags": [
+          "person keys"
+        ]
+      }
+    },
+    "/locked-column-leases/{lease_id}/decline": {
+      "post": {
+        "description": "Decline a request, with a note saying why.",
+        "operationId": "decline_lease_locked_column_leases__lease_id__decline_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "lease_id",
+            "required": true,
+            "schema": {
+              "title": "Lease Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/LockedColumnLeaseDecisionIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Decline Lease Locked Column Leases  Lease Id  Decline Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Decline Lease",
+        "tags": [
+          "person keys"
+        ]
+      }
+    },
+    "/locked-column-leases/{lease_id}/revoke": {
+      "post": {
+        "description": "End a lease that is in force: the department's approver, or the person who holds it.",
+        "operationId": "revoke_lease_locked_column_leases__lease_id__revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "lease_id",
+            "required": true,
+            "schema": {
+              "title": "Lease Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Revoke Lease Locked Column Leases  Lease Id  Revoke Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Lease",
+        "tags": [
+          "person keys"
+        ]
       }
     },
     "/organisation": {

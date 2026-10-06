@@ -333,9 +333,9 @@ def run_api_section(person_keys) -> None:
     got = {x["visit_id"]: x for x in r.json()["rows"]} if r.status_code == 200 else {}
     check("a data custodian reads the rows with the locked columns opened", r.status_code == 200 and got["v1"]["patient_name"] == "Ada Example", f"{r.status_code} {reasons_of(r)[:90]}")
     r = api("GET", f"/dataset-versions/{version}/person-rows", headers=researcher)
-    check("a researcher is refused with 403 and a reason", r.status_code == 403 and "data custodian" in reasons_of(r), f"{r.status_code} {reasons_of(r)[:90]}")
+    check("a researcher is refused with 403 and a reason", r.status_code == 403 and "department that owns this data" in reasons_of(r), f"{r.status_code} {reasons_of(r)[:90]}")
     r = api("GET", f"/dataset-versions/{version}/person-rows", headers=engineer)
-    check("so is a data engineer, who brings data in but does not read what was locked", r.status_code == 403, f"{r.status_code}")
+    check("so is a data engineer, who brings data in but holds no lease on what was locked", r.status_code == 403, f"{r.status_code}")
     r = api("GET", f"/dataset-versions/{uuid.uuid4()}/person-rows", headers=custodian)
     check("a table that does not exist is not found", r.status_code == 404, str(r.status_code))
 

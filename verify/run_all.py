@@ -95,6 +95,7 @@ SCRIPTS = [
     ("U126 who may bring data in, register code and confirm a claim, and the second approver when the only approver made the claim", "v126_roles_on_person_routes.py"),
     ("U127 a department has several approvers, any one of whom may act, and approvers change who they are, on the record", "v127_department_approvers.py"),
     ("U128 one person's data is locked under a key of their own, and erasing the person destroys that key and nothing else", "v128_person_keys_erasure.py"),
+    ("U129 locked columns are read in full only by the owning department's approvers, and by anybody else only through a lease an auditor can see", "v129_locked_column_leases.py"),
 ]
 
 here = Path(__file__).parent

@@ -1691,24 +1691,143 @@ test_the_pipeline_holds_its_standing_access_in_its_own_organisation if {
 	access.storage_roles.pipeline_action.scope == "own_tenant"
 }
 
-test_custodian_may_read_locked_columns if {
-	access.may_read_locked_columns with input as {"person": {"id": "x", "roles": ["data_custodian"]}}
+# ------------------------------------------- locked columns: leases and reading --
+
+test_engineer_may_ask_for_a_locked_column_lease if {
+	access.may_request_locked_lease with input as {"requester": {"id": "e", "roles": ["pipeline_operator"]}, "request": {"principal": "e", "purpose": "devise the postcode rule", "days": 3, "rows": 20}}
 }
 
-test_roles_that_may_not_read_locked_columns if {
-	every role in ["notebook_explore", "pipeline_operator", "dpo", "analyst", "network_architect", "platform_admin"] {
-		not access.may_read_locked_columns with input as {"person": {"id": "x", "roles": [role]}}
+test_roles_that_may_ask_for_a_locked_column_lease if {
+	every role in ["pipeline_operator", "deid_reviewer", "privacy_auditor", "dpo"] {
+		access.may_request_locked_lease with input as {"requester": {"id": "x", "roles": [role]}, "request": {"principal": "x", "purpose": "check", "days": 1, "rows": 5}}
 	}
 }
 
-test_locked_columns_refusal_says_why if {
-	decision := access.locked_columns_decision with input as {"person": {"id": "x", "roles": ["notebook_explore"]}}
-	decision.allow == false
-	"this person holds no role that may read locked columns (a data custodian)" in decision.reasons
+test_roles_that_may_not_ask_for_a_locked_column_lease if {
+	every role in ["notebook_explore", "analyst", "network_architect", "platform_admin", "data_custodian"] {
+		not access.may_request_locked_lease with input as {"requester": {"id": "x", "roles": [role]}, "request": {"principal": "x", "purpose": "check", "days": 1, "rows": 5}}
+	}
 }
 
-test_locked_columns_allowance_has_no_reasons if {
-	decision := access.locked_columns_decision with input as {"person": {"id": "x", "roles": ["data_custodian"]}}
+test_lease_request_is_for_yourself if {
+	decision := access.locked_lease_request_decision with input as {"requester": {"id": "a", "roles": ["pipeline_operator"]}, "request": {"principal": "b", "purpose": "x", "days": 1, "rows": 5}}
+	decision.allow == false
+	"a lease is asked for by the person who would hold it" in decision.reasons
+}
+
+test_lease_request_needs_a_purpose if {
+	decision := access.locked_lease_request_decision with input as {"requester": {"id": "a", "roles": ["pipeline_operator"]}, "request": {"principal": "a", "purpose": "   ", "days": 1, "rows": 5}}
+	decision.allow == false
+	"a lease needs a purpose, which is recorded with it" in decision.reasons
+}
+
+test_lease_request_is_capped_in_days if {
+	decision := access.locked_lease_request_decision with input as {"requester": {"id": "a", "roles": ["pipeline_operator"]}, "request": {"principal": "a", "purpose": "x", "days": 8, "rows": 5}}
+	decision.allow == false
+	"a lease lasts between 1 and 7 days" in decision.reasons
+}
+
+test_lease_request_is_capped_in_rows if {
+	decision := access.locked_lease_request_decision with input as {"requester": {"id": "a", "roles": ["pipeline_operator"]}, "request": {"principal": "a", "purpose": "x", "days": 2, "rows": 21}}
+	decision.allow == false
+	"a lease opens between 1 and 20 rows" in decision.reasons
+}
+
+test_lease_request_at_the_caps_is_allowed if {
+	decision := access.locked_lease_request_decision with input as {"requester": {"id": "a", "roles": ["pipeline_operator"]}, "request": {"principal": "a", "purpose": "x", "days": 7, "rows": 20}}
 	decision.allow == true
 	count(decision.reasons) == 0
+}
+
+test_department_approver_may_approve_a_locked_column_lease if {
+	access.may_approve_locked_lease with input as {"approver": {"id": "c", "roles": ["data_custodian"]}, "request": {"principal": "e"}, "dataset": {"approvers": ["c"]}}
+}
+
+test_nobody_approves_their_own_locked_column_lease if {
+	decision := access.locked_lease_approval_decision with input as {"approver": {"id": "c", "roles": ["data_custodian"]}, "request": {"principal": "c"}, "dataset": {"approvers": ["c"]}}
+	decision.allow == false
+	"nobody approves their own lease" in decision.reasons
+}
+
+test_a_custodian_of_another_department_may_not_approve if {
+	decision := access.locked_lease_approval_decision with input as {"approver": {"id": "z", "roles": ["data_custodian"]}, "request": {"principal": "e"}, "dataset": {"approvers": ["c"]}}
+	decision.allow == false
+	"only an approver of the department that owns this data may decide a lease on it" in decision.reasons
+}
+
+test_the_dpo_may_not_approve_a_locked_column_lease if {
+	decision := access.locked_lease_approval_decision with input as {"approver": {"id": "d", "roles": ["dpo"]}, "request": {"principal": "e"}, "dataset": {"approvers": ["d"]}}
+	decision.allow == false
+	"this person holds no role that may decide a lease (a data custodian)" in decision.reasons
+}
+
+test_approver_or_holder_may_revoke_a_locked_column_lease if {
+	access.may_revoke_locked_lease with input as {"actor": {"id": "c", "roles": ["data_custodian"]}, "request": {"principal": "e"}, "dataset": {"approvers": ["c"]}}
+	access.may_revoke_locked_lease with input as {"actor": {"id": "e", "roles": ["pipeline_operator"]}, "request": {"principal": "e"}, "dataset": {"approvers": ["c"]}}
+}
+
+test_somebody_else_may_not_revoke_a_locked_column_lease if {
+	not access.may_revoke_locked_lease with input as {"actor": {"id": "x", "roles": ["pipeline_operator"]}, "request": {"principal": "e"}, "dataset": {"approvers": ["c"]}}
+	not access.may_revoke_locked_lease with input as {"actor": {"id": "z", "roles": ["data_custodian"]}, "request": {"principal": "e"}, "dataset": {"approvers": ["c"]}}
+}
+
+test_department_approver_reads_locked_columns_in_full if {
+	decision := access.locked_columns_decision with input as {"person": {"id": "c", "roles": ["data_custodian"]}, "dataset": {"approvers": ["c"]}, "lease": null}
+	decision.allow == true
+	decision.mode == "full"
+}
+
+test_other_department_custodian_may_not_read_locked_columns if {
+	decision := access.locked_columns_decision with input as {"person": {"id": "z", "roles": ["data_custodian"]}, "dataset": {"approvers": ["c"]}, "lease": null}
+	decision.allow == false
+	"this person is not an approver of the department that owns this data and holds no current lease for its locked columns" in decision.reasons
+}
+
+test_roles_with_no_lease_may_not_read_locked_columns if {
+	every role in ["notebook_explore", "pipeline_operator", "dpo", "deid_reviewer", "privacy_auditor", "analyst", "network_architect", "platform_admin"] {
+		not access.locked_columns_decision.allow with input as {"person": {"id": "x", "roles": [role]}, "dataset": {"approvers": ["c"]}, "lease": null}
+	}
+}
+
+test_a_current_lease_reads_a_sample if {
+	decision := access.locked_columns_decision with input as {"person": {"id": "e", "roles": ["pipeline_operator"]}, "dataset": {"approvers": ["c"]}, "lease": {"principal": "e", "revoked": false, "expires_at": "2200-01-01T00:00:00Z"}}
+	decision.allow == true
+	decision.mode == "sample"
+}
+
+test_an_expired_lease_reads_nothing if {
+	decision := access.locked_columns_decision with input as {"person": {"id": "e", "roles": ["pipeline_operator"]}, "dataset": {"approvers": ["c"]}, "lease": {"principal": "e", "revoked": false, "expires_at": "2001-01-01T00:00:00Z"}}
+	decision.allow == false
+}
+
+test_a_revoked_lease_reads_nothing if {
+	decision := access.locked_columns_decision with input as {"person": {"id": "e", "roles": ["pipeline_operator"]}, "dataset": {"approvers": ["c"]}, "lease": {"principal": "e", "revoked": true, "expires_at": "2200-01-01T00:00:00Z"}}
+	decision.allow == false
+}
+
+test_somebody_elses_lease_reads_nothing if {
+	decision := access.locked_columns_decision with input as {"person": {"id": "e", "roles": ["pipeline_operator"]}, "dataset": {"approvers": ["c"]}, "lease": {"principal": "f", "revoked": false, "expires_at": "2200-01-01T00:00:00Z"}}
+	decision.allow == false
+}
+
+test_auditor_and_dpo_may_read_the_audit_evidence if {
+	every role in ["privacy_auditor", "dpo"] {
+		access.may_read_audit_evidence with input as {"person": {"id": "x", "roles": [role]}}
+	}
+}
+
+test_other_roles_may_not_read_the_audit_evidence if {
+	every role in ["data_custodian", "pipeline_operator", "deid_reviewer", "notebook_explore", "analyst", "platform_admin", "network_architect"] {
+		not access.may_read_audit_evidence with input as {"person": {"id": "x", "roles": [role]}}
+	}
+}
+
+test_audit_evidence_refusal_says_why if {
+	decision := access.audit_evidence_decision with input as {"person": {"id": "x", "roles": ["notebook_explore"]}}
+	decision.allow == false
+	"this person holds no role that may read the audit evidence (a privacy auditor or the data protection officer)" in decision.reasons
+}
+
+test_privacy_auditor_reads_no_data_by_holding_the_role if {
+	access.role_floor["privacy_auditor"] == 4
 }

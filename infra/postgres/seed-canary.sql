@@ -45,6 +45,7 @@ insert into directory (id, tenant_id, label, kind, roles) values
   ('canary-researcher', 'canary', 'Canary researcher',  'human', '{notebook_explore}'),
   ('canary-dpo',        'canary', 'Canary oversight',   'human', '{dpo}'),
   ('canary-reviewer',   'canary', 'Canary reviewer',    'human', '{deid_reviewer}'),
+  ('canary-auditor',    'canary', 'Canary privacy auditor', 'human', '{privacy_auditor}'),
   -- A dedicated identity, the same pattern every other role here already
   -- follows (canary-reviewer holds deid_reviewer and nothing else): the
   -- role_grant/decide flow is meant to be how anyone gets a role after

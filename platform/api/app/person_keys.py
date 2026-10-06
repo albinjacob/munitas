@@ -23,33 +23,12 @@ from pathlib import Path
 
 from crypto import BuiltInKeyService, DestroyedKeyError, KeyService, lock_value, unlock_value
 
-from . import config, db, key_store, opa, privacy_contract, storage, versions
+from . import config, db, key_store, locked_leases, opa, privacy_contract, storage, versions
+from .person_errors import ErasureHeld, LeaseConflict, NoSuchLease, NoSuchVersion, NotPermitted, Refused  # noqa: F401
 
 FILE_NAME = "table.jsonl"
 READ_PURPOSE = "read locked columns"
 PERSON_COLUMN = "person_code"
-
-
-class Refused(Exception):
-    """The table or the contract cannot be sealed. Every problem is listed, because one at a time would be one attempt each."""
-
-    def __init__(self, reasons: list[str]) -> None:
-        super().__init__("; ".join(reasons))
-        self.reasons = reasons
-
-
-class NotPermitted(Exception):
-    def __init__(self, reasons: list[str]) -> None:
-        super().__init__("; ".join(reasons))
-        self.reasons = reasons
-
-
-class ErasureHeld(Exception):
-    """A legal hold stands over the organisation, and a destroyed key cannot be brought back."""
-
-
-class NoSuchVersion(LookupError):
-    pass
 
 
 _service: KeyService | None = None
@@ -212,26 +191,39 @@ def _register(tenant: str, contract: dict, cols: list[dict], key_column: str) ->
 
 
 def read_rows(service: KeyService, *, version_id: str, identity: dict) -> list[dict]:
-    """The rows of a sealed table with the locked columns opened, for a permitted reader. The decision is recorded either way.
+    """The rows `read_locked` opens, without the account of how."""
+    return read_locked(service, version_id=version_id, identity=identity)["rows"]
 
-    A person who was erased does not fail the table: their locked columns come back as an erased marker with the date, and every other
-    column and every other person reads as before.
+
+def read_locked(service: KeyService, *, version_id: str, identity: dict) -> dict:
+    """The rows of a sealed table with the locked columns opened, for somebody the policy lets. The decision is recorded either way.
+
+    The owning department's approvers read every row. Anybody else reads only the fixed sample their current lease opens, and the lease
+    is named on the record. A person who was erased does not fail the table: their locked columns come back as an erased marker with the
+    date, and every other column and every other person reads as before.
     """
-    version = db.one("select v.id, v.tenant_id, v.schema_id, v.storage_prefix, v.storage_backend, v.object_manifest, v.visibility_class "
-                     "from dataset_version v where v.id = %s", (version_id,))
+    version = db.one("select v.id, v.tenant_id, v.schema_id, v.storage_prefix, v.storage_backend, v.object_manifest, v.visibility_class, "
+                     "d.department_id from dataset_version v join dataset d on d.id = v.dataset_id where v.id = %s", (version_id,))
     if not version or version["tenant_id"] != identity["tenant_id"]:
         raise NoSuchVersion(version_id)
     contract = db.one("select document from privacy_contract where tenant_id = %s and schema_id = %s", (version["tenant_id"], version["schema_id"]))
     if not contract:
         raise NoSuchVersion(f"{version_id} was not sealed under a privacy contract")
 
-    allowed, reasons = opa.may_read_locked_columns({"person": {"id": identity["id"], "roles": identity["roles"]}})
+    lease = locked_leases.current_lease(version["tenant_id"], identity["id"], version_id)
+    decision = opa.locked_columns({
+        "person": {"id": identity["id"], "roles": identity["roles"]},
+        "dataset": {"approvers": locked_leases.approvers_of(version["department_id"])},
+        "lease": locked_leases.policy_view(lease)})
+    allowed, mode, reasons = bool(decision["allow"]), decision.get("mode", "none"), list(decision.get("reasons", []))
+    used = lease if allowed and mode == "sample" else None
     db.execute(
         """insert into access_decision (principal, principal_kind, principal_roles, tenant_id, dataset_version_id, requested_class,
-                                        purpose, allowed, reasons, phase)
-           values (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'policy') returning principal""",
+                                        purpose, allowed, reasons, phase, locked_column_lease_id)
+           values (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'policy', %s) returning principal""",
         (identity["id"], identity.get("kind", "human"), identity["roles"], version["tenant_id"], version_id,
-         version["visibility_class"], READ_PURPOSE, allowed, reasons))
+         version["visibility_class"], READ_PURPOSE + (f": {used['purpose']}" if used else ""), allowed, reasons,
+         str(used["id"]) if used else None))
     if not allowed:
         raise NotPermitted(reasons)
 
@@ -241,9 +233,14 @@ def read_rows(service: KeyService, *, version_id: str, identity: dict) -> list[d
         Bucket=storage.bucket_for(version["storage_backend"], tenant), Key=entry["key"])["Body"].read()
     rows = [json.loads(line) for line in body.decode("utf-8").splitlines() if line]
 
-    locked = [c["name"] for c in privacy_contract.columns(contract["document"]) if c["treatment"] == "lock"]
-    key_column = next(c["name"] for c in privacy_contract.columns(contract["document"]) if c["primaryKey"])
-    keys = service.unwrap_many(tenant, [r[PERSON_COLUMN] for r in rows], identity["id"], READ_PURPOSE)
+    columns = privacy_contract.columns(contract["document"])
+    locked = [c["name"] for c in columns if c["treatment"] == "lock"]
+    key_column = next(c["name"] for c in columns if c["primaryKey"])
+    if used:
+        keep = set(locked_leases.sample_ids(version_id, identity["id"], [str(r[key_column]) for r in rows], used["row_limit"]))
+        rows = [r for r in rows if str(r[key_column]) in keep]
+    purpose = READ_PURPOSE + (f" (lease {used['id']}: {used['purpose']})" if used else "")
+    keys = service.unwrap_many(tenant, [r[PERSON_COLUMN] for r in rows], identity["id"], purpose)
     out = []
     for row in rows:
         code, row = row[PERSON_COLUMN], dict(row)
@@ -256,7 +253,7 @@ def read_rows(service: KeyService, *, version_id: str, identity: dict) -> list[d
             for name in locked:
                 row[name] = unlock_value(keys[code], tenant, code, name, str(row[key_column]), row[name])
         out.append(row)
-    return out
+    return {"rows": out, "mode": mode, "lease_id": str(used["id"]) if used else None}
 
 
 # Erasing ---------------------------------------------------------------------

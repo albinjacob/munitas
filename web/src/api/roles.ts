@@ -30,6 +30,7 @@ const ROLE_LABEL: Record<string, string> = {
   analyst: "Analyst",
   deid_reviewer: "De-identification reviewer",
   network_architect: "Network architect",
+  privacy_auditor: "Privacy auditor",
 };
 
 export function roleLabel(role: string): string {

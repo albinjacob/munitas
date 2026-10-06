@@ -28,6 +28,7 @@ role_floor := {
 	"platform_admin": 4, # runs the system, holds no standing access to its contents
 	"hybridops": 4, # support and reliability work needs telemetry, not records
 	"network_architect": 4, # approves which hosts an agent may call, reads no data by holding the role
+	"privacy_auditor": 4, # reads the evidence and the logs, never personal data; real values only through a lease somebody else approved
 }
 
 # Which roles hold a storage key of their own, and what each may do across
@@ -1440,26 +1441,179 @@ export_passphrase_decision := {
 	"reasons": [r | some r in passphrase_reason],
 }
 
-# ----------------------------------------- reading what was locked for a person --
+# ------------------------------------------ locked columns: leases and reading --
 
-# A table sealed under a privacy contract has columns locked under each person's own key. Reading them back is a decision of its own: a
-# permitted reader gets the values, anybody else is refused and the refusal is recorded. Only the data custodian, who answers for the
-# data, may. A researcher reads de-identified data, the data protection officer decides and does not read, and the platform
-# administrator has visibility without access.
-locked_column_readers := {"data_custodian"}
+# A table sealed under a privacy contract has columns locked under each person's own key. Who may read them back is decided here.
+#
+# The owning department's approvers read them in full: they answer for the data. Nobody else does by holding a role. A de-identification
+# engineer devising a rule, a reviewer checking a run and an auditor verifying that locking works may all need to see real values, and the
+# way to let them is a lease: a purpose, an approver who is not the asker, a short life and a row cap, each read logged. That is the
+# break-glass pattern: no standing permission, approval by another person, a short fixed time, monitored.
+#
+# The data protection officer may ask for a lease but never approves one, for the reason given at approver_roles above. Nobody approves
+# their own. The caps are constants here so that changing them is one edit with its tests.
+locked_lease_requester_roles := {"pipeline_operator", "deid_reviewer", "privacy_auditor", "dpo"}
+
+locked_lease_max_days := 7
+
+locked_lease_max_rows := 20
+
+default may_request_locked_lease := false
+
+may_request_locked_lease if {
+	input.requester.id == input.request.principal
+	some role in input.requester.roles
+	locked_lease_requester_roles[role]
+	count(trim_space(object.get(input.request, "purpose", ""))) > 0
+	input.request.days >= 1
+	input.request.days <= locked_lease_max_days
+	input.request.rows >= 1
+	input.request.rows <= locked_lease_max_rows
+}
+
+locked_lease_request_reason contains "a lease is asked for by the person who would hold it" if {
+	input.requester.id != input.request.principal
+}
+
+locked_lease_request_reason contains "this person holds no role that may ask for a lease on locked columns (a data engineer, a de-identification reviewer, a privacy auditor or the data protection officer)" if {
+	every role in input.requester.roles {
+		not locked_lease_requester_roles[role]
+	}
+}
+
+locked_lease_request_reason contains "a lease needs a purpose, which is recorded with it" if {
+	count(trim_space(object.get(input.request, "purpose", ""))) == 0
+}
+
+locked_lease_request_reason contains "a lease lasts between 1 and 7 days" if {
+	not input.request.days >= 1
+}
+
+locked_lease_request_reason contains "a lease lasts between 1 and 7 days" if {
+	input.request.days > locked_lease_max_days
+}
+
+locked_lease_request_reason contains "a lease opens between 1 and 20 rows" if {
+	not input.request.rows >= 1
+}
+
+locked_lease_request_reason contains "a lease opens between 1 and 20 rows" if {
+	input.request.rows > locked_lease_max_rows
+}
+
+locked_lease_request_decision := {
+	"allow": may_request_locked_lease,
+	"reasons": [r | some r in locked_lease_request_reason],
+}
+
+# Deciding a lease is the department approver's act, the same authority as deciding who may read the data.
+default may_approve_locked_lease := false
+
+may_approve_locked_lease if {
+	input.approver.id != input.request.principal
+	some role in input.approver.roles
+	approver_roles[role]
+	input.approver.id in input.dataset.approvers
+}
+
+locked_lease_approval_reason contains "nobody approves their own lease" if {
+	input.approver.id == input.request.principal
+}
+
+locked_lease_approval_reason contains "this person holds no role that may decide a lease (a data custodian)" if {
+	every role in input.approver.roles {
+		not approver_roles[role]
+	}
+}
+
+locked_lease_approval_reason contains "only an approver of the department that owns this data may decide a lease on it" if {
+	not input.approver.id in input.dataset.approvers
+}
+
+locked_lease_approval_decision := {
+	"allow": may_approve_locked_lease,
+	"reasons": [r | some r in locked_lease_approval_reason],
+}
+
+# Ending a lease early: the department's approver, or the person who holds it.
+default may_revoke_locked_lease := false
+
+may_revoke_locked_lease if {
+	some role in input.actor.roles
+	approver_roles[role]
+	input.actor.id in input.dataset.approvers
+}
+
+may_revoke_locked_lease if input.actor.id == input.request.principal
+
+locked_lease_revoke_reason contains "only an approver of the department that owns this data, or the person who holds the lease, may end it" if {
+	not may_revoke_locked_lease
+}
+
+locked_lease_revoke_decision := {
+	"allow": may_revoke_locked_lease,
+	"reasons": [r | some r in locked_lease_revoke_reason],
+}
+
+# Reading. `lease` is this person's lease on this version, or null. The platform passes only a lease it found, and this decides whether it
+# still counts: held by this person, not ended early, not past its end.
+department_approver_reads if {
+	some role in input.person.roles
+	approver_roles[role]
+	input.person.id in input.dataset.approvers
+}
+
+lease_reads if {
+	input.lease != null
+	input.lease.principal == input.person.id
+	not input.lease.revoked
+	lease_current(input.lease)
+}
 
 default may_read_locked_columns := false
 
-may_read_locked_columns if {
-	some role in input.person.roles
-	locked_column_readers[role]
+may_read_locked_columns if department_approver_reads
+
+may_read_locked_columns if lease_reads
+
+# In full for the department's approver; a fixed sample for a lease holder.
+default locked_columns_mode := "none"
+
+locked_columns_mode := "full" if department_approver_reads
+
+locked_columns_mode := "sample" if {
+	not department_approver_reads
+	lease_reads
 }
 
-locked_columns_reason contains "this person holds no role that may read locked columns (a data custodian)" if {
+locked_columns_reason contains "this person is not an approver of the department that owns this data and holds no current lease for its locked columns" if {
 	not may_read_locked_columns
 }
 
 locked_columns_decision := {
 	"allow": may_read_locked_columns,
+	"mode": locked_columns_mode,
 	"reasons": [r | some r in locked_columns_reason],
+}
+
+# ------------------------------------------------------------ audit evidence --
+
+# The evidence of how locking was used: who read or was refused, which keys were made, opened or destroyed, the leases, the contracts'
+# treatments and the erasures. Never a name or a value. The auditor's job, and the data protection officer's, who already sees every decision.
+audit_evidence_roles := {"privacy_auditor", "dpo"}
+
+default may_read_audit_evidence := false
+
+may_read_audit_evidence if {
+	some role in input.person.roles
+	audit_evidence_roles[role]
+}
+
+audit_evidence_reason contains "this person holds no role that may read the audit evidence (a privacy auditor or the data protection officer)" if {
+	not may_read_audit_evidence
+}
+
+audit_evidence_decision := {
+	"allow": may_read_audit_evidence,
+	"reasons": [r | some r in audit_evidence_reason],
 }

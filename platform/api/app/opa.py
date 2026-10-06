@@ -308,13 +308,51 @@ def may_export(payload: dict) -> tuple[bool, list[str]]:
 _LOCKED_COLUMNS_PATH = "/v1/data/munitas/access/locked_columns_decision"
 
 
-def may_read_locked_columns(payload: dict) -> tuple[bool, list[str]]:
-    """May this person read the columns of a table that were locked under each person's own key?
+def locked_columns(payload: dict) -> dict:
+    """May this person read the locked columns of this table, and in full or only a sample?
 
-    The data custodian, who answers for the data. Not the researcher, the data protection officer, the data engineer or the platform
-    administrator.
+    Returns the whole decision: `allow`, `mode` ("full" for the owning department's approver, "sample" for the holder of a current lease,
+    "none" otherwise) and the `reasons`. Nobody holds a role that reads them by itself.
     """
-    return _ask(_LOCKED_COLUMNS_PATH, payload)
+    return _decision(_LOCKED_COLUMNS_PATH, payload)
+
+
+_LOCKED_LEASE_REQUEST_PATH = "/v1/data/munitas/access/locked_lease_request_decision"
+_LOCKED_LEASE_APPROVAL_PATH = "/v1/data/munitas/access/locked_lease_approval_decision"
+_LOCKED_LEASE_REVOKE_PATH = "/v1/data/munitas/access/locked_lease_revoke_decision"
+_AUDIT_EVIDENCE_PATH = "/v1/data/munitas/access/audit_evidence_decision"
+
+
+def may_request_locked_lease(payload: dict) -> tuple[bool, list[str]]:
+    """May this person ask for a lease on locked columns, for this long, for this many rows, for this purpose?"""
+    return _ask(_LOCKED_LEASE_REQUEST_PATH, payload)
+
+
+def may_approve_locked_lease(payload: dict) -> tuple[bool, list[str]]:
+    """May this person decide somebody else's lease? An approver of the department that owns the data, never the person asking."""
+    return _ask(_LOCKED_LEASE_APPROVAL_PATH, payload)
+
+
+def may_revoke_locked_lease(payload: dict) -> tuple[bool, list[str]]:
+    """May this person end a lease early? The department's approver, or the person who holds it."""
+    return _ask(_LOCKED_LEASE_REVOKE_PATH, payload)
+
+
+def may_read_audit_evidence(payload: dict) -> tuple[bool, list[str]]:
+    """May this person read the evidence of how locking was used (never a value)? A privacy auditor, or the data protection officer."""
+    return _ask(_AUDIT_EVIDENCE_PATH, payload)
+
+
+def _decision(path: str, payload: dict) -> dict:
+    try:
+        response = httpx.post(f"{config.OPA_URL}{path}", json={"input": payload}, timeout=5.0)
+        response.raise_for_status()
+        result = response.json().get("result")
+    except httpx.HTTPError as exc:
+        raise PolicyUnavailable(f"policy engine unreachable: {exc}") from exc
+    if not isinstance(result, dict) or "allow" not in result:
+        raise PolicyUnavailable("policy engine returned no decision; the bundle may have failed to load")
+    return result
 
 
 def evaluate(payload: dict) -> tuple[bool, list[str]]:

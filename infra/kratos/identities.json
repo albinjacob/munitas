@@ -28,6 +28,7 @@
         { "directory_id": "canary-researcher", "email": "researcher@canary.example", "name": "Canary researcher" },
         { "directory_id": "canary-dpo", "email": "dpo@canary.example", "name": "Canary oversight" },
         { "directory_id": "canary-reviewer", "email": "reviewer@canary.example", "name": "Canary reviewer" },
+        { "directory_id": "canary-auditor", "email": "auditor@canary.example", "name": "Canary privacy auditor" },
         { "directory_id": "canary-architect", "email": "architect@canary.example", "name": "Canary architect" }
       ]
     },
