@@ -10467,6 +10467,195 @@
         ]
       }
     },
+    "/step/v1/outputs/{name}": {
+      "post": {
+        "description": "Open one file to be written, in parts of at most 8 MiB. Opening a name again replaces the earlier file of that name.\n\nNothing is a version yet. The files a step finished are sealed together, \"under review\", when the step ends successfully, and thrown away when\nit fails.",
+        "operationId": "open_output_step_v1_outputs__name__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Open Output Step V1 Outputs  Name  Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Open Output",
+        "tags": [
+          "custom steps"
+        ]
+      }
+    },
+    "/step/v1/outputs/{name}/complete": {
+      "post": {
+        "description": "Finish a file. Every part must be there. Returns the file's size and fingerprint as stored.",
+        "operationId": "complete_output_step_v1_outputs__name__complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Complete Output Step V1 Outputs  Name  Complete Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Complete Output",
+        "tags": [
+          "custom steps"
+        ]
+      }
+    },
+    "/step/v1/outputs/{name}/parts/{part_number}": {
+      "put": {
+        "description": "One part of an open file, sent as the raw body of the request (at most 8 MiB). Sending a part again replaces it.",
+        "operationId": "put_output_part_step_v1_outputs__name__parts__part_number__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "part_number",
+            "required": true,
+            "schema": {
+              "title": "Part Number",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Put Output Part Step V1 Outputs  Name  Parts  Part Number  Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Output Part",
+        "tags": [
+          "custom steps"
+        ]
+      }
+    },
     "/step/v1/recordings": {
       "get": {
         "description": "The recordings this step may be given: each one's id, its size when opened, and whether its patient was erased. Lists; opens nothing.",

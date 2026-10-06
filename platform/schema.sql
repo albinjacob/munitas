@@ -1003,7 +1003,7 @@ begin
     'lease_request','access_lease','department','project','directory',
     'record_key','tombstone','datasink','write_grant',
     'org_key','subject_lookup','subject_key','privacy_contract','locked_column_lease','group_size_report',
-    'recording_upload','recording_part','recording_person','pipeline_version_approval'
+    'recording_upload','recording_part','recording_person','pipeline_version_approval','step_output','step_output_part'
   ] loop
     execute format('drop trigger if exists %I on %I', 'refuse_retired_' || t, t);
     execute format(
@@ -1762,6 +1762,34 @@ create table if not exists pipeline_version_approval (
 );
 create unique index if not exists pipeline_version_approval_live_idx
   on pipeline_version_approval (pipeline_version_id) where withdrawn_at is null;
+
+-- A file a custom step writes through the platform. It is stored in parts under the folder the next version of the output dataset will own, and it
+-- becomes part of a version only when the step succeeded and the platform seals them together, "under review". A step that fails leaves nothing.
+create table if not exists step_output (
+  id               uuid primary key,
+  tenant_id        text not null references tenant(id),
+  pipeline_run_id  uuid not null references pipeline_run(id),
+  step             text not null,
+  name             text not null,
+  storage_key      text not null,
+  storage_upload   text,
+  status           text not null check (status in ('open','complete','sealed','aborted')),
+  bytes            bigint,
+  sha256           text,
+  version_id       uuid references dataset_version(id),
+  created_at       timestamptz not null default now(),
+  finished_at      timestamptz
+);
+create unique index if not exists step_output_live_idx
+  on step_output (pipeline_run_id, step, name) where status in ('open','complete','sealed');
+create table if not exists step_output_part (
+  output_id    uuid not null references step_output(id),
+  part_number  int not null,
+  tenant_id    text not null references tenant(id),
+  etag         text not null,
+  bytes        int not null,
+  primary key (output_id, part_number)
+);
 
 alter table pipeline_run drop constraint if exists pipeline_run_kind_valid;
 alter table pipeline_run add constraint pipeline_run_kind_valid

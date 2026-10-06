@@ -106,7 +106,9 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=config.CONSOLE_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PATCH", "DELETE"],
+    # PUT is how the console sends one part of a recording. A browser asks before it sends one (a preflight request), and refuses when the answer
+    # does not list the method, so without it the console cannot upload a recording in a real browser. verify/v137 sends that request itself.
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     allow_headers=["*"],
 )
 
@@ -216,27 +218,11 @@ def register_contract(body: models.SchemaContractIn, _worker: None = Depends(aut
 
 @app.post("/datasets", status_code=201)
 def create_dataset(body: models.DatasetIn, _worker: None = Depends(auth.worker_only)) -> dict:
-    existing = db.one(
-        "select id from dataset where tenant_id = %s and name = %s",
-        (body.tenant_id, body.name),
-    )
-    if existing:
-        return {"id": str(existing["id"]), "created": False}
-    # A dataset made from a version belongs to the department of the dataset that version is in, so whoever is accountable for the
-    # input is accountable for what is made from it, and access to it can be approved. The version must be one of this organisation's.
-    department_id = None
-    if body.derived_from_version_id:
-        source = db.one(
-            """select d.department_id, v.tenant_id from dataset_version v join dataset d on d.id = v.dataset_id
-                where v.id = %s""", (body.derived_from_version_id,))
-        if not source or source["tenant_id"] != body.tenant_id:
-            raise HTTPException(422, {"reasons": ["the version this dataset is made from does not exist in this organisation"]})
-        department_id = source["department_id"]
-    row = db.execute(
-        "insert into dataset (id, tenant_id, name, department_id) values (%s, %s, %s, %s) returning id",
-        (_uuid(), body.tenant_id, body.name, department_id),
-    )
-    return {"id": str(row["id"]), "created": True}
+    try:
+        dataset_id, created = versions.ensure_dataset(body.tenant_id, body.name, body.derived_from_version_id)
+    except LookupError as exc:
+        raise HTTPException(422, {"reasons": [str(exc)]}) from exc
+    return {"id": dataset_id, "created": created}
 
 
 @app.post("/action-runs", status_code=201)

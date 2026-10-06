@@ -21,7 +21,8 @@ from pydantic import BaseModel
 from . import config, db, opa, seaweed
 from . import auth
 from .auth import current_session
-from .pipeline_dag import DagConfigError, parse_dag_config, steps_asking_for_recordings, validate_dag
+from .pipeline_dag import (DagConfigError, parse_dag_config, steps_asking_for_recordings, steps_needing_approval, steps_writing_files,
+                           validate_dag)
 
 router = APIRouter(tags=["pipelines"])
 
@@ -163,11 +164,12 @@ async def upload_version(
         (version_id, pipeline_id, version, json.dumps(dag_config), config_hash, key, registered_by),
     )
 
-    asking = steps_asking_for_recordings(dag_config)
+    needing = steps_needing_approval(dag_config)
     return {
         "id": version_id, "pipeline_id": pipeline_id, "version": version,
         "config_hash": config_hash, "sealed": True, "step_count": len(dag_config["steps"]),
-        "steps_given_recordings": asking, "needs_approval": bool(asking),
+        "steps_given_recordings": steps_asking_for_recordings(dag_config), "steps_writing_files": steps_writing_files(dag_config),
+        "needs_approval": bool(needing),
     }
 
 
@@ -244,9 +246,9 @@ def read_pipeline(
         (pipeline_id,),
     )
     for v in versions:
-        asking = steps_asking_for_recordings(v["dag_config"])
-        v["steps_given_recordings"] = asking
-        v["needs_approval"] = bool(asking)
+        v["steps_given_recordings"] = steps_asking_for_recordings(v["dag_config"])
+        v["steps_writing_files"] = steps_writing_files(v["dag_config"])
+        v["needs_approval"] = bool(steps_needing_approval(v["dag_config"]))
         v["approved"] = v["approved_by"] is not None
     return {**pipeline, "versions": versions}
 
@@ -280,8 +282,8 @@ def approve_version(pipeline_id: str, version_id: str, body: Decision, identity:
     Until this is done a run of the version is refused, and the recordings are refused to its steps if a run somehow started.
     """
     pipeline, version = _version_of(pipeline_id, version_id, identity)
-    if not steps_asking_for_recordings(version["dag_config"]):
-        raise HTTPException(400, {"reasons": ["no step of this version is given the recordings, so there is nothing to approve"]})
+    if not steps_needing_approval(version["dag_config"]):
+        raise HTTPException(400, {"reasons": ["no step of this version is given the recordings or writes files, so there is nothing to approve"]})
     allowed, reasons = opa.may_approve_pipeline_version({
         "approver": {"id": identity["id"], "roles": identity["roles"]}, "version": {"uploaded_by": version["uploaded_by"]},
         "dataset": {"approvers": _approvers(pipeline)}})

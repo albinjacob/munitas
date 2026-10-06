@@ -17,6 +17,7 @@ do from inside its container.
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import random
@@ -34,11 +35,13 @@ import httpx  # noqa: E402
 from common import ADMIN, API, CANARY, WORKER_HEADERS, api, bearer_for, bucket_for, check, db, fixture_tenant, heading, require_api, s3_client, summary, tiny_wav  # noqa: E402
 from v128_person_keys_erasure import CUSTODIAN, ENGINEER, RESEARCHER, count, register_dataset, reset_keys  # noqa: E402
 from v137_locked_recordings import make_wav, upload_whole  # noqa: E402
-from app import task_credential  # noqa: E402
-from app.pipeline_dag import parse_dag_config, steps_asking_for_recordings, validate_dag  # noqa: E402
+from app import person_keys, task_credential  # noqa: E402
+from app.pipeline_dag import parse_dag_config, steps_asking_for_recordings, steps_needing_approval, steps_writing_files, validate_dag  # noqa: E402
 
 ELSEWHERE = "canary-elsewhere"
 WORKLOAD = f"{CANARY}-pipeline"
+# One dataset name per execution, so what a step writes is made into a dataset that this execution alone has made.
+RUN_DATASET = f"custom-audio-{uuid.uuid4().hex[:8]}"
 
 YAML = """
 name: custom-audio
@@ -57,6 +60,7 @@ steps:
 """
 
 YAML_WITHOUT = YAML.replace("    recordings: true\n", "")
+YAML_WRITES = YAML.replace("    recordings: true\n", "    writes_files: true\n")
 
 
 def scripts_zip() -> bytes:
@@ -88,7 +92,7 @@ def upload_version(pipeline_id: str, yaml_text: str, who: str = ENGINEER) -> htt
 def open_run(source: str, pipeline_version_id: str | None) -> dict:
     """A pipeline run's row and credential, as the workflow opens them, started from `source` and bound to a version of a pipeline as the start route does."""
     made = httpx.post(f"{API}/pipeline-runs", headers=WORKER_HEADERS, timeout=30.0, json={
-        "tenant_id": CANARY, "dataset": "custom-audio", "workflow_id": f"u141-{uuid.uuid4()}", "trigger_kind": "manual",
+        "tenant_id": CANARY, "dataset": RUN_DATASET, "workflow_id": f"u141-{uuid.uuid4()}", "trigger_kind": "manual",
         "triggered_by": ENGINEER, "input_versions": [source], "principal": WORKLOAD})
     made.raise_for_status()
     run = made.json()
@@ -126,6 +130,48 @@ def ranged(token: str | None, record: str, handle: str | None, offset: int, leng
     return step_call("GET", f"/step/v1/recordings/{record}/range?offset={offset}&length={length}", token, headers={"x-handle": handle} if handle else {})
 
 
+def open_out(token: str | None, name: str) -> httpx.Response:
+    return step_call("POST", f"/step/v1/outputs/{name}", token)
+
+
+def put_out(token: str | None, name: str, number: int, data: bytes) -> httpx.Response:
+    return step_call("PUT", f"/step/v1/outputs/{name}/parts/{number}", token, content=data, headers={"Content-Type": "application/octet-stream"})
+
+
+def complete_out(token: str | None, name: str) -> httpx.Response:
+    return step_call("POST", f"/step/v1/outputs/{name}/complete", token)
+
+
+def write_whole(token: str, name: str, data: bytes) -> httpx.Response:
+    """A file written the way the library writes it: opened, sent in parts of 8 MiB, finished."""
+    opened = open_out(token, name)
+    assert opened.status_code == 201, (opened.status_code, opened.text[:200])
+    part = opened.json()["part_bytes"]
+    pieces = [data[i:i + part] for i in range(0, len(data), part)] or [b""]
+    for number, piece in enumerate(pieces, start=1):
+        sent = put_out(token, name, number, piece)
+        assert sent.status_code == 200, (sent.status_code, sent.text[:200])
+    return complete_out(token, name)
+
+
+def finish(run: dict, succeeded: bool = True, step: str = "inspect", headers: dict | None = None) -> httpx.Response:
+    return httpx.post(f"{API}/internal/dag-step/finish", headers=WORKER_HEADERS if headers is None else headers, timeout=120.0,
+                      json={"principal": WORKLOAD, "tenant_id": CANARY, "task_credential": run["token"], "step": step, "succeeded": succeeded})
+
+
+def db_count(sql: str, params: tuple = ()) -> int:
+    with db() as conn:
+        return conn.execute(sql, params).fetchone()["n"]
+
+
+def stored(key: str) -> bytes | None:
+    client = s3_client(*ADMIN)
+    try:
+        return client.get_object(Bucket=bucket_for(CANARY), Key=key)["Body"].read()
+    except client.exceptions.NoSuchKey:
+        return None
+
+
 def main() -> int:
     require_api()
     fixture_tenant(CANARY)
@@ -141,6 +187,15 @@ def main() -> int:
     check("a built-in step may not say it, because it already reads what it needs", any("only a script step may" in p for p in validate_dag(builtin, set())), str(validate_dag(builtin, set())))
     odd = parse_dag_config(YAML.replace("recordings: true", "recordings: yes please"))
     check("a value that is not true or false is refused", any("true or false" in p for p in validate_dag(odd, {"steps/inspect.py"})))
+    writes = parse_dag_config(YAML_WRITES)
+    check("a script step may say it writes files, and is named so, and needs approval for it",
+          validate_dag(writes, {"steps/inspect.py"}) == [] and steps_writing_files(writes) == ["inspect"] and steps_needing_approval(writes) == ["inspect"]
+          and steps_asking_for_recordings(writes) == [])
+    builtin_writes = parse_dag_config("name: x\nsteps:\n  - {name: t, kind: builtin, block: transcribe, writes_files: true}\n  - {name: d, kind: gate, depends_on: [t], to_class: OPEN_FOR_ANNOTATION, inputs: {recommendation: pass, recommendation_reason: x}}\n")
+    check("a built-in step may not say it", any("only a script step may" in p for p in validate_dag(builtin_writes, set())))
+    check("a value that is not true or false is refused for writing too", any("true or false" in p for p in validate_dag(parse_dag_config(YAML.replace("recordings: true", "writes_files: maybe")), {"steps/inspect.py"})))
+    hyphen = parse_dag_config(YAML_WRITES.replace("name: inspect", "name: in-spect").replace("steps.inspect", "steps.in-spect").replace("[inspect]", "[in-spect]"))
+    check("a step that writes files needs a name its dataset can carry: letters, digits and underscores", any("underscores" in p for p in validate_dag(hyphen, {"steps/inspect.py"})), str(validate_dag(hyphen, {"steps/inspect.py"})))
 
     def limits(extra: str) -> list[str]:
         return validate_dag(parse_dag_config(YAML.replace("    recordings: true\n", "    recordings: true\n" + extra + "\n")), {"steps/inspect.py"})
@@ -309,6 +364,154 @@ def main() -> int:
     httpx.post(f"{API}/pipeline-runs/{done['id']}/end", headers=WORKER_HEADERS, json={"status": "succeeded", "error": None}, timeout=30.0).raise_for_status()
     r = listing(dtoken)
     check("and stops when the run has ended, though the pass has not expired", r.status_code == 403 and "has ended" in reasons_of(r), f"{r.status_code} {reasons_of(r)[:160]}")
+
+    heading("A step that writes files: its own version, its own approval, and its own pass")
+    third = upload_version(pid, YAML_WRITES)
+    check("a version whose step writes files says it needs approval, and for what", third.status_code == 201 and third.json()["needs_approval"] is True
+          and third.json()["steps_writing_files"] == ["inspect"] and third.json()["steps_given_recordings"] == [], f"{third.status_code} {third.text[:200]}")
+    w3 = third.json()["id"]
+    wrun = open_run(locked_version, w3)
+    r = make_pass(wrun)
+    check("before approval it gets no pass, and a run of it is refused at the start, naming the step",
+          r.status_code == 403 and "not been approved" in reasons_of(r) and api("POST", f"/datasets/{locked_dataset}/versions/{locked_version}/deidentify",
+                                                                                 json={"pipeline_kind": "dag", "pipeline_version_id": w3}, headers=bearer_for(ENGINEER)).status_code == 400)
+    r = api("POST", f"/pipelines/{pid}/versions/{w3}/approve", json={"note": "reviewed"}, headers=bearer_for(ENGINEER))
+    check("the person who uploaded it may not approve it", r.status_code == 403)
+    r = api("POST", f"/pipelines/{pid}/versions/{w3}/approve", json={"note": "reviewed"}, headers=bearer_for(CUSTODIAN))
+    check("the owning department's approver does", r.status_code == 200, f"{r.status_code} {reasons_of(r)[:160]}")
+    wtoken = pass_for(wrun)
+
+    heading("What each pass may do is what its step declared, and no more")
+    r = listing(wtoken)
+    check("a step that only writes is refused the recordings, and told why", r.status_code == 403 and "given the recordings" in reasons_of(r), f"{r.status_code} {reasons_of(r)[:160]}")
+    r = open_out(token, "x.bin")
+    check("a step that only reads is refused writing, and told why", r.status_code == 403 and "write files" in reasons_of(r), f"{r.status_code} {reasons_of(r)[:160]}")
+    check("with no pass nobody writes", open_out(None, "x.bin").status_code == 401 and put_out(None, "x.bin", 1, b"x").status_code == 401 and complete_out(None, "x.bin").status_code == 401)
+    r = open_out(run["token"], "x.bin")
+    check("a pipeline run's own credential is not a step's pass here either", r.status_code == 401, f"{r.status_code}")
+
+    heading("The step writes its files, in parts, and what it sends is what is stored")
+    check("a name that cannot be stored is refused", open_out(wtoken, "has space.wav").status_code == 400 and open_out(wtoken, "../escape.wav").status_code in (400, 404, 422))
+    r = open_out(wtoken, "records.json")
+    check("a name the platform keeps for its own index is refused", r.status_code == 400 and "index" in reasons_of(r), f"{r.status_code} {reasons_of(r)[:120]}")
+    small = bytes(range(256)) * 40
+    done = write_whole(wtoken, "small.bin", small)
+    check("a small file is written and finished, and its size and fingerprint are the stored bytes'",
+          done.status_code == 200 and done.json() == {"name": "small.bin", "bytes": len(small), "sha256": hashlib.sha256(small).hexdigest()}, f"{done.status_code} {done.text[:200]}")
+    big = bytes(random.Random(9).randrange(256) for _ in range(1000)) * 8_400  # 8.4 MB: a full 8 MiB part and a small last one
+    big = big[:8 * 1024 * 1024 + 5]
+    done = write_whole(wtoken, "big.bin", big)
+    check("a file of more than one part is written, and its fingerprint is the whole file's", done.status_code == 200 and done.json()["bytes"] == len(big)
+          and done.json()["sha256"] == hashlib.sha256(big).hexdigest(), f"{done.status_code} {done.text[:200]}")
+    empty = write_whole(wtoken, "empty.txt", b"")
+    check("an empty file is written too", empty.status_code == 200 and empty.json()["bytes"] == 0)
+    open_out(wtoken, "again.bin")
+    put_out(wtoken, "again.bin", 1, b"first")
+    again = write_whole(wtoken, "again.bin", b"second")
+    check("opening a name again replaces the earlier file of that name", again.status_code == 200 and again.json()["bytes"] == 6)
+    check("a part larger than 8 MiB is refused", (open_out(wtoken, "huge.bin"), put_out(wtoken, "huge.bin", 1, b"x" * (8 * 1024 * 1024 + 1)))[1].status_code == 413)
+    open_out(wtoken, "gap.bin")
+    put_out(wtoken, "gap.bin", 2, b"only the second")
+    r = complete_out(wtoken, "gap.bin")
+    check("a file with a part missing cannot be finished, and says so", r.status_code == 400 and "none missing" in reasons_of(r), f"{r.status_code} {reasons_of(r)[:160]}")
+    open_out(wtoken, "short.bin")
+    put_out(wtoken, "short.bin", 1, b"short")
+    put_out(wtoken, "short.bin", 2, b"more")
+    r = complete_out(wtoken, "short.bin")
+    check("a part before the last that is not a full 8 MiB cannot be finished", r.status_code == 400 and "exactly" in reasons_of(r), f"{r.status_code} {reasons_of(r)[:160]}")
+    open_out(wtoken, "toomany.bin")
+    r = put_out(wtoken, "toomany.bin", 65, b"x")
+    check("a file has at most 64 parts", r.status_code == 400 and "at most 64" in reasons_of(r), f"{r.status_code} {reasons_of(r)[:120]}")
+    r = put_out(wtoken, "never-opened.bin", 1, b"x")
+    check("a part for a file that was never opened is refused", r.status_code == 400 and "open it first" in reasons_of(r), f"{r.status_code} {reasons_of(r)[:120]}")
+    r = put_out(wtoken, "small.bin", 1, b"late")
+    check("a finished file cannot be added to", r.status_code == 400, f"{r.status_code}")
+    open_out(wtoken, "dropped.bin")
+    put_out(wtoken, "dropped.bin", 1, b"left unfinished by a with block that raised")
+
+    heading("When the step ends, the platform seals what it finished as one version under review")
+    r = finish(wrun, headers=bearer_for(ENGINEER))
+    check("only the platform's worker may say a step has ended", r.status_code == 403)
+    r = finish(wrun)
+    check("with a file left unfinished, nothing is sealed and everything is thrown away, and it says so", r.json().get("status") == "refused" and "dropped.bin" in r.json().get("reason", ""), f"{r.status_code} {r.text[:200]}")
+    with db() as conn:
+        left = conn.execute("select count(*) as n from step_output where pipeline_run_id = %s and status in ('open','complete','sealed')", (wrun["id"],)).fetchone()["n"]
+        versions_before = conn.execute("select count(*) as n from dataset_version v join dataset d on d.id = v.dataset_id where d.tenant_id = %s and d.name = %s", (CANARY, f"{RUN_DATASET}-inspect")).fetchone()["n"]
+    check("and no version was made, and no file is kept", left == 0 and versions_before == 0, f"{left} left, {versions_before} versions")
+
+    wrun2 = open_run(locked_version, w3)
+    wtoken2 = pass_for(wrun2)
+    files = {"small.bin": small, "big.bin": big, "empty.txt": b"", "note.txt": "r\u00e9sum\u00e9 of what was found".encode("utf-8")}
+    for name, data in files.items():
+        assert write_whole(wtoken2, name, data).status_code == 200
+    sealed = finish(wrun2)
+    body = sealed.json()
+    check("a step that finished every file is sealed as a version, and the answer names it and the dataset", body.get("status") == "sealed" and body.get("files_written") == 4
+          and body.get("output_dataset") == f"{RUN_DATASET}-inspect" and bool(body.get("output_version_id")), f"{sealed.status_code} {sealed.text[:200]}")
+    with db() as conn:
+        version = conn.execute("""select v.id, v.visibility_class, v.object_manifest, v.record_count, v.produced_by_run, c.name as contract, d.department_id as dept,
+                                         src.department_id as source_dept
+                                    from dataset_version v join dataset d on d.id = v.dataset_id join schema_contract c on c.id = v.schema_id
+                                    join dataset_version sv on sv.id = %s join dataset src on src.id = sv.dataset_id
+                                   where v.id = %s""", (locked_version, body["output_version_id"])).fetchone()
+        action = conn.execute("select a.input_versions, a.pipeline_run_id, a.status, a.output_version, a.triggered_by from action_run a where a.id = %s", (version["produced_by_run"],)).fetchone()
+    names = {m["key"].rsplit("/", 1)[1]: m for m in version["object_manifest"]}
+    check("the version is under review, so nobody can use it until a person has looked", version["visibility_class"] == "UNDER_REVIEW", version["visibility_class"])
+    check("it holds the four files and the platform's index, and no other file but the table files sealing adds beside them",
+          {"small.bin", "big.bin", "empty.txt", "note.txt", "records.json"} <= set(names) and version["record_count"] == 4, str(sorted(names)))
+    check("every file is stored exactly as it was sent, and the manifest's size and fingerprint are of what is stored",
+          all(stored(names[n]["key"]) == d and names[n]["bytes"] == len(d) and names[n]["sha256"] == hashlib.sha256(d).hexdigest() for n, d in files.items()))
+    index = json.loads(stored(names["records.json"]["key"]))
+    check("the index lists each file with its size and fingerprint, under a contract of its own", sorted(r["name"] for r in index) == sorted(files) and version["contract"] == "custom_step_files"
+          and all(r["sha256"] == hashlib.sha256(files[r["name"]]).hexdigest() for r in index))
+    check("the dataset belongs to the department of the dataset the run read", version["dept"] == version["source_dept"] and version["dept"] is not None)
+    check("the run that made it is recorded: it read the source version, belongs to this pipeline run, and names the person who started it",
+          action["input_versions"] == [__import__("uuid").UUID(locked_version)] and str(action["pipeline_run_id"]) == wrun2["id"] and action["status"] == "succeeded"
+          and str(action["output_version"]) == body["output_version_id"] and action["triggered_by"] == ENGINEER, str(action))
+    from app import db as app_db
+    if app_db.pool.closed:
+        app_db.pool.open()
+    listed = person_keys.still_made_from(CANARY, code)
+    check("so erasing a patient lists it among what was made from their recordings", body["output_version_id"] in {d["version_id"] for d in listed["derived_versions"]}, str(listed)[:200])
+    again = finish(wrun2)
+    check("asked again, it answers the same version and makes no second one", again.json().get("output_version_id") == body["output_version_id"], f"{again.text[:200]}")
+    r = open_out(wtoken2, "late.bin")
+    check("a step whose files are sealed cannot write more", r.status_code == 400 and "already sealed" in reasons_of(r), f"{r.status_code} {reasons_of(r)[:120]}")
+
+    heading("When the step fails, or the platform will not seal it, nothing is kept")
+    wrun3 = open_run(locked_version, w3)
+    wtoken3 = pass_for(wrun3)
+    write_whole(wtoken3, "kept-until-the-end.bin", b"finished file")
+    open_out(wtoken3, "half.bin")
+    put_out(wtoken3, "half.bin", 1, b"half")
+    with db() as conn:
+        keys = [r["storage_key"] for r in conn.execute("select storage_key from step_output where pipeline_run_id = %s and status in ('open','complete')", (wrun3["id"],)).fetchall()]
+    check("before it ends, a finished file is stored", stored(keys[0]) is not None or stored(keys[1]) is not None)
+    r = finish(wrun3, succeeded=False)
+    check("a step that failed: everything it wrote is thrown away, the answer says discarded", r.json().get("status") == "discarded", f"{r.text[:160]}")
+    check("and its finished file is gone from storage, and no version was made", all(stored(k) is None for k in keys) and
+          db_count("select count(*) as n from dataset_version where produced_by_run in (select id from action_run where pipeline_run_id = %s)", (wrun3["id"],)) == 0)
+
+    wrun4 = open_run(locked_version, w3)
+    wtoken4 = pass_for(wrun4)
+    write_whole(wtoken4, "withdrawn.bin", b"written while approved")
+    api("POST", f"/pipelines/{pid}/versions/{w3}/withdraw-approval", json={"note": "no longer"}, headers=bearer_for(CUSTODIAN))
+    r = finish(wrun4)
+    check("when the approval is withdrawn while the step runs, the platform seals nothing and throws it away, and says why",
+          r.json().get("status") == "refused" and "approved" in r.json().get("reason", "") and "Nothing the step wrote was kept" in r.json()["reason"], f"{r.text[:240]}")
+    check("and the step's next request is refused", open_out(wtoken4, "after.bin").status_code == 403)
+    api("POST", f"/pipelines/{pid}/versions/{w3}/approve", json={"note": "approved again"}, headers=bearer_for(CUSTODIAN))
+
+    heading("A version sealed while a step was running moves its place")
+    slow, quick = open_run(locked_version, w3), open_run(locked_version, w3)
+    stoken, qtoken = pass_for(slow), pass_for(quick)
+    write_whole(stoken, "slow.bin", b"started first")
+    write_whole(qtoken, "quick.bin", b"finished first")
+    first_done = finish(quick)
+    r = finish(slow)
+    check("the step that finished first is sealed", first_done.json().get("status") == "sealed", first_done.text[:160])
+    check("the other is refused, because the folder it wrote into belongs to a version that now exists, and nothing it wrote is kept",
+          r.json().get("status") == "refused" and "place has moved" in r.json().get("reason", ""), f"{r.text[:240]}")
 
     heading("Taking the approval back")
     r = api("POST", f"/pipelines/{pid}/versions/{w1}/withdraw-approval", json={"note": "x"}, headers=bearer_for(ENGINEER))

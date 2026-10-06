@@ -12,6 +12,17 @@ short-lived pass for this one step and a way to reach the platform's step routes
         ...
     step.result({"recommendation": "not_measured", "reason": "..."})   # the step's small JSON result, printed as its last line
 
+A step whose pipeline file also says `writes_files: true` can write files through the platform:
+
+    with step.write_output("visit-7-silenced.wav") as out:   # a file to write to, sent to the platform in parts of 8 MiB as it is written
+        out.write(data)
+    step.save_output("notes.txt", b"...")                    # or a whole file from bytes
+    step.copy_to_output("clip.wav", "/tmp/clip.wav")         # or a file from this container's own scratch space
+
+Nothing written is a version until the step ends. If it succeeds, the platform seals everything it finished as one version of the dataset
+`<the run's dataset>-<the step's name>`, "under review", so nobody can use it until a person has looked. If it fails, or leaves a file unfinished (a
+`with` block that raised), everything it wrote is thrown away. A step writes at most 500 files, 512 MiB each and 1 GiB together.
+
 Three ways to read one recording, whichever the script needs:
 
     f = step.open_recording(id)           # a seekable file: asks the platform for 8 MiB blocks as they are needed, holds two, never the whole file
@@ -121,12 +132,13 @@ def _settings() -> tuple[str, str]:
                         "`recordings: true`") from None
 
 
-def _call(method: str, path: str, headers: dict | None = None) -> tuple[int, dict, bytes]:
-    """One request to the platform's step routes, sent again a couple of times when the connection fails or the platform is briefly unavailable."""
+def _call(method: str, path: str, headers: dict | None = None, data: bytes | None = None) -> tuple[int, dict, bytes]:
+    """One request to the platform's step routes, sent again a couple of times when the connection fails or the platform is briefly unavailable.
+    Every request a step makes can safely be sent again: sending a part again replaces it, and opening a file again starts it again."""
     api, token = _settings()
     last: Exception | None = None
     for wait in (*RETRY_WAITS, None):
-        request = urllib.request.Request(f"{api}{path}", method=method, headers={"Authorization": f"Bearer {token}", **(headers or {})})
+        request = urllib.request.Request(f"{api}{path}", method=method, data=data, headers={"Authorization": f"Bearer {token}", **(headers or {})})
         try:
             with urllib.request.urlopen(request, timeout=120) as response:
                 return response.status, dict(response.headers), response.read()
@@ -188,6 +200,82 @@ def save_recording(record_id: str, path: str) -> int:
                 return total
             out.write(piece)
             total += len(piece)
+
+
+class OutputFile(io.RawIOBase):
+    """A file being written through the platform. Writing sends it in parts of 8 MiB, so a file of any size is written while holding at most one
+    part. Closing it finishes the file. Leaving a `with` block because of an error does not: the file is left unfinished, and the platform throws it
+    away when the step ends."""
+
+    def __init__(self, name: str) -> None:
+        super().__init__()
+        status, _, body = _call("POST", f"/step/v1/outputs/{name}")
+        if status != 201:
+            raise StepError(f"opening output {name} returned {status}: {body[:300].decode('utf-8', 'replace')}")
+        self._name, self._part_bytes = name, int(json.loads(body)["part_bytes"])
+        self._buffer, self._next, self._finished = bytearray(), 1, False
+
+    def writable(self) -> bool:
+        return True
+
+    def _send(self, data: bytes) -> None:
+        status, _, body = _call("PUT", f"/step/v1/outputs/{self._name}/parts/{self._next}", {"Content-Type": "application/octet-stream"}, data)
+        if status != 200:
+            raise StepError(f"sending part {self._next} of {self._name} returned {status}: {body[:300].decode('utf-8', 'replace')}")
+        self._next += 1
+
+    def write(self, data) -> int:
+        if self._finished:
+            raise StepError(f"{self._name} was already finished")
+        self._buffer += data
+        while len(self._buffer) >= self._part_bytes:
+            self._send(bytes(self._buffer[:self._part_bytes]))
+            del self._buffer[:self._part_bytes]
+        return len(data)
+
+    def finish(self) -> dict:
+        """Send what is left as the last part (an empty file sends one empty part) and finish the file. Returns its size and fingerprint."""
+        if self._finished:
+            raise StepError(f"{self._name} was already finished")
+        if self._buffer or self._next == 1:
+            self._send(bytes(self._buffer))
+            self._buffer.clear()
+        status, _, body = _call("POST", f"/step/v1/outputs/{self._name}/complete")
+        if status != 200:
+            raise StepError(f"finishing {self._name} returned {status}: {body[:300].decode('utf-8', 'replace')}")
+        self._finished = True
+        return json.loads(body)
+
+    def close(self) -> None:
+        if not self.closed and not self._finished and not getattr(self, "_abandoned", False):
+            self.finish()
+        super().close()
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        if exc_type is not None:
+            self._abandoned = True  # an error inside the block: the file is not finished, and the platform throws it away
+        super().__exit__(exc_type, exc, tb)
+
+
+def write_output(name: str) -> OutputFile:
+    """A file to write to, sent to the platform as it is written. Use it as `with write_output("name.wav") as out:`."""
+    return OutputFile(name)
+
+
+def save_output(name: str, data: bytes) -> dict:
+    """A whole file from bytes. Returns its size and fingerprint."""
+    out = OutputFile(name)
+    out.write(data)
+    return out.finish()
+
+
+def copy_to_output(name: str, path: str) -> dict:
+    """A file from this container's own scratch space, sent in pieces. Returns its size and fingerprint."""
+    out = OutputFile(name)
+    with open(path, "rb") as source:
+        for piece in iter(lambda: source.read(BLOCK), b""):
+            out.write(piece)
+    return out.finish()
 
 
 def result(value: dict) -> None:

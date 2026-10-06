@@ -36,8 +36,9 @@ def run_dag_step_sandboxed(params: dict) -> dict:
 
     params: pipeline_id, pipeline_version_id, script, inputs (already
     resolved by the workflow), run_id, and, for a step that declared
-    `recordings: true`, `recordings`: what the platform needs to make the
-    step's pass; and `memory_mb` and `scratch_mb` from its pipeline file.
+    `recordings: true` or `writes_files: true`, `step_access`: what the platform
+    needs to make the step's pass and, for a writing step, to finish it; and
+    `memory_mb` and `scratch_mb` from its pipeline file.
     """
     work_dir = Path(tempfile.mkdtemp(prefix="munitas-dag-"))
     try:
@@ -52,7 +53,7 @@ def run_dag_step_sandboxed(params: dict) -> dict:
                     "exit_code": None, "timed_out": False}
 
         step_pass = None
-        spec = params.get("recordings")
+        spec = params.get("step_access")
         if spec:
             # The platform makes the pass only for a step its version declares, whose version is approved, in a run that is still going. The
             # step then reads its recordings from the platform itself, through the gateway: nothing is fetched or written on this machine.
@@ -62,10 +63,26 @@ def run_dag_step_sandboxed(params: dict) -> dict:
             except (recording_open.ControlPlaneError, httpx.HTTPError) as exc:
                 return {"status": "failed", "reason": str(exc), "output": None, "exit_code": None, "timed_out": False}
 
-        return run_dag_step(
+        result = run_dag_step(
             params["inputs"], code_dir, deps_dir, params["script"], params["run_id"],
             step_pass=step_pass, memory_mb=params.get("memory_mb"), scratch_mb=params.get("scratch_mb"),
         )
+        if not (spec and spec.get("writes_files")):
+            return result
+        # The container has exited. The platform seals what the step wrote as one version under review if it succeeded, and throws it all away if
+        # it did not. Asked in both cases, so a step that failed leaves nothing behind.
+        try:
+            finished = recording_open.finish_step(principal=f"{spec['tenant']}-pipeline", tenant_id=spec["tenant"], task_credential=spec["task_credential"],
+                                                  step=spec["step"], succeeded=result.get("status") == "succeeded")
+        except (recording_open.ControlPlaneError, httpx.HTTPError) as exc:
+            return {**result, "status": "failed", "reason": f"what the step wrote could not be sealed: {exc}", "output": None}
+        if finished["status"] == "refused":
+            return {**result, "status": "failed", "reason": finished["reason"], "output": None}
+        if result.get("status") != "succeeded":
+            return result
+        # The platform's own keys come last, so a step cannot claim to have made a version it did not.
+        sealed = {k: finished[k] for k in ("files_written", "output_version_id", "output_dataset") if k in finished}
+        return {**result, "output": {**(result["output"] or {}), **sealed}}
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
 

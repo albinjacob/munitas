@@ -85,6 +85,16 @@ def open_remote(*, principal: str, tenant_id: str, task_credential: str, version
     return RangeFile(size, fetch, on_close=client.close)
 
 
+def finish_step(*, principal: str, tenant_id: str, task_credential: str, step: str, succeeded: bool) -> dict:
+    """Tell the platform a writing step's container has exited. If it succeeded the platform seals what it wrote as one version under review;
+    if it did not, or the platform will not, everything it wrote is thrown away. Answers {"status": "sealed" | "empty" | "discarded" | "refused"}."""
+    response = httpx.post(f"{config.API}/internal/dag-step/finish", timeout=300.0, headers=_headers(), verify=config.api_verify(),
+                          json={"principal": principal, "tenant_id": tenant_id, "task_credential": task_credential, "step": step, "succeeded": succeeded})
+    if response.status_code >= 400:
+        raise ControlPlaneError(f"finishing step {step} returned {response.status_code}: {response.text[:300]}")
+    return response.json()
+
+
 def step_pass(*, principal: str, tenant_id: str, task_credential: str, step: str) -> str:
     """The pass a custom step's container is started with. The platform makes one only for a step that its pipeline version declares as given the
     recordings, whose version is approved, in a run that is still going; the pass names this step and expires with its time limit."""

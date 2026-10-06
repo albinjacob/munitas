@@ -324,12 +324,12 @@ async def start_deidentification(
 
     if pipeline_version is not None:
         from .dag_pipelines import is_approved
-        from .pipeline_dag import steps_asking_for_recordings
-        asking = steps_asking_for_recordings(pipeline_version["dag_config"])
+        from .pipeline_dag import steps_needing_approval
+        asking = steps_needing_approval(pipeline_version["dag_config"])
         if asking and not is_approved(str(pipeline_version["id"])):
             problems.append(
-                f"this version gives the recordings to the custom step{'s' if len(asking) > 1 else ''} {', '.join(asking)}, and it has not been "
-                f"approved. An approver of the department that owns the pipeline, who is not the person who uploaded it, approves it first"
+                f"this version lets the custom step{'s' if len(asking) > 1 else ''} {', '.join(asking)} read the recordings or write files, and it has "
+                f"not been approved. An approver of the department that owns the pipeline, who is not the person who uploaded it, approves it first"
             )
 
     backend = version["storage_backend"] or "seaweedfs"
@@ -505,12 +505,15 @@ async def read_pipeline_run(
         # Generic, unlike action_run: a DAG's step names are whatever the
         # operator called them, not one of the fixed pipeline's own.
         steps = db.all_rows(
-            """select step_name as action, status, started_at, ended_at,
-                      null as output_version
-                 from pipeline_step_run
-                where pipeline_run_id = %s
-                order by started_at""",
-            (pipeline_run_id,),
+            # A step that wrote files names the version the platform made of them in its result. That is only believed when it is a version of this
+            # organisation (compared as text, so a step that put anything else under that name cannot make this query fail).
+            """select s.step_name as action, s.status, s.started_at, s.ended_at,
+                      (select v.id from dataset_version v
+                        where v.id::text = s.output ->> 'output_version_id' and v.tenant_id = %s) as output_version
+                 from pipeline_step_run s
+                where s.pipeline_run_id = %s
+                order by s.started_at""",
+            (row["tenant_id"], pipeline_run_id),
         )
     else:
         steps = db.all_rows(

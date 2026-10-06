@@ -495,7 +495,8 @@ steps:
   - name: inspect
     kind: script
     script: steps/inspect.py
-    recordings: true
+    recordings: true    # the step may read the recordings
+    writes_files: true  # the step may write files, which become one new version
     memory_mb: 2048     # optional: default 1024, at most 4096
     scratch_mb: 512     # optional: default 256, at most 2048 and never more than memory_mb
 ```
@@ -535,9 +536,26 @@ read must carry. A patient erased while their recording is being read makes the 
    `POST /pipelines/{id}/versions/{version_id}/approve`). Taking the approval back is `withdraw-approval`, by the same kind of person;
 3. a run of an unapproved version is refused at the start. A pass already issued stops working at its next request when the approval is withdrawn.
 
-**What a step cannot do yet.** It can only return JSON. It cannot write files back, so a custom step cannot produce a redacted audio file; written
-output through the platform is the next piece. If a step copies audio into its JSON, the approver is the safeguard, not the platform. Review and
-testing on synthetic data are the operator's.
+**Writing files back.** A step with `writes_files: true` (it can have this with or without `recordings: true`) writes through the same door, with the
+same library, and the same pass. It never holds a storage address or key:
+
+```python
+step.save_output("notes.txt", b"...")                         # a whole file from bytes
+step.copy_to_output("redacted/visit-1.wav", "/tmp/out.wav")   # a file from the container's scratch space, sent in pieces
+with step.write_output("redacted/visit-2.wav") as out:        # or written as a stream; an error inside the block discards the file
+    out.write(b"...")
+```
+
+Each call returns the size and fingerprint of the file. The library sends each file to the platform in parts of at most 8 MiB, and the platform writes
+them to storage and reads the finished file back to check its checksum. Limits: 500 files, 512 MiB for one file, 1 GiB in all, and the name `records.json` is reserved. When the container ends, the
+worker tells the platform (`/internal/dag-step/finish`). If the step succeeded, the platform seals everything that was completed as one new version
+in a dataset named after the run's dataset and the step, owned by the same department, at the access level **under review**, so nobody may use it
+until a reviewer decides. The version records the step, the code version and the version it was made from, so erasing a patient later lists it. If the step failed,
+or the approval was withdrawn during the run, everything it wrote is discarded and nothing is sealed. Finishing twice does nothing the second time.
+
+**What a step cannot do.** Anything the platform does not offer as a route. The console shows the version a step made and links to it from the
+run page, but it does not list or play the files inside; that is deferred. If a step copies audio into its JSON, the approver is the safeguard, not
+the platform. Review and testing on synthetic data are the operator's.
 
 Checks: U141 (the platform's half, in the container) and U142 (a real run in the sandbox worker, on the host, about two minutes, which also reports from
 inside the container what the step could and could not do):

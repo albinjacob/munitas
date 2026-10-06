@@ -175,6 +175,16 @@ def main() -> int:
     check("nobody else's upload can be read: the researcher is told there is none", get_status(up["id"], RESEARCHER).status_code == 404)
     check("a finished upload takes no more parts", put(up["id"], 1, slice_of(wav, 1)).status_code == 400)
 
+    heading("A browser may send a part: the permission it asks first")
+    from app import config as app_config
+    origin = app_config.CONSOLE_ORIGINS[0]
+    asked = httpx.options(f"{API}/recording-uploads/{uuid.uuid4()}/parts/1", timeout=30.0,
+                          headers={"Origin": origin, "Access-Control-Request-Method": "PUT", "Access-Control-Request-Headers": "content-type"})
+    check("the platform answers a browser's preflight for sending a part, and lists PUT", asked.status_code == 200 and "PUT" in asked.headers.get("access-control-allow-methods", ""),
+          f"{asked.status_code} {asked.headers.get('access-control-allow-methods')} {asked.text[:80]}")
+    check("and allows the console's own address, and no other", asked.headers.get("access-control-allow-origin") == origin
+          and httpx.options(f"{API}/recording-uploads/{uuid.uuid4()}/parts/1", timeout=30.0, headers={"Origin": "http://evil.example", "Access-Control-Request-Method": "PUT"}).status_code == 400)
+
     heading("What was stored")
     with db() as conn:
         src = conn.execute("select * from dataset_source where id = %s", (done["source_id"],)).fetchone()

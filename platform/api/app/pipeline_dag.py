@@ -62,6 +62,18 @@ def _referenced_step_names(value) -> list[str]:
     return []
 
 
+def steps_writing_files(config: dict) -> list[str]:
+    """The names of the script steps that declare `writes_files: true`: what they write through the platform becomes a version that waits for review."""
+    return [s["name"] for s in config.get("steps", []) if s.get("kind") == "script" and s.get("writes_files") is True]
+
+
+def steps_needing_approval(config: dict) -> list[str]:
+    """The script steps whose version must be approved by a second person before a run may start: those given the recordings, and those that write
+    files, because code the platform did not write reads the sound or makes what is stored."""
+    asking, writing = steps_asking_for_recordings(config), steps_writing_files(config)
+    return [s["name"] for s in config.get("steps", []) if s["name"] in asking or s["name"] in writing]
+
+
 def steps_asking_for_recordings(config: dict) -> list[str]:
     """The names of the script steps that declare `recordings: true`: they are given the run's recordings as files, so the version holding them is
     approved by a second person before a run may start."""
@@ -132,6 +144,13 @@ def validate_dag(config: dict, script_names: set[str]) -> list[str]:
             if isinstance(step.get("memory_mb"), int) and isinstance(step.get("scratch_mb"), int) and step["scratch_mb"] > step["memory_mb"]:
                 problems.append(f"step {step['name']!r} asks for {step['scratch_mb']} MB of scratch space and {step['memory_mb']} MB of memory: scratch space is "
                                 f"memory-backed, so it cannot be larger than the memory")
+        if "writes_files" in step:
+            if kind != "script":
+                problems.append(f"step {step['name']!r} sets 'writes_files', which only a script step may")
+            elif not isinstance(step["writes_files"], bool):
+                problems.append(f"step {step['name']!r} sets 'writes_files' to {step['writes_files']!r}, and it must be true or false")
+            elif step["writes_files"] and not re.match(r"^[a-zA-Z0-9_]+$", str(step["name"])):
+                problems.append(f"step {step['name']!r} writes files, and the dataset they become is named after the step: use letters, digits and underscores")
         if "recordings" in step:
             if kind != "script":
                 problems.append(f"step {step['name']!r} sets 'recordings', which only a script step may: a built-in step already reads the recordings it needs")

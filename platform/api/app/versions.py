@@ -56,6 +56,28 @@ def register_contract(tenant_id: str, name: str, fields: list[dict],
     return {"id": str(row["id"]), "content_hash": digest, "created": True}
 
 
+def ensure_dataset(tenant_id: str, name: str, derived_from_version_id: str | None = None) -> tuple[str, bool]:
+    """The dataset of this name in this organisation, made if it does not exist. Returns (id, created).
+
+    A dataset made from a version belongs to the department of the dataset that version is in, so whoever is accountable for the input is
+    accountable for what is made from it, and access to it can be approved. The version must be one of this organisation's: a LookupError says when
+    it is not.
+    """
+    existing = db.one("select id from dataset where tenant_id = %s and name = %s", (tenant_id, name))
+    if existing:
+        return str(existing["id"]), False
+    department_id = None
+    if derived_from_version_id:
+        source = db.one("""select d.department_id, v.tenant_id from dataset_version v join dataset d on d.id = v.dataset_id where v.id = %s""",
+                        (derived_from_version_id,))
+        if not source or source["tenant_id"] != tenant_id:
+            raise LookupError("the version this dataset is made from does not exist in this organisation")
+        department_id = source["department_id"]
+    row = db.execute("insert into dataset (id, tenant_id, name, department_id) values (%s, %s, %s, %s) returning id",
+                     (str(uuid.uuid4()), tenant_id, name, department_id))
+    return str(row["id"]), True
+
+
 def next_version(tenant_id: str, dataset_id: str) -> dict:
     """Where the next version's objects must be written.
 
