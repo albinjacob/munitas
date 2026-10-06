@@ -1068,6 +1068,26 @@
         "title": "GateDecisionIn",
         "type": "object"
       },
+      "GroupSizeDecisionIn": {
+        "properties": {
+          "decision": {
+            "description": "'accepted' or 'will_change'",
+            "title": "Decision",
+            "type": "string"
+          },
+          "note": {
+            "description": "Why. Recorded with the decision.",
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision",
+          "note"
+        ],
+        "title": "GroupSizeDecisionIn",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -3452,6 +3472,104 @@
           }
         },
         "summary": "Get Version"
+      }
+    },
+    "/dataset-versions/{version_id}/group-size-report": {
+      "get": {
+        "description": "How many different people share each combination of the table's readable quasi-identifying columns, and what locking one would leave.\n\nCounts and column names only, never a value. For the owning department's approvers, the de-identification reviewer, the privacy auditor\nand the data protection officer. Advice: it never changes a treatment and never stopped the seal.",
+        "operationId": "group_size_report_dataset_versions__version_id__group_size_report_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Group Size Report Dataset Versions  Version Id  Group Size Report Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Group Size Report",
+        "tags": [
+          "person keys"
+        ]
+      }
+    },
+    "/dataset-versions/{version_id}/group-size-report/decision": {
+      "post": {
+        "description": "Record what the owner decided about small groups: accept the risk, or change the contract. Once, with a reason.",
+        "operationId": "decide_group_size_report_dataset_versions__version_id__group_size_report_decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GroupSizeDecisionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Decide Group Size Report Dataset Versions  Version Id  Group Size Report Decision Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Decide Group Size Report",
+        "tags": [
+          "person keys"
+        ]
       }
     },
     "/dataset-versions/{version_id}/person-rows": {

@@ -834,6 +834,52 @@ create index if not exists locked_column_lease_version_idx on locked_column_leas
 -- Which lease a locked-column read was made under. A column of its own and not access_decision.lease_id, which names an access_lease.
 alter table access_decision add column if not exists locked_column_lease_id uuid;
 
+-- ---------------------------------------- group sizes of a sealed table ------
+
+-- When a table is sealed, the platform counts how many different people share each combination of its readable quasi-identifying columns, and
+-- keeps what it found: how many people sit in a group smaller than the contract's threshold, how the count would change if one column were
+-- locked, and what the owner decided about it. Counts only, never a value: this row can be read by people who may not read the table.
+-- Advice and nothing else. A report never changes a treatment, and a small group does not stop a seal.
+create table if not exists group_size_report (
+  id                  uuid primary key,
+  tenant_id           text not null references tenant(id),
+  dataset_version_id  uuid not null unique references dataset_version(id),
+  threshold           int not null check (threshold >= 2),
+  columns             text[] not null,           -- the readable quasi columns that were counted
+  people              int not null,
+  groups              int not null,
+  smallest_group      int,                       -- people in the smallest group, null when no column was counted
+  groups_below        int not null,
+  people_in_small_groups int not null,
+  advice              jsonb not null,            -- [{"lock": column, "people_in_small_groups_after": n}], best first
+  created_at          timestamptz not null default now(),
+  decision            text check (decision in ('accepted', 'will_change')),
+  decided_by          text,
+  decided_at          timestamptz,
+  decision_note       text,
+  constraint group_size_decided_together check ((decision is null) = (decided_by is null) and (decision is null) = (decided_at is null)),
+  constraint group_size_decision_has_a_reason check (decision is null or (decision_note is not null and decision_note <> ''))
+);
+
+-- A report is never edited: it is only decided, once.
+create or replace function group_size_report_guard() returns trigger as $$
+begin
+  if new.id is distinct from old.id or new.tenant_id is distinct from old.tenant_id or new.dataset_version_id is distinct from old.dataset_version_id
+     or new.threshold is distinct from old.threshold or new.columns is distinct from old.columns or new.people is distinct from old.people
+     or new.groups is distinct from old.groups or new.smallest_group is distinct from old.smallest_group
+     or new.groups_below is distinct from old.groups_below or new.people_in_small_groups is distinct from old.people_in_small_groups
+     or new.advice is distinct from old.advice or new.created_at is distinct from old.created_at then
+    raise exception 'a group-size report is never edited, only decided' using errcode = 'check_violation', constraint = 'group_size_report_is_history';
+  end if;
+  if old.decision is not null then
+    raise exception 'this group-size report was already decided' using errcode = 'check_violation', constraint = 'group_size_report_is_history';
+  end if;
+  return new;
+end;
+$$ language plpgsql;
+drop trigger if exists group_size_report_guard on group_size_report;
+create trigger group_size_report_guard before update on group_size_report for each row execute function group_size_report_guard();
+
 -- ------------------------------------------------- reclaiming object bytes --
 
 -- One row per dataset version whose stored objects were deleted to free space.
@@ -900,7 +946,7 @@ begin
     'schema_contract','dataset','dataset_version','dataset_action','action_run',
     'lease_request','access_lease','department','project','directory',
     'record_key','tombstone','datasink','write_grant',
-    'org_key','subject_lookup','subject_key','privacy_contract','locked_column_lease'
+    'org_key','subject_lookup','subject_key','privacy_contract','locked_column_lease','group_size_report'
   ] loop
     execute format('drop trigger if exists %I on %I', 'refuse_retired_' || t, t);
     execute format(

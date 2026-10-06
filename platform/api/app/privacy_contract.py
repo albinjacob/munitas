@@ -53,6 +53,20 @@ def subject_rule(doc: dict) -> dict | None:
     return value if isinstance(value, dict) else None
 
 
+DEFAULT_GROUP_SIZE = 5
+
+
+def group_size_threshold(doc: dict) -> int:
+    """The fewest different people a combination of readable quasi columns may hold before the report calls it small. 5 unless the contract says."""
+    value = _profile(doc.get("customProperties")).get("groupSizeThreshold", DEFAULT_GROUP_SIZE)
+    return value if isinstance(value, int) and not isinstance(value, bool) else DEFAULT_GROUP_SIZE
+
+
+def counted_columns(doc: dict) -> list[str]:
+    """The columns a group-size report counts: quasi-identifying and left readable. A locked one cannot single anybody out."""
+    return [c["name"] for c in columns(doc) if c["classification"] == "quasi" and c["treatment"] == "readable"]
+
+
 def erasable(doc: dict) -> bool:
     return _profile(doc.get("customProperties")).get("erasable", True) is not False
 
@@ -105,6 +119,10 @@ def check(doc: object) -> list[str]:
     profile = _profile(doc.get("customProperties"))
     if "erasable" in profile and not isinstance(profile["erasable"], bool):
         problems.append("erasable must be true or false")
+    if "groupSizeThreshold" in profile:
+        size = profile["groupSizeThreshold"]
+        if not isinstance(size, int) or isinstance(size, bool) or not 2 <= size <= 100:
+            problems.append("groupSizeThreshold must be a whole number from 2 to 100: the fewest different people a combination may hold")
     sensitive = [c["name"] for c in cols if c["classification"] in SENSITIVE]
     subject = subject_rule(doc)
     if erasable(doc):

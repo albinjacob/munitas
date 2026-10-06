@@ -9,8 +9,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from . import auth, locked_leases, person_keys
-from .person_errors import LeaseConflict, NoSuchLease, NoSuchVersion, NotPermitted, Refused
+from . import auth, group_sizes, locked_leases, person_keys
+from .person_errors import AlreadyDecided, LeaseConflict, NoSuchLease, NoSuchVersion, NotPermitted, Refused
 
 router = APIRouter(tags=["person keys"])
 
@@ -31,6 +31,11 @@ class LockedColumnLeaseDecisionIn(BaseModel):
     note: str | None = None
 
 
+class GroupSizeDecisionIn(BaseModel):
+    decision: str = Field(description="'accepted' or 'will_change'")
+    note: str = Field(description="Why. Recorded with the decision.")
+
+
 def _service():
     try:
         return person_keys.key_service()
@@ -44,8 +49,10 @@ def _refusals(call):
         return call()
     except NotPermitted as exc:
         raise HTTPException(403, {"reasons": exc.reasons}) from exc
-    except LeaseConflict as exc:
+    except (LeaseConflict, AlreadyDecided) as exc:
         raise HTTPException(409, {"reasons": exc.reasons}) from exc
+    except Refused as exc:
+        raise HTTPException(400, {"reasons": exc.reasons}) from exc
     except (NoSuchVersion, NoSuchLease) as exc:
         raise HTTPException(404, "no such table or lease") from exc
 
@@ -112,3 +119,19 @@ def audit_locked_columns(limit: int = 200, identity: dict = Depends(auth.current
     For the privacy auditor and the data protection officer. Never a name, a value or an identifier.
     """
     return _refusals(lambda: locked_leases.audit_evidence(identity, limit))
+
+
+@router.get("/dataset-versions/{version_id}/group-size-report")
+def group_size_report(version_id: str, identity: dict = Depends(auth.current_session)) -> dict:
+    """How many different people share each combination of the table's readable quasi-identifying columns, and what locking one would leave.
+
+    Counts and column names only, never a value. For the owning department's approvers, the de-identification reviewer, the privacy auditor
+    and the data protection officer. Advice: it never changes a treatment and never stopped the seal.
+    """
+    return _refusals(lambda: group_sizes.get_report(identity, version_id))
+
+
+@router.post("/dataset-versions/{version_id}/group-size-report/decision")
+def decide_group_size_report(version_id: str, body: GroupSizeDecisionIn, identity: dict = Depends(auth.current_session)) -> dict:
+    """Record what the owner decided about small groups: accept the risk, or change the contract. Once, with a reason."""
+    return _refusals(lambda: group_sizes.decide(identity, version_id, body.decision, body.note))

@@ -45,8 +45,9 @@ ROOT = Path(__file__).resolve().parent.parent
 # Cheap, and broken by rule from anywhere: see 6 above.
 RIPPLE = ["V10", "U22", "U33", "U67", "U113", "U124"]
 
-# Files that make every check behave differently.
-SHARED = ["verify/common.py", "verify/lifecycle_fixture.py", "verify/markers.py", "verify/run_all.py", "verify/report.py"]
+# Files that make every check behave differently. run_all.py and report.py are not here: they run and record the checks, and what a check
+# does does not depend on them. A change to either is tested by using it, which every quick run does.
+SHARED = ["verify/common.py", "verify/lifecycle_fixture.py", "verify/markers.py"]
 
 # Where a file has an obvious home. The first rule that matches a file decides it; its checks are added to the set.
 TABLE: list[tuple[str, list[str], str]] = [
@@ -55,7 +56,9 @@ TABLE: list[tuple[str, list[str], str]] = [
     ("platform/api/app/locked_leases.py", ["U128", "U129"], "leases on locked columns"),
     ("platform/api/app/privacy_contract.py", ["U128", "U129"], "the privacy contract"),
     ("platform/api/app/key_store.py", ["U128", "U129"], "where keys are kept"),
-    ("platform/policy/*.rego", ["U72", "U78", "U98", "U99", "U126", "U127", "U128", "U129"],
+    ("platform/api/app/opa.py", ["U72", "U78", "U98", "U99", "U126", "U127", "U128", "U129", "U130"],
+     "the client the platform asks the policy through: the checks that ask for access, roles, leases and reports"),
+    ("platform/policy/*.rego",["U72", "U78", "U98", "U99", "U126", "U127", "U128", "U129"],
      "a policy change can reach every decision; this is the set that asks people for access or roles. Run the policy tests too"),
     ("platform/schema.sql", ["V1", "V4", "U98", "U99", "U100"],
      "a table or rule in the schema: immutability, classes, closing, holds and the purge, which deletes whatever has a tenant id"),

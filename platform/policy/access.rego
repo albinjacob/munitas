@@ -1617,3 +1617,54 @@ audit_evidence_decision := {
 	"allow": may_read_audit_evidence,
 	"reasons": [r | some r in audit_evidence_reason],
 }
+
+# ------------------------------------------------------ group-size reports --
+
+# When a table is sealed the platform counts how many different people share each combination of the readable quasi-identifying columns, and
+# reports the combinations with too few. A small group can single a person out although no column names them. The report is advice, with counts
+# and no values. It is read by those who answer for the data (the owning department's approvers) and by those whose job is to judge or audit it
+# (the de-identification reviewer, the privacy auditor, the data protection officer). Deciding what to do about it, accept the risk or change the
+# contract, is the owner's act and nobody else's.
+default may_read_group_size_report := false
+
+may_read_group_size_report if {
+	some role in input.person.roles
+	audit_evidence_roles[role]
+}
+
+may_read_group_size_report if {
+	some role in input.person.roles
+	decider_roles[role]
+}
+
+may_read_group_size_report if {
+	some role in input.person.roles
+	approver_roles[role]
+	input.person.id in input.dataset.approvers
+}
+
+group_size_report_reason contains "this person may not read the group-size report of this table (the owning department's approvers, a privacy auditor, the data protection officer or a de-identification reviewer)" if {
+	not may_read_group_size_report
+}
+
+group_size_report_decision := {
+	"allow": may_read_group_size_report,
+	"reasons": [r | some r in group_size_report_reason],
+}
+
+default may_decide_group_size_report := false
+
+may_decide_group_size_report if {
+	some role in input.person.roles
+	approver_roles[role]
+	input.person.id in input.dataset.approvers
+}
+
+group_size_decision_reason contains "only an approver of the department that owns this data decides what to do about small groups" if {
+	not may_decide_group_size_report
+}
+
+group_size_decision := {
+	"allow": may_decide_group_size_report,
+	"reasons": [r | some r in group_size_decision_reason],
+}

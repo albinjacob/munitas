@@ -28,6 +28,14 @@ class LeaseConflict(Exception):
         self.reasons = reasons
 
 
+class AlreadyDecided(Exception):
+    """Somebody already decided this, and a decision is made once."""
+
+    def __init__(self, reasons: list[str]) -> None:
+        super().__init__("; ".join(reasons))
+        self.reasons = reasons
+
+
 class ErasureHeld(Exception):
     """A legal hold stands over the organisation, and a destroyed key cannot be brought back."""
 

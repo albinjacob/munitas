@@ -188,6 +188,10 @@ def audit_evidence(identity: dict, limit: int = 200) -> dict:
     contracts = db.all_rows(
         """select p.name, p.version, p.schema_id, p.created_at, p.document from privacy_contract p
             where p.tenant_id = %s order by p.created_at desc limit %s""", (t, n))
+    sizes = db.all_rows(
+        """select dataset_version_id, threshold, columns, people, groups, smallest_group, groups_below, people_in_small_groups, advice,
+                  decision, decided_by, decided_at, created_at
+             from group_size_report where tenant_id = %s order by created_at desc limit %s""", (t, n))
     erasures = db.all_rows(
         "select at, record_id, requested_by from tombstone where tenant_id = %s and record_id like 'person:%%' order by at desc limit %s", (t, n))
 
@@ -203,4 +207,5 @@ def audit_evidence(identity: dict, limit: int = 200) -> dict:
         "contracts": [{"name": c["name"], "version": c["version"], "schema_id": str(c["schema_id"]),
                        "sealed_under_since": stamp({"at": c["created_at"]})["at"], "treatments": treatments(c["document"])} for c in contracts],
         "erasures": [stamp(r) for r in erasures],
+        "group_sizes": [stamp({**r, "dataset_version_id": str(r["dataset_version_id"]), "columns": list(r["columns"])}) for r in sizes],
     }

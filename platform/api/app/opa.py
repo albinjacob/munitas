@@ -343,6 +343,20 @@ def may_read_audit_evidence(payload: dict) -> tuple[bool, list[str]]:
     return _ask(_AUDIT_EVIDENCE_PATH, payload)
 
 
+_GROUP_SIZE_REPORT_PATH = "/v1/data/munitas/access/group_size_report_decision"
+_GROUP_SIZE_DECISION_PATH = "/v1/data/munitas/access/group_size_decision"
+
+
+def may_read_group_size_report(payload: dict) -> tuple[bool, list[str]]:
+    """May this person read a table's group-size report (counts, never values)? Its owners, the reviewer, the auditor and the DPO."""
+    return _ask(_GROUP_SIZE_REPORT_PATH, payload)
+
+
+def may_decide_group_size_report(payload: dict) -> tuple[bool, list[str]]:
+    """May this person decide what to do about small groups? An approver of the department that owns the data."""
+    return _ask(_GROUP_SIZE_DECISION_PATH, payload)
+
+
 def _decision(path: str, payload: dict) -> dict:
     try:
         response = httpx.post(f"{config.OPA_URL}{path}", json={"input": payload}, timeout=5.0)

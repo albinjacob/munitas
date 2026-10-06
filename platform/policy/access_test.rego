@@ -1831,3 +1831,42 @@ test_audit_evidence_refusal_says_why if {
 test_privacy_auditor_reads_no_data_by_holding_the_role if {
 	access.role_floor["privacy_auditor"] == 4
 }
+
+# --------------------------------------------------- group-size reports --
+
+test_roles_that_may_read_a_group_size_report if {
+	every role in ["privacy_auditor", "dpo", "deid_reviewer"] {
+		access.may_read_group_size_report with input as {"person": {"id": "x", "roles": [role]}, "dataset": {"approvers": ["c"]}}
+	}
+}
+
+test_department_approver_may_read_a_group_size_report if {
+	access.may_read_group_size_report with input as {"person": {"id": "c", "roles": ["data_custodian"]}, "dataset": {"approvers": ["c"]}}
+}
+
+test_other_roles_may_not_read_a_group_size_report if {
+	every role in ["pipeline_operator", "notebook_explore", "analyst", "network_architect", "platform_admin"] {
+		not access.may_read_group_size_report with input as {"person": {"id": "x", "roles": [role]}, "dataset": {"approvers": ["c"]}}
+	}
+	not access.may_read_group_size_report with input as {"person": {"id": "z", "roles": ["data_custodian"]}, "dataset": {"approvers": ["c"]}}
+}
+
+test_group_size_report_refusal_says_why if {
+	decision := access.group_size_report_decision with input as {"person": {"id": "x", "roles": ["notebook_explore"]}, "dataset": {"approvers": ["c"]}}
+	decision.allow == false
+	"this person may not read the group-size report of this table (the owning department's approvers, a privacy auditor, the data protection officer or a de-identification reviewer)" in decision.reasons
+}
+
+test_only_a_department_approver_decides_on_a_group_size_report if {
+	access.may_decide_group_size_report with input as {"person": {"id": "c", "roles": ["data_custodian"]}, "dataset": {"approvers": ["c"]}}
+	not access.may_decide_group_size_report with input as {"person": {"id": "z", "roles": ["data_custodian"]}, "dataset": {"approvers": ["c"]}}
+	every role in ["privacy_auditor", "dpo", "deid_reviewer", "pipeline_operator"] {
+		not access.may_decide_group_size_report with input as {"person": {"id": "c", "roles": [role]}, "dataset": {"approvers": ["c"]}}
+	}
+}
+
+test_group_size_decision_refusal_says_why if {
+	decision := access.group_size_decision with input as {"person": {"id": "z", "roles": ["data_custodian"]}, "dataset": {"approvers": ["c"]}}
+	decision.allow == false
+	"only an approver of the department that owns this data decides what to do about small groups" in decision.reasons
+}

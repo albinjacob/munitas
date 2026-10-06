@@ -23,7 +23,7 @@ from pathlib import Path
 
 from crypto import BuiltInKeyService, DestroyedKeyError, KeyService, lock_value, unlock_value
 
-from . import config, db, key_store, locked_leases, opa, privacy_contract, storage, versions
+from . import config, db, group_sizes, key_store, locked_leases, opa, privacy_contract, storage, versions
 from .person_errors import ErasureHeld, LeaseConflict, NoSuchLease, NoSuchVersion, NotPermitted, Refused  # noqa: F401
 
 FILE_NAME = "table.jsonl"
@@ -161,7 +161,11 @@ def seal_table(service: KeyService, *, dataset_id: str, identity: dict, contract
     schema_id = _register(tenant, contract, cols, key_column)
     version = versions.seal(tenant_id=tenant, dataset_id=dataset_id, schema_id=schema_id, visibility_class="RAW",
                             storage_backend=backend, object_manifest=manifest, record_count=len(rows))
-    return {**version, "records": len(rows), "people": len(set(codes)), "sealed_by": actor}
+    # Counted from the values as they arrived and kept as counts only: how many different people share each combination of the readable
+    # quasi-identifying columns. Advice, so a table with small groups is sealed all the same.
+    report = group_sizes.record(tenant, version["id"], group_sizes.compute(
+        list(zip(codes, rows)), privacy_contract.counted_columns(contract), privacy_contract.group_size_threshold(contract)))
+    return {**version, "records": len(rows), "people": len(set(codes)), "sealed_by": actor, "group_size_report": report}
 
 
 def _register(tenant: str, contract: dict, cols: list[dict], key_column: str) -> str:
