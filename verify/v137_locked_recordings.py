@@ -294,6 +294,22 @@ def main() -> int:
     check("a row says whose each recording is, by person code, and its plain size",
           [r["person_code"] for r in rows] == [codes["visit-0001.wav"], codes["visit-0002.wav"], codes["visit-0003.wav"]] and rows[0]["plain_bytes"] == total)
 
+    check("an answer key's size is kept for the two recordings that have one, and not for the one that has none",
+          [r["answer_key_bytes"] is not None for r in rows] == [True, False, True])
+
+    heading("What a screen shows of the sealed version")
+    shown = api("GET", f"/dataset-versions/{version}/recordings", headers=bearer_for(ENGINEER))
+    check("it gives counts: three recordings, two patients, none erased", shown.status_code == 200
+          and (shown.json()["recordings"], shown.json()["patients"], shown.json()["erased_recordings"]) == (3, 2, 0), f"{shown.status_code} {shown.text[:160]}")
+    check("and names no patient and no person code", patient_a not in shown.text and codes["visit-0001.wav"] not in shown.text)
+    check("a version with no locked recordings is not found", api("GET", f"/dataset-versions/{fixture_version_id()}/recordings", headers=bearer_for(ENGINEER)).status_code == 404)
+    check("nor is one that does not exist", api("GET", f"/dataset-versions/{uuid.uuid4()}/recordings", headers=bearer_for(ENGINEER)).status_code == 404)
+    org = make_org()
+    try:
+        check("another organisation's person finds nothing", api("GET", f"/dataset-versions/{version}/recordings", headers=org.bearer("custodian")).status_code == 404)
+    finally:
+        drop_org(org)
+
     heading("A pipeline run is given the recording")
     stored_before = {m["key"]: stored_object(m["key"]) for m in v["object_manifest"]}
     run = f"pipeline_run verify-{tag}"
@@ -353,6 +369,8 @@ def main() -> int:
     check("their second cannot be opened either", _raises(lambda: recordings.open_recording(service, version_id=version, record_id="visit-0002", run="r", purpose="p"), recordings.PatientErased))
     check("the other patient's recording still opens", len(b"".join(recordings.open_recording(service, version_id=version, record_id="visit-0003", run="r", purpose="p")[1])) > 0)
     check("nothing stored changed", all(stored_object(k) == b for k, b in stored_before.items()))
+    after = api("GET", f"/dataset-versions/{version}/recordings", headers=bearer_for(ENGINEER))
+    check("the version's count now says two recordings belong to an erased patient", after.status_code == 200 and after.json()["erased_recordings"] == 2 and after.json()["recordings"] == 3, after.text[:160])
     out = person_keys.erase_person(service, CANARY, KIND, patient_c, identity(CUSTODIAN, ["data_custodian"]), "asked to be forgotten")
     sent = put(c_open, 1, make_wav(499_956))
     check("a patient erased while their upload was open: the next part is refused, and says why", sent.status_code == 409 and "destroyed" in reasons_of(sent), f"{sent.status_code} {reasons_of(sent)[:140]}")
