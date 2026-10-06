@@ -82,7 +82,8 @@ def _blank(value: object) -> bool:
     return value is None or (isinstance(value, str) and not value.strip())
 
 
-def _problems(contract: dict, rows: object) -> list[str]:
+def _contract_problems(contract: dict) -> list[str]:
+    """Why this contract cannot be used to seal a table in this version, before any row is looked at."""
     problems = privacy_contract.check(contract)
     if problems:
         return problems
@@ -92,8 +93,14 @@ def _problems(contract: dict, rows: object) -> list[str]:
     if subject is None or subject.get("foundBy") != "column":
         found = subject.get("foundBy") if subject else None
         return [f"finding the person by {found!r} is not available in this version; this version reads the person from a column"]
+    return []
+
+
+def row_problems(contract: dict, rows: object) -> list[str]:
+    """Every row that cannot be sealed, and why, for a contract that is already known to be usable."""
     if not isinstance(rows, list) or not rows:
         return ["the table has no rows"]
+    subject = privacy_contract.subject_rule(contract)
     cols = privacy_contract.columns(contract)
     names = {c["name"] for c in cols}
     key = next(c["name"] for c in cols if c["primaryKey"])
@@ -115,16 +122,26 @@ def _problems(contract: dict, rows: object) -> list[str]:
     return problems
 
 
+def _problems(contract: dict, rows: object) -> list[str]:
+    return _contract_problems(contract) or row_problems(contract, rows)
+
+
+def intake_dataset(dataset_id: str, identity: dict) -> dict:
+    """The dataset, if this person may bring data into it: of their organisation, and a role that may bring data in."""
+    from . import ingest  # the same intake rules as every other way of bringing data in
+    dataset = ingest._dataset(dataset_id)
+    ingest._mine(dataset, identity)
+    ingest._require_intake_role(identity)
+    return dataset
+
+
 def seal_table(service: KeyService, *, dataset_id: str, identity: dict, contract: dict, rows: list[dict]) -> dict:
     """Seal rows as a version of a dataset, with the identifying columns locked under each person's own key.
 
     The whole table is refused, with every problem listed, when the contract is wrong or any row names nobody. Nothing is made or written
     for a refusal: the checks run before the first key is made.
     """
-    from . import ingest  # the same intake rules as every other way of bringing data in
-    dataset = ingest._dataset(dataset_id)
-    ingest._mine(dataset, identity)
-    ingest._require_intake_role(identity)
+    dataset = intake_dataset(dataset_id, identity)
     problems = _problems(contract, rows)
     if problems:
         raise Refused(problems)

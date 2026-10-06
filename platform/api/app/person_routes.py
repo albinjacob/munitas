@@ -6,10 +6,10 @@ directly as well. Erasing a person has no route yet: it is an internal operation
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
-from . import auth, group_sizes, locked_leases, person_keys
+from . import auth, group_sizes, locked_leases, person_keys, table_files
 from .person_errors import AlreadyDecided, LeaseConflict, NoSuchLease, NoSuchVersion, NotPermitted, Refused
 
 router = APIRouter(tags=["person keys"])
@@ -66,6 +66,24 @@ def seal_table(dataset_id: str, body: SealTableIn, identity: dict = Depends(auth
     service = _service()
     try:
         return person_keys.seal_table(service, dataset_id=dataset_id, identity=identity, contract=body.contract, rows=body.rows)
+    except Refused as exc:
+        raise HTTPException(400, {"reasons": exc.reasons}) from exc
+
+
+@router.post("/datasets/{dataset_id}/seal-table-files", status_code=201)
+async def seal_table_files(dataset_id: str, contract: UploadFile = File(...), rows: UploadFile = File(...),
+                           identity: dict = Depends(auth.current_session)) -> dict:
+    """Seal a table from two files: the privacy contract (YAML or JSON) and the rows (a CSV with a header).
+
+    Pressing this is the check: when anything is wrong in either file, nothing is sealed and every problem is listed together, each naming
+    its row and column. Values are read as the types the contract declares. At most 20,000 rows and 5 MB; larger tables are sealed another way.
+    """
+    service = _service()
+    # Who may seal is answered before a byte is read, so a person who may not learns that and nothing about their files.
+    person_keys.intake_dataset(dataset_id, identity)
+    try:
+        doc, parsed = table_files.build(await contract.read(table_files.MAX_CONTRACT_BYTES + 1), await rows.read(table_files.MAX_BYTES + 1))
+        return person_keys.seal_table(service, dataset_id=dataset_id, identity=identity, contract=doc, rows=parsed)
     except Refused as exc:
         raise HTTPException(400, {"reasons": exc.reasons}) from exc
 

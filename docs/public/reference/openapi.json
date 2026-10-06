@@ -204,6 +204,26 @@
         "title": "Attestation",
         "type": "object"
       },
+      "Body_seal_table_files_datasets__dataset_id__seal_table_files_post": {
+        "properties": {
+          "contract": {
+            "format": "binary",
+            "title": "Contract",
+            "type": "string"
+          },
+          "rows": {
+            "format": "binary",
+            "title": "Rows",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contract",
+          "rows"
+        ],
+        "title": "Body_seal_table_files_datasets__dataset_id__seal_table_files_post",
+        "type": "object"
+      },
       "Body_upload_datasets__dataset_id__files_post": {
         "properties": {
           "file": {
@@ -4694,6 +4714,60 @@
           }
         },
         "summary": "Seal Table",
+        "tags": [
+          "person keys"
+        ]
+      }
+    },
+    "/datasets/{dataset_id}/seal-table-files": {
+      "post": {
+        "description": "Seal a table from two files: the privacy contract (YAML or JSON) and the rows (a CSV with a header).\n\nPressing this is the check: when anything is wrong in either file, nothing is sealed and every problem is listed together, each naming\nits row and column. Values are read as the types the contract declares. At most 20,000 rows and 5 MB; larger tables are sealed another way.",
+        "operationId": "seal_table_files_datasets__dataset_id__seal_table_files_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_seal_table_files_datasets__dataset_id__seal_table_files_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Seal Table Files Datasets  Dataset Id  Seal Table Files Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Seal Table Files",
         "tags": [
           "person keys"
         ]
