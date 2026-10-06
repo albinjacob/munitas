@@ -15,8 +15,13 @@ export interface PipelineStepConfig {
   depends_on?: string[];
   block?: string;
   script?: string;
-  /** A script step that is given the run's recordings as files. Its version is approved by a second person first. */
+  /** A script step that is given the run's recordings, read through the platform. Its version is approved by a second person first. */
   recordings?: boolean;
+  /** A script step whose files, written through the platform, become a version that waits for review. Its version is approved first as well. */
+  writes_files?: boolean;
+  /** The memory and the memory-backed scratch space the step's container gets, in megabytes, when its pipeline file asked for more than the default. */
+  memory_mb?: number;
+  scratch_mb?: number;
 }
 
 export interface PipelineVersion {
@@ -26,8 +31,9 @@ export interface PipelineVersion {
   config_hash: string;
   created_at: string;
   uploaded_by_label: string | null;
-  /** The script steps that are given the recordings. When there are any, a second person approves the version before a run may start. */
+  /** The script steps that are given the recordings, and those that write files. When there are any, a second person approves the version before a run may start. */
   steps_given_recordings: string[];
+  steps_writing_files: string[];
   needs_approval: boolean;
   approved: boolean;
   approved_by_label: string | null;

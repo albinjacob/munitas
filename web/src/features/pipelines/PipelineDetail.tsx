@@ -28,13 +28,21 @@ function Approval({ pipelineId, department, version }: { pipelineId: string; dep
   const approve = useDecidePipelineVersion(pipelineId, "approve");
   const withdraw = useDecidePipelineVersion(pipelineId, "withdraw-approval");
   const failed = [approve.error, withdraw.error].find(Boolean);
-  const steps = version.steps_given_recordings.join(", ");
+  const reading = version.steps_given_recordings;
+  const writing = version.steps_writing_files;
+  const named = (steps: string[]) => `${steps.length > 1 ? "steps" : "step"} ${steps.join(", ")}`;
+  // What the version's steps are allowed to do, in the words of the person who has to approve it: the sound is read by code the platform did not write,
+  // and what such code writes becomes a version that waits for review.
+  const what = [
+    reading.length ? `The ${named(reading)} ${reading.length > 1 ? "are" : "is"} given the recordings, so code that the platform did not write reads the sound.` : "",
+    writing.length ? `The ${named(writing)} ${writing.length > 1 ? "write" : "writes"} files, which become a version that waits for a person's review.` : "",
+  ].filter(Boolean).join(" ");
   return (
     <div data-testid={`pipeline-approval-${version.version}`} className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-slate-800">
       {version.approved ? (
         <>
           <p>
-            Approved by {version.approved_by_label ?? "an approver"} on {when(version.approved_at)}. The step {steps} may be given the recordings.
+            Approved by {version.approved_by_label ?? "an approver"} on {when(version.approved_at)}. {what}
           </p>
           {mayApprove && (
             <button
@@ -50,8 +58,8 @@ function Approval({ pipelineId, department, version }: { pipelineId: string; dep
       ) : (
         <>
           <p>
-            The step {steps} is given the recordings, which means code that the platform did not write holds the sound. This version cannot run until an
-            approver of {department ?? "the owning department"}, who is not {version.uploaded_by_label ?? "the person who uploaded it"}, approves it.
+            {what} This version cannot run until an approver of {department ?? "the owning department"}, who is not{" "}
+            {version.uploaded_by_label ?? "the person who uploaded it"}, approves it.
           </p>
           {mayApprove && (
             <button
@@ -121,7 +129,10 @@ export function PipelineDetail() {
                         ({step.kind}
                         {step.block ? `: ${step.block}` : ""}
                         {step.script ? `: ${step.script}` : ""}
-                        {step.recordings ? ", given the recordings" : ""})
+                        {step.recordings ? ", given the recordings" : ""}
+                        {step.writes_files ? ", writes files" : ""}
+                        {step.memory_mb ? `, ${step.memory_mb} MB of memory` : ""}
+                        {step.scratch_mb ? `, ${step.scratch_mb} MB of scratch space` : ""})
                       </span>
                       {step.depends_on?.length ? (
                         <span className="text-slate-400">

@@ -79,6 +79,11 @@ function StepRow({
       <span className="text-sm text-slate-800">{label}</span>
       <span className="flex items-center gap-3">
         {step && <span className="text-xs text-slate-500">{took(step)}</span>}
+        {step?.output_version && (
+          <Link to={`/versions/${step.output_version}`} data-testid={`pipeline-step-made-${step.action}`} className="text-xs text-sky-700 underline">
+            Open the version it made
+          </Link>
+        )}
         <span
           className={`rounded px-2 py-0.5 text-xs font-medium ${
             step ? STATUS_STYLE[step.status] : "bg-slate-100 text-slate-600"
