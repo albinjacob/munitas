@@ -100,6 +100,8 @@ SCRIPTS = [
     ("U131 a gate can say not measured, which is not a pass and not a fail", "v131_gate_not_measured.py"),
     ("U133 a table is sealed from a contract file and a CSV file, and a bad file is refused with every problem listed", "v133_seal_table_from_files.py"),
     ("U134 a screen can ask what a person may do with a locked table, and the lease lists name people", "v134_locking_summary.py"),
+    ("U136 a whole file is locked under a person's key in chunks, and a chunk that is moved, repeated, cut off or added to is refused", "v136_locked_file_stream.py"),
+    ("U137 a recording is uploaded in parts that can each be sent again, locked under its patient's key, sealed, and unreadable once the patient is erased", "v137_locked_recordings.py"),
 ]
 
 here = Path(__file__).parent
@@ -268,6 +270,8 @@ if ONLY is None:
     print("    .venv\\Scripts\\python.exe verify\\v68_production_case_no_ground_truth.py")
     print("  U132 calls the practice step directly and loads the models, so it runs on the host with the graphics card, a couple of minutes:")
     print("    .venv\\Scripts\\python.exe verify\\v132_practice_run.py")
+    print("  U138 imports the worker's own client and opens locked recordings through the platform, so it runs on the host, about half a minute:")
+    print("    .venv\\Scripts\\python.exe verify\\v138_worker_opens_locked_recordings.py")
     print("  U73 starts the worker entry points on Windows and inside WSL to prove")
     print("  they refuse a work directory they cannot use, so it runs on the host:")
     print("    .venv\\Scripts\\python.exe verify\\v73_work_dir_refused.py")

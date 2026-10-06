@@ -79,6 +79,7 @@ test.describe("U135: locked columns in the console", () => {
     const datasetId = await registerDataset(`console-seal-${Date.now()}`);
     await loginAs(page, ENGINEER);
     await page.goto(`/datasets/${datasetId}/ingest`);
+    await page.getByTestId("erase-yes").check();
 
     await page.getByTestId("seal-table-contract").setInputFiles({ name: "contract.yaml", mimeType: "application/x-yaml", buffer: CONTRACT });
     await page.getByTestId("seal-table-rows").setInputFiles({ name: "rows.csv", mimeType: "text/csv", buffer: ROWS });
@@ -97,6 +98,7 @@ test.describe("U135: locked columns in the console", () => {
     const datasetId = await registerDataset(`console-refused-${Date.now()}`);
     await loginAs(page, ENGINEER);
     await page.goto(`/datasets/${datasetId}/ingest`);
+    await page.getByTestId("erase-yes").check();
 
     const broken = ROWS.toString("utf8")
       .replace("2026-09-03", "not a date")

@@ -113,6 +113,18 @@ def seal_recordings(dataset_id: str, identity: dict = Depends(auth.current_sessi
     return _answering(lambda: recordings.seal_recordings(dataset_id=dataset_id, identity=identity))
 
 
+@router.get("/dataset-versions/{version_id}/recordings")
+def recordings_summary(version_id: str, identity: dict = Depends(auth.current_session)) -> dict:
+    """How many locked recordings a sealed version holds, how many patients they are about, and how many belong to patients who were erased.
+
+    Counts only. A version that holds no locked recordings answers 404.
+    """
+    try:
+        return recordings.summary(version_id, identity)
+    except NoSuchVersion as exc:
+        raise HTTPException(404, "no locked recordings here") from exc
+
+
 @router.get("/internal/dataset-versions/{version_id}/locked-recordings", include_in_schema=False)
 def is_locked(version_id: str, _worker: None = Depends(auth.worker_only)) -> dict:
     """Whether a version's recordings are locked, so a pipeline run knows to ask for them opened instead of reading them from storage."""

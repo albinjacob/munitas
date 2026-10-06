@@ -1,4 +1,4 @@
-"""U135: a whole file is locked under a person's key in chunks, and a chunk that is moved, repeated, cut off or added to is refused.
+"""U136: a whole file is locked under a person's key in chunks, and a chunk that is moved, repeated, cut off or added to is refused.
 
 A recording is far too large to lock in one piece, and it is uploaded in parts that can each be sent again. So each part is locked on its own, a
 chunk at a time, from its number and the file's stated size alone. This checks the module that does that, one item at a time, with no database and
@@ -13,7 +13,7 @@ no storage (the bytes are made up here):
   * a flipped bit anywhere is refused, and nothing opens with the wrong key;
   * opening reads one chunk at a time: a file of several parts is opened while holding no more than one chunk, which is measured.
 
-    docker compose exec -T munitas-api python /verify/v135_locked_file_stream.py
+    docker compose exec -T munitas-api python /verify/v136_locked_file_stream.py
 """
 
 from __future__ import annotations
@@ -137,7 +137,7 @@ def main() -> int:
         out += len(piece)
     check("every read asked storage for at most one chunk and its overhead", largest[0] <= CHUNK + OVERHEAD, f"the largest read was {largest[0]} bytes")
     check("and no piece handed on was larger than one chunk", max(seen) <= CHUNK and out == len(big), f"{len(seen)} pieces, {out} bytes")
-    return summary("v135")
+    return summary("v136")
 
 
 def _raises_value_error(fn) -> bool:

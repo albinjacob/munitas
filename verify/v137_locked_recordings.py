@@ -1,4 +1,4 @@
-"""U136: a recording is uploaded in parts that can each be sent again, locked under its patient's key, sealed, and unreadable once the patient is erased.
+"""U137: a recording is uploaded in parts that can each be sent again, locked under its patient's key, sealed, and unreadable once the patient is erased.
 
 A recording belongs to one patient. It is sent in parts, each locked on its own, and the platform keeps only what it can prove: every part there, the stored
 size exactly what a locked file of that size is. This checks, one item at a time, on real storage and a real database, with recordings the check makes
@@ -22,7 +22,7 @@ up for itself (noise, with a real wav header, and invented patients):
   * once the patient is erased the recording cannot be opened, nothing more can be locked for the patient, the other patient's recording still opens,
     and the stored bytes did not change.
 
-    docker compose exec -T munitas-api python /verify/v136_locked_recordings.py
+    docker compose exec -T munitas-api python /verify/v137_locked_recordings.py
 """
 
 from __future__ import annotations
@@ -361,7 +361,7 @@ def main() -> int:
         fresh = conn.execute("select person_code from recording_upload where id = %s", (again.json()["id"],)).fetchone()["person_code"]
     check("the same identifier after erasure is a new person, with a new key, and not the one erased", again.status_code == 201 and fresh != codes["visit-0001.wav"], fresh)
     reset_keys()
-    return summary("v136")
+    return summary("v137")
 
 
 def _raises(fn, exc) -> bool:

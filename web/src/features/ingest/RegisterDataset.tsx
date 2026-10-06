@@ -34,6 +34,8 @@ import { ApiError } from "../../api/client";
 import { PROVENANCE } from "../../api/provenance";
 import { CLASS_LABEL, CLASS_ORDER, type VisibilityClass } from "../../api/types";
 import { Failure, Loading, Section } from "../../components/states";
+import { EraseChoice, type Bringing, type Erasure } from "../locking/EraseChoice";
+import { RecordingsPanel } from "../locking/RecordingsPanel";
 import { SealTablePanel } from "../locking/SealTable";
 import { INTAKE_ROLES, useHoldsRole } from "../../identity/mayDo";
 
@@ -647,6 +649,11 @@ export function UploadStep({
 
   const sealed = seal.isSuccess || sealAudio.isSuccess;
   const mayBringIn = useHoldsRole(INTAKE_ROLES);
+  // Whether one person will ever need to be erased from this data, which has to be answered before anything is sent: an upload stored as it
+  // was cannot be locked afterwards. "No" is the ordinary upload.
+  const [erasure, setErasure] = useState<Erasure>("no");
+  const [bringing, setBringing] = useState<Bringing>("table");
+  const locking = erasure === "yes" && mayBringIn && !sealed;
   // Whose job it is to start a run. The console hides the button from anyone
   // else as a courtesy; POST .../deidentify asks the policy engine and is what
   // actually refuses them.
@@ -684,6 +691,16 @@ export function UploadStep({
         owned by the department you chose. {note}
       </p>
 
+      {mayBringIn && !sealed && (
+        <EraseChoice erasure={erasure} onErasure={setErasure} bringing={bringing} onBringing={setBringing} />
+      )}
+
+      {locking ? (
+        <div data-testid="locking-section">
+          {bringing === "table" ? <SealTablePanel datasetId={datasetId} /> : <RecordingsPanel datasetId={datasetId} />}
+        </div>
+      ) : (
+      <>
       <div className="flex gap-4 border-b border-slate-200 pb-3 text-sm">
         {(
           [
@@ -933,14 +950,6 @@ export function UploadStep({
         </p>
       )}
 
-      {/* A table of people's records is sealed from two files, not from what was uploaded above. */}
-      {!sealed && mayBringIn && (
-        <div className="mt-6 border-t border-slate-200 pt-4" data-testid="seal-table-section">
-          <h3 className="mb-2 text-base font-semibold text-slate-900">Or seal a table with a privacy contract</h3>
-          <SealTablePanel datasetId={datasetId} />
-        </div>
-      )}
-
       {/* Every reason, not the first. A set with four problems should take one
           look to understand rather than four attempts. */}
       {sealAudio.error && (
@@ -963,6 +972,8 @@ export function UploadStep({
             ))}
           </ul>
         </div>
+      )}
+      </>
       )}
     </div>
   );

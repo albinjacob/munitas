@@ -101,21 +101,24 @@ test("capture: lock what identifies a person, and read it only with permission",
   // PART ONE. Devi seals a table from two files.
   await loginAs(page, DEVI);
   await page.goto(`/datasets/${datasetId}/ingest`);
-  await expect(page.getByTestId("seal-table-section")).toBeVisible();
-  await shotAt(page, "seal-table-section", "devi-opens-the-table-option", 40);
+  await expect(page.getByTestId("erase-choice")).toBeVisible();
+  await shotAt(page, "erase-choice", "devi-is-asked-whether-anyone-may-need-erasing", 40);
+  await page.getByTestId("erase-yes").check();
+  await expect(page.getByTestId("locking-section")).toBeVisible();
+  await shotAt(page, "erase-choice", "devi-opens-the-table-option", 40);
 
   const broken = ROWS.toString("utf8").replace("2026-09-03", "not a date").replace("HC-4101,Tomas Byrne", ",Tomas Byrne");
   await page.getByTestId("seal-table-contract").setInputFiles({ name: "clinic-appointments-contract.yaml", mimeType: "application/x-yaml", buffer: CONTRACT });
   await page.getByTestId("seal-table-rows").setInputFiles({ name: "appointments-with-mistakes.csv", mimeType: "text/csv", buffer: Buffer.from(broken) });
   await page.getByTestId("seal-table-submit").click();
   await expect(page.getByTestId("seal-table-refused")).toBeVisible();
-  await shotAt(page, "seal-table-section", "a-bad-file-is-refused", 40);
+  await shotAt(page, "erase-choice", "a-bad-file-is-refused", 40);
 
   await page.getByTestId("seal-table-rows").setInputFiles({ name: "appointments.csv", mimeType: "text/csv", buffer: ROWS });
   await page.getByTestId("seal-table-submit").click();
   // The first table in an organisation makes its keys and writes its first file, which takes a few seconds.
   await expect(page.getByTestId("table-sealed")).toBeVisible({ timeout: 30_000 });
-  await shotAt(page, "seal-table-section", "the-table-is-sealed", 40);
+  await shotAt(page, "erase-choice", "the-table-is-sealed", 40);
 
   // PART TWO. What the table says about itself, and what Devi may do with it.
   await page.getByTestId("open-sealed-table").click();

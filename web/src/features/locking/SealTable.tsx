@@ -51,8 +51,12 @@ export function SealTablePanel({ datasetId }: { datasetId: string }) {
       }}
     >
       <p className="text-sm text-slate-700">
-        Use this for a table of people's records. Two files: a <strong>contract</strong> that says which columns are locked and how each row's
-        person is found (YAML or JSON), and the <strong>rows</strong> as a CSV with a header. Up to 20,000 rows and 5 MB.
+        Two files: a <strong>contract</strong> that says which columns are locked and which column identifies each row's person (YAML or JSON), and the{" "}
+        <strong>rows</strong> as a CSV with a header. Up to 20,000 rows and 5 MB.{" "}
+        <a data-testid="example-contract" className="text-sky-700 underline" href="/privacy-contract-example.yaml" download>
+          Download an example contract
+        </a>{" "}
+        and change its columns to match yours.
       </p>
       <div className="flex flex-wrap gap-6">
         <label className="text-sm">

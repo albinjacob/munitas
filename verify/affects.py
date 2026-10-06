@@ -51,8 +51,9 @@ SHARED = ["verify/common.py", "verify/lifecycle_fixture.py", "verify/markers.py"
 
 # Where a file has an obvious home. The first rule that matches a file decides it; its checks are added to the set.
 TABLE: list[tuple[str, list[str], str]] = [
-    ("platform/crypto/*", ["U128", "U129"], "the key service and the locking of columns"),
-    ("platform/api/app/person_*.py", ["U128", "U129"], "locked columns and their routes"),
+    ("platform/crypto/*", ["U128", "U129", "U136", "U137"], "the key service and the locking of columns and files"),
+    ("platform/api/app/person_*.py", ["U128", "U129", "U137"], "locked columns and their routes, and what erasing a person lists"),
+    ("platform/api/app/recording*.py", ["U136", "U137"], "recordings locked per patient; U138 runs on the host (RUNBOOK)"),
     ("platform/api/app/locked_leases.py", ["U128", "U129"], "leases on locked columns"),
     ("platform/api/app/privacy_contract.py", ["U128", "U129"], "the privacy contract"),
     ("platform/api/app/key_store.py", ["U128", "U129"], "where keys are kept"),
@@ -60,7 +61,7 @@ TABLE: list[tuple[str, list[str], str]] = [
      "the client the platform asks the policy through: the checks that ask for access, roles, leases and reports"),
     ("platform/policy/*.rego",["U72", "U78", "U98", "U99", "U126", "U127", "U128", "U129"],
      "a policy change can reach every decision; this is the set that asks people for access or roles. Run the policy tests too"),
-    ("platform/schema.sql", ["V1", "V4", "U98", "U99", "U100"],
+    ("platform/schema.sql", ["V1", "V4", "U98", "U99", "U100", "U137"],
      "a table or rule in the schema: immutability, classes, closing, holds and the purge, which deletes whatever has a tenant id"),
     ("docs/*", [], "documentation"),
     ("web/*", [], "the console, which has its own build and tests"),

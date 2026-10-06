@@ -1342,6 +1342,38 @@
         "title": "LockedColumnLeaseRequestIn",
         "type": "object"
       },
+      "OpenUploadIn": {
+        "properties": {
+          "file_name": {
+            "description": "The recording, <record>.wav, or its answer key, <record>.truth.json",
+            "title": "File Name",
+            "type": "string"
+          },
+          "patient_kind": {
+            "description": "What kind of identifier names the patient, such as a hospital chart number",
+            "title": "Patient Kind",
+            "type": "string"
+          },
+          "patient_value": {
+            "description": "The patient's identifier. Used to find the patient and never stored",
+            "title": "Patient Value",
+            "type": "string"
+          },
+          "size_bytes": {
+            "description": "The size of the file in bytes, stated before any part is sent",
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "file_name",
+          "size_bytes",
+          "patient_kind",
+          "patient_value"
+        ],
+        "title": "OpenUploadIn",
+        "type": "object"
+      },
       "PipelineRunIn": {
         "properties": {
           "dataset": {
@@ -3747,6 +3779,50 @@
         "summary": "Promote"
       }
     },
+    "/dataset-versions/{version_id}/recordings": {
+      "get": {
+        "description": "How many locked recordings a sealed version holds, how many patients they are about, and how many belong to patients who were erased.\n\nCounts only. A version that holds no locked recordings answers 404.",
+        "operationId": "recordings_summary_dataset_versions__version_id__recordings_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Recordings Summary Dataset Versions  Version Id  Recordings Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Recordings Summary",
+        "tags": [
+          "recordings"
+        ]
+      }
+    },
     "/dataset-versions/{version_id}/table": {
       "get": {
         "description": "Whether this version is also stored as a table, and if it is not, why.\n\nA table copy is what lets a standard tool read the rows, and what a legal export needs to hand over only the rows\nfor named people. Narrowed to the caller's own organisation, answering 404 for anything else, as the other reads of\none version do.",
@@ -4621,6 +4697,60 @@
         "summary": "Next Version"
       }
     },
+    "/datasets/{dataset_id}/recording-uploads": {
+      "post": {
+        "description": "Open an upload of one recording (or its answer key) for one patient. It is sent in parts of at most 8 MB, each of which can be sent again.\n\nThe patient's identifier finds their person code, made with a key the first time the identifier is seen. It is never stored.\nThe upload stays open for a day.",
+        "operationId": "open_upload_datasets__dataset_id__recording_uploads_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenUploadIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Open Upload Datasets  Dataset Id  Recording Uploads Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Open Upload",
+        "tags": [
+          "recordings"
+        ]
+      }
+    },
     "/datasets/{dataset_id}/seal": {
       "post": {
         "description": "Close the upload and create the first sealed version.\n\nGoes through the same sealing path the pipeline uses, so nothing arriving\nthis way sidesteps immutability or the prefix rules.",
@@ -4706,6 +4836,50 @@
         "summary": "Seal Audio",
         "tags": [
           "ingest"
+        ]
+      }
+    },
+    "/datasets/{dataset_id}/seal-recordings": {
+      "post": {
+        "description": "Seal the locked uploads as a version the de-identification pipeline can read. Pressing this is the check: a refusal seals nothing.",
+        "operationId": "seal_recordings_datasets__dataset_id__seal_recordings_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Seal Recordings Datasets  Dataset Id  Seal Recordings Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Seal Recordings",
+        "tags": [
+          "recordings"
         ]
       }
     },
@@ -9699,6 +9873,189 @@
         "summary": "Policy Roles",
         "tags": [
           "read"
+        ]
+      }
+    },
+    "/recording-uploads/{upload_id}": {
+      "delete": {
+        "description": "Give up on an upload. What was sent is dropped.",
+        "operationId": "abort_upload_recording_uploads__upload_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "upload_id",
+            "required": true,
+            "schema": {
+              "title": "Upload Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Abort Upload Recording Uploads  Upload Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Abort Upload",
+        "tags": [
+          "recordings"
+        ]
+      },
+      "get": {
+        "description": "Which parts have arrived and which are missing, so an upload that was cut off carries on from where it stopped.",
+        "operationId": "upload_status_recording_uploads__upload_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "upload_id",
+            "required": true,
+            "schema": {
+              "title": "Upload Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Upload Status Recording Uploads  Upload Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Status",
+        "tags": [
+          "recordings"
+        ]
+      }
+    },
+    "/recording-uploads/{upload_id}/complete": {
+      "post": {
+        "description": "Finish the upload. Every part must have arrived and the stored size must be exactly what a locked file of that size is.",
+        "operationId": "complete_upload_recording_uploads__upload_id__complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "upload_id",
+            "required": true,
+            "schema": {
+              "title": "Upload Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Complete Upload Recording Uploads  Upload Id  Complete Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Complete Upload",
+        "tags": [
+          "recordings"
+        ]
+      }
+    },
+    "/recording-uploads/{upload_id}/parts/{part_number}": {
+      "put": {
+        "description": "Send one part, as the raw body of the request. Sending a part again replaces it.",
+        "operationId": "send_part_recording_uploads__upload_id__parts__part_number__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "upload_id",
+            "required": true,
+            "schema": {
+              "title": "Upload Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "part_number",
+            "required": true,
+            "schema": {
+              "title": "Part Number",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Send Part Recording Uploads  Upload Id  Parts  Part Number  Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Send Part",
+        "tags": [
+          "recordings"
         ]
       }
     },

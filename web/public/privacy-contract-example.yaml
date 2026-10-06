@@ -1,0 +1,53 @@
+# An example privacy contract for a table of people's records. Every name and number is invented.
+# Change the columns to match your own table, then upload it beside your CSV.
+#
+# Each column says what it is (classification) and what is done to it (treatment):
+#   lock                         scrambled under the person's own key; erasing the person makes it unreadable
+#   readable                     left as it is
+#   replaced by the person code  the column that identifies the person, swapped for a code that means nothing on its own
+# One column must be the primary key, and the subject says which column finds the person.
+apiVersion: v3.2.0
+kind: DataContract
+id: clinic-appointments
+name: clinic-appointments
+version: 1.0.0
+status: active
+schema:
+  - id: appointments_obj
+    name: appointments
+    logicalType: object
+    properties:
+      - id: appointment_id_prop
+        name: appointment_id
+        logicalType: string
+        primaryKey: true
+        required: true
+        classification: none
+        customProperties:
+          - {property: treatment, vendor: munitas, value: readable}
+      - id: chart_number_prop
+        name: chart_number
+        logicalType: string
+        classification: direct
+        customProperties:
+          - {property: treatment, vendor: munitas, value: replaced by the person code}
+          - {property: personIdentifier, vendor: munitas, value: true}
+      - id: patient_name_prop
+        name: patient_name
+        logicalType: string
+        classification: direct
+        customProperties:
+          - {property: treatment, vendor: munitas, value: lock}
+      - id: postcode_prop
+        name: postcode
+        logicalType: string
+        classification: quasi
+        customProperties:
+          - {property: treatment, vendor: munitas, value: readable}
+customProperties:
+  - property: subject
+    vendor: munitas
+    value: {kind: hospital chart number, foundBy: column, column: chart_number}
+  - property: erasable
+    vendor: munitas
+    value: true

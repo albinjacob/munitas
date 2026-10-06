@@ -325,6 +325,24 @@ def seal_recordings(*, dataset_id: str, identity: dict) -> dict:
     return {**version, "records": len(records), "people": len({u["locked_person_code"] for u in audio.values()}), "sealed_by": identity["id"]}
 
 
+# What a screen shows of a sealed version ----------------------------------------------------------
+
+
+def summary(version_id: str, identity: dict) -> dict:
+    """How many recordings a version holds, locked, and how many different patients they are about. Counts only: no name, no person code.
+
+    Asking records nothing, because it opens nothing. Raises NoSuchVersion for a version that is not this person's organisation's or that holds no
+    locked recordings, so a screen shows the panel only where it is true.
+    """
+    row = db.one("select v.tenant_id, count(*) as recordings, count(distinct r.person_code) as patients, count(*) filter (where p.destroyed_at is not null) as erased "
+                 "from recording_person r join dataset_version v on v.id = r.dataset_version_id "
+                 "left join subject_key p on p.tenant_id = r.tenant_id and p.person_code = r.person_code "
+                 "where r.dataset_version_id = %s group by v.tenant_id", (version_id,))
+    if not row or row["tenant_id"] != identity["tenant_id"]:
+        raise NoSuchVersion(version_id)
+    return {"version_id": version_id, "recordings": row["recordings"], "patients": row["patients"], "erased_recordings": row["erased"], "format": FORMAT}
+
+
 # Giving a recording back to a pipeline run -----------------------------------------------------
 
 

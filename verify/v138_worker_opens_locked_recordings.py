@@ -1,4 +1,4 @@
-"""U137: a pipeline run is given a locked recording back through the platform, and only a run that was launched for it.
+"""U138: a pipeline run is given a locked recording back through the platform, and only a run that was launched for it.
 
 The transcribe and redact steps read each recording from storage as audio. A recording locked under its patient's key is ciphertext there, so they
 ask the platform to open it: the platform checks the task, unwraps the key (the opening goes in the key log with the task named) and streams the audio.
@@ -19,7 +19,7 @@ Runs on the host, because it imports the worker's own client:
     $env:PG_DSN = "postgresql://munitas:munitas@localhost:5432/platform"
     $env:MUNITAS_VERIFY_KRATOS = "http://localhost:4433"
     $env:S3_ENDPOINT = "http://localhost:8333"
-    .venv\\Scripts\\python.exe verify\\v137_worker_opens_locked_recordings.py
+    .venv\\Scripts\\python.exe verify\\v138_worker_opens_locked_recordings.py
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ import httpx  # noqa: E402
 
 from common import ADMIN, API, CANARY, WORKER_HEADERS, api, bearer_for, bucket_for, check, db, fixture_tenant, heading, require_api, s3_client, summary, tiny_wav  # noqa: E402
 from v128_person_keys_erasure import ENGINEER, count, register_dataset, reset_keys  # noqa: E402
-from v136_locked_recordings import make_wav, upload_whole  # noqa: E402
+from v137_locked_recordings import make_wav, upload_whole  # noqa: E402
 from worker import platform_client as cp  # noqa: E402
 
 WORKLOAD = f"{CANARY}-pipeline"
@@ -166,7 +166,7 @@ def main() -> int:
     r = raw(body, WORKER_HEADERS)
     check("the platform says gone (410) and names the reason", r.status_code == 410 and "erased" in r.text, f"{r.status_code} {r.text[:120]}")
     reset_keys()
-    return summary("v137")
+    return summary("v138")
 
 
 if __name__ == "__main__":
