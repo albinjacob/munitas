@@ -166,10 +166,21 @@ def classify(code: int, counts: dict | None) -> str:
     return "pass"
 
 
+# `--only U128,U129` runs those checks and nothing else, for the quick loop (see affects.py and quick-verify.ps1). A partial run says so
+# loudly, and its results line carries "partial": true, because a run of two checks must never be read as a run of all of them.
+ONLY = None
+if "--only" in sys.argv:
+    ONLY = {part.strip().upper() for part in sys.argv[sys.argv.index("--only") + 1].split(",") if part.strip()}
+    known = {label.split(None, 1)[0].upper() for label, _ in SCRIPTS}
+    if ONLY - known:
+        print(f"No such check: {', '.join(sorted(ONLY - known))}. The ones that exist: {', '.join(sorted(known))}")
+        sys.exit(2)
+SELECTED = [(label, script) for label, script in SCRIPTS if ONLY is None or label.split(None, 1)[0].upper() in ONLY]
+
 run_started = datetime.now(timezone.utc)
 run_clock = time.monotonic()
 
-for label, script in SCRIPTS:
+for label, script in SELECTED:
     print("\n" + "=" * 66)
     print(label)
     print("=" * 66)
@@ -200,63 +211,67 @@ for (label, script, code, seconds, counts), status in zip(results, statuses):
 tally = Counter(statuses)
 print(f"\n  Total {run_seconds:.2f}s across {len(results)} scripts: "
       f"{tally['pass']} passed, {tally['skip']} skipped entirely, {tally['fail']} failed")
+if ONLY is not None:
+    print(f"\n  PARTIAL RUN: {len(results)} of {len(SCRIPTS)} checks. This is not a verification of the platform.")
+    print("  The full suite is still needed before anything is pushed; CI runs it.")
 skipped_checks = sum(counts["skipped"] for _, _, _, _, counts in results if counts)
 if skipped_checks:
     print(f"  {skipped_checks} individual checks were skipped across the suite; none is counted as a pass")
 
-print("\nV5 (policy) runs separately and needs no services:")
-print("  docker compose run --rm --entrypoint /opa opa test /policy -v")
-print("\nNot run here, and not passes:")
-print("  V6b, V7 to V9, V11 to V14 run on the host, where the models and the")
-print("  agent packages are installed.")
-print("  U29 to U31 drive scripts/admin/reclaim-storage.py, which sits beside the Compose file")
-print("  rather than inside this image:")
-print("    .venv\\Scripts\\python.exe verify\\v29_reclamation.py")
-print("  U47 drives scripts/admin/cleanup-dataset.py, the same reason:")
-print("    .venv\\Scripts\\python.exe verify\\v47_cleanup_dataset.py")
-print("  U121 drives scripts/admin/close-finished-pipeline-runs.py, the same reason:")
-print("    .venv\\Scripts\\python.exe verify\\v121_closing_runs_twice_changes_nothing.py")
-print("  U122 calls the scheduled sweep's own function and reads its schedule from Temporal, so it runs on the host:")
-print("    .venv\\Scripts\\python.exe verify\\v122_run_endings_say_where_they_came_from.py")
-print("  U49 drives scripts/admin/register-agent-version.py, the same reason:")
-print("    .venv\\Scripts\\python.exe verify\\v49_external_agent_version.py")
-print("  U52 drives scripts/admin/create-tenant.py, scripts/admin/retire-tenant.py and scripts/admin/nuke-tenant.py, the")
-print("  same reason:")
-print("    .venv\\Scripts\\python.exe verify\\v52_tenant_lifecycle.py")
-print("  U55 drives real Docker containers via worker/sandbox_run.py and needs")
-print("  python -m worker.main running on the host with Docker reachable:")
-print("    .venv\\Scripts\\python.exe verify\\v55_sandboxed_agent_run.py")
-print("  U59 calls worker.activities.record_gate_decision directly, which is the")
-print("  only honest way to prove the pipeline stopped promoting, so it runs on")
-print("  the host where the worker package is importable:")
-print("    .venv\\Scripts\\python.exe verify\\v59_gate_decision.py")
-print("  U62 runs a whole de-identification against three real recordings, so it")
-print("  needs the synthetic corpus, which lives on the host and is not mounted")
-print("  into this image, and the pipeline worker on the machine with the GPU.")
-print("  Several minutes:")
-print("    .venv\\Scripts\\python.exe verify\\v62_console_pipeline_run.py")
-print("  U63 runs the pipeline for a tenant that has its own storage bucket,")
-print("  which is the only arrangement where writing to the wrong one is")
-print("  visible. Same host requirements as U62:")
-print("    .venv\\\\Scripts\\\\python.exe verify\\\\v63_pipeline_tenant.py")
-print("  U66 runs an operator-registered DAG's sandboxed script steps, which")
-print("  needs a live worker on this machine's Docker daemon:")
-print("    .venv\\Scripts\\python.exe verify\\v66_pipeline_dag.py")
-print("  U68 runs a real recording with no answer key through the committed")
-print("  redact-without-scoring template -- real transcribe/detect/redact, so")
-print("  it needs python -m worker.main on the machine with the GPU. Several")
-print("  minutes:")
-print("    .venv\\Scripts\\python.exe verify\\v68_production_case_no_ground_truth.py")
-print("  U73 starts the worker entry points on Windows and inside WSL to prove")
-print("  they refuse a work directory they cannot use, so it runs on the host:")
-print("    .venv\\Scripts\\python.exe verify\\v73_work_dir_refused.py")
-print("  U95 runs real queries through the host worker, the sandbox worker and the query")
-print("  container, so it needs both workers and the image built (RUNBOOK, \"Running a query")
-print("  to make a new dataset\"). U96 runs on the host with no Docker:")
-print("    .venv\\Scripts\\python.exe verify\\v96_reap_leftover_containers.py")
-print("  U46's checks past the first two need the HuggingFace ingestion worker")
-print("  running on the host, or they report a skip rather than a failure:")
-print("    .venv\\Scripts\\python.exe -m worker.main")
+if ONLY is None:
+    print("\nV5 (policy) runs separately and needs no services:")
+    print("  docker compose run --rm --entrypoint /opa opa test /policy -v")
+    print("\nNot run here, and not passes:")
+    print("  V6b, V7 to V9, V11 to V14 run on the host, where the models and the")
+    print("  agent packages are installed.")
+    print("  U29 to U31 drive scripts/admin/reclaim-storage.py, which sits beside the Compose file")
+    print("  rather than inside this image:")
+    print("    .venv\\Scripts\\python.exe verify\\v29_reclamation.py")
+    print("  U47 drives scripts/admin/cleanup-dataset.py, the same reason:")
+    print("    .venv\\Scripts\\python.exe verify\\v47_cleanup_dataset.py")
+    print("  U121 drives scripts/admin/close-finished-pipeline-runs.py, the same reason:")
+    print("    .venv\\Scripts\\python.exe verify\\v121_closing_runs_twice_changes_nothing.py")
+    print("  U122 calls the scheduled sweep's own function and reads its schedule from Temporal, so it runs on the host:")
+    print("    .venv\\Scripts\\python.exe verify\\v122_run_endings_say_where_they_came_from.py")
+    print("  U49 drives scripts/admin/register-agent-version.py, the same reason:")
+    print("    .venv\\Scripts\\python.exe verify\\v49_external_agent_version.py")
+    print("  U52 drives scripts/admin/create-tenant.py, scripts/admin/retire-tenant.py and scripts/admin/nuke-tenant.py, the")
+    print("  same reason:")
+    print("    .venv\\Scripts\\python.exe verify\\v52_tenant_lifecycle.py")
+    print("  U55 drives real Docker containers via worker/sandbox_run.py and needs")
+    print("  python -m worker.main running on the host with Docker reachable:")
+    print("    .venv\\Scripts\\python.exe verify\\v55_sandboxed_agent_run.py")
+    print("  U59 calls worker.activities.record_gate_decision directly, which is the")
+    print("  only honest way to prove the pipeline stopped promoting, so it runs on")
+    print("  the host where the worker package is importable:")
+    print("    .venv\\Scripts\\python.exe verify\\v59_gate_decision.py")
+    print("  U62 runs a whole de-identification against three real recordings, so it")
+    print("  needs the synthetic corpus, which lives on the host and is not mounted")
+    print("  into this image, and the pipeline worker on the machine with the GPU.")
+    print("  Several minutes:")
+    print("    .venv\\Scripts\\python.exe verify\\v62_console_pipeline_run.py")
+    print("  U63 runs the pipeline for a tenant that has its own storage bucket,")
+    print("  which is the only arrangement where writing to the wrong one is")
+    print("  visible. Same host requirements as U62:")
+    print("    .venv\\\\Scripts\\\\python.exe verify\\\\v63_pipeline_tenant.py")
+    print("  U66 runs an operator-registered DAG's sandboxed script steps, which")
+    print("  needs a live worker on this machine's Docker daemon:")
+    print("    .venv\\Scripts\\python.exe verify\\v66_pipeline_dag.py")
+    print("  U68 runs a real recording with no answer key through the committed")
+    print("  redact-without-scoring template -- real transcribe/detect/redact, so")
+    print("  it needs python -m worker.main on the machine with the GPU. Several")
+    print("  minutes:")
+    print("    .venv\\Scripts\\python.exe verify\\v68_production_case_no_ground_truth.py")
+    print("  U73 starts the worker entry points on Windows and inside WSL to prove")
+    print("  they refuse a work directory they cannot use, so it runs on the host:")
+    print("    .venv\\Scripts\\python.exe verify\\v73_work_dir_refused.py")
+    print("  U95 runs real queries through the host worker, the sandbox worker and the query")
+    print("  container, so it needs both workers and the image built (RUNBOOK, \"Running a query")
+    print("  to make a new dataset\"). U96 runs on the host with no Docker:")
+    print("    .venv\\Scripts\\python.exe verify\\v96_reap_leftover_containers.py")
+    print("  U46's checks past the first two need the HuggingFace ingestion worker")
+    print("  running on the host, or they report a skip rather than a failure:")
+    print("    .venv\\Scripts\\python.exe -m worker.main")
 
 
 # The structured copy, for run-verification.ps1 to append to the history that
@@ -266,6 +281,7 @@ run = {
     "started_at": run_started.isoformat(),
     "seconds": run_seconds,
     "host": platform.node(),
+    "partial": ONLY is not None,
     "results": [
         {
             # "U43 huggingface fetch" splits into the claim id and its words.

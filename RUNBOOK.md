@@ -232,6 +232,25 @@ is true here: no `DELETE` against any table, no reach into a
 .\run-verification.ps1 -ReclaimOlderThanDays 0
 ```
 
+#### The quick loop, between full runs
+
+The whole suite takes about 15 minutes. While changing code, run only what a change needs:
+
+```powershell
+# What changed since the last full run that passed decides the checks, and each choice is explained.
+.\quick-verify.ps1
+
+# Say what it would run, and run nothing.
+.\quick-verify.ps1 -List
+
+# Exactly these checks.
+.\quick-verify.ps1 -Only U128,U129
+```
+
+A quick run is not recorded on the history page, says so when it ends, and does not replace the full suite, which is what CI runs and what
+must pass before anything is pushed. A file that no rule or check covers makes it run the whole suite rather than guess. The cheap checks
+that a change anywhere can break by rule are always added. A full run that passes is what later quick runs measure change against.
+
 Both this and `start-dev.ps1` reach Docker through WSL2, using the shared
 helpers in `wsl-docker.ps1`. Pass `-WslDistro` to either if the distro is not
 named `Ubuntu-20.04`.

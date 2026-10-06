@@ -52,6 +52,11 @@ if ($apiContainers.Count -ne 1) {
         ". A second one is usually left by `docker compose run munitas-api ...`. Remove the extra with `docker rm -f <name>`, then run this again.")
 }
 
+# A photograph of the tree as the suite starts, kept only if the whole run passes (see verify/affects.py and quick-verify.ps1). Taken here and not
+# at the end, so a file edited while the suite runs counts as not yet checked.
+$treeSnapshot = Join-Path ([System.IO.Path]::GetTempPath()) "munitas-tree-snapshot.json"
+& $venvPython (Join-Path $PSScriptRoot "verify\affects.py") --snapshot $treeSnapshot
+
 Write-Host "Running the verification suite inside the munitas-api container..."
 Write-Host ""
 # Anything the suite writes to stderr (a check's traceback, a library warning) must not stop this script. With the error preference at Stop and the
@@ -178,6 +183,8 @@ if ($suiteExit -eq 0 -and (-not $leakOk -or -not $afterRecorded)) {
 }
 if ($suiteExit -eq 0) {
     Write-Host "Suite passed." -ForegroundColor Green
+    # The whole suite passed, recorded, with nothing left behind: this is now what the quick loop measures change against.
+    & $venvPython (Join-Path $PSScriptRoot "verify\affects.py") --accept $treeSnapshot
 } else {
     Write-Host "Suite reported failures. The page above shows which, and when each last failed." -ForegroundColor Yellow
 }
