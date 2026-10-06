@@ -272,6 +272,8 @@ if ONLY is None:
     print("    .venv\\Scripts\\python.exe verify\\v132_practice_run.py")
     print("  U138 imports the worker's own client and opens locked recordings through the platform, so it runs on the host, about half a minute:")
     print("    .venv\\Scripts\\python.exe verify\\v138_worker_opens_locked_recordings.py")
+    print("  U140 runs the whole de-identification over two patients' locked recordings and again after one is erased, so it needs the worker, about five minutes:")
+    print("    .venv\\Scripts\\python.exe verify\\v139_locked_recordings_pipeline.py")
     print("  U73 starts the worker entry points on Windows and inside WSL to prove")
     print("  they refuse a work directory they cannot use, so it runs on the host:")
     print("    .venv\\Scripts\\python.exe verify\\v73_work_dir_refused.py")
