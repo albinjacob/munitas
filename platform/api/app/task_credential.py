@@ -74,7 +74,9 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 # expected clock a well-behaved run runs out.
 DEFAULT_TTL_SECONDS = 6 * 3600
 
-TASK_KINDS = ("agent_run", "action_run", "pipeline_run", "huggingface_fetch_job", "table_write_job")
+# `step_run` is a custom pipeline step's own pass, and `step_read` the handle to one recording it opened. They are kinds of their own so that nothing
+# that accepts a run's credential (a read key, a write key) accepts either: customer code holds them, and they open the step's routes and nothing else.
+TASK_KINDS = ("agent_run", "action_run", "pipeline_run", "huggingface_fetch_job", "table_write_job", "step_run", "step_read")
 
 
 class InvalidTaskCredential(Exception):
@@ -88,6 +90,8 @@ class TaskClaim:
     task_id: str
     tenant_id: str
     expires_at: float
+    step: str | None = None
+    scope: str | None = None
 
 
 def _signing_key() -> bytes:
@@ -111,7 +115,7 @@ def _unb64(text: str) -> bytes:
 
 
 def mint(*, principal: str, task_kind: str, task_id: str, tenant_id: str,
-          ttl_seconds: int = DEFAULT_TTL_SECONDS) -> str:
+          ttl_seconds: int = DEFAULT_TTL_SECONDS, step: str | None = None, scope: str | None = None) -> str:
     """A signed token proving `task_id` really is what spawned this call.
 
     Called once, by the platform, at the moment the task row is created --
@@ -126,6 +130,10 @@ def mint(*, principal: str, task_kind: str, task_id: str, tenant_id: str,
         "tenant_id": tenant_id,
         "expires_at": time.time() + ttl_seconds,
     }
+    if step is not None:
+        payload["step"] = step
+    if scope is not None:
+        payload["scope"] = scope
     encoded = _b64(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
     signature = hmac.new(_signing_key(), encoded.encode("ascii"), hashlib.sha256).digest()
     return f"{encoded}.{_b64(signature)}"
@@ -153,7 +161,7 @@ def verify(token: str) -> TaskClaim:
         claim = TaskClaim(
             principal=payload["principal"], task_kind=payload["task_kind"],
             task_id=payload["task_id"], tenant_id=payload["tenant_id"],
-            expires_at=payload["expires_at"],
+            expires_at=payload["expires_at"], step=payload.get("step"), scope=payload.get("scope"),
         )
     except KeyError as exc:
         raise InvalidTaskCredential(f"task credential is missing {exc}") from exc

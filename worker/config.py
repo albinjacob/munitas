@@ -316,6 +316,14 @@ SANDBOX_API = os.environ.get("MUNITAS_SANDBOX_API", "http://munitas-api:8000")
 # (`munitas_data`), the same way AGENTNET above already was.
 DATA_NETWORK = os.environ.get("MUNITAS_DATA_NETWORK", "munitas_data")
 
+# The only network a custom pipeline step's container joins when it reads recordings (docker-compose.yml's `stepnet`, `internal: true`, no gateway
+# to the internet). The one thing on it is a small gateway that forwards the platform's step routes and nothing else, so the step reaches no storage,
+# no database and no other service. Never the data network, which holds the storage filer, and never agentnet.
+STEPNET = os.environ.get("MUNITAS_STEPNET", "munitas_stepnet")
+
+# Where a step finds the gateway from inside stepnet: the service name, resolved from inside the step's container.
+STEP_API = os.environ.get("MUNITAS_STEP_API", "http://step-gateway:8080")
+
 
 # ------------------------------------------------------------------ logs --
 #

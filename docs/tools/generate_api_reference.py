@@ -41,6 +41,7 @@ TAG_LABELS = {
     "legal-export": "Legal export (records produced for a legal matter)",
     "person keys": "Tables with locked columns (sealing one and reading it back)",
     "recordings": "Recordings locked per patient (uploading in parts, sealing, and what a sealed version holds)",
+    "custom steps": "What a custom pipeline step is given (called by the step itself, with the pass it was started with)",
     "iceberg": "Iceberg catalog (for DuckDB, PyIceberg and other standard tools)",
 }
 TAG_ORDER = list(TAG_LABELS.keys())

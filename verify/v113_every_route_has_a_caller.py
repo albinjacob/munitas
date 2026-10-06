@@ -33,7 +33,7 @@ OPEN_ON_PURPOSE = {
     ("GET", "/policy/roles"): "reference material: what each role is and may do, readable before signing in (the console's roles page, U16)",
 }
 AUTH_DEPENDENCIES = {"current_session", "current_session_while_closing", "organisation_scope", "person_or_worker", "worker_only",
-                     "catalog_principal", "_claim", "_worker"}
+                     "catalog_principal", "_claim", "_worker", "_step_pass"}
 
 
 def dependencies_of(dependant) -> set[str]:

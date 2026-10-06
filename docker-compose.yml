@@ -165,6 +165,19 @@ services:
         limits:
           memory: 256m
 
+  # The one way a custom pipeline step reaches the platform. A step runs on `stepnet`, which has no route to the internet, and this is the only other
+  # thing on it. It forwards the platform's step routes (/step/v1/) to the API and answers 404 to everything else.
+  step-gateway:
+    image: nginx:1.27-alpine
+    <<: *restart
+    volumes:
+      - ./infra/step-gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks: [control, stepnet]
+    deploy:
+      resources:
+        limits:
+          memory: 64m
+
   mlflow:
     # Not needed to see the governance model work end to end -- only
     # started under the 'full' profile (`docker compose --profile full up`).
@@ -571,4 +584,7 @@ networks:
   # No gateway. A container attached only to this network cannot reach the
   # internet, which is what V7 asserts.
   agentnet:
+    internal: true
+  # No gateway, like agentnet. Only the step gateway and a custom step's own container are on it.
+  stepnet:
     internal: true

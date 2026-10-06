@@ -486,9 +486,9 @@ list and the script's disagree), or remove it in a `finally`.
 
 ## Custom pipeline steps that are given the recordings
 
-A pipeline an operator registers can have script steps. A script step is normally given only the small JSON file of what earlier steps produced,
-and returns one JSON object. A step that needs the sound itself (its own speech model, its own way of finding where a name is spoken) says so in the
-pipeline file:
+A pipeline an operator registers can have script steps. A script step is normally given only the small JSON file of what earlier steps produced
+(`/data/inputs.json`), and returns one JSON object as the last line it prints. A step that needs the sound itself (its own speech model, its own way
+of finding where a name is spoken) says so in the pipeline file:
 
 ```yaml
 steps:
@@ -496,34 +496,51 @@ steps:
     kind: script
     script: steps/inspect.py
     recordings: true
+    memory_mb: 2048     # optional: default 1024, at most 4096
+    scratch_mb: 512     # optional: default 256, at most 2048 and never more than memory_mb
 ```
 
-What the step is given, when it runs, inside its sandbox:
+**How the step reads its recordings.** It imports the library the platform gives it, `munitas_step`, and asks the platform for them. It does not
+read files from a folder, and nothing is copied onto the machine that runs it:
 
-* `/data/inputs.json` has two extra keys: `recordings`, a list of `{record_id, path, bytes}`, and `recordings_skipped`, the ids left out because the
-  patient was erased. A step that declares `recordings: true` cannot also take inputs with those two names.
-* each recording is a file at `/data/audio/<record_id>.wav`, the original sound, read-only. A recording stored locked under its patient's key is
-  opened by the platform and handed over as sound; the key never leaves the platform.
-* the step returns JSON as before. It cannot write files back, so what a custom step produces is JSON recorded with the run, not audio.
+```python
+import munitas_step as step
 
-Because code the platform did not write now holds the sound, a version with such a step is approved before it can run:
+for item in step.list_recordings():              # record_id, bytes, erased
+    if item["erased"]:
+        continue                                 # the patient was erased: left out
+    f = step.open_recording(item["record_id"])   # a seekable file, read 8 MiB at a time, never held whole
+    data = step.read_recording(item["record_id"])        # or all of it, in memory
+    step.save_recording(item["record_id"], "/tmp/x.wav") # or saved to the container's own scratch space
+step.result({"recommendation": "not_measured", "reason": "..."})   # the small JSON result
+```
 
-1. an engineer uploads the version (the sandbox worker and host worker need no change);
+**What the step's container is.** It runs as an unprivileged user, with every Linux capability dropped, on a read-only root filesystem. Its only
+place to write is `/tmp`, which is memory-backed and size-limited (`scratch_mb`) and goes with the container. It has a memory limit (`memory_mb`),
+a process limit and a time limit. A step with no `recordings: true` has no network at all. A step with it joins `stepnet`, an internal network with
+no route to the internet, whose only other member is `step-gateway`. The gateway forwards the platform's `/step/v1/` routes and answers 404 to
+everything else. The step cannot even resolve the name of storage, the database, the platform or any other service. Its environment holds its pass and
+the gateway's address, and no storage address, no key, no password and no worker token. The patients' keys never leave the platform.
+
+**What the platform checks, on every request and not only the first.** The pass is real, unexpired and made for a step (a run's own credential, or a
+pass presented anywhere else, is refused); the pipeline run is still going; the version of the pipeline that run came from declares this step as one
+that is given the recordings; the approval of that version still stands; and the patient was not erased. A recording is opened before it is read.
+Opening is the one write to the key log (`open a recording for custom step inspect of pipeline <name> version <n>`), and it returns a handle that every
+read must carry. A patient erased while their recording is being read makes the next block that has to be fetched raise `RecordingErased`.
+
+**Approval.** Because code the platform did not write now reads the sound, a version with such a step is approved before it can run:
+
+1. an engineer uploads the version;
 2. an approver of the department that owns the pipeline, who is not the person who uploaded it, approves it on the pipeline's page (or with
    `POST /pipelines/{id}/versions/{version_id}/approve`). Taking the approval back is `withdraw-approval`, by the same kind of person;
-3. a run of an unapproved version is refused at the start, and the platform refuses the step the recordings again at the moment of opening, so a
-   run that began before an approval was taken back is stopped from then on.
+3. a run of an unapproved version is refused at the start. A pass already issued stops working at its next request when the approval is withdrawn.
 
-Every opening is in the key log with the step, the pipeline and its version named, for example `open a recording for custom step inspect of
-pipeline hash-ab12 version 1`. A recording that is stored plain (not locked) is given the same way and logged as the step's own opening in the run,
-but has no key to log.
+**What a step cannot do yet.** It can only return JSON. It cannot write files back, so a custom step cannot produce a redacted audio file; written
+output through the platform is the next piece. If a step copies audio into its JSON, the approver is the safeguard, not the platform. Review and
+testing on synthetic data are the operator's.
 
-What is not covered: a custom step is still code. Review and testing on synthetic data are the operator's, and the sandbox limits what the code can
-reach (no network beyond the agents' own). What a step returns is kept with the run, so a step that copies audio into its JSON would keep it there:
-the approver is the safeguard against that, not the platform. Erasing a patient does not change what such a step returned earlier; the erase
-answer lists the versions made from their recordings, and a person decides what to do with them.
-
-Checks: U141 (platform half, in the container) and U142 (a real run in the sandbox worker, on the host, about two minutes):
+Checks: U141 (the platform's half, in the container) and U142 (a real run in the sandbox worker, on the host, about two minutes, which also reports from
+inside the container what the step could and could not do):
 
 ```powershell
 .venv\Scripts\python.exe verify\v141_custom_step_given_locked_recordings.py

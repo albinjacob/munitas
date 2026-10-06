@@ -10467,6 +10467,211 @@
         ]
       }
     },
+    "/step/v1/recordings": {
+      "get": {
+        "description": "The recordings this step may be given: each one's id, its size when opened, and whether its patient was erased. Lists; opens nothing.",
+        "operationId": "list_recordings_step_v1_recordings_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response List Recordings Step V1 Recordings Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Recordings",
+        "tags": [
+          "custom steps"
+        ]
+      }
+    },
+    "/step/v1/recordings/{record_id}/open": {
+      "post": {
+        "description": "Open one recording to be read a range at a time. This is the opening that is written to the key log, once, naming the step.\n\nReturns the recording's size and a handle that every read of it must carry. A patient who was erased is refused (410).",
+        "operationId": "open_recording_step_v1_recordings__record_id__open_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "title": "Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Open Recording Step V1 Recordings  Record Id  Open Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Open Recording",
+        "tags": [
+          "custom steps"
+        ]
+      }
+    },
+    "/step/v1/recordings/{record_id}/range": {
+      "get": {
+        "description": "A range of an opened recording, opened. The handle from opening it must come with the request, and the patient's key is checked every time:\na recording being read stops the moment the patient is erased (410).",
+        "operationId": "read_range_step_v1_recordings__record_id__range_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "title": "Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "length",
+            "required": true,
+            "schema": {
+              "maximum": 16777216,
+              "minimum": 0,
+              "title": "Length",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-handle",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Handle"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Range",
+        "tags": [
+          "custom steps"
+        ]
+      }
+    },
     "/summary": {
       "get": {
         "description": "Counts for the landing page.\n\nDenied decisions are counted separately and deliberately. A dashboard that\nreports only totals makes a rising denial rate invisible, and a rising denial\nrate is the earliest signal this system can give that something is wrong.\n\nScoped to the caller's own tenant. A count that silently spanned every\ntenant would tell somebody looking at their own organisation that it\nholds eighty datasets when it holds two.",

@@ -79,7 +79,7 @@ def fetch(run: dict, version: str, record: str, where: Path, reader=None) -> str
 
 
 def raw(body: dict, headers: dict) -> httpx.Response:
-    return httpx.post(f"{API}/internal/recordings/open", json=body, headers=headers, timeout=60.0)
+    return httpx.post(f"{API}/internal/recordings/begin", json=body, headers=headers, timeout=60.0)
 
 
 def main() -> int:

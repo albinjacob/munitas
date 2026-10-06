@@ -18,7 +18,7 @@ import httpx
 
 from . import config
 from .contracts import Contract
-from .recording_open import ControlPlaneError, RangeFile, RecordingErased, open_remote, stream_to_file  # noqa: F401  (re-exported: steps catch them from here)
+from .recording_open import ControlPlaneError, RangeFile, RecordingErased, open_remote  # noqa: F401  (re-exported: steps catch them from here)
 
 
 def _post(path: str, payload: dict) -> dict:

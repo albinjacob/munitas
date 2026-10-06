@@ -125,6 +125,13 @@ def validate_dag(config: dict, script_names: set[str]) -> list[str]:
                     f"step {step['name']!r} names script {script!r}, which is not "
                     f"in the uploaded zip"
                 )
+        if kind == "script":
+            for key, ceiling in (("memory_mb", 4096), ("scratch_mb", 2048)):
+                if key in step and (not isinstance(step[key], int) or isinstance(step[key], bool) or not 16 <= step[key] <= ceiling):
+                    problems.append(f"step {step['name']!r} sets {key!r} to {step[key]!r}, and it must be a whole number of megabytes from 16 to {ceiling}")
+            if isinstance(step.get("memory_mb"), int) and isinstance(step.get("scratch_mb"), int) and step["scratch_mb"] > step["memory_mb"]:
+                problems.append(f"step {step['name']!r} asks for {step['scratch_mb']} MB of scratch space and {step['memory_mb']} MB of memory: scratch space is "
+                                f"memory-backed, so it cannot be larger than the memory")
         if "recordings" in step:
             if kind != "script":
                 problems.append(f"step {step['name']!r} sets 'recordings', which only a script step may: a built-in step already reads the recordings it needs")

@@ -245,6 +245,7 @@ class PipelineDagWorkflow:
                  "pipeline_version_id": params["pipeline_version_id"],
                  "script": step["script"], "inputs": inputs,
                  "run_id": pipeline_run_id,
+                 "memory_mb": step.get("memory_mb"), "scratch_mb": step.get("scratch_mb"),
                  # A step that declared `recordings: true` is given the run's recordings, opened by the platform, which refuses unless this
                  # version of the pipeline was approved for it.
                  **({"recordings": {"tenant": params["tenant"], "task_credential": params.get("pipeline_task_credential"),
