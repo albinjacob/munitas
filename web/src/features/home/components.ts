@@ -42,7 +42,6 @@ export const COMPONENTS: Component[] = [
     label: "Object storage",
     purpose:
       "Holds audio, transcripts and redacted output. Credentials are scoped to a version prefix, which is how a class becomes a boundary rather than a label.",
-    url: `http://localhost:${PORTS.seaweedfs_filer}`,
     ifDown: "Data cannot be read or written, but the record of it survives.",
   },
   {

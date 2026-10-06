@@ -67,7 +67,7 @@ def wait_for_storage(timeout: float = 90.0) -> bool:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
-            if httpx.get(f"http://localhost:{PORTS['seaweedfs_filer']}/", timeout=3.0).status_code < 500:
+            if httpx.get(f"http://localhost:{PORTS['seaweedfs_s3']}/", timeout=3.0).status_code < 500:  # the S3 port answers (403 without a key) when storage is up
                 return True
         except httpx.HTTPError:
             pass

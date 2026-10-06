@@ -40,8 +40,11 @@ services:
       # An organisation that is winding down, so closing one can be shown and
       # tested without closing health or finance.
       - ./infra/postgres/seed-harbour.sql:/docker-entrypoint-initdb.d/05-seed-harbour.sql:ro
+    # Every published port in this file is bound to this machine only, on both loopback addresses. `localhost` resolves to the IPv4 and the
+    # IPv6 one, and a port published on only one of them makes the other attempt hang for a minute before the first one is tried.
     ports:
-      - "${PORT_POSTGRES:-5432}:5432"
+      - "127.0.0.1:${PORT_POSTGRES:-5432}:5432"
+      - "[::1]:${PORT_POSTGRES:-5432}:5432"
     networks: [control, data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-munitas} -d platform"]
@@ -87,9 +90,11 @@ services:
       # the storage engine's own key names, which do not explain themselves.
       - ./infra/seaweedfs/master.toml:/etc/seaweedfs/master.toml:ro
     ports:
-      - "${PORT_SEAWEEDFS_S3:-8333}:8333"       # S3
-      - "${PORT_SEAWEEDFS_FILER:-8888}:8888"    # filer
-      - "${PORT_SEAWEEDFS_MASTER:-9333}:9333"   # master
+      - "127.0.0.1:${PORT_SEAWEEDFS_S3:-8333}:8333"       # S3
+      - "[::1]:${PORT_SEAWEEDFS_S3:-8333}:8333"       # S3
+      # The filer (8888) and the master (9333) are not published. The filer answers without any sign-in and holds the identity document
+      # with every organisation's storage keys, and the master controls volumes. Only the platform's own containers reach them, on the
+      # data network. To look inside storage by hand, run a command in the container (docker exec munitas-seaweedfs-1 ...).
     networks: [data]
     deploy:
       resources:
@@ -119,7 +124,8 @@ services:
       # commonly quoted path, and pointing at a missing one makes the server
       # exit at startup rather than fall back to defaults.
     ports:
-      - "${PORT_TEMPORAL:-7233}:7233"
+      - "127.0.0.1:${PORT_TEMPORAL:-7233}:7233"
+      - "[::1]:${PORT_TEMPORAL:-7233}:7233"
     networks: [control, data]
     deploy:
       resources:
@@ -134,7 +140,8 @@ services:
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_CORS_ORIGINS: http://localhost:${PORT_TEMPORAL_UI:-8080}
     ports:
-      - "${PORT_TEMPORAL_UI:-8080}:8080"
+      - "127.0.0.1:${PORT_TEMPORAL_UI:-8080}:8080"
+      - "[::1]:${PORT_TEMPORAL_UI:-8080}:8080"
     networks: [control]
 
   # Policy decisions. Bundle is mounted read-only; the API calls /v1/data.
@@ -150,7 +157,8 @@ services:
     volumes:
       - ./platform/policy:/policy:ro
     ports:
-      - "${PORT_OPA:-8181}:8181"
+      - "127.0.0.1:${PORT_OPA:-8181}:8181"
+      - "[::1]:${PORT_OPA:-8181}:8181"
     networks: [control]
     deploy:
       resources:
@@ -176,7 +184,8 @@ services:
       AWS_ACCESS_KEY_ID: ${S3_ADMIN_KEY:-munitas-admin}
       AWS_SECRET_ACCESS_KEY: ${S3_ADMIN_SECRET:-munitas-admin-secret}
     ports:
-      - "${PORT_MLFLOW:-5000}:5000"
+      - "127.0.0.1:${PORT_MLFLOW:-5000}:5000"
+      - "[::1]:${PORT_MLFLOW:-5000}:5000"
     networks: [control, data]
     deploy:
       resources:
@@ -192,9 +201,12 @@ services:
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
     ports:
-      - "${PORT_JAEGER_UI:-16686}:16686"          # UI
-      - "${PORT_JAEGER_OTLP_GRPC:-4317}:4317"     # OTLP gRPC
-      - "${PORT_JAEGER_OTLP_HTTP:-4318}:4318"     # OTLP HTTP
+      - "127.0.0.1:${PORT_JAEGER_UI:-16686}:16686"          # UI
+      - "[::1]:${PORT_JAEGER_UI:-16686}:16686"          # UI
+      - "127.0.0.1:${PORT_JAEGER_OTLP_GRPC:-4317}:4317"     # OTLP gRPC
+      - "[::1]:${PORT_JAEGER_OTLP_GRPC:-4317}:4317"     # OTLP gRPC
+      - "127.0.0.1:${PORT_JAEGER_OTLP_HTTP:-4318}:4318"     # OTLP HTTP
+      - "[::1]:${PORT_JAEGER_OTLP_HTTP:-4318}:4318"     # OTLP HTTP
     networks: [control, data, agentnet]
     deploy:
       resources:
@@ -211,7 +223,8 @@ services:
       - ./infra/otel/config.yaml:/etc/otel/config.yaml:ro
     depends_on: [jaeger]
     ports:
-      - "${PORT_OTEL_COLLECTOR_HTTP:-4319}:4318"
+      - "127.0.0.1:${PORT_OTEL_COLLECTOR_HTTP:-4319}:4318"
+      - "[::1]:${PORT_OTEL_COLLECTOR_HTTP:-4319}:4318"
     networks: [control, data, agentnet]
     deploy:
       resources:
@@ -239,7 +252,8 @@ services:
     volumes:
       - labelstudio:/label-studio/data
     ports:
-      - "${PORT_LABEL_STUDIO:-8081}:8080"
+      - "127.0.0.1:${PORT_LABEL_STUDIO:-8081}:8080"
+      - "[::1]:${PORT_LABEL_STUDIO:-8081}:8080"
     networks: [control, data]
     deploy:
       resources:
@@ -362,8 +376,10 @@ services:
       # "Local HTTPS between the worker and the API".
       - ./infra/tls/out:/tls:ro
     ports:
-      - "${PORT_MUNITAS_API_HTTP:-8000}:8000"
-      - "${PORT_MUNITAS_API_HTTPS:-8443}:8443"
+      - "127.0.0.1:${PORT_MUNITAS_API_HTTP:-8000}:8000"
+      - "[::1]:${PORT_MUNITAS_API_HTTP:-8000}:8000"
+      - "127.0.0.1:${PORT_MUNITAS_API_HTTPS:-8443}:8443"
+      - "[::1]:${PORT_MUNITAS_API_HTTPS:-8443}:8443"
     # agentnet is added here, alongside jaeger and otel-collector (below),
     # for the same reason: a sandboxed agent run's own container is attached
     # only to agentnet (internal, no gateway to the internet) and needs a
@@ -535,8 +551,10 @@ services:
     # plain-HTTP internal calls.
     command: serve -c /etc/config/kratos/kratos.yml --dev
     ports:
-      - "${PORT_KRATOS_PUBLIC:-4433}:4433"   # public API: self-service login/registration flows
-      - "${PORT_KRATOS_ADMIN:-4434}:4434"    # admin API: dev-only, the seed script runs from the host
+      - "127.0.0.1:${PORT_KRATOS_PUBLIC:-4433}:4433"   # public API: self-service login/registration flows
+      - "[::1]:${PORT_KRATOS_PUBLIC:-4433}:4433"   # public API: self-service login/registration flows
+      - "127.0.0.1:${PORT_KRATOS_ADMIN:-4434}:4434"    # admin API: dev-only, the seed script runs from the host
+      - "[::1]:${PORT_KRATOS_ADMIN:-4434}:4434"    # admin API: dev-only, the seed script runs from the host
     networks: [control, data]
     deploy:
       resources:

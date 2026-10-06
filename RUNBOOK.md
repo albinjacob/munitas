@@ -1153,6 +1153,30 @@ For each job it is given one key, made for that job, which reads and writes the 
 folder the version will have and lists object names in the organisation's own
 bucket. It stops working when the job ends.
 
+## What the stack publishes on this machine, and how to look inside storage
+
+Every port the Compose file publishes is bound to this machine only, on both loopback addresses (`127.0.0.1` and `[::1]`), never on a network
+interface. Both are needed: `localhost` resolves to the two, and a port published on only one makes a connection from Windows to `localhost` wait
+about a minute for the other before it tries the first. If a connection to `localhost` is mysteriously slow after a Compose change, check that each
+published port has both lines.
+
+SeaweedFS publishes one port, the S3 service on 8333, which needs a key. Its filer (8888) and master (9333) are **not published**. The filer answers
+without any sign-in and holds the identity document with every organisation's storage keys, so only the platform's own containers reach it, on the
+data network. Nothing that runs a customer's code is ever attached to that network.
+
+To look at storage by hand, run a command in the container, through WSL where Docker lives:
+
+```powershell
+wsl -d Ubuntu-20.04 -- docker exec munitas-seaweedfs-1 wget -q -O - http://seaweedfs:9333/dir/status
+```
+
+The master and the filer listen on the container's own name (`seaweedfs`), not on `localhost`. `scripts/admin/reclaim-storage.py` runs its
+vacuum this way.
+
+Still open, and recorded here so it is not forgotten: the filer has no sign-in even on the data network (JWT signing on the filer, and certificates
+on its gRPC channel). It is acceptable while only the platform's own containers can reach it. It must be done before the platform runs anywhere
+other than one machine, or if anything that runs customer code ever needs the data network.
+
 ## Secrets before a real deployment
 
 Two values have a development default in this repository and in `docker-compose.yml`:

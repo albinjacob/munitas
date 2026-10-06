@@ -55,6 +55,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -78,7 +79,9 @@ S3_ENDPOINT = os.environ.get("S3_ENDPOINT", f"http://localhost:{PORTS['seaweedfs
 # vacuum, deleting 662 objects moved the data directory from 502 MB to 502 MB,
 # so a script that reported "freed 613 MB" and stopped there would have been
 # stating something the disk flatly contradicted.
-MASTER = os.environ.get("MUNITAS_SEAWEED_MASTER", f"http://localhost:{PORTS['seaweedfs_master']}")
+# The storage master is not published on this machine, so the vacuum is run inside the storage container, through WSL where Docker lives.
+DISTRO = os.environ.get("MUNITAS_WSL_DISTRO", "Ubuntu-20.04")
+STORAGE_CONTAINER = os.environ.get("MUNITAS_STORAGE_CONTAINER", "munitas-seaweedfs-1")
 
 # The control plane's own identity. Reclamation is an administrative act on
 # storage the platform owns, not a read of anybody's data, so it does not go
@@ -268,7 +271,7 @@ def main() -> int:
         vacuumed = vacuum()
         print("Vacuumed the volumes, which is when the space actually returns."
               if vacuumed else
-              f"Could not reach the storage master at {MASTER}, so the objects "
+              f"Could not reach the storage master inside {STORAGE_CONTAINER}, so the objects "
               "are deleted but the disk has not shrunk. Run the vacuum by hand.")
 
     print("Every version row, its lineage and its audit history are untouched.")
@@ -283,9 +286,11 @@ def vacuum() -> bool:
     the difference between a number that is true and one that sounds true.
     """
     try:
-        r = httpx.get(f"{MASTER}/vol/vacuum",
-                      params={"garbageThreshold": "0.01"}, timeout=120.0)
-        return r.status_code == 200
+        done = subprocess.run(
+            ["wsl.exe", "-d", DISTRO, "--", "docker", "exec", STORAGE_CONTAINER, "wget", "-q", "-O", "-",
+             "http://seaweedfs:9333/vol/vacuum?garbageThreshold=0.01"],
+            capture_output=True, text=True, timeout=180)
+        return done.returncode == 0
     except Exception:
         return False
 

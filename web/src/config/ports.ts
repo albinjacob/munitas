@@ -11,8 +11,6 @@ import ports from "../../../config.json";
 export interface Ports {
   postgres: number;
   seaweedfs_s3: number;
-  seaweedfs_filer: number;
-  seaweedfs_master: number;
   temporal: number;
   temporal_ui: number;
   opa: number;
