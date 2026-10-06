@@ -1535,6 +1535,49 @@ locked_lease_approval_decision := {
 	"reasons": [r | some r in locked_lease_approval_reason],
 }
 
+# A pipeline version whose custom step is given the recordings is approved by the department's approver, never the person who uploaded it.
+default may_approve_pipeline_version := false
+
+may_approve_pipeline_version if {
+	input.approver.id != input.version.uploaded_by
+	some role in input.approver.roles
+	approver_roles[role]
+	input.approver.id in input.dataset.approvers
+}
+
+pipeline_version_approval_reason contains "nobody approves the version they uploaded" if {
+	input.approver.id == input.version.uploaded_by
+}
+
+pipeline_version_approval_reason contains "this person holds no role that may approve a pipeline version (a data custodian)" if {
+	every role in input.approver.roles {
+		not approver_roles[role]
+	}
+}
+
+pipeline_version_approval_reason contains "only an approver of the department that owns this pipeline may approve a version of it" if {
+	not input.approver.id in input.dataset.approvers
+}
+
+pipeline_version_approval_decision := {
+	"allow": may_approve_pipeline_version,
+	"reasons": [r | some r in pipeline_version_approval_reason],
+}
+
+# Taking an approval back: the department's approver, whoever approved it.
+default may_withdraw_pipeline_approval := false
+
+may_withdraw_pipeline_approval if {
+	some role in input.actor.roles
+	approver_roles[role]
+	input.actor.id in input.dataset.approvers
+}
+
+pipeline_approval_withdrawal_decision := {
+	"allow": may_withdraw_pipeline_approval,
+	"reasons": [r | not may_withdraw_pipeline_approval; r := "only an approver of the department that owns this pipeline may take an approval back"],
+}
+
 # Ending a lease early: the department's approver, or the person who holds it.
 default may_revoke_locked_lease := false
 

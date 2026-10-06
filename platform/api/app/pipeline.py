@@ -322,6 +322,16 @@ async def start_deidentification(
                     f"worked. Scoring a run that has no answer key is not built yet"
                 )
 
+    if pipeline_version is not None:
+        from .dag_pipelines import is_approved
+        from .pipeline_dag import steps_asking_for_recordings
+        asking = steps_asking_for_recordings(pipeline_version["dag_config"])
+        if asking and not is_approved(str(pipeline_version["id"])):
+            problems.append(
+                f"this version gives the recordings to the custom step{'s' if len(asking) > 1 else ''} {', '.join(asking)}, and it has not been "
+                f"approved. An approver of the department that owns the pipeline, who is not the person who uploaded it, approves it first"
+            )
+
     backend = version["storage_backend"] or "seaweedfs"
     if backend not in PIPELINE_BACKENDS:
         problems.append(

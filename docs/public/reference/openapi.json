@@ -606,24 +606,6 @@
         "title": "DatasetVersionIn",
         "type": "object"
       },
-      "Decision": {
-        "properties": {
-          "outcome": {
-            "title": "Outcome",
-            "type": "string"
-          },
-          "reason": {
-            "title": "Reason",
-            "type": "string"
-          }
-        },
-        "required": [
-          "outcome",
-          "reason"
-        ],
-        "title": "Decision",
-        "type": "object"
-      },
       "DeployAgent": {
         "properties": {
           "agent_version_id": {
@@ -2169,6 +2151,17 @@
         "title": "WriteCredentialRequest",
         "type": "object"
       },
+      "app__dag_pipelines__Decision": {
+        "properties": {
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "title": "Decision",
+        "type": "object"
+      },
       "app__legal_export__DecideIn": {
         "properties": {
           "approve": {
@@ -2214,6 +2207,24 @@
           "approve"
         ],
         "title": "DecideIn",
+        "type": "object"
+      },
+      "app__people__Decision": {
+        "properties": {
+          "outcome": {
+            "title": "Outcome",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "outcome",
+          "reason"
+        ],
+        "title": "Decision",
         "type": "object"
       }
     }
@@ -9152,7 +9163,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Decision"
+                "$ref": "#/components/schemas/app__people__Decision"
               }
             }
           },
@@ -9787,6 +9798,69 @@
         ]
       }
     },
+    "/pipelines/{pipeline_id}/versions/{version_id}/approve": {
+      "post": {
+        "description": "Approve a version whose custom step is given the recordings. The department's approver, never the person who uploaded it.\n\nUntil this is done a run of the version is refused, and the recordings are refused to its steps if a run somehow started.",
+        "operationId": "approve_version_pipelines__pipeline_id__versions__version_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pipeline_id",
+            "required": true,
+            "schema": {
+              "title": "Pipeline Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/app__dag_pipelines__Decision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Approve Version Pipelines  Pipeline Id  Versions  Version Id  Approve Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve Version",
+        "tags": [
+          "pipelines"
+        ]
+      }
+    },
     "/pipelines/{pipeline_id}/versions/{version_id}/code": {
       "get": {
         "description": "Stream a version's scripts.zip back, for the worker only.\n\nGated the same way agent_upload.py's own download_code is: a shared\nsecret, not a directory identity, because the caller is the worker\nprocess itself. Never reachable from agentnet.",
@@ -9848,6 +9922,69 @@
           }
         },
         "summary": "Download Code",
+        "tags": [
+          "pipelines"
+        ]
+      }
+    },
+    "/pipelines/{pipeline_id}/versions/{version_id}/withdraw-approval": {
+      "post": {
+        "description": "Take an approval back. A run already going keeps going; no later run, and no later opening of a recording by a step, is allowed.",
+        "operationId": "withdraw_approval_pipelines__pipeline_id__versions__version_id__withdraw_approval_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pipeline_id",
+            "required": true,
+            "schema": {
+              "title": "Pipeline Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/app__dag_pipelines__Decision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Withdraw Approval Pipelines  Pipeline Id  Versions  Version Id  Withdraw Approval Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Withdraw Approval",
         "tags": [
           "pipelines"
         ]

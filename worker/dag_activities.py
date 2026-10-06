@@ -15,7 +15,7 @@ from pathlib import Path
 import httpx
 from temporalio import activity
 
-from . import config
+from . import config, recording_open
 from .dag_sandbox import run_dag_step
 from .sandbox_run import SandboxBuildError, build_deps, extract_code
 
@@ -30,12 +30,39 @@ def _fetch_scripts(pipeline_id: str, version_id: str) -> bytes:
     return response.content
 
 
+def _fetch_recordings(spec: dict, audio_dir: Path) -> dict:
+    """The recordings a custom step declared it wants, opened by the platform into a folder the step reads from (/data/audio, read-only).
+
+    The platform refuses unless this step's version was approved to be given them. A recording of an erased patient is left out and named
+    under `recordings_skipped`. The step is told what it has in `recordings`: each one's id, where it is, and its size.
+    """
+    principal = f"{spec['tenant']}-pipeline"  # the same naming the pipeline's own steps act as
+    audio_dir.mkdir(parents=True, exist_ok=True)
+    given, skipped = [], []
+    for item in recording_open.list_for_step(principal=principal, tenant_id=spec["tenant"], task_credential=spec["task_credential"],
+                                             version_id=spec["version_id"], step=spec["step"]):
+        record_id = item["record_id"]
+        if item["erased"]:
+            skipped.append(record_id)
+            continue
+        try:
+            recording_open.stream_to_file(audio_dir / f"{record_id}.wav", principal=principal, tenant_id=spec["tenant"],
+                                          task_credential=spec["task_credential"], version_id=spec["version_id"], record_id=record_id,
+                                          purpose="given to the step", step=spec["step"])
+        except recording_open.RecordingErased:
+            skipped.append(record_id)
+            continue
+        given.append({"record_id": record_id, "path": f"/data/audio/{record_id}.wav", "bytes": item["bytes"]})
+    return {"recordings": given, "recordings_skipped": skipped}
+
+
 @activity.defn
 def run_dag_step_sandboxed(params: dict) -> dict:
     """Run one script step.
 
     params: pipeline_id, pipeline_version_id, script, inputs (already
-    resolved by the workflow), run_id.
+    resolved by the workflow), run_id, and, for a step that declared
+    `recordings: true`, `recordings`: what the platform needs to open them.
     """
     work_dir = Path(tempfile.mkdtemp(prefix="munitas-dag-"))
     try:
@@ -49,8 +76,15 @@ def run_dag_step_sandboxed(params: dict) -> dict:
             return {"status": "failed", "reason": str(exc), "output": None,
                     "exit_code": None, "timed_out": False}
 
+        inputs = params["inputs"]
+        if params.get("recordings"):
+            try:
+                inputs = {**inputs, **_fetch_recordings(params["recordings"], work_dir / "inputs" / "audio")}
+            except (recording_open.ControlPlaneError, httpx.HTTPError) as exc:
+                return {"status": "failed", "reason": str(exc), "output": None, "exit_code": None, "timed_out": False}
+
         return run_dag_step(
-            params["inputs"], code_dir, deps_dir, params["script"], params["run_id"],
+            inputs, code_dir, deps_dir, params["script"], params["run_id"],
         )
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)

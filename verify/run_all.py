@@ -102,6 +102,7 @@ SCRIPTS = [
     ("U134 a screen can ask what a person may do with a locked table, and the lease lists name people", "v134_locking_summary.py"),
     ("U136 a whole file is locked under a person's key in chunks, and a chunk that is moved, repeated, cut off or added to is refused", "v136_locked_file_stream.py"),
     ("U137 a recording is uploaded in parts that can each be sent again, locked under its patient's key, sealed, and unreadable once the patient is erased", "v137_locked_recordings.py"),
+    ("U141 a custom pipeline step is given the recordings only when a second person approved its version, and the platform opens them for it", "v140_custom_steps_and_recordings.py"),
 ]
 
 here = Path(__file__).parent
@@ -274,6 +275,8 @@ if ONLY is None:
     print("    .venv\\Scripts\\python.exe verify\\v138_worker_opens_locked_recordings.py")
     print("  U140 runs the whole de-identification over two patients' locked recordings and again after one is erased, so it needs the worker, about five minutes:")
     print("    .venv\\Scripts\\python.exe verify\\v139_locked_recordings_pipeline.py")
+    print("  U142 runs a real custom pipeline step over locked recordings in the sandbox worker, so it needs both workers, about two minutes:")
+    print("    .venv\\Scripts\\python.exe verify\\v141_custom_step_given_locked_recordings.py")
     print("  U73 starts the worker entry points on Windows and inside WSL to prove")
     print("  they refuse a work directory they cannot use, so it runs on the host:")
     print("    .venv\\Scripts\\python.exe verify\\v73_work_dir_refused.py")

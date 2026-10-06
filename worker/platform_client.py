@@ -14,16 +14,11 @@ import json
 import subprocess
 from pathlib import Path
 
-import boto3
 import httpx
-from botocore.config import Config
 
 from . import config
 from .contracts import Contract
-
-
-class ControlPlaneError(Exception):
-    pass
+from .recording_open import ControlPlaneError, RecordingErased, stream_to_file  # noqa: F401  (re-exported: steps catch them from here)
 
 
 def _post(path: str, payload: dict) -> dict:
@@ -71,6 +66,9 @@ def s3_scoped(task_credential: str, dataset_version_id: str, tenant_id: str,
     role's key for its organisation, which opens that organisation's whole
     bucket for reading.
     """
+    import boto3
+    from botocore.config import Config  # imported here, so the sandbox worker (which has no storage library) can import this module
+
     response = httpx.post(f"{config.API}/credentials", json={
         "principal": principal, "principal_kind": "workload",
         "roles": [config.PIPELINE_ROLE], "tenant_id": tenant_id,
@@ -108,6 +106,24 @@ def s3_scoped(task_credential: str, dataset_version_id: str, tenant_id: str,
     )
 
 
+def write_credentials(task_credential: str, dataset_id: str, tenant_id: str, principal: str, purpose: str) -> dict:
+    """The write key the platform grants a real task for one dataset's next version: the key, its secret, the bucket and the folder it opens.
+
+    Raises CredentialPending when the grant is allowed but storage permissions have not caught up yet, and ControlPlaneError when it is refused.
+    """
+    response = httpx.post(f"{config.API}/write-credentials", json={
+        "principal": principal, "principal_kind": "workload",
+        "roles": [config.PIPELINE_ROLE], "tenant_id": tenant_id,
+        "dataset_id": dataset_id, "purpose": purpose,
+        "task_credential": task_credential,
+    }, timeout=30.0, headers={"x-worker-token": config.WORKER_TOKEN}, verify=config.api_verify())
+    if response.status_code == 202:
+        raise CredentialPending(f"storage permissions for writing dataset {dataset_id} are not active yet: {response.json()}")
+    if response.status_code >= 400:
+        raise ControlPlaneError(f"/write-credentials refused this write: HTTP {response.status_code} {response.text[:300]}")
+    return response.json()
+
+
 def s3_scoped_write(task_credential: str, dataset_id: str, tenant_id: str,
                     principal: str, purpose: str) -> "boto3.client":
     """A write-only S3 client scoped to exactly the next version-location
@@ -124,25 +140,10 @@ def s3_scoped_write(task_credential: str, dataset_id: str, tenant_id: str,
     from what the platform can verify, never from the caller's own say-so"
     rule s3_scoped's own read-scope check already applies.
     """
-    response = httpx.post(f"{config.API}/write-credentials", json={
-        "principal": principal, "principal_kind": "workload",
-        "roles": [config.PIPELINE_ROLE], "tenant_id": tenant_id,
-        "dataset_id": dataset_id, "purpose": purpose,
-        "task_credential": task_credential,
-    }, timeout=30.0, headers={"x-worker-token": config.WORKER_TOKEN}, verify=config.api_verify())
+    import boto3
+    from botocore.config import Config
 
-    if response.status_code == 202:
-        raise CredentialPending(
-            f"storage permissions for writing dataset {dataset_id} are not "
-            f"active yet: {response.json()}"
-        )
-    if response.status_code >= 400:
-        raise ControlPlaneError(
-            f"/write-credentials refused this write: HTTP {response.status_code} "
-            f"{response.text[:300]}"
-        )
-
-    creds = response.json()
+    creds = write_credentials(task_credential, dataset_id, tenant_id, principal, purpose)
     return boto3.client(
         "s3",
         endpoint_url=config.S3_ENDPOINT,
@@ -377,10 +378,6 @@ def read_json(client, bucket: str, key: str) -> object:
     return json.loads(client.get_object(Bucket=bucket, Key=key)["Body"].read())
 
 
-class RecordingErased(Exception):
-    """The patient this recording is about was erased, so it cannot be opened and the run leaves it out."""
-
-
 _locked_versions: dict[str, bool] = {}
 
 
@@ -407,29 +404,8 @@ def download_recording(reader, bucket: str, key: str, local: Path, *, version_id
     if not recordings_are_locked(version_id):
         reader.download_file(bucket, key, str(local))
         return
-    expected = None
-    with httpx.stream("POST", f"{config.API}/internal/recordings/open", timeout=httpx.Timeout(30.0, read=120.0),
-                      headers={"x-worker-token": config.WORKER_TOKEN}, verify=config.api_verify(),
-                      json={"principal": principal, "tenant_id": tenant_id, "task_credential": task_credential,
-                            "dataset_version_id": version_id, "record_id": record_id, "purpose": purpose, "kind": kind}) as response:
-        if response.status_code == 410:
-            raise RecordingErased(record_id)
-        if response.status_code >= 400:
-            response.read()
-            raise ControlPlaneError(f"opening recording {record_id} returned {response.status_code}: {response.text[:300]}")
-        expected = int(response.headers["x-plain-bytes"])
-        written = 0
-        try:
-            with open(local, "wb") as out:
-                for piece in response.iter_bytes():
-                    out.write(piece)
-                    written += len(piece)
-        except httpx.HTTPError as exc:
-            local.unlink(missing_ok=True)
-            raise ControlPlaneError(f"recording {record_id} was cut off after {written} of {expected} bytes: {exc}") from exc
-    if written != expected:
-        local.unlink(missing_ok=True)
-        raise ControlPlaneError(f"recording {record_id} came back as {written} bytes, not the {expected} the platform said")
+    stream_to_file(local, principal=principal, tenant_id=tenant_id, task_credential=task_credential, version_id=version_id, record_id=record_id,
+                   purpose=purpose, kind=kind)
 
 
 def read_answer_key(reader, bucket: str, key: str, *, version_id: str, record_id: str, tenant_id: str, principal: str, task_credential: str,

@@ -18,10 +18,10 @@ from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from . import config, db, seaweed
+from . import config, db, opa, seaweed
 from . import auth
 from .auth import current_session
-from .pipeline_dag import DagConfigError, parse_dag_config, validate_dag
+from .pipeline_dag import DagConfigError, parse_dag_config, steps_asking_for_recordings, validate_dag
 
 router = APIRouter(tags=["pipelines"])
 
@@ -158,14 +158,16 @@ async def upload_version(
     version_id = str(uuid.uuid4())
     db.execute(
         """insert into pipeline_version
-             (id, pipeline_id, version, dag_config, config_hash, code_object_key, sealed)
-           values (%s, %s, %s, %s, %s, %s, true)""",
-        (version_id, pipeline_id, version, json.dumps(dag_config), config_hash, key),
+             (id, pipeline_id, version, dag_config, config_hash, code_object_key, sealed, uploaded_by)
+           values (%s, %s, %s, %s, %s, %s, true, %s)""",
+        (version_id, pipeline_id, version, json.dumps(dag_config), config_hash, key, registered_by),
     )
 
+    asking = steps_asking_for_recordings(dag_config)
     return {
         "id": version_id, "pipeline_id": pipeline_id, "version": version,
         "config_hash": config_hash, "sealed": True, "step_count": len(dag_config["steps"]),
+        "steps_given_recordings": asking, "needs_approval": bool(asking),
     }
 
 
@@ -232,11 +234,81 @@ def read_pipeline(
     """
     pipeline = _pipeline(pipeline_id, identity["tenant_id"])
     versions = db.all_rows(
-        """select id, version, dag_config, config_hash, created_at
-             from pipeline_version where pipeline_id = %s order by version desc""",
+        """select pv.id, pv.version, pv.dag_config, pv.config_hash, pv.created_at, pv.uploaded_by, u.label as uploaded_by_label,
+                  a.approved_by, ab.label as approved_by_label, a.approved_at
+             from pipeline_version pv
+             left join directory u on u.id = pv.uploaded_by
+             left join pipeline_version_approval a on a.pipeline_version_id = pv.id and a.withdrawn_at is null
+             left join directory ab on ab.id = a.approved_by
+            where pv.pipeline_id = %s order by pv.version desc""",
         (pipeline_id,),
     )
+    for v in versions:
+        asking = steps_asking_for_recordings(v["dag_config"])
+        v["steps_given_recordings"] = asking
+        v["needs_approval"] = bool(asking)
+        v["approved"] = v["approved_by"] is not None
     return {**pipeline, "versions": versions}
+
+
+def is_approved(pipeline_version_id: str) -> bool:
+    """Whether a second person's approval of this version stands (not withdrawn)."""
+    return db.one("select 1 as x from pipeline_version_approval where pipeline_version_id = %s and withdrawn_at is null", (pipeline_version_id,)) is not None
+
+
+class Decision(BaseModel):
+    note: str = ""
+
+
+def _version_of(pipeline_id: str, version_id: str, identity: dict) -> tuple[dict, dict]:
+    pipeline = _pipeline(pipeline_id, identity["tenant_id"])
+    version = db.one("select id, version, dag_config, uploaded_by from pipeline_version where id = %s and pipeline_id = %s", (version_id, pipeline_id))
+    if not version:
+        raise HTTPException(404, "no such pipeline version")
+    return pipeline, version
+
+
+def _approvers(pipeline: dict) -> list[str]:
+    from .locked_leases import approvers_of
+    return approvers_of(pipeline["department_id"])
+
+
+@router.post("/pipelines/{pipeline_id}/versions/{version_id}/approve")
+def approve_version(pipeline_id: str, version_id: str, body: Decision, identity: dict = Depends(current_session)) -> dict:
+    """Approve a version whose custom step is given the recordings. The department's approver, never the person who uploaded it.
+
+    Until this is done a run of the version is refused, and the recordings are refused to its steps if a run somehow started.
+    """
+    pipeline, version = _version_of(pipeline_id, version_id, identity)
+    if not steps_asking_for_recordings(version["dag_config"]):
+        raise HTTPException(400, {"reasons": ["no step of this version is given the recordings, so there is nothing to approve"]})
+    allowed, reasons = opa.may_approve_pipeline_version({
+        "approver": {"id": identity["id"], "roles": identity["roles"]}, "version": {"uploaded_by": version["uploaded_by"]},
+        "dataset": {"approvers": _approvers(pipeline)}})
+    if not allowed:
+        raise HTTPException(403, {"reasons": reasons})
+    if is_approved(version_id):
+        raise HTTPException(409, {"reasons": ["this version is already approved"]})
+    approval_id = str(uuid.uuid4())
+    db.execute("insert into pipeline_version_approval (id, pipeline_version_id, tenant_id, approved_by, note) values (%s, %s, %s, %s, %s) returning id",
+               (approval_id, version_id, pipeline["tenant_id"], identity["id"], body.note.strip() or None))
+    return {"id": approval_id, "pipeline_version_id": version_id, "approved_by": identity["id"], "approved": True}
+
+
+@router.post("/pipelines/{pipeline_id}/versions/{version_id}/withdraw-approval")
+def withdraw_approval(pipeline_id: str, version_id: str, body: Decision, identity: dict = Depends(current_session)) -> dict:
+    """Take an approval back. A run already going keeps going; no later run, and no later opening of a recording by a step, is allowed."""
+    pipeline, _version = _version_of(pipeline_id, version_id, identity)
+    allowed, reasons = opa.may_withdraw_pipeline_approval({
+        "actor": {"id": identity["id"], "roles": identity["roles"]}, "dataset": {"approvers": _approvers(pipeline)}})
+    if not allowed:
+        raise HTTPException(403, {"reasons": reasons})
+    row = db.execute(
+        """update pipeline_version_approval set withdrawn_by = %s, withdrawn_at = now()
+            where pipeline_version_id = %s and withdrawn_at is null returning id""", (identity["id"], version_id))
+    if row is None:
+        raise HTTPException(409, {"reasons": ["this version has no approval standing"]})
+    return {"pipeline_version_id": version_id, "approved": False}
 
 
 @router.get("/pipelines/{pipeline_id}/versions/{version_id}/code")

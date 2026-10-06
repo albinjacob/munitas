@@ -62,6 +62,12 @@ def _referenced_step_names(value) -> list[str]:
     return []
 
 
+def steps_asking_for_recordings(config: dict) -> list[str]:
+    """The names of the script steps that declare `recordings: true`: they are given the run's recordings as files, so the version holding them is
+    approved by a second person before a run may start."""
+    return [s["name"] for s in config.get("steps", []) if s.get("kind") == "script" and s.get("recordings") is True]
+
+
 def validate_dag(config: dict, script_names: set[str]) -> list[str]:
     """Every problem found, never raising. Empty means the DAG can register.
 
@@ -119,6 +125,13 @@ def validate_dag(config: dict, script_names: set[str]) -> list[str]:
                     f"step {step['name']!r} names script {script!r}, which is not "
                     f"in the uploaded zip"
                 )
+        if "recordings" in step:
+            if kind != "script":
+                problems.append(f"step {step['name']!r} sets 'recordings', which only a script step may: a built-in step already reads the recordings it needs")
+            elif not isinstance(step["recordings"], bool):
+                problems.append(f"step {step['name']!r} sets 'recordings' to {step['recordings']!r}, and it must be true or false")
+            elif step["recordings"] and {"recordings", "recordings_skipped"} & set(step.get("inputs") or {}):
+                problems.append(f"step {step['name']!r} is given the recordings under the names 'recordings' and 'recordings_skipped', so it cannot also take inputs of those names")
         elif kind == "gate":
             if not step.get("to_class"):
                 problems.append(f"gate step {step['name']!r} needs a to_class")

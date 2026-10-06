@@ -484,6 +484,51 @@ list and the script's disagree), or remove it in a `finally`.
 
 ---
 
+## Custom pipeline steps that are given the recordings
+
+A pipeline an operator registers can have script steps. A script step is normally given only the small JSON file of what earlier steps produced,
+and returns one JSON object. A step that needs the sound itself (its own speech model, its own way of finding where a name is spoken) says so in the
+pipeline file:
+
+```yaml
+steps:
+  - name: inspect
+    kind: script
+    script: steps/inspect.py
+    recordings: true
+```
+
+What the step is given, when it runs, inside its sandbox:
+
+* `/data/inputs.json` has two extra keys: `recordings`, a list of `{record_id, path, bytes}`, and `recordings_skipped`, the ids left out because the
+  patient was erased. A step that declares `recordings: true` cannot also take inputs with those two names.
+* each recording is a file at `/data/audio/<record_id>.wav`, the original sound, read-only. A recording stored locked under its patient's key is
+  opened by the platform and handed over as sound; the key never leaves the platform.
+* the step returns JSON as before. It cannot write files back, so what a custom step produces is JSON recorded with the run, not audio.
+
+Because code the platform did not write now holds the sound, a version with such a step is approved before it can run:
+
+1. an engineer uploads the version (the sandbox worker and host worker need no change);
+2. an approver of the department that owns the pipeline, who is not the person who uploaded it, approves it on the pipeline's page (or with
+   `POST /pipelines/{id}/versions/{version_id}/approve`). Taking the approval back is `withdraw-approval`, by the same kind of person;
+3. a run of an unapproved version is refused at the start, and the platform refuses the step the recordings again at the moment of opening, so a
+   run that began before an approval was taken back is stopped from then on.
+
+Every opening is in the key log with the step, the pipeline and its version named, for example `open a recording for custom step inspect of
+pipeline hash-ab12 version 1`. A recording that is stored plain (not locked) is given the same way and logged as the step's own opening in the run,
+but has no key to log.
+
+What is not covered: a custom step is still code. Review and testing on synthetic data are the operator's, and the sandbox limits what the code can
+reach (no network beyond the agents' own). What a step returns is kept with the run, so a step that copies audio into its JSON would keep it there:
+the approver is the safeguard against that, not the platform. Erasing a patient does not change what such a step returned earlier; the erase
+answer lists the versions made from their recordings, and a person decides what to do with them.
+
+Checks: U141 (platform half, in the container) and U142 (a real run in the sandbox worker, on the host, about two minutes):
+
+```powershell
+.venv\Scripts\python.exe verify\v141_custom_step_given_locked_recordings.py
+```
+
 ## Pipeline runs that stopped without recording it
 
 A pipeline run's own workflow writes its ending as it finishes. A workflow killed from outside, or one whose worker

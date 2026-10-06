@@ -15,6 +15,8 @@ export interface PipelineStepConfig {
   depends_on?: string[];
   block?: string;
   script?: string;
+  /** A script step that is given the run's recordings as files. Its version is approved by a second person first. */
+  recordings?: boolean;
 }
 
 export interface PipelineVersion {
@@ -23,6 +25,13 @@ export interface PipelineVersion {
   dag_config: { name: string; steps: PipelineStepConfig[] };
   config_hash: string;
   created_at: string;
+  uploaded_by_label: string | null;
+  /** The script steps that are given the recordings. When there are any, a second person approves the version before a run may start. */
+  steps_given_recordings: string[];
+  needs_approval: boolean;
+  approved: boolean;
+  approved_by_label: string | null;
+  approved_at: string | null;
 }
 
 export interface PipelineRow {
@@ -84,6 +93,18 @@ export function useRegisterPipeline() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["pipelines"] });
+    },
+  });
+}
+
+/** Approving a version, or taking the approval back. The platform decides who may and says why when it refuses. */
+export function useDecidePipelineVersion(pipelineId: string, action: "approve" | "withdraw-approval") {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { versionId: string; note: string }) =>
+      api.post<{ approved: boolean }>(`/pipelines/${pipelineId}/versions/${body.versionId}/${action}`, { note: body.note }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["pipeline", pipelineId] });
     },
   });
 }

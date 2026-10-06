@@ -244,8 +244,14 @@ class PipelineDagWorkflow:
                 {"pipeline_id": params["pipeline_id"],
                  "pipeline_version_id": params["pipeline_version_id"],
                  "script": step["script"], "inputs": inputs,
-                 "run_id": pipeline_run_id},
-                start_to_close_timeout=timedelta(minutes=10),
+                 "run_id": pipeline_run_id,
+                 # A step that declared `recordings: true` is given the run's recordings, opened by the platform, which refuses unless this
+                 # version of the pipeline was approved for it.
+                 **({"recordings": {"tenant": params["tenant"], "task_credential": params.get("pipeline_task_credential"),
+                                    "version_id": params["source_version_id"], "step": step["name"]}}
+                    if step.get("recordings") is True else {})},
+                # Fetching the recordings is part of the step, so a step given them has longer.
+                start_to_close_timeout=timedelta(minutes=30 if step.get("recordings") is True else 10),
                 task_queue=worker_config.DAG_SCRIPT_TASK_QUEUE,
                 retry_policy=CONTROL,
             )

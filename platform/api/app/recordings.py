@@ -351,7 +351,47 @@ def is_locked_version(version_id: str) -> bool:
     return db.one("select 1 as x from recording_person where dataset_version_id = %s limit 1", (version_id,)) is not None
 
 
-def open_recording(service: KeyService, *, version_id: str, record_id: str, run: str, purpose: str, kind: str = "audio"):
+def list_for_step(version_id: str) -> list[dict]:
+    """Every recording a sealed version holds, as a custom pipeline step is told of them: its id, its size, and whether its patient was erased.
+
+    Reads the version's plain index (the recordings' own contract, which names no patient). A recording of an erased patient is listed as erased
+    and is never opened.
+    """
+    row = db.one("select tenant_id, storage_backend, object_manifest from dataset_version where id = %s", (version_id,))
+    if not row:
+        raise NoSuchVersion(version_id)
+    entry = next((m for m in row["object_manifest"] if m["key"].endswith("/records.json")), None)
+    if entry is None:
+        raise NoSuchVersion(f"{version_id} has no list of recordings")
+    client = storage.admin_client_for(row["storage_backend"], row["tenant_id"])
+    index = json.loads(client.get_object(Bucket=storage.bucket_for(row["storage_backend"], row["tenant_id"]), Key=entry["key"])["Body"].read())
+    locked = {r["record_id"]: r for r in db.all_rows(
+        "select r.record_id, r.plain_bytes, p.destroyed_at is not null as erased from recording_person r "
+        "left join subject_key p on p.tenant_id = r.tenant_id and p.person_code = r.person_code where r.dataset_version_id = %s", (version_id,))}
+    out = []
+    for record in index:
+        rid = record["record_id"]
+        if rid in locked:
+            out.append({"record_id": rid, "bytes": int(locked[rid]["plain_bytes"]), "erased": bool(locked[rid]["erased"])})
+        else:
+            stored = next((m for m in row["object_manifest"] if m["key"].endswith(f"/{rid}{WAV}")), None)
+            if stored:
+                out.append({"record_id": rid, "bytes": int(stored["bytes"]), "erased": False})
+    return out
+
+
+def open_plain_recording(*, version_id: str, record_id: str):
+    """A recording of a version that is not locked, as the same kind of stream. Only for a custom step that was approved to be given the recordings."""
+    row = db.one("select tenant_id, storage_backend, object_manifest from dataset_version where id = %s", (version_id,))
+    entry = next((m for m in (row["object_manifest"] if row else []) if m["key"].endswith(f"/{record_id}{WAV}")), None)
+    if entry is None:
+        raise NoSuchVersion(f"{version_id} holds no recording {record_id}")
+    body = storage.admin_client_for(row["storage_backend"], row["tenant_id"]).get_object(
+        Bucket=storage.bucket_for(row["storage_backend"], row["tenant_id"]), Key=entry["key"])["Body"]
+    return int(entry["bytes"]), body.iter_chunks(1 << 20)
+
+
+def open_recording(service: KeyService, *, version_id: str, record_id: str, run: str, purpose: str, kind: str = "audio", plain_ok: bool = False):
     """The recording's bytes (or, with kind "answer_key", its answer key's), opened a chunk at a time, for a pipeline run. Each opening is recorded in
     the key log with the run named.
 
@@ -362,6 +402,8 @@ def open_recording(service: KeyService, *, version_id: str, record_id: str, run:
     row = db.one("select r.tenant_id, r.person_code, r.plain_bytes, r.answer_key_bytes, r.format, v.storage_backend, v.object_manifest from recording_person r "
                  "join dataset_version v on v.id = r.dataset_version_id where r.dataset_version_id = %s and r.record_id = %s", (version_id, record_id))
     if not row:
+        if plain_ok and kind == "audio" and not is_locked_version(version_id):
+            return open_plain_recording(version_id=version_id, record_id=record_id)
         raise NoSuchVersion(f"{version_id} holds no locked recording {record_id}")
     tenant, person = row["tenant_id"], row["person_code"]
     suffix = WAV if kind == "audio" else ANSWER_KEY

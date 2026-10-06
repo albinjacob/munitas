@@ -1003,7 +1003,7 @@ begin
     'lease_request','access_lease','department','project','directory',
     'record_key','tombstone','datasink','write_grant',
     'org_key','subject_lookup','subject_key','privacy_contract','locked_column_lease','group_size_report',
-    'recording_upload','recording_part','recording_person'
+    'recording_upload','recording_part','recording_person','pipeline_version_approval'
   ] loop
     execute format('drop trigger if exists %I on %I', 'refuse_retired_' || t, t);
     execute format(
@@ -1744,6 +1744,24 @@ create index if not exists pipeline_step_run_run_idx
 -- for the two built-in kinds, which have no pipeline_version at all.
 alter table pipeline_run add column if not exists pipeline_version_id uuid
   references pipeline_version(id);
+
+-- Who uploaded a version, so the person who approves it can be somebody else. Null for versions uploaded before this was kept.
+alter table pipeline_version add column if not exists uploaded_by text references directory(id);
+
+-- A pipeline version whose custom step asks for the recordings is approved by a second person before a run may start: the department's approver,
+-- never the person who uploaded it. An approval can be withdrawn, and the row stays as the record of who approved and when.
+create table if not exists pipeline_version_approval (
+  id                  uuid primary key,
+  pipeline_version_id uuid not null references pipeline_version(id),
+  tenant_id           text not null references tenant(id),
+  approved_by         text not null references directory(id),
+  note                text,
+  approved_at         timestamptz not null default now(),
+  withdrawn_by        text references directory(id),
+  withdrawn_at        timestamptz
+);
+create unique index if not exists pipeline_version_approval_live_idx
+  on pipeline_version_approval (pipeline_version_id) where withdrawn_at is null;
 
 alter table pipeline_run drop constraint if exists pipeline_run_kind_valid;
 alter table pipeline_run add constraint pipeline_run_kind_valid

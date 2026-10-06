@@ -53,7 +53,9 @@ SHARED = ["verify/common.py", "verify/lifecycle_fixture.py", "verify/markers.py"
 TABLE: list[tuple[str, list[str], str]] = [
     ("platform/crypto/*", ["U128", "U129", "U136", "U137"], "the key service and the locking of columns and files"),
     ("platform/api/app/person_*.py", ["U128", "U129", "U137"], "locked columns and their routes, and what erasing a person lists"),
-    ("platform/api/app/recording*.py", ["U136", "U137"], "recordings locked per patient; U138 and U140 run on the host (RUNBOOK)"),
+    ("platform/api/app/recording*.py", ["U136", "U137", "U141"], "recordings locked per patient; U138, U140 and U142 run on the host (RUNBOOK)"),
+    ("platform/api/app/dag_pipelines.py", ["U141"], "registering a pipeline version and approving it; U66 and U142 run on the host (RUNBOOK)"),
+    ("platform/api/app/pipeline_dag.py", ["U141"], "what a pipeline file may say; U66 runs on the host (RUNBOOK)"),
     ("platform/api/app/locked_leases.py", ["U128", "U129"], "leases on locked columns"),
     ("platform/api/app/privacy_contract.py", ["U128", "U129"], "the privacy contract"),
     ("platform/api/app/key_store.py", ["U128", "U129"], "where keys are kept"),

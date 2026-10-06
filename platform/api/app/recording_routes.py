@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from crypto import NotOpenable
 from crypto import stream
 
-from . import auth, db, person_keys, recordings
+from . import auth, dag_pipelines, db, person_keys, recordings
 from .person_errors import NoSuchVersion, Refused
 
 router = APIRouter(tags=["recordings"])
@@ -35,6 +35,15 @@ class OpenRecordingIn(BaseModel):
     record_id: str
     purpose: str
     kind: str = "audio"
+    step: str | None = Field(default=None, description="The custom pipeline step asking, when one is. Such a step is given a recording only if its version was approved")
+
+
+class StepRecordingsIn(BaseModel):
+    principal: str
+    tenant_id: str
+    task_credential: str
+    dataset_version_id: str
+    step: str
 
 
 def _service():
@@ -132,27 +141,63 @@ def is_locked(version_id: str, _worker: None = Depends(auth.worker_only)) -> dic
     return {"locked": recordings.is_locked_version(version_id)}
 
 
+def _authorise(principal: str, tenant_id: str, task_credential: str, version_id: str, step: str | None):
+    """Is this a real task of this organisation, launched with this version as an input, and still running? And, when a custom step is asking, was
+    its version approved to be given the recordings, and does it declare that it wants them?
+
+    Returns the verified claim and a label naming the step for the key log.
+    """
+    from . import main  # the one check of "is this task real, and is this version one of its inputs"
+    registered = db.one("select tenant_id from directory where id = %s", (principal,))
+    if not registered or registered["tenant_id"] != tenant_id:
+        raise HTTPException(403, {"reasons": ["no such workload is registered for this organisation"]})
+    claim, _run, inputs = main._resolve_pipeline_task(task_credential, principal, registered["tenant_id"])
+    if version_id not in inputs:
+        raise HTTPException(403, {"reasons": ["this recording's version is outside the inputs this task was launched for"]})
+    if not main._live_task(claim, None):
+        raise HTTPException(403, {"reasons": ["the task this was requested for is no longer running"]})
+    version = db.one("select tenant_id from dataset_version where id = %s", (version_id,))
+    if not version or version["tenant_id"] != registered["tenant_id"]:
+        raise HTTPException(404, "no such version")
+    label = None
+    if step is not None:
+        if claim.task_kind != "pipeline_run":
+            raise HTTPException(403, {"reasons": ["only a step of a pipeline run is given recordings as a custom step"]})
+        pipeline = db.one("""select pv.id, pv.version, pv.dag_config, p.name from pipeline_run r
+                               join pipeline_version pv on pv.id = r.pipeline_version_id join pipeline p on p.id = pv.pipeline_id
+                              where r.id = %s""", (claim.task_id,))
+        declared = [x for x in (pipeline["dag_config"]["steps"] if pipeline else []) if x.get("name") == step and x.get("kind") == "script" and x.get("recordings") is True]
+        if not declared:
+            raise HTTPException(403, {"reasons": [f"step {step!r} of this run does not declare that it is given the recordings"]})
+        if not dag_pipelines.is_approved(str(pipeline["id"])):
+            raise HTTPException(403, {"reasons": ["this version of the pipeline has not been approved to be given the recordings, or its approval was withdrawn"]})
+        label = f"custom step {step} of pipeline {pipeline['name']} version {pipeline['version']}"
+    return claim, label
+
+
+@router.post("/internal/dag-step/recordings", include_in_schema=False)
+def step_recordings(body: StepRecordingsIn, _worker: None = Depends(auth.worker_only)) -> dict:
+    """The recordings a custom pipeline step is to be given: each one's id, its size, and whether its patient was erased. Lists; opens nothing."""
+    _authorise(body.principal, body.tenant_id, body.task_credential, body.dataset_version_id, body.step)
+    try:
+        return {"recordings": recordings.list_for_step(body.dataset_version_id)}
+    except NoSuchVersion as exc:
+        raise HTTPException(404, {"reasons": [str(exc)]}) from exc
+
+
 @router.post("/internal/recordings/open", include_in_schema=False)
 def open_recording(body: OpenRecordingIn, _worker: None = Depends(auth.worker_only)):
     """One recording, opened for a pipeline run, as a stream. Only a run that was launched with this version as an input, and is still running.
 
-    Each opening is written to the key log with the run named. A patient who was erased is refused (410), and the run skips the recording.
+    Each opening is written to the key log with the run named, and with the custom step named when one asked. A patient who was erased is
+    refused (410), and the run skips the recording.
     """
-    from . import main  # the one check of "is this task real, and is this version one of its inputs"
-    registered = db.one("select tenant_id from directory where id = %s", (body.principal,))
-    if not registered or registered["tenant_id"] != body.tenant_id:
-        raise HTTPException(403, {"reasons": ["no such workload is registered for this organisation"]})
-    claim, _run, inputs = main._resolve_pipeline_task(body.task_credential, body.principal, registered["tenant_id"])
-    if body.dataset_version_id not in inputs:
-        raise HTTPException(403, {"reasons": ["this recording's version is outside the inputs this task was launched for"]})
-    if not main._live_task(claim, None):
-        raise HTTPException(403, {"reasons": ["the task this was requested for is no longer running"]})
-    version = db.one("select tenant_id from dataset_version where id = %s", (body.dataset_version_id,))
-    if not version or version["tenant_id"] != registered["tenant_id"]:
-        raise HTTPException(404, "no such version")
+    claim, label = _authorise(body.principal, body.tenant_id, body.task_credential, body.dataset_version_id, body.step)
     try:
         size, pieces = recordings.open_recording(_service(), version_id=body.dataset_version_id, record_id=body.record_id,
-                                                 run=f"{claim.task_kind} {claim.task_id}", purpose=f"open a recording for a pipeline run: {body.purpose}", kind=body.kind)
+                                                 run=f"{claim.task_kind} {claim.task_id}",
+                                                 purpose=f"open a recording for {label or 'a pipeline run'}: {body.purpose}",
+                                                 kind=body.kind, plain_ok=label is not None)
     except NoSuchVersion as exc:
         raise HTTPException(404, {"reasons": [str(exc)]}) from exc
     except recordings.PatientErased as exc:

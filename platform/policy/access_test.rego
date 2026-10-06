@@ -1870,3 +1870,28 @@ test_group_size_decision_refusal_says_why if {
 	decision.allow == false
 	"only an approver of the department that owns this data decides what to do about small groups" in decision.reasons
 }
+
+test_a_department_approver_other_than_the_uploader_approves_a_pipeline_version if {
+	access.may_approve_pipeline_version with input as {"approver": {"id": "c", "roles": ["data_custodian"]}, "version": {"uploaded_by": "e"}, "dataset": {"approvers": ["c"]}}
+}
+
+test_nobody_approves_the_pipeline_version_they_uploaded if {
+	decision := access.pipeline_version_approval_decision with input as {"approver": {"id": "c", "roles": ["data_custodian"]}, "version": {"uploaded_by": "c"}, "dataset": {"approvers": ["c"]}}
+	decision.allow == false
+	"nobody approves the version they uploaded" in decision.reasons
+}
+
+test_only_a_department_approver_with_the_role_approves_a_pipeline_version if {
+	decision := access.pipeline_version_approval_decision with input as {"approver": {"id": "z", "roles": ["data_custodian"]}, "version": {"uploaded_by": "e"}, "dataset": {"approvers": ["c"]}}
+	decision.allow == false
+	"only an approver of the department that owns this pipeline may approve a version of it" in decision.reasons
+	decision2 := access.pipeline_version_approval_decision with input as {"approver": {"id": "d", "roles": ["dpo"]}, "version": {"uploaded_by": "e"}, "dataset": {"approvers": ["d"]}}
+	decision2.allow == false
+	"this person holds no role that may approve a pipeline version (a data custodian)" in decision2.reasons
+}
+
+test_a_department_approver_may_take_an_approval_back_and_nobody_else if {
+	access.may_withdraw_pipeline_approval with input as {"actor": {"id": "c", "roles": ["data_custodian"]}, "dataset": {"approvers": ["c"]}}
+	not access.may_withdraw_pipeline_approval with input as {"actor": {"id": "e", "roles": ["pipeline_operator"]}, "dataset": {"approvers": ["c"]}}
+	not access.may_withdraw_pipeline_approval with input as {"actor": {"id": "z", "roles": ["data_custodian"]}, "dataset": {"approvers": ["c"]}}
+}

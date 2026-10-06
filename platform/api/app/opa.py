@@ -321,6 +321,8 @@ _LOCKED_LEASE_REQUEST_PATH = "/v1/data/munitas/access/locked_lease_request_decis
 _LOCKED_LEASE_APPROVAL_PATH = "/v1/data/munitas/access/locked_lease_approval_decision"
 _LOCKED_LEASE_REVOKE_PATH = "/v1/data/munitas/access/locked_lease_revoke_decision"
 _AUDIT_EVIDENCE_PATH = "/v1/data/munitas/access/audit_evidence_decision"
+_PIPELINE_VERSION_APPROVAL_PATH = "/v1/data/munitas/access/pipeline_version_approval_decision"
+_PIPELINE_APPROVAL_WITHDRAWAL_PATH = "/v1/data/munitas/access/pipeline_approval_withdrawal_decision"
 
 
 def may_request_locked_lease(payload: dict) -> tuple[bool, list[str]]:
@@ -336,6 +338,16 @@ def may_approve_locked_lease(payload: dict) -> tuple[bool, list[str]]:
 def may_revoke_locked_lease(payload: dict) -> tuple[bool, list[str]]:
     """May this person end a lease early? The department's approver, or the person who holds it."""
     return _ask(_LOCKED_LEASE_REVOKE_PATH, payload)
+
+
+def may_approve_pipeline_version(payload: dict) -> tuple[bool, list[str]]:
+    """May this person approve a pipeline version whose custom step is given the recordings? A department approver, never its uploader."""
+    return _ask(_PIPELINE_VERSION_APPROVAL_PATH, payload)
+
+
+def may_withdraw_pipeline_approval(payload: dict) -> tuple[bool, list[str]]:
+    """May this person take a pipeline version's approval back? A department approver."""
+    return _ask(_PIPELINE_APPROVAL_WITHDRAWAL_PATH, payload)
 
 
 def may_read_audit_evidence(payload: dict) -> tuple[bool, list[str]]:
