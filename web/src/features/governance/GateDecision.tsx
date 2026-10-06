@@ -131,12 +131,16 @@ export function GateQueue() {
                       {classWord(row.to_class)}
                     </td>
                     <td className="py-2">
-                      {percent(row.metrics?.recall_effective)} removed
+                      {row.recommendation === "not_measured"
+                        ? "not measured"
+                        : `${percent(row.metrics?.recall_effective)} removed`}
                     </td>
                     <td className="py-2">
-                      {row.leak_count === 0
-                        ? "nothing"
-                        : `${row.leak_count} to look at`}
+                      {row.recommendation === "not_measured"
+                        ? "not measured"
+                        : row.leak_count === 0
+                          ? "nothing"
+                          : `${row.leak_count} to look at`}
                     </td>
                     <td className="py-2">
                       <StateBadge state={row.state} />
@@ -161,12 +165,12 @@ export function GateQueue() {
   );
 }
 
-function LeakTable({ leaks }: { leaks: GateLeak[] }) {
+function LeakTable({ leaks, none }: { leaks: GateLeak[]; none?: string }) {
   if (leaks.length === 0) {
     return (
       <Empty
         what="identifying detail left in the clear"
-        hint="The run removed everything the answer key contains."
+        hint={none ?? "The run removed everything the answer key contains."}
       />
     );
   }
@@ -307,6 +311,10 @@ export function GateDetailScreen() {
   if (!detail.data) return <Failure error={new Error("not found")} what="this result" />;
 
   const d = detail.data;
+  // What a practice run found is kept apart from what was found in this batch, so one is never read as the other.
+  const notMeasured = d.recommendation === "not_measured";
+  const batchLeaks = d.leaks.filter((leak) => !leak.practice);
+  const practiceLeaks = d.leaks.filter((leak) => leak.practice);
 
   return (
     <div className="p-6">
@@ -329,18 +337,22 @@ export function GateDetailScreen() {
           <div>
             <dt className="text-slate-500">Identifying detail removed</dt>
             <dd className="mt-0.5 font-medium">
-              {percent(d.metrics?.recall_effective)}
+              {notMeasured ? "Not measured" : percent(d.metrics?.recall_effective)}
             </dd>
           </div>
           <div>
             <dt className="text-slate-500">Left in the clear</dt>
             <dd className="mt-0.5 font-medium">
-              {d.metrics?.leaks_total ?? d.leaks.length}
+              {notMeasured
+                ? "Not measured"
+                : (d.metrics?.leaks_total ?? batchLeaks.length)}
             </dd>
           </div>
           <div>
             <dt className="text-slate-500">Naming a person directly</dt>
-            <dd className="mt-0.5 font-medium">{d.metrics?.leaks_direct ?? 0}</dd>
+            <dd className="mt-0.5 font-medium">
+              {notMeasured ? "Not measured" : (d.metrics?.leaks_direct ?? 0)}
+            </dd>
           </div>
           <div>
             <dt className="text-slate-500">Started by</dt>
@@ -354,24 +366,82 @@ export function GateDetailScreen() {
           className={`mt-4 rounded border p-3 text-sm ${
             d.recommendation === "pass"
               ? "border-green-300 bg-green-50 text-green-900"
-              : "border-amber-300 bg-amber-50 text-amber-900"
+              : d.recommendation === "not_measured"
+                ? "border-slate-300 bg-slate-50 text-slate-900"
+                : "border-amber-300 bg-amber-50 text-amber-900"
           }`}
           data-testid="gate-recommendation"
         >
           <p className="font-medium">
             {d.recommendation === "pass"
               ? "The measurement clears the agreed bar."
-              : "The measurement does not clear the agreed bar."}
+              : d.recommendation === "not_measured"
+                ? "Nothing measured this batch, so there is no measurement to clear the bar."
+                : "The measurement does not clear the agreed bar."}
           </p>
           <p className="mt-1">{d.recommendation_reason}</p>
         </div>
       </Section>
 
+      {notMeasured && (
+        <Section
+          title="What a practice run measured"
+          description="The same models, on recordings made for the purpose whose contents are known. This says what the method does. It says nothing about this batch."
+        >
+          {d.metrics?.practice_ran === 1 ? (
+            <div data-testid="gate-practice">
+              <dl className="grid grid-cols-2 gap-4 text-sm md:grid-cols-5">
+                <div>
+                  <dt className="text-slate-500">Recordings in the practice run</dt>
+                  <dd className="mt-0.5 font-medium">{d.metrics?.practice_records}</dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500">Identifying detail removed</dt>
+                  <dd className="mt-0.5 font-medium">
+                    {percent(d.metrics?.practice_recall_effective)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500">Left in the clear</dt>
+                  <dd className="mt-0.5 font-medium">{d.metrics?.practice_leaks_total}</dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500">Naming a person directly</dt>
+                  <dd className="mt-0.5 font-medium">{d.metrics?.practice_leaks_direct}</dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500">Meets the agreed bar</dt>
+                  <dd className="mt-0.5 font-medium">
+                    {d.metrics?.practice_cleared_bar === 1 ? "Yes" : "No"}
+                  </dd>
+                </div>
+              </dl>
+              <div className="mt-4">
+                <LeakTable
+                  leaks={practiceLeaks}
+                  none="Nothing identifying was left in the clear in the practice run."
+                />
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-700" data-testid="gate-practice">
+              No practice run could be made, so there is no evidence about the method either. The reason above says why.
+            </p>
+          )}
+        </Section>
+      )}
+
       <Section
         title="What was left in the clear"
         description="Judge how bad each one is. A fragment and a full name both count as one."
       >
-        <LeakTable leaks={d.leaks} />
+        {notMeasured ? (
+          <p className="text-sm text-slate-700">
+            Nothing measured this batch, so nothing is known to have been left in the clear, and nothing is known not to have been. It needs your full review.
+          </p>
+        ) : (
+          <LeakTable leaks={batchLeaks} />
+        )}
       </Section>
 
       {d.steps.length > 0 && (

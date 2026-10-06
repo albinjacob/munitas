@@ -23,6 +23,8 @@ export interface GateLeak {
   /** Postgres numeric arrives as a string. */
   coverage: string | number;
   direct: boolean;
+  /** Found by a practice run on recordings with known contents, not in the batch this decision is about. */
+  practice: boolean;
 }
 
 /** One step of the pipeline run that produced this decision. */
@@ -44,7 +46,7 @@ export interface GateRow {
   to_class: VisibilityClass;
   score_card_id: string;
   metrics: Record<string, number>;
-  recommendation: "pass" | "fail";
+  recommendation: "pass" | "fail" | "not_measured";
   recommendation_reason: string;
   state: "pending" | "promoted" | "refused";
   triggered_by: string | null;

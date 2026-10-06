@@ -1712,7 +1712,7 @@ create table if not exists gate_decision (
                         check (to_class in ('RAW','UNDER_REVIEW','OPEN_FOR_ANNOTATION','OPEN_FOR_TRAINING','PUBLISHED')),
   score_card_id         text not null,
   metrics               jsonb not null default '{}'::jsonb,
-  recommendation        text not null check (recommendation in ('pass','fail')),
+  recommendation        text not null check (recommendation in ('pass','fail','not_measured')),
   recommendation_reason text not null,
   state                 text not null default 'pending'
                         check (state in ('pending','promoted','refused')),
@@ -1723,6 +1723,15 @@ create table if not exists gate_decision (
   handoff               jsonb not null default '{}'::jsonb,
   created_at            timestamptz not null default now()
 );
+
+-- A third value, for a run nothing measured: real recordings have no answer key, and `fail` read as "measured and found wanting". The
+-- constraint was made with the table as it was first written, so an existing database is brought up to date here, and this file stays safe to run
+-- over one that already has it.
+do $$
+begin
+  alter table gate_decision drop constraint if exists gate_decision_recommendation_check;
+  alter table gate_decision add constraint gate_decision_recommendation_check check (recommendation in ('pass','fail','not_measured'));
+end $$;
 
 -- Separation of duties, the same rule agent_run_no_self_approval keeps.
 -- triggered_by is copied onto this row rather than joined, because a check
@@ -1770,6 +1779,10 @@ create table if not exists gate_leak (
 
 create index if not exists gate_leak_decision_idx
   on gate_leak (gate_decision_id);
+
+-- A leak found by a practice run, on recordings made for the purpose whose contents are known, and not in the batch the gate is about. Kept
+-- apart so nobody reads one as the other: a practice run says what the method does, and says nothing about the batch.
+alter table gate_leak add column if not exists practice boolean not null default false;
 
 -- The retired-tenant rule, applied here for the same reason it is applied to
 -- every other table carrying a tenant_id. gate_leak is absent because it holds

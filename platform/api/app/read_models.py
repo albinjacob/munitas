@@ -1020,7 +1020,7 @@ def list_gate_decisions(
                trig.label as triggered_by_label,
                dec.label as decided_by_label,
                (select count(*) from gate_leak gl
-                 where gl.gate_decision_id = gd.id) as leak_count
+                 where gl.gate_decision_id = gd.id and not gl.practice) as leak_count
           from gate_decision gd
           join dataset_version dv on dv.id = gd.dataset_version_id
           join dataset d on d.id = dv.dataset_id
@@ -1077,9 +1077,9 @@ def get_gate_decision(
     out = dict(row)
     out["leaks"] = db.all_rows(
         """select record_id, span_start, span_end, entity, identifier,
-                  left_in_the_clear, coverage, direct
+                  left_in_the_clear, coverage, direct, practice
              from gate_leak where gate_decision_id = %s
-            order by direct desc, coverage asc""",
+            order by practice, direct desc, coverage asc""",
         (decision_id,),
     )
     out["steps"] = db.all_rows(

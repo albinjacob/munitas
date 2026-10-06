@@ -14,8 +14,12 @@ import re
 
 import yaml
 
-BUILTIN_BLOCKS = {"adopt_version", "transcribe", "detect", "handoff", "redact", "verify"}
+BUILTIN_BLOCKS = {"adopt_version", "transcribe", "detect", "handoff", "redact", "verify", "practice_run"}
 STEP_KINDS = {"builtin", "script", "gate", "wait_for_human"}
+
+# What a gate may recommend. `not_measured` is for a run nothing measured, which is neither a pass nor a fail. The same three the database accepts
+# (gate_decision_recommendation_check in schema.sql); verify/v131 checks they agree.
+RECOMMENDATIONS = ("pass", "fail", "not_measured")
 
 # ${steps.NAME.KEY}, the only reference syntax a step's `inputs` values
 # understand. Anything else in an inputs value is a literal.
@@ -124,6 +128,14 @@ def validate_dag(config: dict, script_names: set[str]) -> list[str]:
                     f"gate step {step['name']!r} needs inputs.recommendation and "
                     f"inputs.recommendation_reason"
                 )
+            else:
+                literal = inputs["recommendation"]
+                # A reference to another step's output is only known when the run gets there. A literal is known now.
+                if isinstance(literal, str) and not REF_PATTERN.match(literal) and literal not in RECOMMENDATIONS:
+                    problems.append(
+                        f"gate step {step['name']!r} recommends {literal!r}, which is not one of "
+                        f"{', '.join(RECOMMENDATIONS)}"
+                    )
 
     # Cycle detection: a plain depth-first walk, reporting the first back
     # edge found rather than every one, the same "one clear problem, not a

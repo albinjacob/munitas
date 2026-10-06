@@ -165,7 +165,7 @@ steps:
 
     check("BUILTIN_BLOCKS names the platform's real steps",
           BUILTIN_BLOCKS == {"adopt_version", "transcribe", "detect", "handoff",
-                             "redact", "verify"})
+                             "redact", "verify", "practice_run"})
 
     try:
         parse_dag_config("not: [valid, yaml: at all")

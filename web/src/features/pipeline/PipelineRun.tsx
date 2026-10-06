@@ -202,7 +202,9 @@ export function PipelineRun() {
             <p className="text-slate-700">
               The measurement suggests{" "}
               <span className="font-medium">
-                {run.gate_decision.recommendation ?? "no verdict"}
+                {run.gate_decision.recommendation === "not_measured"
+                  ? "not measured"
+                  : (run.gate_decision.recommendation ?? "no verdict")}
               </span>
               {run.gate_decision.recommendation_reason
                 ? `: ${run.gate_decision.recommendation_reason}`

@@ -826,6 +826,85 @@ def verify(params: dict) -> dict:
     }
 
 
+PRACTICE_RECORDS = 4
+
+
+def _practice_records(corpus: Path, wanted: int) -> list[Path]:
+    """Recordings with known contents, spread evenly across the corpus so every kind of conversation in it is likely to be among them."""
+    available = [p for p in sorted(corpus.glob("synth-*.json")) if (corpus / "audio" / f"{p.stem}.wav").exists()]
+    if wanted <= 0 or not available:
+        return []
+    wanted = min(wanted, len(available))
+    return [available[(i * len(available)) // wanted] for i in range(wanted)]
+
+
+@activity.defn
+def practice_run(params: dict) -> dict:
+    """A practice run: this pipeline's own transcription and detection, on recordings whose contents are known, scored as the verify step scores.
+
+    For a batch with no answer key nothing can be measured, so nothing can be said about whether the redaction worked on it. What can be
+    measured is whether the method works: the same models, the same code, run on recordings made for the purpose, whose every name and number
+    was invented and is therefore known. What it catches there says what the method does. It says nothing about this batch, and its result
+    says so, which is why a gate fed by it still recommends `not_measured`.
+
+    Writes nothing into any organisation: no dataset, no version, no object in any bucket, and no action run. It reads the corpus, runs
+    two models and returns a result. The recordings are the platform's own and hold no real person.
+
+    A corpus that is not there does not fail the run, which used to be a run with no practice at all. The result says so plainly instead.
+    """
+    from .align import Alignment
+    from .scoring import GATE_DIRECT_LEAKS, GATE_RECALL, ScoreCard, evaluate_gate, score_record
+
+    wanted = int(params.get("practice_records", PRACTICE_RECORDS))
+    try:
+        corpus = config.require_corpus_dir()
+    except Exception as exc:  # noqa: BLE001 - whatever it says about the corpus is the reason
+        return _practice_unavailable(f"the practice recordings are not available on this machine ({type(exc).__name__})")
+    chosen = _practice_records(corpus, wanted)
+    if not chosen:
+        return _practice_unavailable("there are no practice recordings to run")
+
+    from .detect import Ensemble
+
+    backend = transcribe_backend.load_backend(config.WHISPER_MODEL, config.WHISPER_DEVICE, config.WHISPER_COMPUTE)
+    ensemble = Ensemble()
+    ensemble.load()
+    card, similarities = ScoreCard(), []
+    for path in chosen:
+        record = json.loads(path.read_text(encoding="utf-8"))
+        segments = backend.transcribe(corpus / "audio" / f"{record['record_id']}.wav")
+        transcript = "".join(segment["text"] for segment in segments).strip()
+        candidates = [c.as_dict() for c in ensemble.detect(transcript)]
+        similarities.append(Alignment(record["transcript"], transcript).similarity())
+        score_record(card, record["transcript"], transcript, record["spans"], candidates, record_id=record["record_id"])
+        activity.heartbeat(record["record_id"])
+    del backend
+    ensemble.release()
+    _free_vram()
+    card.similarity = sum(similarities) / len(similarities)
+
+    cleared, _ = evaluate_gate(card)
+    caught = card.survived - card.leaked
+    reason = (
+        "not measured: there is no ground truth for this recording, so nothing here checked whether the redaction worked on it. "
+        f"A practice run of the same models on {len(chosen)} recordings whose contents are known caught {caught} of the {card.survived} "
+        f"identifiers that survived transcription ({card.recall_effective:.0%}) and left {card.direct_leaks} naming a person directly; "
+        + ("that meets" if cleared else "that does not meet")
+        + f" the bar of {GATE_RECALL:.0%} with {GATE_DIRECT_LEAKS} direct leaks. "
+        "That describes the method and says nothing about this batch, which needs full human review before any promotion."
+    )
+    metrics = {"practice_ran": 1, "practice_records": len(chosen), "practice_cleared_bar": int(cleared)}
+    metrics.update({f"practice_{k}": v for k, v in card.as_metrics().items()})
+    return {"ran": True, "reason": reason, "metrics": metrics, "cleared_bar": cleared,
+            "leak_detail": [{**leak, "practice": True} for leak in card.leak_detail], "code_hash": cp.code_hash()}
+
+
+def _practice_unavailable(why: str) -> dict:
+    return {"ran": False, "cleared_bar": False, "leak_detail": [], "metrics": {"practice_ran": 0},
+            "reason": (f"not measured: there is no ground truth for this recording, so nothing here checked whether the redaction worked on it, "
+                       f"and a practice run on recordings with known contents could not be made: {why}. Needs full human review before any promotion.")}
+
+
 @activity.defn
 def open_pipeline_run(params: dict) -> dict:
     """Open the pipeline run row, returning its id for every step to carry.
@@ -1009,6 +1088,12 @@ def record_simple_gate_decision(params: dict) -> dict:
 
     from .db import _db
 
+    # `not_measured` is for a run nothing measured: neither a pass nor a fail. The database accepts these three and refuses anything else, and
+    # a refusal there would be retried, so it is refused here once and for good.
+    if params["recommendation"] not in ("pass", "fail", "not_measured"):
+        raise ApplicationError(
+            f"a gate recommends pass, fail or not_measured, and not {params['recommendation']!r}", non_retryable=True)
+
     decision_id = str(uuid.uuid4())
     with _db() as conn:
         owner = conn.execute(
@@ -1040,12 +1125,12 @@ def record_simple_gate_decision(params: dict) -> dict:
             conn.execute(
                 """insert into gate_leak
                      (id, gate_decision_id, record_id, span_start, span_end,
-                      entity, identifier, left_in_the_clear, coverage, direct)
-                   values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                      entity, identifier, left_in_the_clear, coverage, direct, practice)
+                   values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 (str(uuid.uuid4()), decision_id, leak["record_id"],
                  leak["span_start"], leak["span_end"], leak["entity"],
                  leak["identifier"], leak["left_in_the_clear"],
-                 leak["coverage"], leak["direct"]),
+                 leak["coverage"], leak["direct"], bool(leak.get("practice", False))),
             )
 
     return {

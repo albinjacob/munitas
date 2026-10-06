@@ -85,8 +85,8 @@ def u68a_register_template(headers: dict, dept_id: str) -> str | None:
     )
     check("uploading the committed template as a version succeeds",
           r.status_code == 201, r.text[:600])
-    check("the sealed version has all 6 declared steps",
-          r.json().get("step_count") == 6, r.text[:400])
+    check("the sealed version has all 7 declared steps",
+          r.json().get("step_count") == 7, r.text[:400])
     return r.json()["id"] if r.status_code == 201 else None
 
 
@@ -169,9 +169,9 @@ def u68d_dag_reaches_honest_gate(headers: dict, dataset_id: str, version_id: str
     gate = data["gate_decision"]
 
     check(
-        "gate recommendation is 'fail', the conservative default -- 'pass' "
-        "would claim a measurement that never happened",
-        gate.get("recommendation") == "fail", str(gate),
+        "gate recommendation is 'not_measured' -- 'pass' would claim a measurement "
+        "that never happened, and 'fail' would claim one that found the redaction wanting",
+        gate.get("recommendation") == "not_measured", str(gate),
     )
     check("gate reason names the missing ground truth",
           "ground truth" in (gate.get("recommendation_reason") or ""), str(gate))
@@ -181,12 +181,25 @@ def u68d_dag_reaches_honest_gate(headers: dict, dataset_id: str, version_id: str
 
     step_names = sorted(s.get("action") for s in data.get("steps", []))
     check(
-        "exactly the 6 expected steps ran: adopt, transcribe, detect, "
-        "handoff, redact, gate -- verify is NOT among them, because there "
+        "exactly the 7 expected steps ran: adopt, transcribe, detect, "
+        "handoff, redact, practice, gate -- verify is NOT among them, because there "
         "was nothing to score against",
-        step_names == ["adopt", "detect", "gate", "handoff", "redact", "transcribe"],
+        step_names == ["adopt", "detect", "gate", "handoff", "practice", "redact", "transcribe"],
         str(step_names),
     )
+
+    # The practice run: what the method does on recordings whose contents are known, which says nothing about this batch.
+    metrics = gate.get("metrics") or {}
+    check("the practice run ran on recordings with known contents", metrics.get("practice_ran") == 1 and metrics.get("practice_records", 0) >= 1, str(metrics))
+    check("its measurements are the practice run's own, and the batch has none: nothing claims a recall for this recording",
+          "recall_effective" not in metrics and "leaks_total" not in metrics and "practice_recall_effective" in metrics, str(sorted(metrics)))
+    reason = gate.get("recommendation_reason") or ""
+    check("the reason says what the practice run found, and that it describes the method and not this batch",
+          "practice run" in reason and "says nothing about this batch" in reason, reason[:200])
+    detail = httpx.get(f"{common.API}/gate-decisions/{gate['id']}", headers=headers, timeout=15.0).json()
+    leaks = detail.get("leaks", [])
+    check("every leak on this decision is marked as a practice leak: none is presented as a leak in the batch",
+          all(leak.get("practice") is True for leak in leaks), str(leaks[:2]))
 
 
 def main() -> int:

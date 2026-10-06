@@ -22,7 +22,7 @@ with workflow.unsafe.imports_passed_through():
     from .activities import (adopt_version, check_score_store, close_pipeline_run,
                              describe_failure,
                              detect, handoff,
-                             open_pipeline_run, redact,
+                             open_pipeline_run, practice_run, redact,
                              record_simple_gate_decision, resolve_actions,
                              transcribe, verify)
     from .dag_activities import (close_step_run, open_step_run,
@@ -31,6 +31,7 @@ with workflow.unsafe.imports_passed_through():
 BUILTIN_ACTIVITY = {
     "adopt_version": adopt_version, "transcribe": transcribe,
     "detect": detect, "handoff": handoff, "redact": redact, "verify": verify,
+    "practice_run": practice_run,
 }
 
 # adopt_version does not open an action_run -- reading an already-sealed
@@ -39,7 +40,7 @@ BUILTIN_ACTIVITY = {
 # dataset_action registered for it. Kept as its own set rather than
 # inferred, so a future block that also skips action_run stays a one-line,
 # explicit choice instead of a special case buried in the dispatch code.
-BLOCKS_WITHOUT_ACTION = {"adopt_version"}
+BLOCKS_WITHOUT_ACTION = {"adopt_version", "practice_run"}
 
 REF_PATTERN = re.compile(r"^\$\{steps\.([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)\}$")
 
@@ -260,6 +261,7 @@ class PipelineDagWorkflow:
                  "recommendation": inputs.get("recommendation"),
                  "recommendation_reason": inputs.get("recommendation_reason"),
                  "leak_detail": inputs.get("leak_detail"),
+                 "metrics": inputs.get("metrics") or {},
                  "triggered_by": params.get("triggered_by"),
                  "pipeline_run_id": pipeline_run_id},
                 start_to_close_timeout=timedelta(minutes=2),

@@ -97,6 +97,7 @@ SCRIPTS = [
     ("U128 one person's data is locked under a key of their own, and erasing the person destroys that key and nothing else", "v128_person_keys_erasure.py"),
     ("U129 locked columns are read in full only by the owning department's approvers, and by anybody else only through a lease an auditor can see", "v129_locked_column_leases.py"),
     ("U130 a sealed table reports how many different people share each combination of its readable quasi columns, as advice and in counts", "v130_group_size_reports.py"),
+    ("U131 a gate can say not measured, which is not a pass and not a fail", "v131_gate_not_measured.py"),
 ]
 
 here = Path(__file__).parent
@@ -263,6 +264,8 @@ if ONLY is None:
     print("  it needs python -m worker.main on the machine with the GPU. Several")
     print("  minutes:")
     print("    .venv\\Scripts\\python.exe verify\\v68_production_case_no_ground_truth.py")
+    print("  U132 calls the practice step directly and loads the models, so it runs on the host with the graphics card, a couple of minutes:")
+    print("    .venv\\Scripts\\python.exe verify\\v132_practice_run.py")
     print("  U73 starts the worker entry points on Windows and inside WSL to prove")
     print("  they refuse a work directory they cannot use, so it runs on the host:")
     print("    .venv\\Scripts\\python.exe verify\\v73_work_dir_refused.py")

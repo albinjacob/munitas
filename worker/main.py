@@ -34,7 +34,7 @@ from . import config
 from .activities import (adopt_version, check_score_store, close_pipeline_run,
                          count_records,
                          detect, handoff,
-                         ingest, open_pipeline_run, record_gate_decision,
+                         ingest, open_pipeline_run, practice_run, record_gate_decision,
                          record_simple_gate_decision, redact,
                          resolve_actions, transcribe, verify)
 from .agent_run_activities import fail_run, resume_run, run_agent
@@ -106,7 +106,7 @@ async def main() -> None:
             activities=[open_pipeline_run, close_pipeline_run, check_score_store,
                         resolve_actions, ingest,
                         adopt_version, transcribe, detect, handoff, redact,
-                        verify, record_gate_decision, count_records,
+                        verify, practice_run, record_gate_decision, count_records,
                         record_simple_gate_decision, open_step_run,
                         close_step_run],
             activity_executor=pool,
