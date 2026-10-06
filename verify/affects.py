@@ -110,7 +110,13 @@ def scripts() -> dict[str, str]:
 
 
 def mentions(stem: str, by_script: dict[str, str]) -> list[str]:
-    """The checks whose script names this module."""
+    """The checks whose script names this module.
+
+    Only for a name distinctive enough to mean the module: one with an underscore, or nine letters or more. A name like `main`, `db` or
+    `config` appears in half the suite's prose, and matching on it would pick checks that have nothing to do with the file.
+    """
+    if "_" not in stem and len(stem) < 9:
+        return []
     found = []
     for script, check_id in by_script.items():
         try:
