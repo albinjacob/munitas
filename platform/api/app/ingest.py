@@ -378,7 +378,7 @@ def _pending_uploads(dataset_id: str) -> list[dict]:
     return db.all_rows(
         """select distinct on (locator)
                  locator, checksum, bytes, audio_duration_seconds,
-                 audio_sample_rate, truth_has_hazard
+                 audio_sample_rate, truth_has_hazard, locked_person_code
            from dataset_source
            where dataset_id = %s and kind = 'upload'
              and checksum is not null and withdrawn_at is null
@@ -426,6 +426,11 @@ def seal_audio(dataset_id: str,
             for f in uploads if f["locator"].endswith(ANSWER_KEY_SUFFIX)}
 
     reasons: list[str] = []
+    for locked in sorted(f["locator"] for f in uploads if f["locked_person_code"]):
+        reasons.append(
+            f"{locked} was uploaded locked to a patient, so opening it as ordinary "
+            f"audio would read noise. Seal it with the locked-recordings seal instead"
+        )
     if not uploads:
         reasons.append("nothing has been uploaded to this dataset yet")
     elif not audio:
@@ -694,11 +699,17 @@ def seal(dataset_id: str, identity: dict = Depends(auth.current_session)) -> dic
         )
 
     files = db.all_rows(
-        """select locator, checksum, bytes from dataset_source
+        """select locator, checksum, bytes, locked_person_code from dataset_source
            where dataset_id = %s and kind in ('upload', 'huggingface')
              and checksum is not null and withdrawn_at is null""",
         (dataset_id,),
     )
+    locked = sorted(f["locator"] for f in files if f["locked_person_code"])
+    if locked:
+        # A locked recording sealed here would be listed as an ordinary file, with nothing saying whose it is or that a key opens it.
+        raise HTTPException(400, {"reasons": [
+            f"{name} was uploaded locked to a patient. Seal it with the locked-recordings seal, "
+            f"or withdraw it and upload it as an ordinary file" for name in locked]})
     if not files:
         raise HTTPException(
             400, {"reasons": ["nothing has been uploaded or fetched yet"]}

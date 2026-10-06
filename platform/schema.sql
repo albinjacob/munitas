@@ -880,6 +880,60 @@ $$ language plpgsql;
 drop trigger if exists group_size_report_guard on group_size_report;
 create trigger group_size_report_guard before update on group_size_report for each row execute function group_size_report_guard();
 
+-- ------------------------------------ recordings locked per person ---------
+
+-- A recording is one patient's, and it is stored locked under that patient's key, in chunks, so erasing the patient makes it unreadable.
+-- It is sent in parts that can each be sent again: an upload is opened first (naming the file, its size and its patient), then each part is
+-- sent on its own, then the upload is completed. Only the patient's person code is kept here, never the identifier that found them.
+create table if not exists recording_upload (
+  id               uuid primary key,
+  tenant_id        text not null references tenant(id),
+  dataset_id       uuid not null references dataset(id),
+  file_name        text not null check (file_name <> ''),
+  size_bytes       bigint not null check (size_bytes >= 1),
+  person_code      text not null,
+  storage_key      text not null,
+  storage_upload   text not null,           -- the storage backend's own id for the upload in progress
+  status           text not null default 'open' check (status in ('open','complete','aborted','expired')),
+  facts            jsonb,                   -- what the first part says about the file: for a recording, its length and sample rate
+  created_by       text not null references directory(id),
+  created_at       timestamptz not null default now(),
+  expires_at       timestamptz not null,
+  finished_at      timestamptz,
+  source_id        uuid,                    -- the dataset_source row made when the upload completed
+  constraint recording_upload_finished_together check ((status = 'open') = (finished_at is null))
+);
+create index if not exists recording_upload_dataset_idx on recording_upload (dataset_id, status);
+
+create table if not exists recording_part (
+  upload_id      uuid not null references recording_upload(id),
+  part_number    int not null check (part_number >= 1),
+  tenant_id      text not null references tenant(id),
+  stored_bytes   bigint not null,
+  etag           text not null,
+  received_at    timestamptz not null default now(),
+  primary key (upload_id, part_number)
+);
+
+-- Which patient a recording in a sealed version is about, by person code only. Erasing the person destroys their key and leaves this row, as
+-- it leaves the person code in a sealed table: the code names nobody.
+create table if not exists recording_person (
+  dataset_version_id uuid not null references dataset_version(id),
+  record_id          text not null,
+  tenant_id          text not null references tenant(id),
+  person_code        text not null,
+  plain_bytes        bigint not null,
+  format             text not null,
+  primary key (dataset_version_id, record_id)
+);
+create index if not exists recording_person_person_idx on recording_person (tenant_id, person_code);
+
+-- An upload that was locked under a patient's key is marked on the file it became, so the two ways of sealing recordings can refuse each
+-- other's files: opened as audio, locked bytes would be noise, and sealed as locked, plain bytes would not be locked.
+alter table dataset_source add column if not exists locked_person_code text;
+alter table dataset_source add column if not exists locked_format text;
+alter table dataset_source add column if not exists plain_bytes bigint;
+
 -- ------------------------------------------------- reclaiming object bytes --
 
 -- One row per dataset version whose stored objects were deleted to free space.
@@ -946,7 +1000,8 @@ begin
     'schema_contract','dataset','dataset_version','dataset_action','action_run',
     'lease_request','access_lease','department','project','directory',
     'record_key','tombstone','datasink','write_grant',
-    'org_key','subject_lookup','subject_key','privacy_contract','locked_column_lease','group_size_report'
+    'org_key','subject_lookup','subject_key','privacy_contract','locked_column_lease','group_size_report',
+    'recording_upload','recording_part','recording_person'
   ] loop
     execute format('drop trigger if exists %I on %I', 'refuse_retired_' || t, t);
     execute format(
