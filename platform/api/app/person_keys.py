@@ -280,6 +280,30 @@ def read_locked(service: KeyService, *, version_id: str, identity: dict) -> dict
 # Erasing ---------------------------------------------------------------------
 
 
+def still_made_from(tenant_id: str, person_code: str) -> dict:
+    """What was made from this person's recordings, which erasing their key does not change.
+
+    Destroying a key makes what it locked unreadable. A transcript, a redacted recording or anything else a pipeline made from a locked recording
+    was made in the clear, in a later version, and stays exactly as it is. This lists those versions (with the run that made each), following the
+    lineage from every version that holds a recording of the person through everything made from it, so whoever answers for the data can see what
+    is left and decide. It lists and changes nothing.
+    """
+    held = db.all_rows("select distinct dataset_version_id::text as id from recording_person where tenant_id = %s and person_code = %s", (tenant_id, person_code))
+    derived = db.all_rows(
+        """with recursive walk(version_id) as (
+               select dataset_version_id from recording_person where tenant_id = %s and person_code = %s
+               union
+               select l.dataset_version_id from lineage l join walk w on w.version_id = any(l.input_versions)
+           )
+           select distinct l.dataset_version_id::text as version_id, l.dataset_name, l.version, l.run_id::text as run_id, l.action_name
+             from lineage l join dataset_version v on v.id = l.dataset_version_id
+            where v.tenant_id = %s and l.dataset_version_id in (select version_id from walk)
+              and l.dataset_version_id not in (select dataset_version_id from recording_person where tenant_id = %s and person_code = %s)
+            order by l.dataset_name, l.version""",
+        (tenant_id, person_code, tenant_id, tenant_id, person_code))
+    return {"recording_versions": [h["id"] for h in held], "derived_versions": derived}
+
+
 def erase_person(service: KeyService, tenant_id: str, kind: str, value: str, identity: dict, reason: str) -> dict:
     """Destroy a person's key, delete the lookup row and leave a tombstone. The sealed files are not touched.
 
@@ -292,8 +316,10 @@ def erase_person(service: KeyService, tenant_id: str, kind: str, value: str, ide
     code = find_person(service, tenant_id, kind, value)
     if code is None:
         return {"found": False, "key_destroyed": False, "person_code": None}
+    # Looked up before the key goes, so the list is of what stood at the moment of erasure.
+    left = still_made_from(tenant_id, code)
     destroyed = service.destroy(tenant_id, code, identity["id"])
     db.execute("delete from subject_lookup where tenant_id = %s and person_code = %s returning person_code", (tenant_id, code))
     db.execute("insert into tombstone (record_id, tenant_id, reason, requested_by) values (%s, %s, %s, %s) "
                "on conflict (record_id) do nothing returning record_id", (f"person:{code}", tenant_id, reason, identity["id"]))
-    return {"found": True, "key_destroyed": destroyed, "person_code": code, "tombstoned": True}
+    return {"found": True, "key_destroyed": destroyed, "person_code": code, "tombstoned": True, **left}

@@ -377,6 +377,61 @@ def read_json(client, bucket: str, key: str) -> object:
     return json.loads(client.get_object(Bucket=bucket, Key=key)["Body"].read())
 
 
+class RecordingErased(Exception):
+    """The patient this recording is about was erased, so it cannot be opened and the run leaves it out."""
+
+
+_locked_versions: dict[str, bool] = {}
+
+
+def recordings_are_locked(version_id: str) -> bool:
+    """Whether this version's recordings are stored locked under their patients' keys. Asked once per version and remembered for the process."""
+    if version_id not in _locked_versions:
+        response = httpx.get(f"{config.API}/internal/dataset-versions/{version_id}/locked-recordings", timeout=30.0,
+                             headers={"x-worker-token": config.WORKER_TOKEN}, verify=config.api_verify())
+        if response.status_code >= 400:
+            raise ControlPlaneError(f"asking whether {version_id} is locked returned {response.status_code}: {response.text[:300]}")
+        _locked_versions[version_id] = bool(response.json()["locked"])
+    return _locked_versions[version_id]
+
+
+def download_recording(reader, bucket: str, key: str, local: Path, *, version_id: str, record_id: str, tenant_id: str,
+                       principal: str, task_credential: str, purpose: str) -> None:
+    """The recording as audio, in a local file, whether the version stores it plain or locked.
+
+    A plain one is downloaded from storage, as before. A locked one is stored as ciphertext, so the platform opens it: it checks that this task was
+    launched with the version as an input, unwraps the patient's key (the opening is logged with the task named), and streams the audio back. The
+    key never leaves the platform. A patient who was erased raises RecordingErased, and a body shorter than the platform said it would be is
+    refused, because the platform ends a body short when a chunk does not open.
+    """
+    if not recordings_are_locked(version_id):
+        reader.download_file(bucket, key, str(local))
+        return
+    expected = None
+    with httpx.stream("POST", f"{config.API}/internal/recordings/open", timeout=httpx.Timeout(30.0, read=120.0),
+                      headers={"x-worker-token": config.WORKER_TOKEN}, verify=config.api_verify(),
+                      json={"principal": principal, "tenant_id": tenant_id, "task_credential": task_credential,
+                            "dataset_version_id": version_id, "record_id": record_id, "purpose": purpose}) as response:
+        if response.status_code == 410:
+            raise RecordingErased(record_id)
+        if response.status_code >= 400:
+            response.read()
+            raise ControlPlaneError(f"opening recording {record_id} returned {response.status_code}: {response.text[:300]}")
+        expected = int(response.headers["x-plain-bytes"])
+        written = 0
+        try:
+            with open(local, "wb") as out:
+                for piece in response.iter_bytes():
+                    out.write(piece)
+                    written += len(piece)
+        except httpx.HTTPError as exc:
+            local.unlink(missing_ok=True)
+            raise ControlPlaneError(f"recording {record_id} was cut off after {written} of {expected} bytes: {exc}") from exc
+    if written != expected:
+        local.unlink(missing_ok=True)
+        raise ControlPlaneError(f"recording {record_id} came back as {written} bytes, not the {expected} the platform said")
+
+
 _code_hash: str | None = None
 
 

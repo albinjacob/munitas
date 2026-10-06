@@ -399,7 +399,7 @@ def transcribe(params: dict) -> dict:
     if done:
         activity.logger.info("resuming with %d records already transcribed", len(done))
 
-    out_rows, manifest = [], []
+    out_rows, manifest, left_out = [], [], []
     started = time.time()
     backend = None
     for row in rows:
@@ -419,7 +419,15 @@ def transcribe(params: dict) -> dict:
 
         local = config.WORK / row["audio_key"].replace("/", "_")
         local.parent.mkdir(parents=True, exist_ok=True)
-        reader.download_file(params["bucket"], row["audio_key"], str(local))
+        try:
+            cp.download_recording(reader, params["bucket"], row["audio_key"], local, version_id=params["input_version"], record_id=row["record_id"],
+                                  tenant_id=_tenant(params), principal=_pipeline_principal(_tenant(params)), task_credential=run["task_credential"],
+                                  purpose=f"transcribe {row['record_id']}")
+        except cp.RecordingErased:
+            # The patient was erased, so their recording is left out of what this run makes, not read as noise and not failed over.
+            left_out.append(row["record_id"])
+            activity.heartbeat(row["record_id"])
+            continue
 
         segments = backend.transcribe(local)
         words, pieces = [], []
@@ -454,9 +462,11 @@ def transcribe(params: dict) -> dict:
         "transcribed %d records in %.1fs (%d resumed from checkpoint)",
         len(out_rows), time.time() - started, len(done),
     )
+    if left_out:
+        activity.logger.info("left out %d recording(s) of erased patients: %s", len(left_out), ", ".join(left_out))
     return {"version_id": version["id"],
             "records_key": _key(params["prefix"], "transcribed.json"),
-            "record_count": len(out_rows), "run_id": run_id}
+            "record_count": len(out_rows), "run_id": run_id, "left_out_erased": left_out}
 
 
 @activity.defn
@@ -659,7 +669,7 @@ def redact(params: dict) -> dict:
     threshold = params.get("confidence_threshold", 0.4)
     run_salt = params["idempotency_key"]
 
-    out_rows, manifest = [], []
+    out_rows, manifest, left_out = [], [], []
     for row in rows:
         accepted = [c for c in row["candidates"] if c["confidence"] >= threshold]
         redacted, substitutions = redact_text(
@@ -676,7 +686,15 @@ def redact(params: dict) -> dict:
         if source_key:
             local = config.WORK / source_key.replace("/", "_")
             local.parent.mkdir(parents=True, exist_ok=True)
-            reader.download_file(params["bucket"], source_key, str(local))
+            try:
+                cp.download_recording(reader, params["bucket"], source_key, local, version_id=source_version, record_id=row["record_id"],
+                                      tenant_id=_tenant(params), principal=_pipeline_principal(_tenant(params)), task_credential=run["task_credential"],
+                                      purpose=f"redact {row['record_id']}")
+            except cp.RecordingErased:
+                # Erased between the steps: nothing of this patient is carried into what the run makes.
+                left_out.append(row["record_id"])
+                activity.heartbeat(row["record_id"])
+                continue
             audio, rate = sf.read(str(local), dtype="int16")
             masked = redact_audio(np.asarray(audio), rate, time_spans)
             out_path = config.WORK / f"redacted_{row['record_id']}.wav"
@@ -708,7 +726,7 @@ def redact(params: dict) -> dict:
             "records_key": _key(params["prefix"], "redacted.json"),
             "record_count": len(out_rows),
             "substitutions": sum(r["substitutions"] for r in out_rows),
-            "run_id": run_id}
+            "run_id": run_id, "left_out_erased": left_out}
 
 
 def score_store_problem() -> str | None:

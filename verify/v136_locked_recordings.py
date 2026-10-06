@@ -42,7 +42,7 @@ sys.path.insert(0, "/")
 
 import httpx  # noqa: E402
 
-from common import ADMIN, API, CANARY, api, bearer_for, bucket_for, check, db, fixture_tenant, heading, require_api, s3_client, summary  # noqa: E402
+from common import ADMIN, API, CANARY, api, bearer_for, bucket_for, check, db, fixture_contract, fixture_tenant, heading, require_api, s3_client, summary  # noqa: E402
 from lifecycle_fixture import drop_org, make_org  # noqa: E402
 from v128_person_keys_erasure import CUSTODIAN, ENGINEER, RESEARCHER, count, identity, reasons_of, register_dataset, reset_keys  # noqa: E402
 
@@ -92,6 +92,12 @@ def upload_whole(dataset: str, name: str, data: bytes, value: str, kind: str = K
     c = complete(up["id"])
     assert c.status_code == 200, (c.status_code, c.text[:300])
     return {"upload": up["id"], **c.json()}
+
+
+def fixture_version_id() -> str:
+    """A sealed version nothing to do with the recordings."""
+    from common import fixture_version
+    return fixture_version(CANARY, fixture_contract(CANARY))["id"]
 
 
 def stored_object(key: str) -> bytes:
@@ -308,9 +314,41 @@ def main() -> int:
     c_open = open_up(dataset, ENGINEER, "visit-0060.wav", 500_000, value=patient_c).json()["id"]
     check("a part is kept for a patient whose upload is in progress", put(c_open, 1, make_wav(499_956)).status_code == 200)
 
+    heading("What is made from a patient's recordings")
+    workload = f"{CANARY}-pipeline"
+    with db() as conn:
+        conn.execute("insert into directory (id, tenant_id, label, kind, roles) values (%s, %s, 'Pipeline', 'workload', '{pipeline_action}') on conflict (id) do nothing", (workload, CANARY))
+        action = str(uuid.uuid4())
+        conn.execute("insert into dataset_action (id, tenant_id, name) values (%s, %s, 'u136 derive')", (action, CANARY))
+    schema = fixture_contract(CANARY)
+
+    def derive(from_version: str, name: str) -> dict:
+        run = api("POST", "/action-runs", json={"tenant_id": CANARY, "action_id": action, "code_hash": uuid.uuid4().hex, "image_digest": "sha256:verify",
+                                                "operator": workload, "idempotency_key": f"u136-{uuid.uuid4()}", "input_versions": [from_version],
+                                                "params": {}, "trigger_kind": "manual", "triggered_by": ENGINEER}).json()
+        ds = api("POST", "/datasets", json={"tenant_id": CANARY, "name": f"{name}-{tag}"}).json()["id"]
+        made = api("POST", "/dataset-versions", json={"tenant_id": CANARY, "dataset_id": ds, "schema_id": schema, "visibility_class": "RAW",
+                                                      "object_manifest": [{"key": "part-0.json", "bytes": 1}], "record_count": 1, "produced_by_run": run["id"]})
+        made.raise_for_status()
+        return {"id": made.json()["id"], "name": f"{name}-{tag}", "run": run["id"]}
+
+    transcripts = derive(version, "transcripts")
+    redacted = derive(transcripts["id"], "redacted")
+    unrelated = derive(fixture_version_id(), "unrelated")
+    left = person_keys.still_made_from(CANARY, codes["visit-0001.wav"])
+    got = {d["version_id"]: d for d in left["derived_versions"]}
+    check("the version that holds the patient's recordings is named", left["recording_versions"] == [version], str(left["recording_versions"]))
+    check("what a run made from it is listed, with the run that made it", transcripts["id"] in got and got[transcripts["id"]]["run_id"] == transcripts["run"], str(got)[:200])
+    check("and what was made from that, however far down", redacted["id"] in got and got[redacted["id"]]["dataset_name"] == redacted["name"])
+    check("something made from an unrelated version is not listed", unrelated["id"] not in got)
+    check("the version of the recordings is not listed as derived from itself", version not in got)
+    check("a person with no recordings has nothing listed", person_keys.still_made_from(CANARY, "T-0000000000000000") == {"recording_versions": [], "derived_versions": []})
+
     heading("Erasing the patient")
     out = person_keys.erase_person(service, CANARY, KIND, patient_a, identity(CUSTODIAN, ["data_custodian"]), "asked to be forgotten")
     check("the patient is erased: their key is destroyed", out["found"] and out["key_destroyed"], str(out))
+    check("and the answer says what was made from their recordings and was not changed",
+          {transcripts["id"], redacted["id"]} <= {d["version_id"] for d in out["derived_versions"]} and out["recording_versions"] == [version], str(out)[:200])
     check("their first recording cannot be opened", _raises(lambda: recordings.open_recording(service, version_id=version, record_id="visit-0001", run="r", purpose="p"), recordings.PatientErased))
     check("their second cannot be opened either", _raises(lambda: recordings.open_recording(service, version_id=version, record_id="visit-0002", run="r", purpose="p"), recordings.PatientErased))
     check("the other patient's recording still opens", len(b"".join(recordings.open_recording(service, version_id=version, record_id="visit-0003", run="r", purpose="p")[1])) > 0)
