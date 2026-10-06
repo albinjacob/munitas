@@ -13,27 +13,42 @@ from walkthrough_kit import SHOTS_ROOT, Page, series_entry, write
 
 STEPS = [
     {
-        "file": "01-devi-opens-the-table-option.png", "actor": "devi",
+        "file": "01-devi-is-asked-whether-anyone-may-need-erasing.png", "actor": "devi",
         "act": ("PART ONE", "Devi seals a table of appointments from two files",
                 "A dataset is a registered, owned collection of data. Sealed means finished and closed for good, so "
                 "that it can never be edited. This part shows a table of people&rsquo;s records being sealed in a way "
                 "that locks what identifies each person, while the table itself stays exactly as sealed."),
-        "title": "Devi opens the page for a new dataset and finds the table option",
+        "title": "Devi is asked whether anyone will ever need to be erased from this data",
         "screen": "Bring data into a dataset &middot; /datasets/&lt;id&gt;/ingest",
         "text": "The dataset on this page is owned by the Cardiology department of the Health organisation. A "
                 "department is the team inside an organisation that owns some of its data. Nothing in the dataset is "
-                "readable yet. Devi is a data engineer, a role that may bring data in. Under the usual upload area is "
-                "a second way in, for a table of people&rsquo;s records. It takes two files: a <strong>privacy "
-                "contract</strong>, which says column by column how identifying each column is and what is done to "
-                "it when the table is sealed, and the <strong>rows</strong> as a CSV file, which is a plain text table with "
-                "one row on each line and the column names on the first line.",
-        "note": "Under <strong>Or seal a table with a privacy contract</strong> there are two file choosers, "
-                "<strong>The contract</strong> and <strong>The rows</strong>, both reading <strong>No file "
-                "chosen</strong>. The button <strong>Seal as a table</strong> is greyed out, and the text names the "
-                "limits: <strong>20,000 rows and 5 MB</strong>.",
+                "readable yet. Devi is a data engineer, a role that may bring data in. Before any file can be added, the "
+                "page asks one question: will anyone ever need to erase one person from this data? The answer has to be "
+                "given now, because locking cannot be added after the upload. The first choice, which is selected when the "
+                "page opens, stores the files exactly as they are, and nothing in them is locked.",
+        "note": "A box titled <strong>Will you ever need to erase one person from this data?</strong> has two choices. "
+                "<strong>No. Store the files as they are.</strong> is selected, and the usual <strong>Upload files</strong> "
+                "area is below it.",
     },
     {
-        "file": "02-a-bad-file-is-refused.png", "actor": "devi",
+        "file": "02-devi-opens-the-table-option.png", "actor": "devi",
+        "title": "Devi answers yes, and chooses to bring in a table of people&rsquo;s records",
+        "screen": "Bring data into a dataset &middot; /datasets/&lt;id&gt;/ingest",
+        "text": "Devi answers yes. The page explains what that means: the data of each person is locked under a key made for "
+                "that person, and erasing a person destroys their key, so what was locked for them can never be read again. "
+                "It also says that locked data is hidden and not anonymised, because it is still personal data until the "
+                "person is erased. Devi then says what is being brought in, a table of people&rsquo;s records. The upload "
+                "area is replaced by two files: a <strong>privacy contract</strong>, which says column by column how "
+                "identifying each column is and what is done to it when the table is sealed, and the <strong>rows</strong> "
+                "as a CSV file, which is a plain text table with one row on each line and the column names on the first line.",
+        "note": "<strong>Yes. Lock what identifies a person, with one key for each person.</strong> is selected, and under "
+                "<strong>What are you bringing in?</strong> the choice <strong>A table of people&rsquo;s records</strong> is "
+                "selected. Two file choosers, <strong>The contract</strong> and <strong>The rows</strong>, both read "
+                "<strong>No file chosen</strong>. The button <strong>Seal as a table</strong> is greyed out, and the text "
+                "names the limits: <strong>20,000 rows and 5 MB</strong>.",
+    },
+    {
+        "file": "03-a-bad-file-is-refused.png", "actor": "devi",
         "title": "A rows file with two mistakes is refused, with both listed",
         "screen": "Bring data into a dataset &middot; the table option",
         "text": "Devi chooses the contract and a rows file in which one date has been replaced by the words &lsquo;not "
@@ -47,7 +62,7 @@ STEPS = [
                 "<strong>contract.yaml</strong> and <strong>mistakes.csv</strong>.",
     },
     {
-        "file": "03-the-table-is-sealed.png", "actor": "devi",
+        "file": "04-the-table-is-sealed.png", "actor": "devi",
         "title": "With the right rows file, the table is sealed",
         "screen": "Bring data into a dataset &middot; the table option",
         "text": "Devi replaces the rows file with the correct one. For each of the 20 people in it, the platform makes "
@@ -62,7 +77,7 @@ STEPS = [
                 "<strong>Open this version</strong> leads to the sealed table.",
     },
     {
-        "file": "04-the-locked-columns.png", "actor": "devi",
+        "file": "05-the-locked-columns.png", "actor": "devi",
         "title": "The version page lists every column and what was done to it",
         "screen": "Version detail &middot; /versions/&lt;id&gt;",
         "text": "The <strong>Locked columns</strong> section lists each column, how identifying it is, and what was "
@@ -78,7 +93,7 @@ STEPS = [
                 "anywhere on the page.",
     },
     {
-        "file": "05-devi-is-refused-the-rows.png", "actor": "devi",
+        "file": "06-devi-is-refused-the-rows.png", "actor": "devi",
         "act": ("PART TWO", "Devi cannot read what is locked, so Devi asks",
                 "A department approver is a data custodian who is listed for one department and may decide who reads "
                 "its data. A <strong>locked-column lease</strong> is permission, decided by an approver of the "
@@ -94,7 +109,7 @@ STEPS = [
                 "locked columns</strong>.",
     },
     {
-        "file": "06-devi-asks-for-five-rows.png", "actor": "devi",
+        "file": "07-devi-asks-for-five-rows.png", "actor": "devi",
         "title": "Devi writes why, and asks for five rows for three days",
         "screen": "Version detail &middot; Your access to the locked values",
         "text": "The form asks for a purpose, a number of days and a number of rows. The platform states the limits "
@@ -107,7 +122,7 @@ STEPS = [
                 "the same every time you look</strong>, and <strong>Ask for access</strong> is ready.",
     },
     {
-        "file": "07-the-request-waits.png", "actor": "devi",
+        "file": "08-the-request-waits.png", "actor": "devi",
         "title": "The request waits for an approver",
         "screen": "Version detail &middot; Your access to the locked values",
         "text": "Asking opens nothing. Devi still cannot read any locked value until an approver of the Cardiology "
@@ -117,7 +132,7 @@ STEPS = [
                 "requests</strong>.",
     },
     {
-        "file": "08-sam-has-no-way-to-ask.png", "actor": "sam",
+        "file": "09-sam-has-no-way-to-ask.png", "actor": "sam",
         "title": "Sam, a researcher, has no way to ask at all",
         "screen": "Version detail &middot; Your access to the locked values",
         "text": "Sam holds the researcher role, which is for working with data that has already been de-identified, "
@@ -129,7 +144,7 @@ STEPS = [
                 "saw, and there is no form.",
     },
     {
-        "file": "09-hartley-sees-the-request.png", "actor": "hartley",
+        "file": "10-hartley-sees-the-request.png", "actor": "hartley",
         "act": ("PART THREE", "Hartley, who answers for Cardiology, decides",
                 "The person who asks never decides. Only an approver of the department that owns the data can, and "
                 "an approver of another department cannot."),
@@ -145,7 +160,7 @@ STEPS = [
                 "departments</strong> reads <strong>No leases in force</strong>.",
     },
     {
-        "file": "10-hartley-writes-a-note.png", "actor": "hartley",
+        "file": "11-hartley-writes-a-note.png", "actor": "hartley",
         "title": "Hartley writes a note, and both buttons are ready",
         "screen": "Locked-column access &middot; Waiting for you to decide",
         "text": "The note is stored with the decision. A refusal needs a note, so that the person who asked is told "
@@ -154,7 +169,7 @@ STEPS = [
                 "and <strong>Decline</strong> are ready to press.",
     },
     {
-        "file": "11-the-lease-is-in-force.png", "actor": "hartley",
+        "file": "12-the-lease-is-in-force.png", "actor": "hartley",
         "title": "Hartley approves, and the lease is in force",
         "screen": "Locked-column access &middot; In force in your departments",
         "text": "The lease now lasts three days from the approval and opens five rows. Hartley can end it early at "
@@ -166,7 +181,7 @@ STEPS = [
                 "now</strong>.",
     },
     {
-        "file": "12-hartley-sees-the-small-groups.png", "actor": "hartley",
+        "file": "13-hartley-sees-the-small-groups.png", "actor": "hartley",
         "title": "Hartley reads the report on small groups",
         "screen": "Version detail &middot; Small groups",
         "text": "A <strong>small group</strong> is a combination of readable columns, such as postcode and age band, "
@@ -183,7 +198,7 @@ STEPS = [
                 "choices, and <strong>Record this decision</strong> is greyed out until a reason is written.",
     },
     {
-        "file": "13-hartley-records-a-decision.png", "actor": "hartley",
+        "file": "14-hartley-records-a-decision.png", "actor": "hartley",
         "title": "Hartley records what will be done, and why",
         "screen": "Version detail &middot; Small groups",
         "text": "Hartley chooses to change the contract before the next table is sealed, and writes why. The "
@@ -194,7 +209,7 @@ STEPS = [
                 "lock the postcode.</strong> The decision form has gone.",
     },
     {
-        "file": "14-devi-holds-a-lease.png", "actor": "devi",
+        "file": "15-devi-holds-a-lease.png", "actor": "devi",
         "act": ("PART FOUR", "Devi reads the five rows the lease opens",
                 "A lease opens a fixed few rows for a short time. It does not open the table."),
         "title": "Devi now holds a lease",
@@ -207,7 +222,7 @@ STEPS = [
                 "<strong>Read your 5 rows</strong> and <strong>End this lease now</strong>.",
     },
     {
-        "file": "15-devi-reads-five-rows.png", "actor": "devi",
+        "file": "16-devi-reads-five-rows.png", "actor": "devi",
         "title": "Devi reads five rows, with the locked values opened",
         "screen": "Locked columns, opened &middot; /versions/&lt;id&gt;/locked-rows",
         "text": "These are the only five rows Devi can read, and they are the same five every time. The locked values "
@@ -219,7 +234,7 @@ STEPS = [
                 "<strong>patient_number (now a person code)</strong> holds labels that begin with <strong>T-</strong>.",
     },
     {
-        "file": "16-marlow-reads-the-audit.png", "actor": "marlow",
+        "file": "17-marlow-reads-the-audit.png", "actor": "marlow",
         "act": ("PART FIVE", "Marlow checks how locking was used, and sees no name",
                 "A privacy auditor is a person who checks how locked data was used. The role reads records of use "
                 "and no personal data, and can ask for a lease like anybody else if it ever needs a real value."),
@@ -237,7 +252,7 @@ STEPS = [
                 "Hartley</strong>. No patient name appears.",
     },
     {
-        "file": "17-marlow-sees-how-columns-were-treated.png", "actor": "marlow",
+        "file": "18-marlow-sees-how-columns-were-treated.png", "actor": "marlow",
         "title": "Marlow sees how each table&rsquo;s columns were treated, and the small groups",
         "screen": "Locking audit &middot; How each table&rsquo;s columns were treated, Small groups",
         "text": "For each table sealed under a privacy contract, the page lists its columns, how identifying each is "
@@ -250,7 +265,7 @@ STEPS = [
                 "<strong>Contract will change by Hartley</strong> or <strong>Not decided</strong>.",
     },
     {
-        "file": "18-marlow-sees-the-keys.png", "actor": "marlow",
+        "file": "19-marlow-sees-the-keys.png", "actor": "marlow",
         "title": "Marlow sees every key that was opened, and by whom",
         "screen": "Locking audit &middot; Keys",
         "text": "Each person has a key of their own. It is made when the person first appears in a table, opened "

@@ -106,6 +106,18 @@ SERIES = [
      "you_see": "Two files turned into a sealed table, a refusal that lists every problem, a request and its "
                 "decision, a few rows read under permission, a report on small groups, and an audit page with no "
                 "names on it"},
+    {"slug": "locked-recordings", "org": "health", "title": "Bring in recordings so that one patient can be erased later",
+     "summary": "A data engineer in Cardiology brings in recordings of consultations. The page first asks whether anyone "
+                "will ever need to be erased from the data, and each recording is then locked under a key made for its "
+                "patient as it arrives. A mistake in the list of patients is caught before anything is sent.",
+     "you_see": "The question that comes first, a refusal that lists every mistake, recordings sent in parts and "
+                "locked, and a sealed version that counts recordings and patients without naming anybody"},
+    {"slug": "custom-step", "org": "health", "title": "Let your own code read recordings and write files, with an approver",
+     "summary": "A data engineer in Cardiology uploads a pipeline with a step of their own that reads recordings and writes "
+                "files. The platform refuses to run it until an approver of the owning department, who did not upload "
+                "it, approves it. The run then makes a new version that waits for a review.",
+     "you_see": "A version waiting for an approver, a refused run, an approval, a finished run that links to what it "
+                "made, and a new version that records exactly what produced it"},
 ]
 
 
@@ -215,6 +227,18 @@ WORDS = {
     "locked_lease": ("Locked-column lease", "Permission, decided by an approver of the owning department, to read a few rows of "
                                              "a table&rsquo;s locked columns for a few days, for a stated purpose. It is not "
                                              "the same as a lease on a dataset."),
+    "locked_recording": ("Locked recording", "A recording stored scrambled under a key made for the one patient it is about. Reading it "
+                                              "back needs the platform to open it, and destroying the patient&rsquo;s key later makes it "
+                                              "unreadable for good."),
+    "recordings_manifest": ("Manifest of recordings", "A small table, saved as a CSV file, with two columns: the recording and the patient "
+                                                      "it is about. It is how the platform knows whose key to lock each recording under."),
+    "answer_key": ("Answer key", "A file that holds the correct written text of one recording, used to check how well names were removed "
+                                 "from it. It is named after its recording and belongs to the same patient."),
+    "custom_step": ("Custom step", "A step of a pipeline whose script was written by the person who registered the pipeline, instead of one of "
+                                   "the steps Munitas provides. It runs in a closed container with no internet, no key and no storage address, "
+                                   "and can only ask the platform for the recordings it is allowed to read and send back the files it makes."),
+    "under_review": ("Under review", "The access level of something that no person has reviewed. Nobody may use it until a "
+                                     "reviewer decides that it may be released."),
     "auditor": ("Privacy auditor", "A person who checks how locked data was used. The role reads records of use and no "
                                    "personal data."),
     "small_group": ("Small group", "A combination of readable columns, such as postcode and age band, shared by only a few "
