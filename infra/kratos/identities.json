@@ -15,7 +15,8 @@
         { "directory_id": "ops-ravi", "email": "ravi@health.example", "name": "Ravi" },
         { "directory_id": "cust-mensah", "email": "mensah@health.example", "name": "Mensah" },
         { "directory_id": "cust-lindqvist", "email": "lindqvist@health.example", "name": "Lindqvist" },
-        { "directory_id": "arch-turner", "email": "turner@health.example", "name": "Turner" }
+        { "directory_id": "arch-turner", "email": "turner@health.example", "name": "Turner" },
+        { "directory_id": "aud-marlow", "email": "marlow@health.example", "name": "Marlow" }
       ]
     },
     {

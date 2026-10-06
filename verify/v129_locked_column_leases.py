@@ -213,7 +213,7 @@ def main() -> int:
           any(x["allowed"] for x in ev.get("reads", [])) and any(not x["allowed"] for x in ev.get("reads", [])))
     check("it shows who made, opened and destroyed keys", {"make_person", "unwrap", "destroy"} <= {x["action"] for x in ev.get("key_uses", [])})
     check("it shows the leases with their purposes and who decided them", any(x["purpose"].startswith("devise the rule") and x["decided_by"] == CUSTODIAN for x in ev.get("leases", [])))
-    check("it shows the treatment of each column in the contract", any(c["column"] == "patient_name" and c["treatment"] == "lock" for k in ev.get("contracts", []) for c in k["treatments"]))
+    check("it shows the treatment of each column in the contract", any(c["name"] == "patient_name" and c["treatment"] == "lock" for k in ev.get("contracts", []) for c in k["treatments"]))
     check("it shows the erasure", any(x["record_id"].startswith("person:") for x in ev.get("erasures", [])))
     text = json.dumps(ev)
     leaked = [w for w in (list(names)[:10] + [numbers[k] for k in list(numbers)[:10]] + ["Zzexample", f"dx-001-{tag}"]) if w in text]

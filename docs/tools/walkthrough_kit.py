@@ -98,6 +98,14 @@ SERIES = [
                 "refuses to remove the last permanent approver and keeps a record of every change.",
      "you_see": "Adding an approver with a reason and an end date, a claim confirmed by the cover, a removal, a "
                 "refusal with its reason, and the history of who answered for the department"},
+    {"slug": "locked-columns", "org": "health", "title": "Lock what identifies a person, and read it only with permission",
+     "summary": "A data engineer in Cardiology seals a table of appointments from two files, so that each patient's "
+                "name and reason for visit are locked. The engineer asks to read a few locked rows and the "
+                "department's custodian decides. A privacy auditor then checks how the locked columns were used, "
+                "without seeing a single name.",
+     "you_see": "Two files turned into a sealed table, a refusal that lists every problem, a request and its "
+                "decision, a few rows read under permission, a report on small groups, and an audit page with no "
+                "names on it"},
 ]
 
 
@@ -197,6 +205,20 @@ WORDS = {
     "passphrase": ("Passphrase", "A long secret that opens an encrypted file. It travels separately from the file, "
                                  "so that having the file alone is not enough."),
     "iceberg": ("Iceberg table", "An open way of storing a table that tools such as DuckDB can read directly."),
+    "contract": ("Privacy contract", "A file that says, column by column, how identifying each column of a table is and what is "
+                                     "done to it when the table is sealed, and how to find the person each row is about."),
+    "locked": ("Locked column", "A column whose values are scrambled under a key made for each person. Reading them back needs "
+                                "permission. Destroying a person&rsquo;s key later makes their values unreadable for good, "
+                                "while the sealed table itself never changes."),
+    "person_code": ("Person code", "A label that stands for one person and means nothing on its own. It replaces the number "
+                                   "that identified them."),
+    "locked_lease": ("Locked-column lease", "Permission, decided by an approver of the owning department, to read a few rows of "
+                                             "a table&rsquo;s locked columns for a few days, for a stated purpose. It is not "
+                                             "the same as a lease on a dataset."),
+    "auditor": ("Privacy auditor", "A person who checks how locked data was used. The role reads records of use and no "
+                                   "personal data."),
+    "small_group": ("Small group", "A combination of readable columns, such as postcode and age band, shared by only a few "
+                                   "people, so that one of them could be singled out even though no column names anybody."),
 }
 
 # ----------------------------------------------------------------------------------

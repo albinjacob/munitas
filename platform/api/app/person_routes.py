@@ -100,6 +100,15 @@ def person_rows(version_id: str, identity: dict = Depends(auth.current_session))
     return {**result, "count": len(result["rows"])}
 
 
+@router.get("/dataset-versions/{version_id}/locking")
+def locking(version_id: str, identity: dict = Depends(auth.current_session)) -> dict:
+    """What a screen needs to show a locked table to the caller: its columns and how each is treated, what they may do, their lease, the limits.
+
+    Never a value. Asking records nothing: looking at a screen is not reading what was locked.
+    """
+    return _refusals(lambda: locked_leases.locking_summary(identity, version_id))
+
+
 @router.post("/locked-column-leases", status_code=201)
 def request_lease(body: LockedColumnLeaseRequestIn, identity: dict = Depends(auth.current_session)) -> dict:
     """Ask for a lease on a table's locked columns: a purpose, up to 7 days, up to 20 rows. A department approver decides it."""

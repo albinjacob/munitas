@@ -34,6 +34,8 @@ import { ApiError } from "../../api/client";
 import { PROVENANCE } from "../../api/provenance";
 import { CLASS_LABEL, CLASS_ORDER, type VisibilityClass } from "../../api/types";
 import { Failure, Loading, Section } from "../../components/states";
+import { SealTablePanel } from "../locking/SealTable";
+import { INTAKE_ROLES, useHoldsRole } from "../../identity/mayDo";
 
 const MODALITIES = ["audio", "text", "image", "tabular"];
 
@@ -644,6 +646,7 @@ export function UploadStep({
   >([]);
 
   const sealed = seal.isSuccess || sealAudio.isSuccess;
+  const mayBringIn = useHoldsRole(INTAKE_ROLES);
   // Whose job it is to start a run. The console hides the button from anyone
   // else as a courtesy; POST .../deidentify asks the policy engine and is what
   // actually refuses them.
@@ -928,6 +931,14 @@ export function UploadStep({
         <p className="text-xs text-red-800" role="alert">
           {seal.error instanceof Error ? seal.error.message : "Sealing failed."}
         </p>
+      )}
+
+      {/* A table of people's records is sealed from two files, not from what was uploaded above. */}
+      {!sealed && mayBringIn && (
+        <div className="mt-6 border-t border-slate-200 pt-4" data-testid="seal-table-section">
+          <h3 className="mb-2 text-base font-semibold text-slate-900">Or seal a table with a privacy contract</h3>
+          <SealTablePanel datasetId={datasetId} />
+        </div>
       )}
 
       {/* Every reason, not the first. A set with four problems should take one

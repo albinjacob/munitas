@@ -1,0 +1,80 @@
+# An example privacy contract, in the Open Data Contract Standard (v3.2.0) with the Munitas profile in customProperties.
+# Every person and number in the rows beside it is invented.
+#
+# Each column says how sensitive it is (classification) and what is done to it when the table is sealed (treatment):
+#   lock                          scrambled under a key made for that person; unreadable for good once that person is erased
+#   readable                      stored as it is, so analysis keeps working
+#   replaced by the person code   the identifying column becomes a label that stands for one person and means nothing on its own
+apiVersion: v3.2.0
+kind: DataContract
+id: clinic-appointments
+name: Clinic appointments
+version: 1.0.0
+status: active
+schema:
+  - id: appointments_obj
+    name: appointments
+    logicalType: object
+    properties:
+      - id: appointment_id_prop
+        name: appointment_id
+        logicalType: string
+        primaryKey: true
+        required: true
+        classification: none
+        customProperties:
+          - {property: treatment, vendor: munitas, value: readable}
+      - id: patient_number_prop
+        name: patient_number
+        logicalType: string
+        classification: direct
+        customProperties:
+          - {property: personIdentifier, vendor: munitas, value: true}
+          - {property: treatment, vendor: munitas, value: replaced by the person code}
+      - id: patient_name_prop
+        name: patient_name
+        logicalType: string
+        classification: direct
+        customProperties:
+          - {property: treatment, vendor: munitas, value: lock}
+      - id: reason_prop
+        name: reason_for_visit
+        logicalType: string
+        classification: phi
+        customProperties:
+          - {property: treatment, vendor: munitas, value: lock}
+      - id: postcode_prop
+        name: postcode
+        logicalType: string
+        classification: quasi
+        customProperties:
+          - {property: treatment, vendor: munitas, value: readable}
+          - {property: treatmentReason, vendor: munitas, value: Needed to see where demand is highest.}
+      - id: age_band_prop
+        name: age_band
+        logicalType: string
+        classification: quasi
+        customProperties:
+          - {property: treatment, vendor: munitas, value: readable}
+      - id: clinic_prop
+        name: clinic
+        logicalType: string
+        classification: none
+        customProperties:
+          - {property: treatment, vendor: munitas, value: readable}
+      - id: seen_on_prop
+        name: seen_on
+        logicalType: date
+        classification: none
+        customProperties:
+          - {property: treatment, vendor: munitas, value: readable}
+customProperties:
+  - property: subject
+    vendor: munitas
+    value:
+      kind: patient number
+      foundBy: column
+      column: patient_number
+  - property: erasable
+    vendor: munitas
+    value: true

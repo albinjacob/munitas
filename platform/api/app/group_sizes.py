@@ -58,6 +58,8 @@ def record(tenant_id: str, version_id: str, report: dict) -> dict:
 
 def _shape(row: dict) -> dict:
     out = {k: row[k] for k in COLUMNS}
+    person = db.one("select label from directory where id = %s", (row["decided_by"],)) if row["decided_by"] else None
+    out["decided_by_label"] = person["label"] if person else row["decided_by"]
     for k in ("id", "dataset_version_id"):
         out[k] = str(out[k])
     for k in ("created_at", "decided_at"):

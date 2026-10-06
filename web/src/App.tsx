@@ -34,6 +34,9 @@ import { EgressApprovalQueue, EgressApprovalDetailScreen } from "./features/agen
 import { Closing } from "./features/lifecycle/Closing";
 import { ClosingNotice } from "./features/lifecycle/ClosingNotice";
 import { LegalHolds } from "./features/lifecycle/LegalHolds";
+import { LockedRows } from "./features/locking/LockedRows";
+import { LockedRequests } from "./features/locking/LockedRequests";
+import { LockingAudit } from "./features/locking/LockingAudit";
 
 export default function App() {
   const { principal, loading, closed } = useIdentity();
@@ -90,6 +93,9 @@ export default function App() {
         <Route path="/departments" element={<Departments />} />
         <Route path="/datasets/:datasetId/ingest" element={<ResumeIngest />} />
         <Route path="/versions/:versionId" element={<VersionDetail />} />
+        <Route path="/versions/:versionId/locked-rows" element={<LockedRows />} />
+        <Route path="/locked-column-access" element={<LockedRequests />} />
+        <Route path="/locking-audit" element={<LockingAudit />} />
         <Route path="/audit" element={<AuditLog />} />
         <Route path="/gates" element={<GateQueue />} />
         <Route path="/gates/:decisionId" element={<GateDetailScreen />} />

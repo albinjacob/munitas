@@ -33,6 +33,7 @@ import { ClassBadge } from "../../components/ClassBadge";
 import { Empty, Failure, Loading, Section } from "../../components/states";
 import { CopyableHash } from "../../components/CopyableHash";
 import { RequestAccess } from "./RequestAccess";
+import { LockedColumnsSection } from "../locking/LockedColumns";
 import { useVersionTable } from "../../api/queries";
 import { PORTS } from "../../config/ports";
 
@@ -338,6 +339,8 @@ export function VersionDetail() {
           )}
         </Section>
       )}
+
+      <LockedColumnsSection versionId={v.dataset_version_id} />
 
       <Section
         title="Release history"

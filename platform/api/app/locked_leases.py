@@ -44,6 +44,15 @@ def _version(version_id: str, tenant_id: str) -> dict:
     return row
 
 
+def _labels(rows: list[dict]) -> list[dict]:
+    """Each lease with the people it names as people: the label the directory holds, so a screen need not show an identifier."""
+    ids = {v for r in rows for v in (r["principal"], r["decided_by"], r["revoked_by"]) if v}
+    names = {r["id"]: r["label"] for r in db.all_rows("select id, label from directory where id = any(%s)", (list(ids),))} if ids else {}
+    return [{**r, "principal_label": names.get(r["principal"], r["principal"]),
+             "decided_by_label": names.get(r["decided_by"]) if r["decided_by"] else None,
+             "revoked_by_label": names.get(r["revoked_by"]) if r["revoked_by"] else None} for r in rows]
+
+
 def _shape(row: dict) -> dict:
     out = {k: row[k] for k in COLUMNS}
     for k in ("id", "dataset_version_id"):
@@ -75,6 +84,36 @@ def sample_ids(version_id: str, principal: str, record_ids: list[str], limit: in
     def rank(record_id: str) -> str:
         return hashlib.sha256(f"{version_id}|{principal}|{record_id}".encode("utf-8")).hexdigest()
     return sorted(record_ids, key=rank)[:limit]
+
+
+def locking_summary(identity: dict, version_id: str) -> dict:
+    """What a screen needs to show a locked table to this person: its columns, what they may do, their lease, and the limits.
+
+    Asks the policy the questions the routes ask and records nothing, because looking at a screen is not reading a value. Never a value.
+    """
+    from . import privacy_contract
+    version = _version(version_id, identity["tenant_id"])
+    contract = db.one("select document from privacy_contract where tenant_id = %s and schema_id = %s", (identity["tenant_id"], version["schema_id"]))
+    held = current_lease(identity["tenant_id"], identity["id"], version_id)
+    waiting = db.one("select * from locked_column_lease where principal = %s and dataset_version_id = %s and status = 'requested'", (identity["id"], version_id))
+    decision = opa.locked_columns({"person": {"id": identity["id"], "roles": identity["roles"]},
+                                   "dataset": {"approvers": approvers_of(version["department_id"])}, "lease": policy_view(held)})
+    may_ask, _ = opa.may_request_locked_lease({"requester": {"id": identity["id"], "roles": identity["roles"]},
+                                               "request": {"principal": identity["id"], "purpose": "x", "days": 1, "rows": 1}})
+    both = _labels([_shape(r) for r in (held, waiting) if r]) if (held or waiting) else []
+    shaped = {r["id"]: r for r in both}
+    return {
+        "version_id": version_id,
+        "records": db.one("select record_count from dataset_version where id = %s", (version_id,))["record_count"],
+        "columns": [{"name": c["name"], "classification": c["classification"], "treatment": c["treatment"]}
+                    for c in privacy_contract.columns(contract["document"])],
+        "mode": decision.get("mode", "none") if decision.get("allow") else "none",
+        # Somebody who already reads in full, holds a lease, or has a request waiting has nothing to ask for.
+        "may_ask": bool(may_ask) and held is None and waiting is None and decision.get("mode") != "full",
+        "lease": shaped.get(str(held["id"])) if held else None,
+        "waiting": shaped.get(str(waiting["id"])) if waiting else None,
+        "limits": {"days": opa.read_document("munitas/access/locked_lease_max_days"), "rows": opa.read_document("munitas/access/locked_lease_max_rows")},
+    }
 
 
 def request_lease(identity: dict, version_id: str, purpose: str, days: int, rows: int) -> dict:
@@ -155,13 +194,23 @@ def list_leases(identity: dict) -> dict:
             where l.tenant_id = %s and l.status = 'requested' and l.principal <> %s order by l.requested_at limit 200""",
         (identity["tenant_id"], identity["id"]))
     cache: dict = {}
-    for r in rows:
+
+    def mine_to_decide(r: dict) -> bool:
         dept = str(r["department_id"]) if r["department_id"] else None
         if dept not in cache:
             cache[dept] = approvers_of(dept)
-        if identity["id"] in cache[dept]:
+        return identity["id"] in cache[dept]
+
+    for r in rows:
+        if mine_to_decide(r):
             waiting.append(_shape(r))
-    return {"mine": mine, "to_decide": waiting}
+    # The leases in force in the departments this person answers for, so an approver can end one early.
+    granted = [_shape(r) for r in db.all_rows(
+        """select l.*, d.department_id from locked_column_lease l
+             join dataset_version v on v.id = l.dataset_version_id join dataset d on d.id = v.dataset_id
+            where l.tenant_id = %s and l.status = 'approved' and l.expires_at > now() order by l.expires_at limit 200""",
+        (identity["tenant_id"],)) if mine_to_decide(r)]
+    return {"mine": _labels(mine), "to_decide": _labels(waiting), "granted": _labels(granted)}
 
 
 def audit_evidence(identity: dict, limit: int = 200) -> dict:
@@ -195,17 +244,24 @@ def audit_evidence(identity: dict, limit: int = 200) -> dict:
     erasures = db.all_rows(
         "select at, record_id, requested_by from tombstone where tenant_id = %s and record_id like 'person:%%' order by at desc limit %s", (t, n))
 
+    ids = ({r["principal"] for r in reads} | {r["actor"] for r in keys} | {r["requested_by"] for r in erasures}
+           | {r["decided_by"] for r in sizes if r["decided_by"]})
+    names = {r["id"]: r["label"] for r in db.all_rows("select id, label from directory where id = any(%s)", (list(ids),))} if ids else {}
+
+    def named(row: dict, field: str, as_field: str) -> dict:
+        return {**row, as_field: names.get(row[field], row[field]) if row[field] else None}
+
     def treatments(doc: dict) -> list[dict]:
         from . import privacy_contract
-        return [{"column": c["name"], "classification": c["classification"], "treatment": c["treatment"]} for c in privacy_contract.columns(doc)]
+        return [{"name": c["name"], "classification": c["classification"], "treatment": c["treatment"]} for c in privacy_contract.columns(doc)]
 
     return {
-        "reads": [stamp({**r, "dataset_version_id": str(r["dataset_version_id"]) if r["dataset_version_id"] else None,
+        "reads": [stamp({**named(r, "principal", "principal_label"), "dataset_version_id": str(r["dataset_version_id"]) if r["dataset_version_id"] else None,
                          "locked_column_lease_id": str(r["locked_column_lease_id"]) if r["locked_column_lease_id"] else None}) for r in reads],
-        "key_uses": [stamp(r) for r in keys],
-        "leases": [_shape(r) for r in leases],
+        "key_uses": [stamp(named(r, "actor", "actor_label")) for r in keys],
+        "leases": _labels([_shape(r) for r in leases]),
         "contracts": [{"name": c["name"], "version": c["version"], "schema_id": str(c["schema_id"]),
                        "sealed_under_since": stamp({"at": c["created_at"]})["at"], "treatments": treatments(c["document"])} for c in contracts],
-        "erasures": [stamp(r) for r in erasures],
-        "group_sizes": [stamp({**r, "dataset_version_id": str(r["dataset_version_id"]), "columns": list(r["columns"])}) for r in sizes],
+        "erasures": [stamp(named(r, "requested_by", "requested_by_label")) for r in erasures],
+        "group_sizes": [stamp({**named(r, "decided_by", "decided_by_label"), "dataset_version_id": str(r["dataset_version_id"]), "columns": list(r["columns"])}) for r in sizes],
     }

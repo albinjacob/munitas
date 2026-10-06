@@ -82,7 +82,9 @@ insert into directory (id, tenant_id, label, kind, roles) values
   -- role after this, but it does not yet actually take effect
   -- (SESSION_STATUS.md), so at least one real holder is seeded, the same
   -- bootstrap every role needs before self-service can work at all.
-  ('arch-turner',    'health', 'Turner',   'human', '{network_architect}')
+  ('arch-turner',    'health', 'Turner',   'human', '{network_architect}'),
+  -- Checks how locked columns were used and reads no personal data: the privacy auditor.
+  ('aud-marlow',     'health', 'Marlow',   'human', '{privacy_auditor}')
 on conflict (id) do nothing;
 
 -- Four departments, each with its own custodian, so custodian scoping is

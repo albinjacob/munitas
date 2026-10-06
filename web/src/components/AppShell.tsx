@@ -74,6 +74,13 @@ const GROUPS: { title: string; items: Item[] }[] = [
         icon: ShieldCheckIcon,
         roles: ["deid_reviewer", "dpo", "pipeline_operator", "platform_admin"],
       },
+      {
+        to: "/locked-column-access",
+        label: "Locked-column access",
+        icon: KeyIcon,
+        roles: ["data_custodian", "pipeline_operator", "deid_reviewer", "privacy_auditor", "dpo"],
+      },
+      { to: "/locking-audit", label: "Locking audit", icon: AuditIcon, roles: ["privacy_auditor", "dpo"] },
     ],
   },
   {

@@ -99,6 +99,7 @@ SCRIPTS = [
     ("U130 a sealed table reports how many different people share each combination of its readable quasi columns, as advice and in counts", "v130_group_size_reports.py"),
     ("U131 a gate can say not measured, which is not a pass and not a fail", "v131_gate_not_measured.py"),
     ("U133 a table is sealed from a contract file and a CSV file, and a bad file is refused with every problem listed", "v133_seal_table_from_files.py"),
+    ("U134 a screen can ask what a person may do with a locked table, and the lease lists name people", "v134_locking_summary.py"),
 ]
 
 here = Path(__file__).parent

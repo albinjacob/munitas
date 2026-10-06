@@ -69,7 +69,8 @@ async function request<T>(
     ...init,
     credentials: "include",
     headers: {
-      "content-type": "application/json",
+      // Files are sent as a form, and the browser must set the type itself, with the boundary that separates the parts.
+      ...(init?.body instanceof FormData ? {} : { "content-type": "application/json" }),
       ...(init?.headers ?? {}),
     },
   });
@@ -94,6 +95,7 @@ export const api = {
     request<T>(path, { method: "GET", query }),
   post: <T,>(path: string, body?: unknown) =>
     request<T>(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body) }),
+  postForm: <T,>(path: string, form: FormData) => request<T>(path, { method: "POST", body: form }),
   delete: <T,>(path: string) => request<T>(path, { method: "DELETE" }),
 };
 
