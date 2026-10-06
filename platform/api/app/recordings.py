@@ -26,7 +26,7 @@ import struct
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from crypto import DestroyedKeyError, KeyService, NotOpenable, lock_part, open_stream  # noqa: F401
+from crypto import DestroyedKeyError, KeyService, NotOpenable, lock_part, open_stream, read_range  # noqa: F401
 from crypto import stream
 
 from . import db, person_keys, storage, versions
@@ -380,22 +380,11 @@ def list_for_step(version_id: str) -> list[dict]:
     return out
 
 
-def open_plain_recording(*, version_id: str, record_id: str):
-    """A recording of a version that is not locked, as the same kind of stream. Only for a custom step that was approved to be given the recordings."""
-    row = db.one("select tenant_id, storage_backend, object_manifest from dataset_version where id = %s", (version_id,))
-    entry = next((m for m in (row["object_manifest"] if row else []) if m["key"].endswith(f"/{record_id}{WAV}")), None)
-    if entry is None:
-        raise NoSuchVersion(f"{version_id} holds no recording {record_id}")
-    body = storage.admin_client_for(row["storage_backend"], row["tenant_id"]).get_object(
-        Bucket=storage.bucket_for(row["storage_backend"], row["tenant_id"]), Key=entry["key"])["Body"]
-    return int(entry["bytes"]), body.iter_chunks(1 << 20)
+def _locate(version_id: str, record_id: str, kind: str, plain_ok: bool) -> dict:
+    """Where a recording (or its answer key) is stored, how big it is once opened, and whose it is. `person` is None for one that is not locked.
 
-
-def open_recording(service: KeyService, *, version_id: str, record_id: str, run: str, purpose: str, kind: str = "audio", plain_ok: bool = False):
-    """The recording's bytes (or, with kind "answer_key", its answer key's), opened a chunk at a time, for a pipeline run. Each opening is recorded in
-    the key log with the run named.
-
-    Raises NoSuchVersion when the version holds no such locked recording and PatientErased when the patient's key was destroyed.
+    Raises NoSuchVersion when the version holds no such recording. A recording that is not locked is found only for a caller that is allowed to
+    be given plain ones (an approved custom step), and only for audio.
     """
     if kind not in ("audio", "answer_key"):
         raise NoSuchVersion(f"unknown kind {kind}")
@@ -403,9 +392,12 @@ def open_recording(service: KeyService, *, version_id: str, record_id: str, run:
                  "join dataset_version v on v.id = r.dataset_version_id where r.dataset_version_id = %s and r.record_id = %s", (version_id, record_id))
     if not row:
         if plain_ok and kind == "audio" and not is_locked_version(version_id):
-            return open_plain_recording(version_id=version_id, record_id=record_id)
+            plain = db.one("select tenant_id, storage_backend, object_manifest from dataset_version where id = %s", (version_id,))
+            entry = next((m for m in (plain["object_manifest"] if plain else []) if m["key"].endswith(f"/{record_id}{WAV}")), None)
+            if entry is None:
+                raise NoSuchVersion(f"{version_id} holds no recording {record_id}")
+            return {"tenant": plain["tenant_id"], "person": None, "plain": int(entry["bytes"]), "key": entry["key"], "backend": plain["storage_backend"], "name": None}
         raise NoSuchVersion(f"{version_id} holds no locked recording {record_id}")
-    tenant, person = row["tenant_id"], row["person_code"]
     suffix = WAV if kind == "audio" else ANSWER_KEY
     plain = row["plain_bytes"] if kind == "audio" else row["answer_key_bytes"]
     if plain is None:
@@ -413,9 +405,58 @@ def open_recording(service: KeyService, *, version_id: str, record_id: str, run:
     entry = next((m for m in row["object_manifest"] if m["key"].endswith(f"/{record_id}{suffix}")), None)
     if entry is None:
         raise NoSuchVersion(f"{version_id} has no stored file for {record_id}")
+    return {"tenant": row["tenant_id"], "person": row["person_code"], "plain": int(plain), "key": entry["key"], "backend": row["storage_backend"],
+            "name": f"{record_id}{suffix}"}
+
+
+def _open_key(service: KeyService, where: dict, run: str, purpose: str, audit: bool) -> bytes:
     try:
-        key = service.unwrap(tenant, person, run, purpose)
+        return service.unwrap(where["tenant"], where["person"], run, purpose, audit)
     except DestroyedKeyError as exc:
-        raise PatientErased(f"the patient this recording is about was erased, so it cannot be opened") from exc
-    body = storage.admin_client_for(row["storage_backend"], tenant).get_object(Bucket=storage.bucket_for(row["storage_backend"], tenant), Key=entry["key"])["Body"]
-    return plain, open_stream(key, tenant, person, f"{record_id}{suffix}", plain, body)
+        raise PatientErased("the patient this recording is about was erased, so it cannot be opened") from exc
+
+
+def _storage(where: dict):
+    return storage.admin_client_for(where["backend"], where["tenant"]), storage.bucket_for(where["backend"], where["tenant"])
+
+
+def open_recording(service: KeyService, *, version_id: str, record_id: str, run: str, purpose: str, kind: str = "audio", plain_ok: bool = False):
+    """The recording's bytes (or, with kind "answer_key", its answer key's), opened a chunk at a time. Each opening is recorded in the key log with
+    the run named.
+
+    Raises NoSuchVersion when the version holds no such recording and PatientErased when the patient's key was destroyed.
+    """
+    where = _locate(version_id, record_id, kind, plain_ok)
+    client, bucket = _storage(where)
+    if where["person"] is None:
+        return where["plain"], client.get_object(Bucket=bucket, Key=where["key"])["Body"].iter_chunks(1 << 20)
+    key = _open_key(service, where, run, purpose, audit=True)
+    body = client.get_object(Bucket=bucket, Key=where["key"])["Body"]
+    return where["plain"], open_stream(key, where["tenant"], where["person"], where["name"], where["plain"], body)
+
+
+def begin_recording(service: KeyService, *, version_id: str, record_id: str, run: str, purpose: str, kind: str = "audio", plain_ok: bool = False) -> int:
+    """Open a recording to be read a range at a time. This is the opening that is written to the key log, once, with the run named; it returns how
+    big the recording is when opened. Raises PatientErased when the patient's key was destroyed."""
+    where = _locate(version_id, record_id, kind, plain_ok)
+    if where["person"] is not None:
+        _open_key(service, where, run, purpose, audit=True)
+    return where["plain"]
+
+
+def read_recording_range(service: KeyService, *, version_id: str, record_id: str, run: str, offset: int, length: int, kind: str = "audio",
+                         plain_ok: bool = False) -> tuple[int, bytes]:
+    """`length` bytes of a recording from `offset`, opened, touching only the chunks that hold them. The patient's key is checked every time, so
+    a recording that is being read stops being readable the moment the patient is erased; the key log is not written again, because the opening
+    it belongs to was logged by `begin_recording`. Returns the recording's size and the bytes."""
+    where = _locate(version_id, record_id, kind, plain_ok)
+    client, bucket = _storage(where)
+
+    def fetch(at: int, size: int) -> bytes:
+        return client.get_object(Bucket=bucket, Key=where["key"], Range=f"bytes={at}-{at + size - 1}")["Body"].read()
+
+    if where["person"] is None:
+        end = min(where["plain"], offset + length)
+        return where["plain"], (fetch(offset, end - offset) if offset < end else b"")
+    key = _open_key(service, where, run, "read a range of an opened recording", audit=False)
+    return where["plain"], read_range(key, where["tenant"], where["person"], where["name"], where["plain"], fetch, offset, length)

@@ -11,7 +11,10 @@ no storage (the bytes are made up here):
   * chunks moved to another position, swapped, left out, repeated, or cut off at the end, and bytes added at the end, are each refused;
   * a file does not open for another person, another organisation, another name or another stated size;
   * a flipped bit anywhere is refused, and nothing opens with the wrong key;
-  * opening reads one chunk at a time: a file of several parts is opened while holding no more than one chunk, which is measured.
+  * opening reads one chunk at a time: a file of several parts is opened while holding no more than one chunk, which is measured;
+  * any range of the file opens to the same bytes as a whole read, touching only the chunks that hold it: ranges inside a chunk, across a
+    boundary, at the start, at the end, past the end, empty, and two hundred at random; and a chunk changed, swapped, cut off, or locked for
+    another person fails only the ranges that touch it.
 
     docker compose exec -T munitas-api python /verify/v136_locked_file_stream.py
 """
@@ -137,6 +140,62 @@ def main() -> int:
         out += len(piece)
     check("every read asked storage for at most one chunk and its overhead", largest[0] <= CHUNK + OVERHEAD, f"the largest read was {largest[0]} bytes")
     check("and no piece handed on was larger than one chunk", max(seen) <= CHUNK and out == len(big), f"{len(seen)} pieces, {out} bytes")
+
+    heading("Any range opens to the same bytes, and touches only the chunks that hold it")
+    total = 3 * CHUNK + 12345
+    plain = os.urandom(total)
+    stored = b"".join(lock_all(plain))
+    asked: list[tuple[int, int]] = []
+
+    def fetch_from(blob: bytes):
+        def fetch(offset: int, size: int) -> bytes:
+            asked.append((offset, size))
+            return blob[offset:offset + size]
+        return fetch
+
+    def rng(start: int, length: int, blob: bytes = stored, **who) -> bytes:
+        who = {"key": KEY, "tenant": TENANT, "person": PERSON, "name": NAME, "total": total, **who}
+        return stream.read_range(who["key"], who["tenant"], who["person"], who["name"], who["total"], fetch_from(blob), start, length)
+
+    check("a range inside one chunk", rng(100, 5000) == plain[100:5100])
+    asked.clear()
+    rng(CHUNK + 10, 100)
+    check("and it asks storage for that chunk only", asked == [(1 * (CHUNK + OVERHEAD), CHUNK + OVERHEAD)], str(asked))
+    check("a range across a chunk boundary", rng(CHUNK - 50, 100) == plain[CHUNK - 50:CHUNK + 50])
+    check("a range across three chunks", rng(CHUNK - 5, 2 * CHUNK + 10) == plain[CHUNK - 5:3 * CHUNK + 5])
+    check("a range at the very start", rng(0, 1) == plain[:1])
+    check("a range ending exactly at the end", rng(total - 777, 777) == plain[total - 777:])
+    check("a range inside the short last chunk", rng(3 * CHUNK + 10, 100) == plain[3 * CHUNK + 10:3 * CHUNK + 110])
+    check("a range that runs past the end is cut there", rng(total - 10, 5000) == plain[total - 10:])
+    check("a range that starts at or after the end is empty", rng(total, 10) == b"" and rng(total + 99, 10) == b"" and rng(10, 0) == b"")
+    check("the whole file as one range", rng(0, total) == plain)
+    asked.clear()
+    rng(2 * CHUNK + 1, 10)
+    check("a range in a later chunk starts at that chunk's own offset in storage", asked and asked[0][0] == 2 * (CHUNK + OVERHEAD), str(asked))
+    rnd, wrong = __import__("random").Random(11), 0
+    for _ in range(200):
+        a = rnd.randrange(0, total + 50)
+        n = rnd.randrange(0, 2 * CHUNK)
+        if rng(a, n) != plain[a:a + n]:
+            wrong += 1
+    check("two hundred ranges at random places and sizes all match", wrong == 0, f"{wrong} did not")
+    check("a negative start is refused", _raises_value_error(lambda: rng(-1, 5)))
+
+    heading("A range fails only where the file was tampered with")
+    mine = chunks_of(stored, total)
+    flipped = bytearray(stored)
+    flipped[(CHUNK + OVERHEAD) + 500] ^= 1  # inside chunk 1
+    flipped = bytes(flipped)
+    check("a range that touches the changed chunk is refused", refused(lambda: rng(CHUNK + 600, 10, flipped)))
+    check("a range in a chunk that was not changed still opens", rng(10, 100, flipped) == plain[10:110] and rng(2 * CHUNK + 5, 10, flipped) == plain[2 * CHUNK + 5:2 * CHUNK + 15])
+    swapped = b"".join([mine[0], mine[2], mine[1], mine[3]])
+    check("two chunks swapped: a range in either is refused", refused(lambda: rng(CHUNK + 5, 10, swapped)) and refused(lambda: rng(2 * CHUNK + 5, 10, swapped)))
+    check("a chunk from another file in its place is refused", refused(lambda: rng(5, 10, b"".join([chunks_of(b"".join(lock_all(os.urandom(total), name="other.wav")), total)[0]] + mine[1:]))))
+    cut = stored[:-100]
+    check("a file cut short: the last chunk is refused and an earlier one still opens", refused(lambda: rng(3 * CHUNK + 5, 10, cut)) and rng(5, 10, cut) == plain[5:15])
+    check("a range for another person is refused", refused(lambda: rng(5, 10, person="T-ffffffffffffffff")))
+    check("a range for another stated size is refused", refused(lambda: rng(5, 10, total=total + 1)))
+    check("a range opened with the wrong key is refused", refused(lambda: rng(5, 10, key=os.urandom(32))))
     return summary("v136")
 
 

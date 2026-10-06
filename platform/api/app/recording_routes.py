@@ -8,7 +8,7 @@ memory, locked, and handed on.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from crypto import NotOpenable
@@ -36,6 +36,11 @@ class OpenRecordingIn(BaseModel):
     purpose: str
     kind: str = "audio"
     step: str | None = Field(default=None, description="The custom pipeline step asking, when one is. Such a step is given a recording only if its version was approved")
+
+
+class RangeIn(OpenRecordingIn):
+    offset: int = Field(ge=0)
+    length: int = Field(ge=0, le=16 * 1024 * 1024, description="At most 16 MiB at a time")
 
 
 class StepRecordingsIn(BaseModel):
@@ -212,3 +217,37 @@ def open_recording(body: OpenRecordingIn, _worker: None = Depends(auth.worker_on
             return
 
     return StreamingResponse(body_stream(), media_type="audio/wav", headers={"x-plain-bytes": str(size), "content-length": str(size)})
+
+
+@router.post("/internal/recordings/begin", include_in_schema=False)
+def begin_recording(body: OpenRecordingIn, _worker: None = Depends(auth.worker_only)) -> dict:
+    """Open a recording to be read a range at a time, and say how big it is. This is the opening that is written to the key log, once, with the run
+    named. A patient who was erased is refused (410)."""
+    claim, label = _authorise(body.principal, body.tenant_id, body.task_credential, body.dataset_version_id, body.step)
+    try:
+        size = recordings.begin_recording(_service(), version_id=body.dataset_version_id, record_id=body.record_id, run=f"{claim.task_kind} {claim.task_id}",
+                                          purpose=f"open a recording for {label or 'a pipeline run'}: {body.purpose}", kind=body.kind, plain_ok=label is not None)
+    except NoSuchVersion as exc:
+        raise HTTPException(404, {"reasons": [str(exc)]}) from exc
+    except recordings.PatientErased as exc:
+        raise HTTPException(410, {"reasons": [str(exc)]}) from exc
+    return {"bytes": size}
+
+
+@router.post("/internal/recordings/range", include_in_schema=False)
+def read_range(body: RangeIn, _worker: None = Depends(auth.worker_only)) -> Response:
+    """A range of an opened recording, opened. Every request is checked as the opening was: a real task of this organisation, with this version as an
+    input, still running, and (for a custom step) approved. The patient's key is checked every time, so a recording being read stops the moment the
+    patient is erased (410). The key log is not written again."""
+    claim, _label = _authorise(body.principal, body.tenant_id, body.task_credential, body.dataset_version_id, body.step)
+    try:
+        size, data = recordings.read_recording_range(_service(), version_id=body.dataset_version_id, record_id=body.record_id,
+                                                     run=f"{claim.task_kind} {claim.task_id}", offset=body.offset, length=body.length, kind=body.kind,
+                                                     plain_ok=_label is not None)
+    except NoSuchVersion as exc:
+        raise HTTPException(404, {"reasons": [str(exc)]}) from exc
+    except recordings.PatientErased as exc:
+        raise HTTPException(410, {"reasons": [str(exc)]}) from exc
+    except NotOpenable as exc:
+        raise HTTPException(409, {"reasons": [f"the stored recording does not open: {exc}"]}) from exc
+    return Response(content=data, media_type="application/octet-stream", headers={"x-plain-bytes": str(size)})

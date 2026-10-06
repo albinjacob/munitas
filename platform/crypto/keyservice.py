@@ -40,8 +40,12 @@ class KeyService(ABC):
         """Make a key for a person, store it wrapped, and return it for the one operation that needs it."""
 
     @abstractmethod
-    def unwrap(self, tenant_id: str, person_code: str, actor: str, purpose: str) -> bytes:
-        """Open a person's key. Raises DestroyedKeyError once destroyed, UnknownRecordError when never made."""
+    def unwrap(self, tenant_id: str, person_code: str, actor: str, purpose: str, audit: bool = True) -> bytes:
+        """Open a person's key. Raises DestroyedKeyError once destroyed, UnknownRecordError when never made.
+
+        Every opening is written to the key log. `audit=False` is for the later reads of something already opened and logged (a recording read a
+        block at a time): the key is still checked for destruction every time, and the log is not filled with one line per block.
+        """
 
     @abstractmethod
     def unwrap_many(self, tenant_id: str, person_codes: list[str], actor: str, purpose: str) -> dict[str, bytes | None]:
@@ -113,10 +117,10 @@ class BuiltInKeyService(KeyService):
         self._store.log(tenant_id, person_code, "make_person", actor, None)
         return key
 
-    def unwrap(self, tenant_id: str, person_code: str, actor: str, purpose: str) -> bytes:
-        return self._unwrap(tenant_id, person_code, self._org_key(tenant_id, actor), actor, purpose)
+    def unwrap(self, tenant_id: str, person_code: str, actor: str, purpose: str, audit: bool = True) -> bytes:
+        return self._unwrap(tenant_id, person_code, self._org_key(tenant_id, actor), actor, purpose, audit)
 
-    def _unwrap(self, tenant_id: str, person_code: str, org_key: bytes, actor: str, purpose: str) -> bytes:
+    def _unwrap(self, tenant_id: str, person_code: str, org_key: bytes, actor: str, purpose: str, audit: bool = True) -> bytes:
         row = self._store.get_person_key(tenant_id, person_code)
         if row is None:
             raise UnknownRecordError(f"no key was ever made for {person_code}")
@@ -124,7 +128,8 @@ class BuiltInKeyService(KeyService):
         if wrapped is None:
             raise DestroyedKeyError(f"the key for {person_code} was destroyed; what it locked is unrecoverable")
         key = _open(org_key, wrapped, _aad("person", tenant_id, person_code))
-        self._store.log(tenant_id, person_code, "unwrap", actor, purpose)
+        if audit:
+            self._store.log(tenant_id, person_code, "unwrap", actor, purpose)
         return key
 
     def unwrap_many(self, tenant_id: str, person_codes: list[str], actor: str, purpose: str) -> dict[str, bytes | None]:

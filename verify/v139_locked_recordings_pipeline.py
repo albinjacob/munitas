@@ -35,6 +35,11 @@ CEILING_SECONDS = 25 * 60
 POLL_SECONDS = 15
 
 
+def files_in(folder: Path) -> dict[str, int]:
+    """Every file under a folder with its modification time. Folders themselves are left out: a folder's time changes when a file in it comes and goes."""
+    return {str(p.relative_to(folder)): p.stat().st_mtime_ns for p in folder.rglob("*") if p.is_file()}
+
+
 def wait_for(run_id: str, headers: dict) -> dict:
     began = time.monotonic()
     run: dict = {}
@@ -71,6 +76,9 @@ def main() -> int:
     truth = (SAMPLE / "truth.json").read_bytes()
     tag = uuid.uuid4().hex[:8]
     first, second = f"A-{tag}-cardiac", f"B-{tag}-cardiac"
+
+    work = Path(os.environ["MUNITAS_DATA"]) / "work"
+    before = files_in(work)
 
     heading("Two patients' consultations, locked, with their answer keys")
     dataset = register_dataset(ENGINEER)
@@ -116,13 +124,15 @@ def main() -> int:
     check("the log names both patients, by code only", len({r["person_code"] for r in log}) == 2)
 
     heading("No plain copy of a recording is left on this machine")
-    work = Path(os.environ["MUNITAS_DATA"]) / "work"
     with db() as conn:
         prefix = conn.execute("select storage_prefix from dataset_version where id = %s", (version,)).fetchone()["storage_prefix"]
     left = sorted(p.name for p in work.glob(prefix.replace("/", "_") + "_*"))
     check("the recordings the speech step opened were removed when it was done with them", left == [], str(left))
     redacted = sorted(p.name for p in work.glob("redacted_c-000*.wav"))
     check("and so were the redacted files, once they were stored", redacted == [], str(redacted))
+    after = files_in(work)
+    check("nothing new of any kind was written to this machine's work folder by the whole run, and nothing there was changed",
+          after == before, f"new {sorted(set(after) - set(before))[:5]}, changed {sorted(n for n in before if n in after and after[n] != before[n])[:5]}")
 
     heading("A patient who was erased is left out of the next run")
     with db() as conn:
@@ -142,6 +152,8 @@ def main() -> int:
     check("the other patient's recording still went through", any(r["person_code"] != code for r in after))
     check("and only that patient's answer key was opened for scoring", len([r for r in after if "answer key" in r["purpose"]]) == 1,
           str(len([r for r in after if "answer key" in r["purpose"]])))
+    final = files_in(work)
+    check("and the second run wrote nothing there either", final == before, f"new {sorted(set(final) - set(before))[:5]}")
     reset_keys()
     return summary("v139")
 

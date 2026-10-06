@@ -15,7 +15,7 @@ bound into every chunk. Nothing about the layout is stored in the file itself.
 from __future__ import annotations
 
 import os
-from typing import BinaryIO, Iterator
+from typing import BinaryIO, Callable, Iterator
 
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -85,6 +85,44 @@ def _read_exact(source: BinaryIO, n: int) -> bytes:
             break
         got += piece
     return got
+
+
+def stored_chunk_size(total: int, index: int) -> int:
+    """How many bytes chunk `index` takes in the locked file: its plain size and the overhead. Every chunk but the last is full."""
+    last_chunk = chunk_count(total) - 1
+    return (CHUNK if index < last_chunk else total - last_chunk * CHUNK) + OVERHEAD
+
+
+def read_range(key: bytes, tenant_id: str, person_code: str, name: str, total: int, fetch: Callable[[int, int], bytes], start: int, length: int) -> bytes:
+    """`length` bytes of the file from byte `start`, opened from its locked form, touching only the chunks that hold them.
+
+    `fetch(offset, size)` returns that many stored bytes from the locked file. Each chunk is its own message, bound to its place in the file, so a
+    range opens exactly as the same bytes would in a whole read, and a chunk that was changed, moved or cut off does not open. A range that runs
+    past the end of the file is cut at the end.
+    """
+    if start < 0 or length < 0:
+        raise ValueError("a range starts at 0 or later and has no negative length")
+    end = min(total, start + length)
+    if start >= end:
+        return b""
+    first, last = start // CHUNK, (end - 1) // CHUNK
+    last_chunk = chunk_count(total) - 1
+    offset = first * (CHUNK + OVERHEAD)
+    wanted = sum(stored_chunk_size(total, i) for i in range(first, last + 1))
+    blob = fetch(offset, wanted)
+    if len(blob) != wanted:
+        raise NotOpenable(f"the stored file ends before chunk {last + 1} of {last_chunk + 1}")
+    cipher, out, at = AESGCM(key), [], 0
+    for index in range(first, last + 1):
+        size = stored_chunk_size(total, index)
+        piece = blob[at:at + size]
+        at += size
+        try:
+            out.append(cipher.decrypt(piece[:NONCE_BYTES], piece[NONCE_BYTES:], _aad(tenant_id, person_code, name, total, index, index == last_chunk)))
+        except InvalidTag as exc:
+            raise NotOpenable(f"chunk {index + 1} of {last_chunk + 1} does not open for this person and this file") from exc
+    joined = b"".join(out)
+    return joined[start - first * CHUNK:start - first * CHUNK + (end - start)]
 
 
 def open_stream(key: bytes, tenant_id: str, person_code: str, name: str, total: int, source: BinaryIO) -> Iterator[bytes]:

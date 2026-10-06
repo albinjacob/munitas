@@ -13,6 +13,7 @@ of this machine, not a design position.
 
 from __future__ import annotations
 
+import io
 import json
 import time
 from pathlib import Path
@@ -417,28 +418,22 @@ def transcribe(params: dict) -> dict:
                 config.WHISPER_COMPUTE,
             )
 
-        local = config.WORK / row["audio_key"].replace("/", "_")
-        local.parent.mkdir(parents=True, exist_ok=True)
+        # The recording is read where it is stored, a range at a time, and is never a file on this machine: there is no plain copy to remove,
+        # so destroying a patient's key is not undone by anything left on this disk.
         try:
-            cp.download_recording(reader, params["bucket"], row["audio_key"], local, version_id=params["input_version"], record_id=row["record_id"],
-                                  tenant_id=_tenant(params), principal=_pipeline_principal(_tenant(params)), task_credential=run["task_credential"],
-                                  purpose=f"transcribe {row['record_id']}")
+            with cp.open_recording(reader, params["bucket"], row["audio_key"], version_id=params["input_version"], record_id=row["record_id"],
+                                   tenant_id=_tenant(params), principal=_pipeline_principal(_tenant(params)),
+                                   task_credential=run["task_credential"], purpose=f"transcribe {row['record_id']}") as audio:
+                segments = backend.transcribe(audio)
+            words, pieces = [], []
+            for segment in segments:
+                pieces.append(segment["text"])
+                words.extend(segment["words"])
         except cp.RecordingErased:
             # The patient was erased, so their recording is left out of what this run makes, not read as noise and not failed over.
             left_out.append(row["record_id"])
             activity.heartbeat(row["record_id"])
             continue
-
-        # The plain copy of the recording exists only while it is being heard: it is removed when the model is done with it, whether that worked
-        # or not, so destroying a patient's key is not undone by a copy left on this machine's disk.
-        try:
-            segments = backend.transcribe(local)
-            words, pieces = [], []
-            for segment in segments:
-                pieces.append(segment["text"])
-                words.extend(segment["words"])
-        finally:
-            local.unlink(missing_ok=True)
 
         transcript = "".join(pieces).strip()
         result = {
@@ -689,30 +684,22 @@ def redact(params: dict) -> dict:
 
         redacted_key = None
         if source_key:
-            local = config.WORK / source_key.replace("/", "_")
-            local.parent.mkdir(parents=True, exist_ok=True)
+            # As in transcribe: the recording is read where it is stored and never written here, and the redacted audio goes from memory to storage.
             try:
-                cp.download_recording(reader, params["bucket"], source_key, local, version_id=source_version, record_id=row["record_id"],
-                                      tenant_id=_tenant(params), principal=_pipeline_principal(_tenant(params)), task_credential=run["task_credential"],
-                                      purpose=f"redact {row['record_id']}")
+                with cp.open_recording(reader, params["bucket"], source_key, version_id=source_version, record_id=row["record_id"],
+                                       tenant_id=_tenant(params), principal=_pipeline_principal(_tenant(params)),
+                                       task_credential=run["task_credential"], purpose=f"redact {row['record_id']}") as source:
+                    audio, rate = sf.read(source, dtype="int16")
             except cp.RecordingErased:
                 # Erased between the steps: nothing of this patient is carried into what the run makes.
                 left_out.append(row["record_id"])
                 activity.heartbeat(row["record_id"])
                 continue
-            # As in transcribe: the plain copy is removed as soon as it has been read, and the redacted file once it is stored.
-            try:
-                audio, rate = sf.read(str(local), dtype="int16")
-            finally:
-                local.unlink(missing_ok=True)
             masked = redact_audio(np.asarray(audio), rate, time_spans)
-            out_path = config.WORK / f"redacted_{row['record_id']}.wav"
-            try:
-                sf.write(str(out_path), masked, rate)
-                redacted_key = _key(params["prefix"], f"{row['record_id']}.redacted.wav")
-                manifest.append(cp.put_file(write_client, redacted_key, out_path, params["bucket"]))
-            finally:
-                out_path.unlink(missing_ok=True)
+            buffer = io.BytesIO()
+            sf.write(buffer, masked, rate, format="WAV", subtype="PCM_16")
+            redacted_key = _key(params["prefix"], f"{row['record_id']}.redacted.wav")
+            manifest.append(cp.put_bytes(write_client, redacted_key, buffer.getvalue(), params["bucket"]))
 
         out_rows.append({
             "record_id": row["record_id"],

@@ -18,7 +18,7 @@ import httpx
 
 from . import config
 from .contracts import Contract
-from .recording_open import ControlPlaneError, RecordingErased, stream_to_file  # noqa: F401  (re-exported: steps catch them from here)
+from .recording_open import ControlPlaneError, RangeFile, RecordingErased, open_remote, stream_to_file  # noqa: F401  (re-exported: steps catch them from here)
 
 
 def _post(path: str, payload: dict) -> dict:
@@ -354,7 +354,10 @@ def put_json(client, key: str, payload: object, bucket: str) -> dict:
 
 
 def put_file(client, key: str, path: Path, bucket: str) -> dict:
-    body = path.read_bytes()
+    return put_bytes(client, key, path.read_bytes(), bucket)
+
+
+def put_bytes(client, key: str, body: bytes, bucket: str) -> dict:
     client.put_object(Bucket=bucket, Key=key, Body=body)
     return {"key": key, "bytes": len(body), "sha256": hashlib.sha256(body).hexdigest()}
 
@@ -392,20 +395,27 @@ def recordings_are_locked(version_id: str) -> bool:
     return _locked_versions[version_id]
 
 
-def download_recording(reader, bucket: str, key: str, local: Path, *, version_id: str, record_id: str, tenant_id: str,
-                       principal: str, task_credential: str, purpose: str, kind: str = "audio") -> None:
-    """The recording as audio, in a local file, whether the version stores it plain or locked.
+def open_recording(reader, bucket: str, key: str, *, version_id: str, record_id: str, tenant_id: str, principal: str, task_credential: str,
+                   purpose: str, kind: str = "audio") -> RangeFile:
+    """The recording (or its answer key) as a file to read, whether the version stores it plain or locked, and never written to this machine's disk.
 
-    A plain one is downloaded from storage, as before. A locked one is stored as ciphertext, so the platform opens it: it checks that this task was
-    launched with the version as an input, unwraps the patient's key (the opening is logged with the task named), and streams the audio back. The
-    key never leaves the platform. A patient who was erased raises RecordingErased, and a body shorter than the platform said it would be is
-    refused, because the platform ends a body short when a chunk does not open.
+    A plain one is read from storage a block at a time. A locked one is stored as ciphertext, so the platform opens it: it checks that this task was
+    launched with the version as an input, unwraps the patient's key (the opening is logged with the task named, once), and returns each range that
+    is read. The key never leaves the platform. A patient who was erased raises RecordingErased, at the opening or at any later read.
+    Use it as `with open_recording(...) as audio:`.
     """
-    if not recordings_are_locked(version_id):
-        reader.download_file(bucket, key, str(local))
-        return
-    stream_to_file(local, principal=principal, tenant_id=tenant_id, task_credential=task_credential, version_id=version_id, record_id=record_id,
-                   purpose=purpose, kind=kind)
+    if recordings_are_locked(version_id):
+        return open_remote(principal=principal, tenant_id=tenant_id, task_credential=task_credential, version_id=version_id, record_id=record_id,
+                           purpose=purpose, kind=kind)
+
+    def fetch(offset: int, length: int) -> bytes:
+        return reader.get_object(Bucket=bucket, Key=key, Range=f"bytes={offset}-{offset + length - 1}")["Body"].read()
+
+    # The size from the first byte's answer, so a read-only key that cannot ask for an object's details is enough.
+    probe = reader.get_object(Bucket=bucket, Key=key, Range="bytes=0-0")
+    size = int(probe["ContentRange"].rsplit("/", 1)[1])
+    probe["Body"].read()
+    return RangeFile(size, fetch)
 
 
 def read_answer_key(reader, bucket: str, key: str, *, version_id: str, record_id: str, tenant_id: str, principal: str, task_credential: str,
@@ -413,12 +423,9 @@ def read_answer_key(reader, bucket: str, key: str, *, version_id: str, record_id
     """A recording's answer key as parsed JSON, whether its version stores it plain or locked. A locked one is opened by the platform, like audio."""
     if not recordings_are_locked(version_id):
         return read_json(reader, bucket, key)
-    import tempfile
-    with tempfile.TemporaryDirectory() as folder:
-        local = Path(folder) / f"{record_id}.truth.json"
-        download_recording(reader, bucket, key, local, version_id=version_id, record_id=record_id, tenant_id=tenant_id, principal=principal,
-                           task_credential=task_credential, purpose=purpose, kind="answer_key")
-        return json.loads(local.read_text(encoding="utf-8"))
+    with open_remote(principal=principal, tenant_id=tenant_id, task_credential=task_credential, version_id=version_id, record_id=record_id,
+                     purpose=purpose, kind="answer_key") as source:
+        return json.loads(source.read().decode("utf-8"))
 
 
 _code_hash: str | None = None

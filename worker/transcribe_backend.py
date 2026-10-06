@@ -43,11 +43,11 @@ thing worker/activities.py calls, and it already only sees plain dicts.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Protocol
+from typing import BinaryIO, Protocol
 
 
 class TranscribeBackend(Protocol):
-    def transcribe(self, audio_path: Path) -> list[dict]:
+    def transcribe(self, audio: "Path | BinaryIO") -> list[dict]:
         """One entry per speech segment, in order:
 
             {"text": str, "words": [{"word": str, "start": float,
@@ -70,7 +70,8 @@ class FasterWhisperBackend:
         from faster_whisper import WhisperModel
         self._model = WhisperModel(model_name, device=device, compute_type=compute_type)
 
-    def transcribe(self, audio_path: Path) -> list[dict]:
+    def transcribe(self, audio: "Path | BinaryIO") -> list[dict]:
+        # `audio` is a path or an open file (a recording read a range at a time, never written to disk); faster-whisper takes either.
         # vad_filter runs Silero VAD ahead of Whisper and skips segments
         # with no detected speech; condition_on_previous_text=False stops
         # each segment being conditioned on the text just before it.
@@ -89,7 +90,7 @@ class FasterWhisperBackend:
         # boundaries, which is the same mechanism that lets the
         # hallucination happen in the first place.
         segments, _ = self._model.transcribe(
-            str(audio_path),
+            audio if hasattr(audio, "read") else str(audio),
             word_timestamps=True,
             language="en",
             vad_filter=True,
