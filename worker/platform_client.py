@@ -396,7 +396,7 @@ def recordings_are_locked(version_id: str) -> bool:
 
 
 def download_recording(reader, bucket: str, key: str, local: Path, *, version_id: str, record_id: str, tenant_id: str,
-                       principal: str, task_credential: str, purpose: str) -> None:
+                       principal: str, task_credential: str, purpose: str, kind: str = "audio") -> None:
     """The recording as audio, in a local file, whether the version stores it plain or locked.
 
     A plain one is downloaded from storage, as before. A locked one is stored as ciphertext, so the platform opens it: it checks that this task was
@@ -411,7 +411,7 @@ def download_recording(reader, bucket: str, key: str, local: Path, *, version_id
     with httpx.stream("POST", f"{config.API}/internal/recordings/open", timeout=httpx.Timeout(30.0, read=120.0),
                       headers={"x-worker-token": config.WORKER_TOKEN}, verify=config.api_verify(),
                       json={"principal": principal, "tenant_id": tenant_id, "task_credential": task_credential,
-                            "dataset_version_id": version_id, "record_id": record_id, "purpose": purpose}) as response:
+                            "dataset_version_id": version_id, "record_id": record_id, "purpose": purpose, "kind": kind}) as response:
         if response.status_code == 410:
             raise RecordingErased(record_id)
         if response.status_code >= 400:
@@ -430,6 +430,19 @@ def download_recording(reader, bucket: str, key: str, local: Path, *, version_id
     if written != expected:
         local.unlink(missing_ok=True)
         raise ControlPlaneError(f"recording {record_id} came back as {written} bytes, not the {expected} the platform said")
+
+
+def read_answer_key(reader, bucket: str, key: str, *, version_id: str, record_id: str, tenant_id: str, principal: str, task_credential: str,
+                    purpose: str) -> object:
+    """A recording's answer key as parsed JSON, whether its version stores it plain or locked. A locked one is opened by the platform, like audio."""
+    if not recordings_are_locked(version_id):
+        return read_json(reader, bucket, key)
+    import tempfile
+    with tempfile.TemporaryDirectory() as folder:
+        local = Path(folder) / f"{record_id}.truth.json"
+        download_recording(reader, bucket, key, local, version_id=version_id, record_id=record_id, tenant_id=tenant_id, principal=principal,
+                           task_credential=task_credential, purpose=purpose, kind="answer_key")
+        return json.loads(local.read_text(encoding="utf-8"))
 
 
 _code_hash: str | None = None

@@ -34,6 +34,7 @@ class OpenRecordingIn(BaseModel):
     dataset_version_id: str
     record_id: str
     purpose: str
+    kind: str = "audio"
 
 
 def _service():
@@ -151,7 +152,7 @@ def open_recording(body: OpenRecordingIn, _worker: None = Depends(auth.worker_on
         raise HTTPException(404, "no such version")
     try:
         size, pieces = recordings.open_recording(_service(), version_id=body.dataset_version_id, record_id=body.record_id,
-                                                 run=f"{claim.task_kind} {claim.task_id}", purpose=f"open a recording for a pipeline run: {body.purpose}")
+                                                 run=f"{claim.task_kind} {claim.task_id}", purpose=f"open a recording for a pipeline run: {body.purpose}", kind=body.kind)
     except NoSuchVersion as exc:
         raise HTTPException(404, {"reasons": [str(exc)]}) from exc
     except recordings.PatientErased as exc:

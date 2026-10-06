@@ -797,7 +797,12 @@ def verify(params: dict) -> dict:
     similarities: list[float] = []
 
     for row in detected:
-        truth = cp.read_json(reader, params["bucket"], f"{truth_prefix}/{row['record_id']}.truth.json")
+        try:
+            truth = cp.read_answer_key(reader, params["bucket"], f"{truth_prefix}/{row['record_id']}.truth.json", version_id=params["versions"][1],
+                                       record_id=row["record_id"], tenant_id=_tenant(params), principal=_pipeline_principal(_tenant(params)),
+                                       task_credential=params["task_credential"], purpose="verify: read the answer key to score the redaction")
+        except cp.RecordingErased:
+            continue  # the patient was erased: nothing of theirs is scored, as nothing of theirs was transcribed
         reference = truth["reference_transcript"]
         similarities.append(Alignment(reference, row["transcript"]).similarity())
         score_record(card, reference, row["transcript"], truth["spans"],

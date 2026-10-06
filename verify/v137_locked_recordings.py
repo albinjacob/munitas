@@ -319,7 +319,7 @@ def main() -> int:
     with db() as conn:
         conn.execute("insert into directory (id, tenant_id, label, kind, roles) values (%s, %s, 'Pipeline', 'workload', '{pipeline_action}') on conflict (id) do nothing", (workload, CANARY))
         action = str(uuid.uuid4())
-        conn.execute("insert into dataset_action (id, tenant_id, name) values (%s, %s, 'u136 derive')", (action, CANARY))
+        conn.execute("insert into dataset_action (id, tenant_id, name) values (%s, %s, %s)", (action, CANARY, f"u137 derive {action}"))
     schema = fixture_contract(CANARY)
 
     def derive(from_version: str, name: str) -> dict:

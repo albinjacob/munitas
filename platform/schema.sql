@@ -926,6 +926,8 @@ create table if not exists recording_person (
   format             text not null,
   primary key (dataset_version_id, record_id)
 );
+-- The recording's answer key is locked under the same patient's key, and opened the same way; null when none was uploaded.
+alter table recording_person add column if not exists answer_key_bytes bigint;
 create index if not exists recording_person_person_idx on recording_person (tenant_id, person_code);
 
 -- An upload that was locked under a patient's key is marked on the file it became, so the two ways of sealing recordings can refuse each

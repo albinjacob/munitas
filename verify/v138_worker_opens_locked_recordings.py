@@ -24,6 +24,7 @@ Runs on the host, because it imports the worker's own client:
 
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 import uuid
@@ -79,7 +80,7 @@ def main() -> int:
     with db() as conn:
         conn.execute("insert into directory (id, tenant_id, label, kind, roles) values (%s, %s, 'Pipeline', 'workload', '{pipeline_action}') on conflict (id) do nothing", (WORKLOAD, CANARY))
         action = str(uuid.uuid4())
-        conn.execute("insert into dataset_action (id, tenant_id, name) values (%s, %s, 'u137 read')", (action, CANARY))
+        conn.execute("insert into dataset_action (id, tenant_id, name) values (%s, %s, %s)", (action, CANARY, f"u138 read {action}"))
 
     heading("Two versions of recordings: one plain, one locked")
     plain_dataset = register_dataset(ENGINEER)
@@ -91,6 +92,8 @@ def main() -> int:
     wav_a, wav_b = make_wav(900_000), make_wav(700_000)
     upload_whole(locked_dataset, "l-0001.wav", wav_a, a)
     upload_whole(locked_dataset, "l-0002.wav", wav_b, b)
+    truth_a = json.dumps({"reference_transcript": "Chart 4471 for the patient.", "spans": [{"start": 6, "end": 10, "label": "id"}]}).encode()
+    upload_whole(locked_dataset, "l-0001.truth.json", truth_a, a)
     sealed = api("POST", f"/datasets/{locked_dataset}/seal-recordings", headers=bearer_for(ENGINEER))
     check("the locked version seals", sealed.status_code == 201, sealed.text[:160])
     version = sealed.json()["id"]
@@ -120,6 +123,26 @@ def main() -> int:
     check("the other patient's too", fetch(run, version, "l-0002", work / "b.wav") == "ok" and (work / "b.wav").read_bytes() == wav_b)
     log = count("select count(*) as n from key_use_log where tenant_id = %s and action = 'unwrap' and actor = %s", (CANARY, f"action_run {run['id']}"))
     check("each opening is in the key log, with the task named", log == 2, str(log))
+
+    heading("A locked answer key comes back parsed, and a recording without one is not found")
+    run_key = new_run(action, [version])
+    expected_before = count("select count(*) as n from key_use_log where tenant_id = %s and action = 'unwrap' and actor = %s", (CANARY, f"action_run {run_key['id']}"))
+    try:
+        got = cp.read_answer_key(None, "x", f"{CANARY}/none/l-0001.truth.json", version_id=version, record_id="l-0001", tenant_id=CANARY,
+                                 principal=WORKLOAD, task_credential=run_key["token"], purpose="verification")
+    except Exception as exc:  # noqa: BLE001
+        got = str(exc)
+    check("the answer key comes back as what was uploaded", got == json.loads(truth_a), str(got)[:160])
+    logged = count("select count(*) as n from key_use_log where tenant_id = %s and action = 'unwrap' and actor = %s", (CANARY, f"action_run {run_key['id']}"))
+    check("opening it is in the key log, with the task named", expected_before == 0 and logged == 1, f"{expected_before} then {logged}")
+    key_body = {"principal": WORKLOAD, "tenant_id": CANARY, "task_credential": run_key["token"], "dataset_version_id": version, "record_id": "l-0002",
+                "purpose": "x", "kind": "answer_key"}
+    r = raw(key_body, WORKER_HEADERS)
+    check("a recording that has no answer key is not found, and says so", r.status_code == 404 and "no answer key" in r.text, f"{r.status_code} {r.text[:120]}")
+    r = raw({**key_body, "record_id": "l-0001", "kind": "bogus"}, WORKER_HEADERS)
+    check("a kind that is neither audio nor answer key is refused", r.status_code == 404, f"{r.status_code} {r.text[:120]}")
+    r = raw({**key_body, "record_id": "l-0001", "task_credential": new_run(action, [plain_version])["token"]}, WORKER_HEADERS)
+    check("an answer key is held to the same inputs rule as the recording", r.status_code == 403 and "outside the inputs" in r.text, f"{r.status_code} {r.text[:120]}")
 
     heading("What the platform refuses")
     body = {"principal": WORKLOAD, "tenant_id": CANARY, "task_credential": run["token"], "dataset_version_id": version, "record_id": "l-0001", "purpose": "x"}
@@ -165,6 +188,8 @@ def main() -> int:
     check("the other patient's recording is still handed back", fetch(run, version, "l-0002", work / "b3.wav") == "ok" and (work / "b3.wav").read_bytes() == wav_b)
     r = raw(body, WORKER_HEADERS)
     check("the platform says gone (410) and names the reason", r.status_code == 410 and "erased" in r.text, f"{r.status_code} {r.text[:120]}")
+    r = raw({**body, "kind": "answer_key"}, WORKER_HEADERS)
+    check("their answer key is gone with them (410)", r.status_code == 410, f"{r.status_code} {r.text[:120]}")
     reset_keys()
     return summary("v138")
 

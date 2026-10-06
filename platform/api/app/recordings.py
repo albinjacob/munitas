@@ -320,8 +320,9 @@ def seal_recordings(*, dataset_id: str, identity: dict) -> dict:
     version = versions.seal(tenant_id=tenant, dataset_id=dataset_id, schema_id=contract["id"], visibility_class="RAW", storage_backend=backend,
                             object_manifest=manifest, record_count=len(records), records_key=f"{prefix}/records.json")
     for stem, u in sorted(audio.items()):
-        db.execute("insert into recording_person (dataset_version_id, record_id, tenant_id, person_code, plain_bytes, format) values (%s, %s, %s, %s, %s, %s) returning record_id",
-                   (version["id"], stem, tenant, u["locked_person_code"], u["plain_bytes"], u["locked_format"]))
+        db.execute("insert into recording_person (dataset_version_id, record_id, tenant_id, person_code, plain_bytes, format, answer_key_bytes) "
+                   "values (%s, %s, %s, %s, %s, %s, %s) returning record_id",
+                   (version["id"], stem, tenant, u["locked_person_code"], u["plain_bytes"], u["locked_format"], keys[stem]["plain_bytes"] if stem in keys else None))
     return {**version, "records": len(records), "people": len({u["locked_person_code"] for u in audio.values()}), "sealed_by": identity["id"]}
 
 
@@ -350,17 +351,24 @@ def is_locked_version(version_id: str) -> bool:
     return db.one("select 1 as x from recording_person where dataset_version_id = %s limit 1", (version_id,)) is not None
 
 
-def open_recording(service: KeyService, *, version_id: str, record_id: str, run: str, purpose: str):
-    """The recording's bytes, opened a chunk at a time, for a pipeline run. Each opening is recorded in the key log with the run named.
+def open_recording(service: KeyService, *, version_id: str, record_id: str, run: str, purpose: str, kind: str = "audio"):
+    """The recording's bytes (or, with kind "answer_key", its answer key's), opened a chunk at a time, for a pipeline run. Each opening is recorded in
+    the key log with the run named.
 
     Raises NoSuchVersion when the version holds no such locked recording and PatientErased when the patient's key was destroyed.
     """
-    row = db.one("select r.tenant_id, r.person_code, r.plain_bytes, r.format, v.storage_backend, v.object_manifest from recording_person r "
+    if kind not in ("audio", "answer_key"):
+        raise NoSuchVersion(f"unknown kind {kind}")
+    row = db.one("select r.tenant_id, r.person_code, r.plain_bytes, r.answer_key_bytes, r.format, v.storage_backend, v.object_manifest from recording_person r "
                  "join dataset_version v on v.id = r.dataset_version_id where r.dataset_version_id = %s and r.record_id = %s", (version_id, record_id))
     if not row:
         raise NoSuchVersion(f"{version_id} holds no locked recording {record_id}")
     tenant, person = row["tenant_id"], row["person_code"]
-    entry = next((m for m in row["object_manifest"] if m["key"].endswith(f"/{record_id}{WAV}")), None)
+    suffix = WAV if kind == "audio" else ANSWER_KEY
+    plain = row["plain_bytes"] if kind == "audio" else row["answer_key_bytes"]
+    if plain is None:
+        raise NoSuchVersion(f"{version_id} holds no answer key for {record_id}")
+    entry = next((m for m in row["object_manifest"] if m["key"].endswith(f"/{record_id}{suffix}")), None)
     if entry is None:
         raise NoSuchVersion(f"{version_id} has no stored file for {record_id}")
     try:
@@ -368,4 +376,4 @@ def open_recording(service: KeyService, *, version_id: str, record_id: str, run:
     except DestroyedKeyError as exc:
         raise PatientErased(f"the patient this recording is about was erased, so it cannot be opened") from exc
     body = storage.admin_client_for(row["storage_backend"], tenant).get_object(Bucket=storage.bucket_for(row["storage_backend"], tenant), Key=entry["key"])["Body"]
-    return row["plain_bytes"], open_stream(key, tenant, person, f"{record_id}{WAV}", row["plain_bytes"], body)
+    return plain, open_stream(key, tenant, person, f"{record_id}{suffix}", plain, body)
