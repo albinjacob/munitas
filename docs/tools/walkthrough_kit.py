@@ -112,6 +112,14 @@ SERIES = [
                 "patient as it arrives. A mistake in the list of patients is caught before anything is sent.",
      "you_see": "The question that comes first, a refusal that lists every mistake, recordings sent in parts and "
                 "locked, and a sealed version that counts recordings and patients without naming anybody"},
+    {"slug": "development-sample", "org": "health", "title": "Build a pipeline version on a development sample of locked recordings",
+     "summary": "A data engineer in Cardiology has written a pipeline version that is still in development, so it may run "
+                "only on development data. The engineer asks for a sample of the locked recordings, a custodian approves "
+                "fewer, and the platform draws them. The pipeline version then runs for real on the sample and is refused "
+                "on the real recordings. The sample ends, and recordings with no real person in them are declared synthetic.",
+     "you_see": "A request for a sample, a custodian lowering it and the platform drawing it, a sample that says what it "
+                "is, a run refused on real recordings and working on the sample, a sample that ends, and a declaration "
+                "of synthetic recordings"},
     {"slug": "custom-step", "org": "health", "title": "Let your own code read recordings and write files, with an approver",
      "summary": "A data engineer in Cardiology uploads a pipeline with a step of their own that reads recordings and writes "
                 "files. The platform refuses to run it until an approver of the owning department, who did not upload "
@@ -237,8 +245,13 @@ WORDS = {
     "custom_step": ("Custom step", "A step of a pipeline whose script was written by the person who registered the pipeline, instead of one of "
                                    "the steps Munitas provides. It runs in a closed container with no internet, no key and no storage address, "
                                    "and can only ask the platform for the recordings it is allowed to read and send back the files it makes."),
-    "stage": ("Stage", "Where a version of a pipeline is in its life. In development means the version cannot be run. In production "
-                       "means it may be run. Retired means it has ended for good and cannot be run again."),
+    "stage": ("Stage", "Where a version of a pipeline is in its life. In development means the version runs only on development data, "
+                       "which is a small sample or recordings with no real person in them. In production means it runs on any data the "
+                       "department allows. Retired means it has ended for good and cannot be run again."),
+    "development_sample": ("Development sample", "A few recordings drawn by the platform from a sealed version of locked recordings, for "
+                                                 "building and testing a pipeline version that is still in development. It names the same "
+                                                 "locked recordings as the original and copies none, and it ends on its own."),
+    "synthetic": ("Synthetic", "Made up, with no real person in it, such as sentences read aloud by volunteers from invented scripts."),
     "under_review": ("Under review", "The access level of something that no person has reviewed. Nobody may use it until a "
                                      "reviewer decides that it may be released."),
     "auditor": ("Privacy auditor", "A person who checks how locked data was used. The role reads records of use and no "

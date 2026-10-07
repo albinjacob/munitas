@@ -103,6 +103,7 @@ SCRIPTS = [
     ("U136 a whole file is locked under a person's key in chunks, and a chunk that is moved, repeated, cut off or added to is refused", "v136_locked_file_stream.py"),
     ("U137 a recording is uploaded in parts that can each be sent again, locked under its patient's key, sealed, and unreadable once the patient is erased", "v137_locked_recordings.py"),
     ("U141 a custom pipeline step is given the recordings only when a second person approved its version, and the platform opens them for it", "v140_custom_steps_and_recordings.py"),
+    ("U144 a pipeline version in development runs only on development data, and a development sample is drawn by the platform as pointers, never copies", "v142_development_samples.py"),
 ]
 
 here = Path(__file__).parent

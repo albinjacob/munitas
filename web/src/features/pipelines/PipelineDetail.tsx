@@ -63,7 +63,8 @@ function Lifecycle({ pipelineId, department, version }: { pipelineId: string; de
       ) : version.stage === "development" ? (
         <>
           <p>
-            {what} This version is in development. An approver of {department ?? "the owning department"} other than{" "}
+            {what} This version is in development, so it runs only on development data: recordings declared synthetic, or a sample drawn for you, which you ask for on the
+            page of the recordings. For any other data, an approver of {department ?? "the owning department"} other than{" "}
             {version.uploaded_by_label ?? "the person who uploaded it"} checks it and moves it to production first.
           </p>
           {mayDecide && (
@@ -137,7 +138,7 @@ export function PipelineDetail() {
       <Section
         level="page"
         title={p.name}
-        description={`Owned by ${p.department_name ?? "no department"}. Registered by ${p.registered_by_label ?? "unknown"}. A version in development cannot be run, a version in production can, and a retired version has ended for good.`}
+        description={`Owned by ${p.department_name ?? "no department"}. Registered by ${p.registered_by_label ?? "unknown"}. A version in development runs only on development data, a version in production runs on any data the department allows, and a retired version has ended for good.`}
       >
         {!p.versions.length ? (
           <Empty

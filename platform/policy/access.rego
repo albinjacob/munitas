@@ -1578,6 +1578,156 @@ pipeline_approval_withdrawal_decision := {
 	"reasons": [r | not may_withdraw_pipeline_approval; r := "only an approver of the department that owns this pipeline may return a version of it to development"],
 }
 
+# ------------------------------------------------------------ development samples --
+
+# A pipeline version in development may run only on development data: synthetic recordings, or a small sample of real ones that a department approver
+# approved for the person who asked. The platform draws the sample. The caps are constants here, and a later change makes them settings per organisation
+# and department, with these as the ceiling.
+development_sample_requester_roles := {"pipeline_operator", "deid_reviewer"}
+
+development_sample_kinds := {"develop", "debug"}
+
+development_sample_max_days := 14
+
+development_sample_max_records := 50
+
+default may_request_development_sample := false
+
+may_request_development_sample if {
+	input.requester.id == input.request.principal
+	some role in input.requester.roles
+	development_sample_requester_roles[role]
+	input.request.kind in development_sample_kinds
+	count(trim_space(object.get(input.request, "purpose", ""))) > 0
+	input.request.days >= 1
+	input.request.days <= development_sample_max_days
+	input.request.records >= 1
+	input.request.records <= development_sample_max_records
+	development_sample_named_ok
+}
+
+development_sample_named_ok if input.request.kind == "develop"
+
+development_sample_named_ok if {
+	input.request.kind == "debug"
+	input.request.named >= 1
+	input.request.named <= input.request.records
+}
+
+development_sample_request_reason contains "a sample is asked for by the person who would use it" if {
+	input.requester.id != input.request.principal
+}
+
+development_sample_request_reason contains "this person holds no role that may ask for a development sample (a data engineer or a de-identification reviewer)" if {
+	every role in input.requester.roles {
+		not development_sample_requester_roles[role]
+	}
+}
+
+development_sample_request_reason contains "a sample is either for developing or for debugging" if {
+	not input.request.kind in development_sample_kinds
+}
+
+development_sample_request_reason contains "a sample needs a purpose, which is recorded with it" if {
+	count(trim_space(object.get(input.request, "purpose", ""))) == 0
+}
+
+development_sample_request_reason contains "a sample lasts between 1 and 14 days" if {
+	not input.request.days >= 1
+}
+
+development_sample_request_reason contains "a sample lasts between 1 and 14 days" if {
+	input.request.days > development_sample_max_days
+}
+
+development_sample_request_reason contains "a sample holds between 1 and 50 recordings" if {
+	not input.request.records >= 1
+}
+
+development_sample_request_reason contains "a sample holds between 1 and 50 recordings" if {
+	input.request.records > development_sample_max_records
+}
+
+development_sample_request_reason contains "a sample for debugging names the recordings that went wrong, at least one and no more than the sample holds" if {
+	input.request.kind == "debug"
+	not development_sample_named_ok
+}
+
+development_sample_request_decision := {
+	"allow": may_request_development_sample,
+	"reasons": [r | some r in development_sample_request_reason],
+}
+
+# Deciding a request: an approver of the department that owns the recordings, never the person who asked.
+default may_decide_development_sample := false
+
+may_decide_development_sample if {
+	input.approver.id != input.request.principal
+	some role in input.approver.roles
+	approver_roles[role]
+	input.approver.id in input.dataset.approvers
+}
+
+development_sample_decision_reason contains "nobody decides their own request for a sample" if {
+	input.approver.id == input.request.principal
+}
+
+development_sample_decision_reason contains "this person holds no role that may decide a request for a sample (a data custodian)" if {
+	every role in input.approver.roles {
+		not approver_roles[role]
+	}
+}
+
+development_sample_decision_reason contains "only an approver of the department that owns these recordings may decide a request for a sample" if {
+	not input.approver.id in input.dataset.approvers
+}
+
+development_sample_decision := {
+	"allow": may_decide_development_sample,
+	"reasons": [r | some r in development_sample_decision_reason],
+}
+
+# Ending a sample early, which only tightens: the department's approver, or the person it was drawn for.
+default may_end_development_sample := false
+
+may_end_development_sample if {
+	some role in input.actor.roles
+	approver_roles[role]
+	input.actor.id in input.dataset.approvers
+}
+
+may_end_development_sample if {
+	input.actor.id == input.request.principal
+}
+
+development_sample_end_decision := {
+	"allow": may_end_development_sample,
+	"reasons": [r | not may_end_development_sample; r := "only an approver of the department that owns these recordings, or the person the sample was drawn for, may end it"],
+}
+
+# Declaring a version synthetic, so that it holds no real person: an approver of the owning department, with a reason.
+default may_declare_synthetic := false
+
+may_declare_synthetic if {
+	some role in input.actor.roles
+	approver_roles[role]
+	input.actor.id in input.dataset.approvers
+	count(trim_space(object.get(input.request, "note", ""))) > 0
+}
+
+synthetic_declaration_reason contains "only an approver of the department that owns these recordings may declare them synthetic" if {
+	not input.actor.id in input.dataset.approvers
+}
+
+synthetic_declaration_reason contains "a declaration needs a reason, which is recorded with it" if {
+	count(trim_space(object.get(input.request, "note", ""))) == 0
+}
+
+synthetic_declaration_decision := {
+	"allow": may_declare_synthetic,
+	"reasons": [r | some r in synthetic_declaration_reason],
+}
+
 # Retiring a pipeline version, which only tightens: the department's approver, or the person who uploaded the version.
 default may_retire_pipeline_version := false
 

@@ -322,8 +322,15 @@
       <p class="meta">You will see: The question that comes first, a refusal that lists every mistake, recordings sent in parts and locked, and a sealed version that counts recordings and patients without naming anybody.</p>
       <p class="meta">7 steps, about 6 minutes. <span class="open">Open &rarr;</span></p>
     </a>
-    <a class="tile" href="custom-step-walkthrough.html">
+    <a class="tile" href="development-sample-walkthrough.html">
       <span class="tag">8. Health organisation</span>
+      <h3>Build a pipeline version on a development sample of locked recordings</h3>
+      <p>A data engineer in Cardiology has written a pipeline version that is still in development, so it may run only on development data. The engineer asks for a sample of the locked recordings, a custodian approves fewer, and the platform draws them. The pipeline version then runs for real on the sample and is refused on the real recordings. The sample ends, and recordings with no real person in them are declared synthetic.</p>
+      <p class="meta">You will see: A request for a sample, a custodian lowering it and the platform drawing it, a sample that says what it is, a run refused on real recordings and working on the sample, a sample that ends, and a declaration of synthetic recordings.</p>
+      <p class="meta">11 steps, about 9 minutes. <span class="open">Open &rarr;</span></p>
+    </a>
+    <a class="tile" href="custom-step-walkthrough.html">
+      <span class="tag">9. Health organisation</span>
       <h3>Let your own code read recordings and write files, with an approver</h3>
       <p>A data engineer in Cardiology uploads a pipeline with a step of their own that reads recordings and writes files. The platform refuses to run it until an approver of the owning department, who did not upload it, approves it. The run then makes a new version that waits for a review.</p>
       <p class="meta">You will see: A version waiting for an approver, a refused run, an approval, a finished run that links to what it made, and a new version that records exactly what produced it.</p>

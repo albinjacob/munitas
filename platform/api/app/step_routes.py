@@ -23,7 +23,7 @@ from pydantic import BaseModel
 
 from crypto import NotOpenable
 
-from . import auth, dag_pipelines, db, recordings, step_outputs, task_credential
+from . import auth, dag_pipelines, db, development_samples, recordings, step_outputs, task_credential
 from .person_errors import NoSuchVersion
 from .recording_routes import _body, _service
 
@@ -47,7 +47,7 @@ class FinishIn(PassIn):
 
 def run_context(pipeline_run_id: str, tenant_id: str, step: str) -> dict:
     """The pipeline run behind a step, with the reasons it may not be given what it asks for, as a refusal. Asked on every request."""
-    run = db.one("select tenant_id, ended_at, source_version_id, pipeline_version_id from pipeline_run where id = %s", (pipeline_run_id,))
+    run = db.one("select tenant_id, ended_at, source_version_id, pipeline_version_id, triggered_by from pipeline_run where id = %s", (pipeline_run_id,))
     if not run or run["tenant_id"] != tenant_id:
         raise HTTPException(403, {"reasons": ["no such pipeline run for this organisation"]})
     if run["ended_at"] is not None:
@@ -61,8 +61,10 @@ def run_context(pipeline_run_id: str, tenant_id: str, step: str) -> dict:
     stage = dag_pipelines.version_stage(str(version["id"]), version["dag_config"])
     if stage == "retired":
         raise HTTPException(403, {"reasons": ["this version of the pipeline was retired"]})
-    if stage != "production":
-        raise HTTPException(403, {"reasons": ["this version of the pipeline is in development, or was returned to it, and only a version in production may be given the recordings or write files"]})
+    if stage == "development" and not development_samples.is_development_data(tenant_id, run["triggered_by"], str(run["source_version_id"]) if run["source_version_id"] else None):
+        raise HTTPException(403, {"reasons": ["this version of the pipeline is in development, or was returned to it, and only a version in production may be given recordings that "
+                                              "are not development data. The recordings this run reads are neither declared synthetic nor a development sample that is in force "
+                                              "for the person who started it"]})
     return {"source_version_id": str(run["source_version_id"]) if run["source_version_id"] else None,
             "recordings": declared[0].get("recordings") is True, "writes_files": declared[0].get("writes_files") is True,
             "label": f"custom step {step} of pipeline {version['name']} version {version['version']}"}

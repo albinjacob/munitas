@@ -324,6 +324,10 @@ _AUDIT_EVIDENCE_PATH = "/v1/data/munitas/access/audit_evidence_decision"
 _PIPELINE_VERSION_APPROVAL_PATH = "/v1/data/munitas/access/pipeline_version_approval_decision"
 _PIPELINE_APPROVAL_WITHDRAWAL_PATH = "/v1/data/munitas/access/pipeline_approval_withdrawal_decision"
 _PIPELINE_VERSION_RETIREMENT_PATH = "/v1/data/munitas/access/pipeline_version_retirement_decision"
+_SAMPLE_REQUEST_PATH = "/v1/data/munitas/access/development_sample_request_decision"
+_SAMPLE_DECISION_PATH = "/v1/data/munitas/access/development_sample_decision"
+_SAMPLE_END_PATH = "/v1/data/munitas/access/development_sample_end_decision"
+_SYNTHETIC_PATH = "/v1/data/munitas/access/synthetic_declaration_decision"
 
 
 def may_request_locked_lease(payload: dict) -> tuple[bool, list[str]]:
@@ -354,6 +358,26 @@ def may_withdraw_pipeline_approval(payload: dict) -> tuple[bool, list[str]]:
 def may_retire_pipeline_version(payload: dict) -> tuple[bool, list[str]]:
     """May this person retire a pipeline version? A department approver of the owning department, or the person who uploaded that version."""
     return _ask(_PIPELINE_VERSION_RETIREMENT_PATH, payload)
+
+
+def may_request_development_sample(payload: dict) -> tuple[bool, list[str]]:
+    """May this person ask for a development sample of recordings, of this kind, size and length of life?"""
+    return _ask(_SAMPLE_REQUEST_PATH, payload)
+
+
+def may_decide_development_sample(payload: dict) -> tuple[bool, list[str]]:
+    """May this person decide somebody else's request for a sample? An approver of the department that owns the recordings."""
+    return _ask(_SAMPLE_DECISION_PATH, payload)
+
+
+def may_end_development_sample(payload: dict) -> tuple[bool, list[str]]:
+    """May this person end a sample early? The department's approver, or the person it was drawn for."""
+    return _ask(_SAMPLE_END_PATH, payload)
+
+
+def may_declare_synthetic(payload: dict) -> tuple[bool, list[str]]:
+    """May this person declare a version of recordings synthetic? An approver of the owning department, with a reason."""
+    return _ask(_SYNTHETIC_PATH, payload)
 
 
 def may_read_audit_evidence(payload: dict) -> tuple[bool, list[str]]:

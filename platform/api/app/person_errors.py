@@ -46,3 +46,7 @@ class NoSuchVersion(LookupError):
 
 class NoSuchLease(LookupError):
     pass
+
+
+class NoSuchSample(LookupError):
+    pass

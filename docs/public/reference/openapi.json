@@ -739,6 +739,92 @@
         "title": "DerivationInput",
         "type": "object"
       },
+      "DevelopmentSampleDecisionIn": {
+        "properties": {
+          "days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "An approver may lower the days asked for, never raise them",
+            "title": "Days"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "records": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "An approver may lower the number asked for, never raise it",
+            "title": "Records"
+          }
+        },
+        "title": "DevelopmentSampleDecisionIn",
+        "type": "object"
+      },
+      "DevelopmentSampleRequestIn": {
+        "properties": {
+          "days": {
+            "title": "Days",
+            "type": "integer"
+          },
+          "kind": {
+            "description": "'develop' to draw recordings for building a pipeline version, or 'debug' to name the recordings that went wrong",
+            "title": "Kind",
+            "type": "string"
+          },
+          "named_records": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "For a debug sample, the identifiers of the recordings",
+            "title": "Named Records"
+          },
+          "purpose": {
+            "title": "Purpose",
+            "type": "string"
+          },
+          "records": {
+            "description": "How many recordings the sample holds",
+            "title": "Records",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "purpose",
+          "days",
+          "records"
+        ],
+        "title": "DevelopmentSampleRequestIn",
+        "type": "object"
+      },
       "EgressDecisionIn": {
         "properties": {
           "reason": {
@@ -1968,6 +2054,20 @@
           }
         },
         "title": "StartPipeline",
+        "type": "object"
+      },
+      "SyntheticDeclarationIn": {
+        "properties": {
+          "note": {
+            "description": "Why these recordings hold no real person. Recorded with the declaration.",
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "note"
+        ],
+        "title": "SyntheticDeclarationIn",
         "type": "object"
       },
       "ValidationError": {
@@ -3535,6 +3635,156 @@
           }
         },
         "summary": "Get Version"
+      }
+    },
+    "/dataset-versions/{version_id}/declare-synthetic": {
+      "post": {
+        "description": "Declare a version synthetic, so that it holds no real person and any pipeline version in development may run on it. An approver of the owning department.",
+        "operationId": "declare_synthetic_dataset_versions__version_id__declare_synthetic_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyntheticDeclarationIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Declare Synthetic Dataset Versions  Version Id  Declare Synthetic Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Declare Synthetic",
+        "tags": [
+          "development samples"
+        ]
+      }
+    },
+    "/dataset-versions/{version_id}/development-samples": {
+      "get": {
+        "description": "What a screen needs on a version of recordings: the caller's samples, the requests waiting for them as an approver, what they may do, the limits.\n\nNever a recording or a patient. An approver sees how many recordings came from each length band, and nothing more.",
+        "operationId": "development_samples_of_dataset_versions__version_id__development_samples_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Development Samples Of Dataset Versions  Version Id  Development Samples Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Development Samples Of",
+        "tags": [
+          "development samples"
+        ]
+      },
+      "post": {
+        "description": "Ask for a sample of these recordings for building a pipeline version: a purpose, up to 14 days, up to 50 recordings. A department approver decides.",
+        "operationId": "request_development_sample_dataset_versions__version_id__development_samples_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DevelopmentSampleRequestIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Request Development Sample Dataset Versions  Version Id  Development Samples Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Request Development Sample",
+        "tags": [
+          "development samples"
+        ]
       }
     },
     "/dataset-versions/{version_id}/group-size-report": {
@@ -5808,6 +6058,172 @@
         "summary": "Running",
         "tags": [
           "derivations"
+        ]
+      }
+    },
+    "/development-samples/{sample_id}/approve": {
+      "post": {
+        "description": "Approve a request, and the platform draws the recordings. Only an approver of the department that owns them, and never the person who asked.\n\nThe approver may lower the number or the days asked for, and cannot choose the recordings.",
+        "operationId": "approve_development_sample_development_samples__sample_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sample_id",
+            "required": true,
+            "schema": {
+              "title": "Sample Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/DevelopmentSampleDecisionIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Approve Development Sample Development Samples  Sample Id  Approve Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve Development Sample",
+        "tags": [
+          "development samples"
+        ]
+      }
+    },
+    "/development-samples/{sample_id}/decline": {
+      "post": {
+        "description": "Decline a request, with a note saying why.",
+        "operationId": "decline_development_sample_development_samples__sample_id__decline_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sample_id",
+            "required": true,
+            "schema": {
+              "title": "Sample Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/DevelopmentSampleDecisionIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Decline Development Sample Development Samples  Sample Id  Decline Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Decline Development Sample",
+        "tags": [
+          "development samples"
+        ]
+      }
+    },
+    "/development-samples/{sample_id}/end": {
+      "post": {
+        "description": "End a sample early: the department's approver, or the person it was drawn for.",
+        "operationId": "end_development_sample_development_samples__sample_id__end_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sample_id",
+            "required": true,
+            "schema": {
+              "title": "Sample Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response End Development Sample Development Samples  Sample Id  End Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "End Development Sample",
+        "tags": [
+          "development samples"
         ]
       }
     },

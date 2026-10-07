@@ -3,7 +3,7 @@
  * only when a second person says so. A version is retired for good by its owner's approver or by whoever uploaded it.
  *
  * The claims these tests carry are about what reaches the person, on the live platform:
- *   - the version shows its stage, says which step is given the recordings and which writes files, who uploaded it, and that it cannot run until an approver of the owning department moves it to production;
+ *   - the version shows its stage, says which step is given the recordings and which writes files, who uploaded it, and that it runs only on development data until an approver of the owning department moves it to production;
  *   - the person who uploaded it is not offered the move, and a custodian of another department who tries is told why;
  *   - the owning department's approver moves it to production, the page then says by whom, and returning it puts it back in development;
  *   - retiring asks first, is final, and the page then says who retired it and offers nothing more.
@@ -102,7 +102,7 @@ test.describe("U143: a version that is given the recordings starts in developmen
     const panel = page.getByTestId("pipeline-lifecycle-1");
     await expect(page.getByTestId("pipeline-stage-1")).toHaveText("In development");
     await expect(panel).toContainText("Step inspect reads the patient recordings and writes files, which become a new version that a reviewer checks before anyone can use it");
-    await expect(panel).toContainText("An approver of Verification other than");
+    await expect(panel).toContainText("an approver of Verification other than");
     await expect(page.getByTestId("pipeline-version-1")).toContainText("reads the recordings, writes files, 2048 MB of memory");
     await expect(panel.getByRole("button", { name: "Move to production" })).toHaveCount(0);
 

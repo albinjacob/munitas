@@ -1803,12 +1803,57 @@ create table if not exists step_output_part (
   primary key (output_id, part_number)
 );
 
+-- A development sample: a small set of recordings drawn from a sealed version of locked recordings, for building and testing a pipeline version that is
+-- still in development. A person asks (a kind, a purpose, how many, for how many days), a department approver who is not that person decides, and the
+-- platform draws the recordings and seals a new version that names the same stored files, so no audio is copied and nothing is stored in the clear.
+-- A debug sample names the recordings instead of drawing them. `chosen_records` and `salt` are kept so the draw can be reproduced and shown not to
+-- have been hand-picked. A sample that has run out is marked ended; the row stays as the record.
+create table if not exists development_sample (
+  id                uuid primary key,
+  tenant_id         text not null references tenant(id),
+  source_version_id uuid not null references dataset_version(id),
+  sample_version_id uuid references dataset_version(id),
+  principal         text not null references directory(id),
+  kind              text not null check (kind in ('develop', 'debug')),
+  purpose           text not null,
+  requested_count   int not null check (requested_count >= 1),
+  granted_count     int,
+  days              int not null check (days >= 1),
+  granted_days      int,
+  named_records     jsonb,
+  status            text not null default 'requested' check (status in ('requested', 'approved', 'declined', 'ended')),
+  decided_by        text references directory(id),
+  decided_at        timestamptz,
+  decision_note     text,
+  expires_at        timestamptz,
+  ended_by          text references directory(id),
+  ended_at          timestamptz,
+  method            text,
+  salt              text,
+  strata            jsonb,
+  chosen_records    jsonb,
+  requested_at      timestamptz not null default now()
+);
+create unique index if not exists development_sample_live_idx
+  on development_sample (principal, source_version_id, kind) where status in ('requested', 'approved');
+create index if not exists development_sample_version_idx on development_sample (sample_version_id) where sample_version_id is not null;
+
+-- A version declared synthetic: it holds no real person, so any pipeline version in development may run on it. A custodian of the owning department
+-- declares it once, with a reason.
+create table if not exists development_data_declaration (
+  version_id  uuid primary key references dataset_version(id),
+  tenant_id   text not null references tenant(id),
+  declared_by text not null references directory(id),
+  note        text not null,
+  declared_at timestamptz not null default now()
+);
+
 -- The retired-tenant rule for the tables created since the first block above, which runs before they exist: a trigger cannot be put on a table
 -- that is not there yet, and a database built from this file from nothing stops at the first one that is missing.
 do $$
 declare t text;
 begin
-  foreach t in array array['pipeline_version_approval','pipeline_version_retirement','step_output','step_output_part'] loop
+  foreach t in array array['pipeline_version_approval','pipeline_version_retirement','step_output','step_output_part','development_sample','development_data_declaration'] loop
     execute format('drop trigger if exists %I on %I', 'refuse_retired_' || t, t);
     execute format(
       'create trigger %I before insert or update on %I

@@ -198,7 +198,7 @@ test("capture: let your own code read recordings and write files, with an approv
 
   await page.getByTestId("upload-pipeline-version-submit").click();
   await expect(page.getByTestId("pipeline-version-1")).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByTestId("pipeline-lifecycle-1")).toContainText("An approver of Cardiology other than Devi");
+  await expect(page.getByTestId("pipeline-lifecycle-1")).toContainText("an approver of Cardiology other than Devi");
   await expect(page.getByTestId("pipeline-lifecycle-1").getByRole("button", { name: "Move to production" })).toHaveCount(0);
   const pipelineUrl = page.url();
   await shotAt(page, "pipeline-version-1", "the-version-waits-for-an-approver", 40);

@@ -6,6 +6,7 @@
  */
 
 import { useRecordingsSummary } from "../../api/recordings";
+import { DevelopmentSamplesSection } from "./DevelopmentSamples";
 import { Failure, Section } from "../../components/states";
 import { ApiError } from "../../api/client";
 
@@ -21,6 +22,7 @@ export function LockedRecordingsSection({ versionId }: { versionId: string }) {
   const erased = s.erased_recordings;
 
   return (
+    <>
     <Section
       title="Locked recordings"
       description="Each recording is locked under the key of the patient it is about. Destroying a patient's key makes their recordings unreadable for good, and the sealed version never changes."
@@ -38,5 +40,7 @@ export function LockedRecordingsSection({ versionId }: { versionId: string }) {
         recordings of patients who were erased.
       </p>
     </Section>
+    <DevelopmentSamplesSection versionId={versionId} />
+    </>
   );
 }

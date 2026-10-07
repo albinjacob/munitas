@@ -1890,6 +1890,55 @@ test_only_a_department_approver_with_the_role_approves_a_pipeline_version if {
 	"this person holds no role that may move a pipeline version to production (a data custodian)" in decision2.reasons
 }
 
+ask_for_sample(roles, kind, days, records, named) := {"requester": {"id": "e", "roles": roles}, "request": {"principal": "e", "kind": kind, "purpose": "tune the redaction step", "days": days, "records": records, "named": named}}
+
+test_an_engineer_may_ask_for_a_development_sample if {
+	access.may_request_development_sample with input as ask_for_sample(["pipeline_operator"], "develop", 7, 20, 0)
+	access.may_request_development_sample with input as ask_for_sample(["deid_reviewer"], "develop", 14, 50, 0)
+}
+
+test_a_sample_has_limits if {
+	not access.may_request_development_sample with input as ask_for_sample(["pipeline_operator"], "develop", 15, 20, 0)
+	not access.may_request_development_sample with input as ask_for_sample(["pipeline_operator"], "develop", 0, 20, 0)
+	not access.may_request_development_sample with input as ask_for_sample(["pipeline_operator"], "develop", 7, 51, 0)
+	not access.may_request_development_sample with input as ask_for_sample(["pipeline_operator"], "develop", 7, 0, 0)
+}
+
+test_a_sample_needs_a_known_kind_a_role_and_a_purpose if {
+	not access.may_request_development_sample with input as ask_for_sample(["pipeline_operator"], "anything", 7, 20, 0)
+	not access.may_request_development_sample with input as ask_for_sample(["analyst"], "develop", 7, 20, 0)
+	not access.may_request_development_sample with input as object.union(ask_for_sample(["pipeline_operator"], "develop", 7, 20, 0), {"request": {"principal": "e", "kind": "develop", "purpose": "  ", "days": 7, "records": 20, "named": 0}})
+	not access.may_request_development_sample with input as {"requester": {"id": "z", "roles": ["pipeline_operator"]}, "request": {"principal": "e", "kind": "develop", "purpose": "x", "days": 7, "records": 20, "named": 0}}
+}
+
+test_a_debug_sample_names_its_recordings if {
+	access.may_request_development_sample with input as ask_for_sample(["pipeline_operator"], "debug", 3, 3, 3)
+	not access.may_request_development_sample with input as ask_for_sample(["pipeline_operator"], "debug", 3, 3, 0)
+	not access.may_request_development_sample with input as ask_for_sample(["pipeline_operator"], "debug", 3, 3, 4)
+}
+
+test_only_a_department_approver_other_than_the_asker_decides_a_sample if {
+	access.may_decide_development_sample with input as {"approver": {"id": "c", "roles": ["data_custodian"]}, "request": {"principal": "e"}, "dataset": {"approvers": ["c"]}}
+	not access.may_decide_development_sample with input as {"approver": {"id": "c", "roles": ["data_custodian"]}, "request": {"principal": "c"}, "dataset": {"approvers": ["c"]}}
+	not access.may_decide_development_sample with input as {"approver": {"id": "z", "roles": ["data_custodian"]}, "request": {"principal": "e"}, "dataset": {"approvers": ["c"]}}
+	not access.may_decide_development_sample with input as {"approver": {"id": "d", "roles": ["dpo"]}, "request": {"principal": "e"}, "dataset": {"approvers": ["d"]}}
+	decision := access.development_sample_decision with input as {"approver": {"id": "c", "roles": ["data_custodian"]}, "request": {"principal": "c"}, "dataset": {"approvers": ["c"]}}
+	"nobody decides their own request for a sample" in decision.reasons
+}
+
+test_a_sample_is_ended_by_an_approver_or_the_person_it_was_drawn_for if {
+	access.may_end_development_sample with input as {"actor": {"id": "c", "roles": ["data_custodian"]}, "request": {"principal": "e"}, "dataset": {"approvers": ["c"]}}
+	access.may_end_development_sample with input as {"actor": {"id": "e", "roles": ["pipeline_operator"]}, "request": {"principal": "e"}, "dataset": {"approvers": ["c"]}}
+	not access.may_end_development_sample with input as {"actor": {"id": "x", "roles": ["pipeline_operator"]}, "request": {"principal": "e"}, "dataset": {"approvers": ["c"]}}
+}
+
+test_only_an_approver_with_a_reason_declares_recordings_synthetic if {
+	access.may_declare_synthetic with input as {"actor": {"id": "c", "roles": ["data_custodian"]}, "request": {"note": "made up for tests"}, "dataset": {"approvers": ["c"]}}
+	not access.may_declare_synthetic with input as {"actor": {"id": "c", "roles": ["data_custodian"]}, "request": {"note": " "}, "dataset": {"approvers": ["c"]}}
+	not access.may_declare_synthetic with input as {"actor": {"id": "z", "roles": ["data_custodian"]}, "request": {"note": "x"}, "dataset": {"approvers": ["c"]}}
+	not access.may_declare_synthetic with input as {"actor": {"id": "e", "roles": ["pipeline_operator"]}, "request": {"note": "x"}, "dataset": {"approvers": ["e"]}}
+}
+
 test_a_department_approver_or_the_uploader_retires_a_pipeline_version_and_nobody_else if {
 	access.may_retire_pipeline_version with input as {"actor": {"id": "c", "roles": ["data_custodian"]}, "version": {"uploaded_by": "e"}, "dataset": {"approvers": ["c"]}}
 	access.may_retire_pipeline_version with input as {"actor": {"id": "e", "roles": ["pipeline_operator"]}, "version": {"uploaded_by": "e"}, "dataset": {"approvers": ["c"]}}

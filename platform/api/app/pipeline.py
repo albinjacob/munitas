@@ -329,13 +329,16 @@ async def start_deidentification(
         if stage == "retired":
             problems.append("this version of the pipeline was retired, so it cannot be run. Run a later version")
         elif stage == "development":
-            asking = steps_needing_approval(pipeline_version["dag_config"])
-            many = len(asking) > 1
-            problems.append(
-                f"this version is in development, so it cannot be run. Its custom step{'s' if many else ''} {', '.join(asking)} "
-                f"{'read the recordings or write' if many else 'reads the recordings or writes'} files, so an approver of the department that owns the "
-                f"pipeline, other than the person who uploaded it, has to check it and move it to production first"
-            )
+            from . import development_samples
+            if not development_samples.is_development_data(version["tenant_id"], identity["id"], version_id):
+                asking = steps_needing_approval(pipeline_version["dag_config"])
+                many = len(asking) > 1
+                problems.append(
+                    f"this version is in development, so it can be run only on development data: recordings declared synthetic, or a development sample "
+                    f"drawn for you. Its custom step{'s' if many else ''} {', '.join(asking)} {'read the recordings or write' if many else 'reads the recordings or writes'} "
+                    f"files, so on any other data an approver of the department that owns the pipeline, other than the person who uploaded it, has to check it "
+                    f"and move it to production first. Ask for a sample on the page of the recordings"
+                )
 
     backend = version["storage_backend"] or "seaweedfs"
     if backend not in PIPELINE_BACKENDS:

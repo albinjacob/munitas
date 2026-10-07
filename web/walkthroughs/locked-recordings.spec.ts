@@ -139,7 +139,7 @@ test("capture: bring in recordings so that one patient can be erased later", asy
   await page.getByTestId("open-sealed-recordings").click();
   await expect(page.getByTestId("locked-recordings")).toBeVisible();
   await expect(page.locator("body")).not.toContainText(chartA);
-  // A shorter window, so that the page can scroll far enough to put this panel at the top of the picture.
-  await page.setViewportSize({ width: 1920, height: 640 });
+  // A shorter window, so that the page can scroll far enough to put this panel at the top of the picture, and so that the picture holds this panel only.
+  await page.setViewportSize({ width: 1920, height: 305 });
   await headingAt(page, "Locked recordings", "the-version-says-what-it-holds", 40);
 });

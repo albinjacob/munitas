@@ -533,8 +533,8 @@ read must carry. A patient erased while their recording is being read makes the 
 
 | Stage | What it means | How it gets there |
 | --- | --- | --- |
-| In development | Cannot be run. | A version with a script step that is given the recordings or writes files starts here. |
-| In production | May be run, and its steps may be served. | A version made only of the platform's own steps starts here. A version with such a script step gets here when an approver of the department that owns the pipeline, who is not the person who uploaded it, moves it (button **Move to production**, or `POST /pipelines/{id}/versions/{version_id}/promote`). |
+| In development | Runs only on development data: recordings declared synthetic, or a development sample drawn for the person who runs it. | A version with a script step that is given the recordings or writes files starts here. |
+| In production | Runs on any data the department allows, and its steps may be served. | A version made only of the platform's own steps starts here. A version with such a script step gets here when an approver of the department that owns the pipeline, who is not the person who uploaded it, moves it (button **Move to production**, or `POST /pipelines/{id}/versions/{version_id}/promote`). |
 | Retired | Cannot be run, and cannot come back. | An approver of the owning department, or the person who uploaded the version, retires it (button **Retire this version**, which asks first, or `POST .../retire`). A later version replaces it. |
 
 **Return to development** (`POST .../demote`, an approver of the owning department) undoes a promotion. It applies only to a version that was
@@ -544,8 +544,40 @@ promoted. Retiring and returning only tighten, which is why the person who uploa
 issued stops working at its next request, and a step still writing has everything it wrote discarded when it finishes). Each decision keeps who made it
 and when: the promotion in `pipeline_version_approval` (a returned one stays as a record), the retirement in `pipeline_version_retirement`.
 
-**What the stages do not cover today.** A version made only of the platform's own steps is in production from the start, and a version in
-development has no data it is limited to, because nothing declares a development sample. Development means "cannot be run".
+**Development samples.** A version in development may run only on development data, and for locked recordings that is one of two things.
+
+- *A sample.* A person who holds the data engineer role (or the de-identification reviewer role) asks on the page of a sealed version of locked
+  recordings (`POST /dataset-versions/{id}/development-samples`): a kind, a purpose, how many recordings (1 to 50) and for how many days (1 to 14).
+  An approver of the department that owns the recordings, who is not the person asking, decides (`POST /development-samples/{id}/approve` or
+  `/decline`). The approver may lower the number or the days and never raise them, and cannot choose the recordings.
+- *Recordings declared synthetic.* An approver of the owning department declares a version synthetic, with a reason
+  (`POST /dataset-versions/{id}/declare-synthetic`). Any person in the organisation may then run a version in development on it.
+
+The platform draws a sample by one fixed method (`platform/api/app/development_samples.py`): recordings of erased patients are left out, one recording
+for each patient (the one whose hash ranks first), three length bands each holding a third of what is left, the number asked for divided across the
+bands in proportion (the shorter bands take the remainder first), and in each band the patients whose hash ranks first. The hash is SHA-256 of a salt
+(the version, the person asking, the kind and the method version), the patient's code and the recording's identifier. So the same person asking for
+the same kind of sample of the same version is given the same recordings, and asking again collects nothing new. A debug sample names the recordings
+instead: the approver may lower how many of them are given, and the platform gives the first ones named.
+
+A sample is a new sealed version, in a dataset named after the original with `-dev-sample-` and a short code. It holds a short list and the rows
+that say which patient each recording is about, and its list of files names the stored files the original already names. Nothing is copied and
+nothing is stored in the clear, so erasing a patient makes their recording unreadable in the sample too. The draw is kept with the request (the
+method, the salt, the identifiers chosen, how many came from each band) so that it can be reproduced. A person asking for a sample sees counts, never a
+recording or a patient.
+
+A run of a version in development is refused at the start, and a step it already runs is refused at its next request, unless the version it reads is
+declared synthetic or is a sample that is in force for the person who started the run. A sample ends on its own after the days granted, or sooner when
+the person it was drawn for or an approver ends it (`POST /development-samples/{id}/end`).
+
+Checks: U144 (the platform's half, in the container: the draw by itself, who may ask and decide, pointers and not copies, what a run may read, erasure,
+the declaration) and U145 (the loop for real on the host, about four minutes: a version in development refused on the real recordings and run on a
+sample in the sandbox, reading exactly the sample's recordings byte for byte, a writing version, an ended sample refused, an erased patient left out).
+The console check is U146.
+
+**What the stages do not cover today.** A version made only of the platform's own steps is in production from the start, so the stages limit only
+versions that have a custom step. The limits on a sample (50 recordings, 14 days) are constants in the policy and are not yet settings for an
+organisation or a department. Outputs of a run in development are sealed under review like any other and are not yet removed when the sample ends.
 
 **Writing files back.** A step with `writes_files: true` (it can have this with or without `recordings: true`) writes through the same door, with the
 same library, and the same pass. It never holds a storage address or key:
