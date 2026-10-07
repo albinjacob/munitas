@@ -95,9 +95,10 @@ export function RecordingsPanel({ datasetId }: { datasetId: string }) {
   return (
     <div className="space-y-3" data-testid="recordings-panel">
       <p className="text-sm text-slate-700">
-        Each recording is locked under its patient's key as it uploads. Name the patient for every recording in a manifest, a CSV with two columns, <strong>file</strong>{" "}
-        and <strong>patient</strong>, and one row for each recording. An answer key named after its recording (<code>visit-1.truth.json</code> beside{" "}
-        <code>visit-1.wav</code>) belongs to the same patient without a row of its own. A recording is one patient's: if two people speak in it, split it first.
+        Each recording is locked under its patient's key as it uploads. Say which patient each recording is about in a manifest: a CSV file (a plain text table) with two columns, <strong>file</strong>{" "}
+        and <strong>patient</strong>, and one row for each recording. If you also have an answer key, the correct written text of a recording, which is used later to check how well names were
+        removed from it, name it after its recording (<code>visit-1.truth.json</code> beside <code>visit-1.wav</code>). It belongs to the same patient and needs no row of its own.
+        A recording is about one patient: if two people speak in it, split it first.
       </p>
       <div className="flex flex-wrap gap-6">
         <label className="text-sm">

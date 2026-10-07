@@ -1545,17 +1545,17 @@ may_approve_pipeline_version if {
 	input.approver.id in input.dataset.approvers
 }
 
-pipeline_version_approval_reason contains "nobody approves the version they uploaded" if {
+pipeline_version_approval_reason contains "nobody moves a version they uploaded to production" if {
 	input.approver.id == input.version.uploaded_by
 }
 
-pipeline_version_approval_reason contains "this person holds no role that may approve a pipeline version (a data custodian)" if {
+pipeline_version_approval_reason contains "this person holds no role that may move a pipeline version to production (a data custodian)" if {
 	every role in input.approver.roles {
 		not approver_roles[role]
 	}
 }
 
-pipeline_version_approval_reason contains "only an approver of the department that owns this pipeline may approve a version of it" if {
+pipeline_version_approval_reason contains "only an approver of the department that owns this pipeline may move a version of it to production" if {
 	not input.approver.id in input.dataset.approvers
 }
 
@@ -1575,7 +1575,7 @@ may_withdraw_pipeline_approval if {
 
 pipeline_approval_withdrawal_decision := {
 	"allow": may_withdraw_pipeline_approval,
-	"reasons": [r | not may_withdraw_pipeline_approval; r := "only an approver of the department that owns this pipeline may take an approval back"],
+	"reasons": [r | not may_withdraw_pipeline_approval; r := "only an approver of the department that owns this pipeline may return a version of it to development"],
 }
 
 # Retiring a pipeline version, which only tightens: the department's approver, or the person who uploaded the version.

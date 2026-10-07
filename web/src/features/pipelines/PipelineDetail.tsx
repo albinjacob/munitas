@@ -41,13 +41,16 @@ function Lifecycle({ pipelineId, department, version }: { pipelineId: string; de
   const failed = [promote.error, demote.error, retire.error].find(Boolean);
   const reading = version.steps_given_recordings;
   const writing = version.steps_writing_files;
-  const named = (steps: string[]) => `${steps.length > 1 ? "steps" : "step"} ${steps.join(", ")}`;
-  // What the version's steps are allowed to do, in the words of the person who has to approve it: the sound is read by code the platform did not write,
-  // and what such code writes becomes a version that waits for review.
-  const what = [
-    reading.length ? `The ${named(reading)} ${reading.length > 1 ? "are" : "is"} given the recordings, so code that the platform did not write reads the sound.` : "",
-    writing.length ? `The ${named(writing)} ${writing.length > 1 ? "write" : "writes"} files, which become a version that waits for a person's review.` : "",
-  ].filter(Boolean).join(" ");
+  const named = (steps: string[]) => `${steps.length > 1 ? "Steps" : "Step"} ${steps.join(", ")}`;
+  // What the version's steps do, in the words of the person who decides whether it may be used: what they read and what they make.
+  const made = "which become a new version that a reviewer checks before anyone can use it.";
+  const same = reading.length > 0 && reading.join() === writing.join();
+  const what = same
+    ? `${named(reading)} ${reading.length > 1 ? "read the patient recordings and write" : "reads the patient recordings and writes"} files, ${made}`
+    : [
+        reading.length ? `${named(reading)} ${reading.length > 1 ? "read" : "reads"} the patient recordings.` : "",
+        writing.length ? `${named(writing)} ${writing.length > 1 ? "write" : "writes"} files, ${made}` : "",
+      ].filter(Boolean).join(" ");
   const box = version.stage === "development" ? "border-amber-200 bg-amber-50" : version.stage === "retired" ? "border-slate-200 bg-slate-50" : "border-green-200 bg-green-50";
   const secondary = "mt-2 rounded border border-slate-300 bg-white px-3 py-1 text-xs hover:bg-slate-50";
   return (
@@ -60,8 +63,8 @@ function Lifecycle({ pipelineId, department, version }: { pipelineId: string; de
       ) : version.stage === "development" ? (
         <>
           <p>
-            {what} This version is in development and cannot run until an approver of {department ?? "the owning department"}, who is not{" "}
-            {version.uploaded_by_label ?? "the person who uploaded it"}, moves it to production.
+            {what} This version is in development. An approver of {department ?? "the owning department"} other than{" "}
+            {version.uploaded_by_label ?? "the person who uploaded it"} checks it and moves it to production first.
           </p>
           {mayDecide && (
             <button
@@ -134,7 +137,7 @@ export function PipelineDetail() {
       <Section
         level="page"
         title={p.name}
-        description={`Owned by ${p.department_name ?? "no department"}. Registered by ${p.registered_by_label ?? "unknown"}.`}
+        description={`Owned by ${p.department_name ?? "no department"}. Registered by ${p.registered_by_label ?? "unknown"}. A version in development cannot be run, a version in production can, and a retired version has ended for good.`}
       >
         {!p.versions.length ? (
           <Empty
@@ -168,7 +171,7 @@ export function PipelineDetail() {
                         ({step.kind}
                         {step.block ? `: ${step.block}` : ""}
                         {step.script ? `: ${step.script}` : ""}
-                        {step.recordings ? ", given the recordings" : ""}
+                        {step.recordings ? ", reads the recordings" : ""}
                         {step.writes_files ? ", writes files" : ""}
                         {step.memory_mb ? `, ${step.memory_mb} MB of memory` : ""}
                         {step.scratch_mb ? `, ${step.scratch_mb} MB of scratch space` : ""})

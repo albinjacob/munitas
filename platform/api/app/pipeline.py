@@ -330,10 +330,11 @@ async def start_deidentification(
             problems.append("this version of the pipeline was retired, so it cannot be run. Run a later version")
         elif stage == "development":
             asking = steps_needing_approval(pipeline_version["dag_config"])
+            many = len(asking) > 1
             problems.append(
-                f"this version is in development, and it lets the custom step{'s' if len(asking) > 1 else ''} {', '.join(asking)} read the recordings or "
-                f"write files, which only a version in production may do. An approver of the department that owns the pipeline, who is not the person "
-                f"who uploaded it, moves it to production first"
+                f"this version is in development, so it cannot be run. Its custom step{'s' if many else ''} {', '.join(asking)} "
+                f"{'read the recordings or write' if many else 'reads the recordings or writes'} files, so an approver of the department that owns the "
+                f"pipeline, other than the person who uploaded it, has to check it and move it to production first"
             )
 
     backend = version["storage_backend"] or "seaweedfs"

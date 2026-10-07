@@ -1878,16 +1878,16 @@ test_a_department_approver_other_than_the_uploader_approves_a_pipeline_version i
 test_nobody_approves_the_pipeline_version_they_uploaded if {
 	decision := access.pipeline_version_approval_decision with input as {"approver": {"id": "c", "roles": ["data_custodian"]}, "version": {"uploaded_by": "c"}, "dataset": {"approvers": ["c"]}}
 	decision.allow == false
-	"nobody approves the version they uploaded" in decision.reasons
+	"nobody moves a version they uploaded to production" in decision.reasons
 }
 
 test_only_a_department_approver_with_the_role_approves_a_pipeline_version if {
 	decision := access.pipeline_version_approval_decision with input as {"approver": {"id": "z", "roles": ["data_custodian"]}, "version": {"uploaded_by": "e"}, "dataset": {"approvers": ["c"]}}
 	decision.allow == false
-	"only an approver of the department that owns this pipeline may approve a version of it" in decision.reasons
+	"only an approver of the department that owns this pipeline may move a version of it to production" in decision.reasons
 	decision2 := access.pipeline_version_approval_decision with input as {"approver": {"id": "d", "roles": ["dpo"]}, "version": {"uploaded_by": "e"}, "dataset": {"approvers": ["d"]}}
 	decision2.allow == false
-	"this person holds no role that may approve a pipeline version (a data custodian)" in decision2.reasons
+	"this person holds no role that may move a pipeline version to production (a data custodian)" in decision2.reasons
 }
 
 test_a_department_approver_or_the_uploader_retires_a_pipeline_version_and_nobody_else if {

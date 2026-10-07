@@ -57,7 +57,7 @@ export function EraseChoice({
             />
             <span>
               <span className="font-medium">A table of people's records</span>
-              <span className="block text-xs text-slate-600">A CSV, and a contract that says which columns are locked.</span>
+              <span className="block text-xs text-slate-600">A CSV file (a plain text table) and a privacy contract, a file that says which columns identify a person and are locked.</span>
             </span>
           </label>
           <label className="mt-2 flex items-start gap-2 text-sm">
@@ -71,7 +71,7 @@ export function EraseChoice({
             />
             <span>
               <span className="font-medium">Recordings, one patient in each</span>
-              <span className="block text-xs text-slate-600">Audio files, and a manifest that names the patient for each.</span>
+              <span className="block text-xs text-slate-600">Audio files, and a manifest: a CSV file that says which patient each recording is about.</span>
             </span>
           </label>
         </fieldset>

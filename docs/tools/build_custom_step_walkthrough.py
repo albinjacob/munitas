@@ -41,18 +41,20 @@ STEPS = [
         "text": "Uploading seals the version. Sealed means finished and closed for good, so that it can never be edited, only "
                 "replaced by a next version. Every version of a pipeline has a stage, which is where it is in its life: in "
                 "development, which means it cannot be run, in production, which means it may be run, or retired, which means it "
-                "has ended for good. A version with a step like this one starts in development. The page lists the two steps and "
-                "then shows a yellow box. The box says that the first step is given the recordings, so code that the platform did "
-                "not write reads the sound, and that it writes files, which become a version that waits for a person&rsquo;s "
-                "review. The version leaves development only when an approver of the owning department moves it to production, "
-                "and the approver cannot be the person who uploaded it. An approver is a data custodian, a person who may decide "
+                "has ended for good. A version with a step like this one starts in development. The line under the pipeline&rsquo;s "
+                "name explains the three stages. The page lists the two steps and then shows a yellow box. The box says that the "
+                "first step reads the patient recordings and writes files, which become a new version that a reviewer checks before "
+                "anyone can use it. The version leaves development only when an approver of the owning department moves it to "
+                "production, and the approver cannot be the person who uploaded it. An approver is a data custodian, a person who may decide "
                 "who reads a department&rsquo;s data, who is listed for that department.",
-        "note": "Beside <strong>v1</strong> a yellow label reads <strong>In development</strong>. Under it the line "
-                "<strong>silence (script: steps/silence.py, given the recordings, writes files)</strong> and the line "
-                "<strong>decide (gate) &larr; silence</strong> are listed. A gate is the last step of a pipeline, where a person "
-                "decides whether the result may be released. The yellow box ends <strong>This version is in development and cannot "
-                "run until an approver of Cardiology, who is not Devi, moves it to production</strong>. The only button on "
-                "Devi&rsquo;s screen is <strong>Retire this version</strong>; there is no button to move it to production.",
+        "note": "Under the pipeline&rsquo;s name the page says <strong>A version in development cannot be run, a version in "
+                "production can, and a retired version has ended for good.</strong> Beside <strong>v1</strong> a yellow label reads "
+                "<strong>In development</strong>. Under it the line <strong>silence (script: steps/silence.py, reads the recordings, "
+                "writes files)</strong> and the line <strong>decide (gate) &larr; silence</strong> are listed. A gate is the last "
+                "step of a pipeline, where a person decides whether the result may be released. The yellow box ends "
+                "<strong>This version is in development. An approver of Cardiology other than Devi checks it and moves it to "
+                "production first.</strong> The only button on Devi&rsquo;s screen is <strong>Retire this version</strong>; there "
+                "is no button to move it to production.",
     },
     {
         "file": "03-the-run-is-refused-in-development.png", "actor": "devi",
@@ -63,9 +65,9 @@ STEPS = [
                 "the version is in development. It does not wait until the step reads a recording to find out, and nothing is left "
                 "behind: no run, no file and no record of an attempt to read.",
         "note": "A red box reads <strong>Nothing was started. Fix these first:</strong> and says that <strong>this version is in "
-                "development</strong>, that it lets the custom step <strong>silence</strong> read the recordings or write files, "
-                "which only a version in production may do, and that an approver of the department that owns the pipeline, who is "
-                "not the person who uploaded it, moves it to production first.",
+                "development, so it cannot be run</strong>, that its custom step <strong>silence</strong> reads the recordings or "
+                "writes files, and that an approver of the department that owns the pipeline, other than the person who uploaded "
+                "it, has to check it and move it to production first.",
     },
     {
         "file": "04-hartley-is-offered-the-move-to-production.png", "actor": "hartley",
