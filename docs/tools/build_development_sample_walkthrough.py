@@ -57,7 +57,7 @@ STEPS = [
                 "test with.</strong>, then the purpose. Two boxes, <strong>Recordings</strong> and <strong>Days</strong>, each say that you may "
                 "lower this, and a third reads <strong>A note, recorded with your decision</strong>. The text says <strong>You cannot choose the "
                 "recordings: the platform draws them.</strong> The buttons are <strong>Approve</strong> and <strong>Decline</strong>. A white "
-                "box above them lets an approver declare recordings synthetic, which step 10 uses.",
+                "box above them lets an approver declare recordings synthetic, which Part Four uses.",
     },
     {
         "file": "04-hartley-approves-fewer-and-the-platform-draws.png", "actor": "hartley",
@@ -116,7 +116,43 @@ STEPS = [
                 "<strong>decide</strong> also reads <strong>Done</strong>.",
     },
     {
-        "file": "08-devi-ends-the-sample.png", "actor": "devi",
+        "file": "08-devi-sees-the-files-the-step-made.png", "actor": "devi",
+        "title": "Devi sees the files the step made",
+        "screen": VERSION,
+        "text": "Devi follows the link Open the version it made. A version is one sealed copy of a dataset, here the files the step wrote. The page "
+                "has a section called Files. It lists the three recordings the step made silent, each marked Locked, which means the platform "
+                "keeps the file scrambled with the key of the one patient it came from, and unscrambles it only inside the platform. Devi may "
+                "open them because Devi started the run, and the run read a sample drawn for Devi. A line under the heading says when the files "
+                "are deleted: after seven days at the latest, or sooner if the sample they came from ends.",
+        "note": "Under <strong>Files</strong> the page reads <strong>A run you started made these from development data, so you may open them "
+                "while that data is in force for you.</strong> and <strong>These files are deleted on</strong> a date three days ahead. Three rows "
+                "end in <strong>silenced.wav</strong>, each with its size, the word <strong>Locked</strong> and a <strong>Play</strong> button. "
+                "No patient name and no key appear anywhere.",
+    },
+    {
+        "file": "09-devi-plays-one.png", "actor": "devi",
+        "title": "Devi plays one of them",
+        "screen": VERSION,
+        "text": "Devi presses Play on the first file. A sound player appears in the page and loads the recording. The platform unscrambles the file "
+                "as it sends it, so the browser receives ordinary sound and never the key or the place where the file is stored. Each opening is "
+                "written down: who opened which file, why the platform allowed it, and how many bytes were sent.",
+        "note": "Under the first row a sound player shows a pause button, the time <strong>0:00 / 0:01</strong> and a volume control. "
+                "There is no download button.",
+    },
+    {
+        "file": "10-hartley-cannot-open-them.png", "actor": "hartley",
+        "title": "Hartley, who approved the sample, cannot open what Devi made",
+        "screen": VERSION,
+        "text": "Hartley is the data custodian, the approver for the Cardiology department, and approved the sample. Hartley opens the same page. "
+                "The files are listed, so Hartley can see that they exist and how large they are, but there is no Play button. A sample is "
+                "for the person it was drawn for, and what a run makes from it is that person&rsquo;s to open. Hartley could open real "
+                "recordings only under a lease, which is a time-limited permission asked for on the page of the recordings and decided by a second "
+                "person.",
+        "note": "A yellow box reads <strong>You cannot open these files.</strong> followed by the reason. The three rows are listed with "
+                "<strong>Locked</strong> and no button.",
+    },
+    {
+        "file": "11-devi-ends-the-sample.png", "actor": "devi",
         "act": ("PART THREE", "The sample ends",
                 "A sample ends when its days are over, or sooner when the person it was drawn for, or an approver, ends it. Nothing is left running "
                 "on it afterwards."),
@@ -128,7 +164,7 @@ STEPS = [
                 "and has no buttons. The form above offers both kinds of sample again, with <strong>Draw a sample for me.</strong> selected.",
     },
     {
-        "file": "09-an-ended-sample-cannot-be-used.png", "actor": "devi",
+        "file": "12-an-ended-sample-cannot-be-used.png", "actor": "devi",
         "title": "A run on an ended sample is refused",
         "screen": VERSION,
         "text": "Devi opens the ended sample and tries to run the pipeline version on it. The platform refuses at the start, for the same reason as "
@@ -138,7 +174,18 @@ STEPS = [
                 "<strong>in development</strong> and can be run only on development data.",
     },
     {
-        "file": "10-hartley-declares-recordings-synthetic.png", "actor": "hartley",
+        "file": "13-when-the-sample-ends-the-files-close.png", "actor": "devi",
+        "title": "When the sample ends, what was made from it ends too",
+        "screen": VERSION,
+        "text": "Devi opens the version the step made once more. The page now says that the version was made for development and has ended. "
+                "The platform deletes the files within a minute of the sample ending, so nothing made from a sample outlives it. The version "
+                "itself stays on record, because a sealed version is never removed, and so does a note of how many files and bytes were freed "
+                "and why. The real recordings the sample named are not touched: a sample holds only a short list.",
+        "note": "Under <strong>Files</strong> a single line reads <strong>This version was made for development and has ended</strong>, with the "
+                "time, <strong>Its files are deleted. The version itself stays on record.</strong> No rows and no Play button remain.",
+    },
+    {
+        "file": "14-hartley-declares-recordings-synthetic.png", "actor": "hartley",
         "act": ("PART FOUR", "Recordings that hold no real person",
                 "Some recordings hold no real person, for example sentences read aloud by volunteers from invented scripts. They need no sample."),
         "title": "Hartley declares a version of recordings synthetic",
@@ -151,7 +198,7 @@ STEPS = [
                 "<strong>Declare these recordings synthetic</strong>.",
     },
     {
-        "file": "11-the-declaration-is-recorded.png", "actor": "hartley",
+        "file": "15-the-declaration-is-recorded.png", "actor": "hartley",
         "title": "The declaration is recorded, with who made it and why",
         "screen": VERSION,
         "text": "After Hartley presses the button, the page says who made the declaration, when, and why. From then on a pipeline version in "

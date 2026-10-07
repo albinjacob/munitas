@@ -124,8 +124,9 @@ for item in step.list_recordings():
     with wave.open(out, "wb") as target:
         target.setparams(params)
         target.writeframes(bytes(quiet) + frames[quiet:])
-    with step.write_output(record + ".silenced.wav") as written:
-        written.write(out.getvalue())
+    silent = out.getvalue()
+    with step.write_output(record + ".silenced.wav", from_record=record, size=len(silent)) as written:
+        written.write(silent)
     done.append(record)
 step.result({"recommendation": "not_measured", "reason": "the step only changes the sound and measures nothing", "done": done})
 `;
@@ -255,6 +256,25 @@ test("capture: build a pipeline version on a development sample of locked record
   await expect(page.getByTestId("pipeline-step-made-silence")).toBeVisible();
   await shotAt(page, "pipeline-step-silence", "on-the-sample-it-runs", 160);
 
+  // The files the step wrote are Devi's to open, because Devi's run made them on Devi's sample.
+  await page.getByTestId("pipeline-step-made-silence").click();
+  await expect(page).toHaveURL(/\/versions\/[0-9a-f-]{36}$/);
+  const madeUrl = page.url();
+  const madeFiles = page.getByTestId("record-files");
+  await expect(madeFiles).toBeVisible({ timeout: 15_000 });
+  await expect(madeFiles.locator('[data-testid^="record-row-"]')).toHaveCount(3);
+  await shotAt(page, "record-files", "devi-sees-the-files-the-step-made", 40);
+  await madeFiles.locator('[data-testid^="record-play-"]').first().click();
+  const player = madeFiles.locator('[data-testid^="record-player-"]').first();
+  await expect(player).toBeVisible();
+  await expect.poll(() => player.evaluate((a: HTMLAudioElement) => a.duration), { timeout: 10_000 }).toBeGreaterThan(0);
+  await shotAt(page, "record-files", "devi-plays-one", 40);
+  await loginAs(page, HARTLEY);
+  await page.goto(madeUrl);
+  await expect(page.getByTestId("record-files-note")).toBeVisible({ timeout: 15_000 });
+  await shotAt(page, "record-files", "hartley-cannot-open-them", 40);
+  await loginAs(page, DEVI);
+
   // PART THREE. The sample ends.
   await page.goto(`/versions/${real.version}`);
   await page.getByTestId("development-samples").locator('[data-testid^="sample-end-"]').first().click();
@@ -268,6 +288,10 @@ test("capture: build a pipeline version on a development sample of locked record
   await expect(page.getByTestId("version-pipeline-refused")).toContainText("development data");
   await shotAt(page, "version-pipeline-refused", "an-ended-sample-cannot-be-used", 300);
   expect(runId).toBeTruthy();
+
+  await page.goto(madeUrl);
+  await expect(page.getByTestId("record-files-ended")).toBeVisible({ timeout: 15_000 });
+  await shotAt(page, "record-files", "when-the-sample-ends-the-files-close", 40);
 
   // PART FOUR. Recordings with no real person in them need no sample.
   const synthetic = await lockedRecordings(cardiology, `cardiology-read-aloud-${stamp}`, `SYN-${stamp}`);

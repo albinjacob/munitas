@@ -142,8 +142,9 @@ for item in step.list_recordings():
     with wave.open(out, "wb") as target:
         target.setparams(params)
         target.writeframes(bytes(quiet) + frames[quiet:])
-    with step.write_output(record + ".silenced.wav") as written:
-        written.write(out.getvalue())
+    silent = out.getvalue()
+    with step.write_output(record + ".silenced.wav", from_record=record, size=len(silent)) as written:
+        written.write(silent)
     done.append(record)
 step.result({"recommendation": "not_measured", "reason": "the step only changes the sound and measures nothing", "done": done})
 `;
