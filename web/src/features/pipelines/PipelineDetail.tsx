@@ -9,6 +9,7 @@
  * dataset version's own page, not from here.
  */
 
+import { useState } from "react";
 import { ApiError } from "../../api/client";
 import { CODE_ROLES, useHoldsRole } from "../../identity/mayDo";
 import { useParams } from "react-router-dom";
@@ -22,12 +23,22 @@ function when(iso: string | null): string {
   return iso ? new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "";
 }
 
-/** What a version that gives a step the recordings needs: a second person's approval, or the record that it has one. */
-function Approval({ pipelineId, department, version }: { pipelineId: string; department: string | null; version: PipelineVersion }) {
-  const mayApprove = useHoldsRole(APPROVER_ROLES);
-  const approve = useDecidePipelineVersion(pipelineId, "approve");
-  const withdraw = useDecidePipelineVersion(pipelineId, "withdraw-approval");
-  const failed = [approve.error, withdraw.error].find(Boolean);
+const STAGE_LABEL: Record<PipelineVersion["stage"], string> = { development: "In development", production: "In production", retired: "Retired" };
+const STAGE_STYLE: Record<PipelineVersion["stage"], string> = {
+  development: "bg-amber-100 text-amber-900",
+  production: "bg-green-100 text-green-900",
+  retired: "bg-slate-200 text-slate-700",
+};
+
+/** Where a version is in its life, and what moves it on. Moving it to production is a second person's decision when its steps read the recordings or write files. */
+function Lifecycle({ pipelineId, department, version }: { pipelineId: string; department: string | null; version: PipelineVersion }) {
+  const mayDecide = useHoldsRole(APPROVER_ROLES);
+  const mayRetire = useHoldsRole([...APPROVER_ROLES, ...CODE_ROLES]);
+  const promote = useDecidePipelineVersion(pipelineId, "promote");
+  const demote = useDecidePipelineVersion(pipelineId, "demote");
+  const retire = useDecidePipelineVersion(pipelineId, "retire");
+  const [sure, setSure] = useState(false);
+  const failed = [promote.error, demote.error, retire.error].find(Boolean);
   const reading = version.steps_given_recordings;
   const writing = version.steps_writing_files;
   const named = (steps: string[]) => `${steps.length > 1 ? "steps" : "step"} ${steps.join(", ")}`;
@@ -37,41 +48,66 @@ function Approval({ pipelineId, department, version }: { pipelineId: string; dep
     reading.length ? `The ${named(reading)} ${reading.length > 1 ? "are" : "is"} given the recordings, so code that the platform did not write reads the sound.` : "",
     writing.length ? `The ${named(writing)} ${writing.length > 1 ? "write" : "writes"} files, which become a version that waits for a person's review.` : "",
   ].filter(Boolean).join(" ");
+  const box = version.stage === "development" ? "border-amber-200 bg-amber-50" : version.stage === "retired" ? "border-slate-200 bg-slate-50" : "border-green-200 bg-green-50";
+  const secondary = "mt-2 rounded border border-slate-300 bg-white px-3 py-1 text-xs hover:bg-slate-50";
   return (
-    <div data-testid={`pipeline-approval-${version.version}`} className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-slate-800">
-      {version.approved ? (
+    <div data-testid={`pipeline-lifecycle-${version.version}`} className={`mt-3 rounded border p-3 text-sm text-slate-800 ${box}`}>
+      {version.stage === "retired" ? (
+        <p>
+          Retired by {version.retired_by_label ?? "a person"} on {when(version.retired_at)}
+          {version.retired_note ? `: ${version.retired_note}` : "."} This version can no longer be run. Run a later version.
+        </p>
+      ) : version.stage === "development" ? (
         <>
           <p>
-            Approved by {version.approved_by_label ?? "an approver"} on {when(version.approved_at)}. {what}
+            {what} This version is in development and cannot run until an approver of {department ?? "the owning department"}, who is not{" "}
+            {version.uploaded_by_label ?? "the person who uploaded it"}, moves it to production.
           </p>
-          {mayApprove && (
+          {mayDecide && (
             <button
               type="button"
-              className="mt-2 rounded border border-slate-300 bg-white px-3 py-1 text-xs hover:bg-slate-50"
-              disabled={withdraw.isPending}
-              onClick={() => withdraw.mutate({ versionId: version.id, note: "" })}
+              className="mr-2 mt-2 rounded bg-slate-900 px-3 py-1 text-xs text-white hover:bg-slate-700"
+              disabled={promote.isPending}
+              onClick={() => promote.mutate({ versionId: version.id, note: "" })}
             >
-              Take the approval back
+              Move to production
             </button>
           )}
         </>
       ) : (
         <>
           <p>
-            {what} This version cannot run until an approver of {department ?? "the owning department"}, who is not{" "}
-            {version.uploaded_by_label ?? "the person who uploaded it"}, approves it.
+            {version.needs_promotion
+              ? `Moved to production by ${version.promoted_by_label ?? "an approver"} on ${when(version.promoted_at)}. ${what}`
+              : "Every step of this version is one the platform provides, so it is in production."}
           </p>
-          {mayApprove && (
-            <button
-              type="button"
-              className="mt-2 rounded bg-slate-900 px-3 py-1 text-xs text-white hover:bg-slate-700"
-              disabled={approve.isPending}
-              onClick={() => approve.mutate({ versionId: version.id, note: "" })}
-            >
-              Approve this version
+          {version.needs_promotion && mayDecide && (
+            <button type="button" className={`${secondary} mr-2`} disabled={demote.isPending} onClick={() => demote.mutate({ versionId: version.id, note: "" })}>
+              Return to development
             </button>
           )}
         </>
+      )}
+      {version.stage !== "retired" && mayRetire && !sure && (
+        <button type="button" className={secondary} onClick={() => setSure(true)}>
+          Retire this version
+        </button>
+      )}
+      {version.stage !== "retired" && mayRetire && sure && (
+        <span className="mt-2 inline-flex items-center gap-2 text-xs">
+          Retiring is final. A retired version is replaced by a later one, never brought back.
+          <button
+            type="button"
+            className="rounded bg-red-700 px-3 py-1 text-white hover:bg-red-800"
+            disabled={retire.isPending}
+            onClick={() => retire.mutate({ versionId: version.id, note: "" }, { onSettled: () => setSure(false) })}
+          >
+            Retire v{version.version}
+          </button>
+          <button type="button" className="rounded border border-slate-300 bg-white px-3 py-1 hover:bg-slate-50" onClick={() => setSure(false)}>
+            Cancel
+          </button>
+        </span>
       )}
       {failed instanceof ApiError && (
         <p role="alert" className="mt-2 text-xs text-red-800">
@@ -119,6 +155,9 @@ export function PipelineDetail() {
                   <code className="font-mono text-xs text-slate-500">
                     {v.config_hash.slice(0, 12)}
                   </code>
+                  <span data-testid={`pipeline-stage-${v.version}`} className={`rounded px-2 py-0.5 text-xs font-medium ${STAGE_STYLE[v.stage]}`}>
+                    {STAGE_LABEL[v.stage]}
+                  </span>
                   {v.uploaded_by_label && <span className="text-xs text-slate-500">uploaded by {v.uploaded_by_label}</span>}
                 </div>
                 <ol className="mt-2 space-y-1 text-xs text-slate-600">
@@ -143,7 +182,7 @@ export function PipelineDetail() {
                     </li>
                   ))}
                 </ol>
-                {v.needs_approval && <Approval pipelineId={p.id} department={p.department_name} version={v} />}
+                <Lifecycle pipelineId={p.id} department={p.department_name} version={v} />
               </li>
             ))}
           </ul>

@@ -198,8 +198,8 @@ test("capture: let your own code read recordings and write files, with an approv
 
   await page.getByTestId("upload-pipeline-version-submit").click();
   await expect(page.getByTestId("pipeline-version-1")).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByTestId("pipeline-approval-1")).toContainText("cannot run until an approver of Cardiology");
-  await expect(page.getByTestId("pipeline-approval-1").getByRole("button", { name: "Approve this version" })).toHaveCount(0);
+  await expect(page.getByTestId("pipeline-lifecycle-1")).toContainText("cannot run until an approver of Cardiology");
+  await expect(page.getByTestId("pipeline-lifecycle-1").getByRole("button", { name: "Move to production" })).toHaveCount(0);
   const pipelineUrl = page.url();
   await shotAt(page, "pipeline-version-1", "the-version-waits-for-an-approver", 40);
 
@@ -208,17 +208,17 @@ test("capture: let your own code read recordings and write files, with an approv
   await expect(page.getByTestId("version-pipeline-start")).toBeVisible({ timeout: 15_000 });
   await page.getByTestId("pipeline-kind").selectOption({ label: `${pipelineName} (v1)` });
   await page.getByTestId("version-pipeline-start").click();
-  await expect(page.getByTestId("version-pipeline-refused")).toContainText("has not been approved");
-  await shotAt(page, "version-pipeline-refused", "the-run-is-refused-until-it-is-approved", 300);
+  await expect(page.getByTestId("version-pipeline-refused")).toContainText("is in development");
+  await shotAt(page, "version-pipeline-refused", "the-run-is-refused-in-development", 300);
 
   // PART TWO. Hartley, an approver of the owning department, approves it.
   await loginAs(page, HARTLEY);
   await page.goto(pipelineUrl);
-  await expect(page.getByTestId("pipeline-approval-1").getByRole("button", { name: "Approve this version" })).toBeVisible();
-  await shotAt(page, "pipeline-version-1", "hartley-is-offered-the-approval", 40);
-  await page.getByTestId("pipeline-approval-1").getByRole("button", { name: "Approve this version" }).click();
-  await expect(page.getByTestId("pipeline-approval-1")).toContainText("Approved by");
-  await shotAt(page, "pipeline-version-1", "the-version-is-approved", 40);
+  await expect(page.getByTestId("pipeline-lifecycle-1").getByRole("button", { name: "Move to production" })).toBeVisible();
+  await shotAt(page, "pipeline-version-1", "hartley-is-offered-the-move-to-production", 40);
+  await page.getByTestId("pipeline-lifecycle-1").getByRole("button", { name: "Move to production" }).click();
+  await expect(page.getByTestId("pipeline-lifecycle-1")).toContainText("Moved to production by");
+  await shotAt(page, "pipeline-version-1", "the-version-is-in-production", 40);
 
   // PART THREE. Devi runs it, and finds what it made.
   await loginAs(page, DEVI);
@@ -247,4 +247,22 @@ test("capture: let your own code read recordings and write files, with an approv
   await shot(page, "the-new-version-waits-for-a-review");
   await page.setViewportSize({ width: 1920, height: 640 });
   await headingAt(page, "Where this came from", "where-the-new-version-came-from", 40);
+
+  // PART FOUR. The version is retired, and cannot be run again.
+  await loginAs(page, HARTLEY);
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.goto(pipelineUrl);
+  await page.getByTestId("pipeline-lifecycle-1").getByRole("button", { name: "Retire this version" }).click();
+  await expect(page.getByTestId("pipeline-lifecycle-1")).toContainText("Retiring is final");
+  await page.getByTestId("pipeline-lifecycle-1").getByRole("button", { name: "Retire v1" }).click();
+  await expect(page.getByTestId("pipeline-stage-1")).toHaveText("Retired");
+  await shotAt(page, "pipeline-version-1", "hartley-retires-the-version", 40);
+
+  await loginAs(page, DEVI);
+  await page.goto(versionUrl);
+  await expect(page.getByTestId("version-pipeline-start")).toBeVisible({ timeout: 15_000 });
+  await page.getByTestId("pipeline-kind").selectOption({ label: `${pipelineName} (v1)` });
+  await page.getByTestId("version-pipeline-start").click();
+  await expect(page.getByTestId("version-pipeline-refused")).toContainText("was retired");
+  await shotAt(page, "version-pipeline-refused", "a-retired-version-cannot-be-run", 300);
 });

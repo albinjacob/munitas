@@ -237,6 +237,8 @@ WORDS = {
     "custom_step": ("Custom step", "A step of a pipeline whose script was written by the person who registered the pipeline, instead of one of "
                                    "the steps Munitas provides. It runs in a closed container with no internet, no key and no storage address, "
                                    "and can only ask the platform for the recordings it is allowed to read and send back the files it makes."),
+    "stage": ("Stage", "Where a version of a pipeline is in its life. In development means the version cannot be run. In production "
+                       "means it may be run. Retired means it has ended for good and cannot be run again."),
     "under_review": ("Under review", "The access level of something that no person has reviewed. Nobody may use it until a "
                                      "reviewer decides that it may be released."),
     "auditor": ("Privacy auditor", "A person who checks how locked data was used. The role reads records of use and no "

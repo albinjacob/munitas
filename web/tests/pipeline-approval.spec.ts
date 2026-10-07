@@ -1,10 +1,12 @@
 /**
- * U143 in the console: a pipeline version whose custom step is given the recordings, or writes files, waits for a second person's approval.
+ * U143 in the console: a pipeline version whose custom step is given the recordings, or writes files, starts in development and moves to production
+ * only when a second person says so. A version is retired for good by its owner's approver or by whoever uploaded it.
  *
  * The claims these tests carry are about what reaches the person, on the live platform:
- *   - the version says which step is given the recordings and which writes files, who uploaded it, and that it cannot run until an approver of the owning department approves;
- *   - the person who uploaded it is not offered the approval, and a custodian of another department who tries is told why;
- *   - the owning department's approver approves it, the page then says by whom, and taking the approval back puts it back to waiting.
+ *   - the version shows its stage, says which step is given the recordings and which writes files, who uploaded it, and that it cannot run until an approver of the owning department moves it to production;
+ *   - the person who uploaded it is not offered the move, and a custodian of another department who tries is told why;
+ *   - the owning department's approver moves it to production, the page then says by whom, and returning it puts it back in development;
+ *   - retiring asks first, is final, and the page then says who retired it and offers nothing more.
  */
 
 import { expect, test } from "@playwright/test";
@@ -91,33 +93,49 @@ async function pipelineWithVersion(): Promise<string> {
   return id;
 }
 
-test.describe("U143: a version that is given the recordings waits for an approver", () => {
-  test("the uploader sees it waits and is not offered the approval, and the approver approves and takes it back", async ({ page }) => {
+test.describe("U143: a version that is given the recordings starts in development", () => {
+  test("the uploader sees it waits and is not offered the move, the approver moves it to production and back, and retiring is final", async ({ page }) => {
     const id = await pipelineWithVersion();
 
     await loginAs(page, ENGINEER);
     await page.goto(`/pipelines/${id}`);
-    const panel = page.getByTestId("pipeline-approval-1");
+    const panel = page.getByTestId("pipeline-lifecycle-1");
+    await expect(page.getByTestId("pipeline-stage-1")).toHaveText("In development");
     await expect(panel).toContainText("The step inspect is given the recordings, so code that the platform did not write reads the sound");
     await expect(panel).toContainText("The step inspect writes files, which become a version that waits for a person's review");
     await expect(panel).toContainText("cannot run until an approver of Verification");
     await expect(page.getByTestId("pipeline-version-1")).toContainText("given the recordings, writes files, 2048 MB of memory");
-    await expect(panel.getByRole("button", { name: "Approve this version" })).toHaveCount(0);
+    await expect(panel.getByRole("button", { name: "Move to production" })).toHaveCount(0);
 
     await loginAs(page, ELSEWHERE);
     await page.goto(`/pipelines/${id}`);
-    await page.getByRole("button", { name: "Approve this version" }).click();
+    await page.getByRole("button", { name: "Move to production" }).click();
     await expect(page.getByRole("alert")).toContainText("department that owns this pipeline");
-    await expect(page.getByTestId("pipeline-approval-1")).toContainText("cannot run until an approver");
+    await expect(page.getByTestId("pipeline-lifecycle-1")).toContainText("cannot run until an approver");
+    await expect(page.getByTestId("pipeline-stage-1")).toHaveText("In development");
 
     await loginAs(page, CUSTODIAN);
     await page.goto(`/pipelines/${id}`);
-    await page.getByRole("button", { name: "Approve this version" }).click();
-    await expect(page.getByTestId("pipeline-approval-1")).toContainText("Approved by");
-    await expect(page.getByTestId("pipeline-approval-1")).toContainText("writes files, which become a version that waits");
+    await page.getByRole("button", { name: "Move to production" }).click();
+    await expect(page.getByTestId("pipeline-lifecycle-1")).toContainText("Moved to production by");
+    await expect(page.getByTestId("pipeline-lifecycle-1")).toContainText("writes files, which become a version that waits");
+    await expect(page.getByTestId("pipeline-stage-1")).toHaveText("In production");
 
-    await page.getByRole("button", { name: "Take the approval back" }).click();
-    await expect(page.getByTestId("pipeline-approval-1")).toContainText("cannot run until an approver");
-    await expect(page.getByRole("button", { name: "Approve this version" })).toBeVisible();
+    await page.getByRole("button", { name: "Return to development" }).click();
+    await expect(page.getByTestId("pipeline-lifecycle-1")).toContainText("cannot run until an approver");
+    await expect(page.getByTestId("pipeline-stage-1")).toHaveText("In development");
+    await expect(page.getByRole("button", { name: "Move to production" })).toBeVisible();
+
+    // Retiring asks first, and what it says is true: nothing can bring the version back.
+    await page.getByRole("button", { name: "Retire this version" }).click();
+    await expect(page.getByTestId("pipeline-lifecycle-1")).toContainText("Retiring is final");
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await expect(page.getByTestId("pipeline-stage-1")).toHaveText("In development");
+    await page.getByRole("button", { name: "Retire this version" }).click();
+    await page.getByRole("button", { name: "Retire v1" }).click();
+    await expect(page.getByTestId("pipeline-stage-1")).toHaveText("Retired");
+    await expect(page.getByTestId("pipeline-lifecycle-1")).toContainText("This version can no longer be run");
+    await expect(page.getByRole("button", { name: "Move to production" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Retire this version" })).toHaveCount(0);
   });
 });

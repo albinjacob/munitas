@@ -31,13 +31,17 @@ export interface PipelineVersion {
   config_hash: string;
   created_at: string;
   uploaded_by_label: string | null;
-  /** The script steps that are given the recordings, and those that write files. When there are any, a second person approves the version before a run may start. */
+  /** The script steps that are given the recordings, and those that write files. When there are any, a second person moves the version to production before a run may start. */
   steps_given_recordings: string[];
   steps_writing_files: string[];
-  needs_approval: boolean;
-  approved: boolean;
-  approved_by_label: string | null;
-  approved_at: string | null;
+  needs_promotion: boolean;
+  /** Where the version is in its life: in development, in production, or retired for good. */
+  stage: "development" | "production" | "retired";
+  promoted_by_label: string | null;
+  promoted_at: string | null;
+  retired_by_label: string | null;
+  retired_at: string | null;
+  retired_note: string | null;
 }
 
 export interface PipelineRow {
@@ -103,12 +107,12 @@ export function useRegisterPipeline() {
   });
 }
 
-/** Approving a version, or taking the approval back. The platform decides who may and says why when it refuses. */
-export function useDecidePipelineVersion(pipelineId: string, action: "approve" | "withdraw-approval") {
+/** Moving a version to production, returning it to development, or retiring it. The platform decides who may and says why when it refuses. */
+export function useDecidePipelineVersion(pipelineId: string, action: "promote" | "demote" | "retire") {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: { versionId: string; note: string }) =>
-      api.post<{ approved: boolean }>(`/pipelines/${pipelineId}/versions/${body.versionId}/${action}`, { note: body.note }),
+      api.post<{ stage: PipelineVersion["stage"] }>(`/pipelines/${pipelineId}/versions/${body.versionId}/${action}`, { note: body.note }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["pipeline", pipelineId] });
     },
