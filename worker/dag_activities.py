@@ -8,8 +8,11 @@ call against the platform's own API, not the sandbox itself).
 
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import shutil
 import tempfile
+import threading
 from pathlib import Path
 
 import httpx
@@ -18,6 +21,38 @@ from temporalio import activity
 from . import config, recording_open
 from .dag_sandbox import run_dag_step
 from .sandbox_run import SandboxBuildError, build_deps, extract_code
+
+
+HEARTBEAT_SECONDS = 15
+
+
+@contextlib.contextmanager
+def heartbeating(every: float = HEARTBEAT_SECONDS):
+    """Tell Temporal every few seconds that this activity is alive, from a thread of its own, for as long as the block runs.
+
+    A step runs for minutes inside one blocking call, so without this Temporal knows nothing until the activity returns. If the result is then lost
+    on its way back, or this worker dies, the workflow would wait out the whole start-to-close time (30 minutes for a step given recordings) and
+    would then try the step again. With it, the workflow sets a heartbeat timeout of a minute and a half, and notices within that.
+
+    The beats stop before the activity returns, which is why a lost result is noticed at all: nothing more is heard from this activity.
+    """
+    context = contextvars.copy_context()
+    stop = threading.Event()
+
+    def beat() -> None:
+        while not stop.wait(every):
+            try:
+                activity.heartbeat()
+            except Exception:  # noqa: BLE001 - the activity is over, or cancelled: nothing left to say
+                return
+
+    thread = threading.Thread(target=context.run, args=(beat,), name="step-heartbeat", daemon=True)
+    thread.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        thread.join(timeout=5)
 
 
 def _fetch_scripts(pipeline_id: str, version_id: str) -> bytes:
@@ -40,6 +75,11 @@ def run_dag_step_sandboxed(params: dict) -> dict:
     needs to make the step's pass and, for a writing step, to finish it; and
     `memory_mb` and `scratch_mb` from its pipeline file.
     """
+    with heartbeating():
+        return _run_script_step(params)
+
+
+def _run_script_step(params: dict) -> dict:
     work_dir = Path(tempfile.mkdtemp(prefix="munitas-dag-"))
     try:
         payload = _fetch_scripts(params["pipeline_id"], params["pipeline_version_id"])

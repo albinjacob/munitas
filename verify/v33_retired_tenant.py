@@ -46,6 +46,9 @@ EXEMPT = {
     # Opening a person's locked columns in a closed organisation records which key was used, so this log must still be written. It holds
     # no key and no record, only who used which person's key and when, and it is removed only with the organisation.
     "key_use_log",
+    # The log of who opened which file of a version through the platform. Opening a locked file also writes the key log above, which is exempt for the same reason,
+    # so this log must be writable under the same conditions. It holds no file and no key, and is removed only with the organisation.
+    "record_read_log",
     # Holds are placed on organisations that are already closed, and the record of a
     # closing is written after it. Each has its own rules instead: a hold needs two
     # different administrators (U99), and neither can be deleted except by a purge

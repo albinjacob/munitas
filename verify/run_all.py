@@ -103,6 +103,9 @@ SCRIPTS = [
     ("U136 a whole file is locked under a person's key in chunks, and a chunk that is moved, repeated, cut off or added to is refused", "v136_locked_file_stream.py"),
     ("U137 a recording is uploaded in parts that can each be sent again, locked under its patient's key, sealed, and unreadable once the patient is erased", "v137_locked_recordings.py"),
     ("U141 a custom pipeline step is given the recordings only when a second person approved its version, and the platform opens them for it", "v140_custom_steps_and_recordings.py"),
+    ("U148 what a step makes from a patient's recording is locked under that patient's key as it arrives, belongs to that patient, and sound without a source is refused", "v145_locked_outputs.py"),
+    ("U149 a person opens the files of a version through the platform, only for a reason the platform holds, unlocked inside it, logged, and stopped when the reason ends", "v146_record_door.py"),
+    ("U151 what was made for development ends with its sample or its days: the files are deleted, the row kept and marked, the real recordings untouched, a hold stops it", "v147_development_outputs.py"),
     ("U144 a pipeline version in development runs only on development data, and a development sample is drawn by the platform as pointers, never copies", "v142_development_samples.py"),
 ]
 

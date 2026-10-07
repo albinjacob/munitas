@@ -45,6 +45,11 @@ class FinishIn(PassIn):
     succeeded: bool
 
 
+class OpenOutputIn(BaseModel):
+    source_record: str | None = None
+    size: int | None = None
+
+
 def run_context(pipeline_run_id: str, tenant_id: str, step: str) -> dict:
     """The pipeline run behind a step, with the reasons it may not be given what it asks for, as a refusal. Asked on every request."""
     run = db.one("select tenant_id, ended_at, source_version_id, pipeline_version_id, triggered_by from pipeline_run where id = %s", (pipeline_run_id,))
@@ -133,6 +138,7 @@ def open_recording(record_id: str, step: dict = Depends(_step_pass)) -> dict:
         raise HTTPException(404, {"reasons": [str(exc)]}) from exc
     except recordings.PatientErased as exc:
         raise HTTPException(410, {"reasons": [str(exc)]}) from exc
+    step_outputs.note_opening(claim.tenant_id, claim.task_id, claim.step, step["source_version_id"], record_id)
     handle = task_credential.mint(principal=claim.principal, task_kind="step_read", task_id=claim.task_id, tenant_id=claim.tenant_id,
                                   ttl_seconds=HANDLE_SECONDS, step=claim.step, scope=record_id)
     return {"bytes": size, "handle": handle}
@@ -171,16 +177,18 @@ def _refused(exc: step_outputs.Refused) -> HTTPException:
 
 
 @router.post("/step/v1/outputs/{name}", status_code=201)
-def open_output(name: str, step: dict = Depends(_step_pass)) -> dict:
+def open_output(name: str, body: OpenOutputIn | None = None, step: dict = Depends(_step_pass)) -> dict:
     """Open one file to be written, in parts of at most 8 MiB. Opening a name again replaces the earlier file of that name.
 
-    Nothing is a version yet. The files a step finished are sealed together, "under review", when the step ends successfully, and thrown away when
-    it fails.
+    A file made from a recording says which one (`source_record`) and its size in bytes (`size`), and is then locked under that recording's patient as
+    it arrives. Nothing is a version yet. The files a step finished are sealed together, "under review", when the step ends successfully, and thrown
+    away when it fails.
     """
     _needs(step, "writes_files")
     claim = step["claim"]
     try:
-        return step_outputs.open_output(tenant_id=claim.tenant_id, pipeline_run_id=claim.task_id, step=claim.step, name=name)
+        return step_outputs.open_output(tenant_id=claim.tenant_id, pipeline_run_id=claim.task_id, step=claim.step, name=name,
+                                        source_record=body.source_record if body else None, size=body.size if body else None)
     except step_outputs.Refused as exc:
         raise _refused(exc) from exc
 
@@ -192,7 +200,7 @@ async def put_output_part(name: str, part_number: int, request: Request, step: d
     claim = step["claim"]
     data = await _body(request, step_outputs.PART)
     try:
-        return step_outputs.put_part(pipeline_run_id=claim.task_id, step=claim.step, name=name, part_number=part_number, data=data)
+        return step_outputs.put_part(service=_service(), pipeline_run_id=claim.task_id, step=claim.step, name=name, part_number=part_number, data=data)
     except step_outputs.Refused as exc:
         raise _refused(exc) from exc
 
@@ -203,7 +211,7 @@ def complete_output(name: str, step: dict = Depends(_step_pass)) -> dict:
     _needs(step, "writes_files")
     claim = step["claim"]
     try:
-        return step_outputs.complete_output(pipeline_run_id=claim.task_id, step=claim.step, name=name)
+        return step_outputs.complete_output(pipeline_run_id=claim.task_id, step=claim.step, name=name, reads_recordings=bool(step["recordings"]))
     except step_outputs.Refused as exc:
         raise _refused(exc) from exc
 

@@ -1939,6 +1939,33 @@ test_only_an_approver_with_a_reason_declares_recordings_synthetic if {
 	not access.may_declare_synthetic with input as {"actor": {"id": "e", "roles": ["pipeline_operator"]}, "request": {"note": "x"}, "dataset": {"approvers": ["e"]}}
 }
 
+test_a_person_opens_their_own_sample_synthetic_recordings_and_what_they_made_on_them if {
+	access.may_open_record with input as {"person": {"id": "e", "roles": ["pipeline_operator"]}, "read": {"basis": "own_sample"}}
+	access.may_open_record with input as {"person": {"id": "e", "roles": ["pipeline_operator"]}, "read": {"basis": "synthetic"}}
+	access.may_open_record with input as {"person": {"id": "e", "roles": ["deid_reviewer"]}, "read": {"basis": "own_development_output"}}
+	access.may_open_record with input as {"person": {"id": "c", "roles": ["data_custodian"]}, "read": {"basis": "synthetic"}}
+}
+
+test_real_recordings_are_not_opened_by_a_role_alone if {
+	decision := access.open_record_decision with input as {"person": {"id": "c", "roles": ["data_custodian"]}, "read": {"basis": "none"}}
+	decision.allow == false
+	count(decision.reasons) == 1
+	not access.may_open_record with input as {"person": {"id": "e", "roles": ["pipeline_operator", "data_custodian"]}, "read": {"basis": "none"}}
+}
+
+test_what_was_made_for_development_and_has_ended_is_not_opened_and_says_why if {
+	decision := access.open_record_decision with input as {"person": {"id": "e", "roles": ["pipeline_operator"]}, "read": {"basis": "expired"}}
+	decision.allow == false
+	count(decision.reasons) == 1
+	contains(concat(" ", decision.reasons), "deleted")
+}
+
+test_a_role_that_may_not_open_recordings_does_not_even_for_a_sample if {
+	decision := access.open_record_decision with input as {"person": {"id": "r", "roles": ["analyst"]}, "read": {"basis": "own_sample"}}
+	decision.allow == false
+	count(decision.reasons) == 1
+}
+
 test_a_department_approver_or_the_uploader_retires_a_pipeline_version_and_nobody_else if {
 	access.may_retire_pipeline_version with input as {"actor": {"id": "c", "roles": ["data_custodian"]}, "version": {"uploaded_by": "e"}, "dataset": {"approvers": ["c"]}}
 	access.may_retire_pipeline_version with input as {"actor": {"id": "e", "roles": ["pipeline_operator"]}, "version": {"uploaded_by": "e"}, "dataset": {"approvers": ["c"]}}

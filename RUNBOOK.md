@@ -583,11 +583,19 @@ organisation or a department. Outputs of a run in development are sealed under r
 same library, and the same pass. It never holds a storage address or key:
 
 ```python
-step.save_output("notes.txt", b"...")                         # a whole file from bytes
-step.copy_to_output("redacted/visit-1.wav", "/tmp/out.wav")   # a file from the container's scratch space, sent in pieces
-with step.write_output("redacted/visit-2.wav") as out:        # or written as a stream; an error inside the block discards the file
-    out.write(b"...")
+step.save_output("notes.txt", b"...")                                             # a whole file from bytes
+step.copy_to_output("visit-1.wav", "/tmp/out.wav", from_record="r-0001")           # a file from the container's scratch space, sent in pieces
+with step.write_output("visit-2.wav", from_record="r-0002", size=len(data)) as out:  # or written as a stream; an error inside the block discards the file
+    out.write(data)
 ```
+
+**Files made from a recording are locked.** A redacted recording still carries the patient's voice, so what a step makes from a recording is the
+patient's data. A step says which recording a file was made from (`from_record`) and, for a stream, its size up front, because the lock is fitted to
+the size. The platform checks that this step opened that recording in this run (it keeps a record of what each step opened), locks each part under that
+patient's key as it arrives (one line in the key log for each part, naming the file and the step), and records the file as belonging to that patient, so
+erasing the patient makes it unreadable together with the recording and lists the version that holds it. No plain copy is ever stored. A file that looks
+like sound (wav, mp3, flac, ogg, mp4 audio), from a step that was given recordings, with no `from_record`, is refused and what was stored of it is
+thrown away, with a reason that says how to open it. A step that is not given recordings may write sound: it cannot have made it from one.
 
 Each call returns the size and fingerprint of the file. The library sends each file to the platform in parts of at most 8 MiB, and the platform writes
 them to storage and reads the finished file back to check its checksum. Limits: 500 files, 512 MiB for one file, 1 GiB in all, and the name `records.json` is reserved. When the container ends, the
@@ -596,9 +604,48 @@ in a dataset named after the run's dataset and the step, owned by the same depar
 until a reviewer decides. The version records the step, the code version and the version it was made from, so erasing a patient later lists it. If the step failed,
 or the version was returned to development or retired during the run, everything it wrote is discarded and nothing is sealed. Finishing twice does nothing the second time.
 
-**What a step cannot do.** Anything the platform does not offer as a route. The console shows the version a step made and links to it from the
-run page, but it does not list or play the files inside; that is deferred. If a step copies audio into its JSON, the approver is the safeguard, not
-the platform. Review and testing on synthetic data are the operator's.
+**A step that goes quiet.** A script step sends a heartbeat to Temporal every 15 seconds while it runs, and the workflow allows 90 seconds without
+one. A result that is lost on its way back, or a sandbox worker that dies, is therefore noticed within a minute and a half and not after the whole 30
+minutes. A step that only reads is then run again, up to three times in all. A step that writes files is not run again: a second run would meet the first
+one's half-finished files. It fails at once, and the person runs it again. (The sandbox worker has logged "Network error while completing activity" three
+times in a day; the cause was not found, and this makes it harmless rather than rare.)
+
+**What a step cannot do.** Anything the platform does not offer as a route. If a step copies audio into its JSON, the approver is the safeguard, not the
+platform. Review and testing on synthetic data are the operator's.
+
+## Opening the files of a version
+
+A person opens the files of a version (a recording, or a file a step made) through the platform, never through storage. `GET
+/dataset-versions/{id}/records` lists them and says whether the caller may open them and why not; `POST .../records/{record}/open` opens one and
+returns a handle; `GET /record-stream/{handle}` returns the bytes, whole or by range (`Range: bytes=a-b`, 206 with `Content-Range`), unlocked inside the
+platform as they are sent. A sound player in the console reads the handle's address directly. Every opening is written to `record_read_log` (who, which
+file, why, how many bytes were streamed) and, for a locked file, once to the key log; ranges are not logged again.
+
+The platform works out why a person may open a version's files from what it holds, and the policy (`open_record_decision`) turns it into an answer:
+`own_sample` (a development sample drawn for this person, in force), `synthetic` (declared synthetic), `own_development_output` (made by a run this
+person started, on development data still in force for them), or `none`. With `none`, which is every real recording and everything made from one, the
+answer is that a person opens them only under a lease, which is not yet something the platform offers. The roles that may open are the data engineer, the
+de-identification reviewer and the data custodian. The handle lasts 15 minutes, is the only thing the stream route takes (a sound player cannot send a
+header), is refused by every route that takes a run's credential, and is asked about again on every request: so a sample that ends, a person who leaves
+or a patient who is erased stops what is playing at its next request. There is no download in the console.
+
+Checks: U148 (locked outputs, in the container), U149 (the door, in the container), U150 (playing in the console), and the host loop U145, which opens what
+a real step wrote and compares it, byte for byte, with what the same change makes of the original sound.
+
+## What was made for development ends
+
+A development sample, and what a run makes on a sample or on recordings declared synthetic, is noted in `development_output` (when the sample is
+approved, and when a step seals a version after a run on development data). It ends at the earlier of `development_output_days` (7, in the policy) and
+the end of the sample it came from. A run on real recordings in production is never noted: what it makes is held under review and does not expire.
+
+A timer inside the API (`MUNITAS_DEVELOPMENT_SWEEP_SECONDS`, 60; 0 turns it off) ends what is due, ten at a time: it deletes the objects under the
+version's own folder, writes a `storage_reclamation` record (by `platform`, with the reason), and marks `expired_at`. The version's row stays, because a
+sealed version is never edited or deleted. Only the version's own folder is touched: a sample holds a short list and a small table, and the stored
+recordings the list names belong to the original version and stay. Nothing is deleted while a legal hold is pending or active, or while the
+organisation is not open (retired, closing). A version that has ended is listed with basis `expired` and the reason in words, and nothing in it opens.
+
+Checks: U151 (in the container, with its mutations: no hold check, no development-data guard, a wrong folder, ignoring a sample that ended) and U150
+(the page says so, waiting for the live timer).
 
 Checks: U141 (the platform's half, in the container) and U142 (a real run in the sandbox worker, on the host, about two minutes, which also reports from
 inside the container what the step could and could not do):

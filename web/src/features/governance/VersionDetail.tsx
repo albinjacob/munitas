@@ -35,6 +35,7 @@ import { CopyableHash } from "../../components/CopyableHash";
 import { RequestAccess } from "./RequestAccess";
 import { LockedColumnsSection } from "../locking/LockedColumns";
 import { LockedRecordingsSection } from "../locking/LockedRecordings";
+import { RecordFilesSection } from "../locking/RecordFiles";
 import { useVersionTable } from "../../api/queries";
 import { PORTS } from "../../config/ports";
 
@@ -343,6 +344,7 @@ export function VersionDetail() {
 
       <LockedColumnsSection versionId={v.dataset_version_id} />
       <LockedRecordingsSection versionId={v.dataset_version_id} />
+      <RecordFilesSection versionId={v.dataset_version_id} />
 
       <Section
         title="Release history"

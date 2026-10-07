@@ -42,6 +42,7 @@ TAG_LABELS = {
     "person keys": "Tables with locked columns (sealing one and reading it back)",
     "recordings": "Recordings locked per patient (uploading in parts, sealing, and what a sealed version holds)",
     "custom steps": "What a custom pipeline step is given (called by the step itself, with the pass it was started with)",
+    "record files": "Listing the files of a version, opening one, and playing it, through the platform and never through storage",
     "development samples": "Asking for a small sample of locked recordings to build a pipeline version on, deciding the request, and declaring recordings synthetic",
     "iceberg": "Iceberg catalog (for DuckDB, PyIceberg and other standard tools)",
 }

@@ -50,6 +50,14 @@ CONTROL = RetryPolicy(
     maximum_attempts=5,
 )
 
+# A script step is the customer's own code, run in a container. How long Temporal waits to hear from it, and whether it is tried again when it is lost.
+# It sends a heartbeat every 15 seconds while it runs, so a result lost on its way back, or a worker that died, is noticed within this.
+STEP_HEARTBEAT = timedelta(seconds=90)
+# A step that only reads can be run again without harm. A step that writes files must not be: a second run would meet the first one's half-finished
+# files, and the files of a step are sealed once. It fails at once and says so, and the person runs it again.
+STEP_READS_ONLY = RetryPolicy(initial_interval=timedelta(seconds=2), maximum_interval=timedelta(seconds=30), maximum_attempts=3)
+STEP_WRITES = RetryPolicy(maximum_attempts=1)
+
 
 def _idem(*parts: str) -> str:
     """Same derivation DeidentificationPipeline already uses, so a replayed
@@ -253,8 +261,9 @@ class PipelineDagWorkflow:
                     if step.get("recordings") is True or step.get("writes_files") is True else {})},
                 # Fetching the recordings is part of the step, so a step given them has longer.
                 start_to_close_timeout=timedelta(minutes=30 if step.get("recordings") is True or step.get("writes_files") is True else 10),
+                heartbeat_timeout=STEP_HEARTBEAT,
                 task_queue=worker_config.DAG_SCRIPT_TASK_QUEUE,
-                retry_policy=CONTROL,
+                retry_policy=STEP_WRITES if step.get("writes_files") is True else STEP_READS_ONLY,
             )
             if raw.get("status") != "succeeded":
                 raise ApplicationError(

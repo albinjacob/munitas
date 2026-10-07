@@ -248,6 +248,8 @@ def decide(identity: dict, sample_id: str, approve: bool, note: str | None, reco
         (identity["id"], note, len(chosen), length, sample_version, length, METHOD, salt, json.dumps(strata), json.dumps(chosen), sample_id))
     if row is None:
         raise LeaseConflict(["this request was decided a moment ago by somebody else"])
+    from . import development_outputs
+    development_outputs.note(identity["tenant_id"], sample_version, "sample", sample_id, row["expires_at"])
     return _labels([_shape(row)])[0]
 
 

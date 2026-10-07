@@ -1410,6 +1410,34 @@
         "title": "LockedColumnLeaseRequestIn",
         "type": "object"
       },
+      "OpenOutputIn": {
+        "properties": {
+          "size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size"
+          },
+          "source_record": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Record"
+          }
+        },
+        "title": "OpenOutputIn",
+        "type": "object"
+      },
       "OpenUploadIn": {
         "properties": {
           "file_name": {
@@ -4081,6 +4109,103 @@
         "summary": "Recordings Summary",
         "tags": [
           "recordings"
+        ]
+      }
+    },
+    "/dataset-versions/{version_id}/records": {
+      "get": {
+        "description": "The files of a version, whether the caller may open them, and why not. Opens nothing, so nothing is logged.",
+        "operationId": "list_records_dataset_versions__version_id__records_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response List Records Dataset Versions  Version Id  Records Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Records",
+        "tags": [
+          "record files"
+        ]
+      }
+    },
+    "/dataset-versions/{version_id}/records/{record_id}/open": {
+      "post": {
+        "description": "Open one file. This is the opening that is logged, and for a locked file written to the key log. Returns its size and a handle to stream it with.\n\nRefused (403) when the caller may not open this version's files, and (410) when the patient the file is about was erased.",
+        "operationId": "open_record_dataset_versions__version_id__records__record_id__open_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "title": "Record Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Open Record Dataset Versions  Version Id  Records  Record Id  Open Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Open Record",
+        "tags": [
+          "record files"
         ]
       }
     },
@@ -10492,6 +10617,47 @@
         ]
       }
     },
+    "/record-stream/{handle}": {
+      "get": {
+        "description": "The bytes of the file the handle was made for, from the start or from a range (`Range: bytes=a-b`), unlocked inside the platform as they are sent.\n\nAsked again on every request: the person is still in post, the reason they may open it still holds, the patient was not erased.",
+        "operationId": "stream_record_stream__handle__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "handle",
+            "required": true,
+            "schema": {
+              "title": "Handle",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stream",
+        "tags": [
+          "record files"
+        ]
+      }
+    },
     "/recording-uploads/{upload_id}": {
       "delete": {
         "description": "Give up on an upload. What was sent is dropped.",
@@ -10948,7 +11114,7 @@
     },
     "/step/v1/outputs/{name}": {
       "post": {
-        "description": "Open one file to be written, in parts of at most 8 MiB. Opening a name again replaces the earlier file of that name.\n\nNothing is a version yet. The files a step finished are sealed together, \"under review\", when the step ends successfully, and thrown away when\nit fails.",
+        "description": "Open one file to be written, in parts of at most 8 MiB. Opening a name again replaces the earlier file of that name.\n\nA file made from a recording says which one (`source_record`) and its size in bytes (`size`), and is then locked under that recording's patient as\nit arrives. Nothing is a version yet. The files a step finished are sealed together, \"under review\", when the step ends successfully, and thrown\naway when it fails.",
         "operationId": "open_output_step_v1_outputs__name__post",
         "parameters": [
           {
@@ -10977,6 +11143,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/OpenOutputIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "content": {

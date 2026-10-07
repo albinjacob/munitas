@@ -29,7 +29,7 @@ from crypto import DestroyedKeyError, EnvelopeCrypto
 
 from . import (access_preview, activation, agent_upload, agents, auth, config,
               dag_pipelines, db, department_approvers, derivations, external_accounts, grants, housekeeping, iceberg,
-              development_sample_routes, iceberg_catalog, ingest, legal_export, lifecycle, logs, models, opa, people, person_routes, pipeline, r2, recording_routes, step_routes,
+              development_outputs, development_sample_routes, iceberg_catalog, ingest, legal_export, lifecycle, logs, models, opa, people, person_routes, pipeline, r2, record_routes, recording_routes, step_routes,
               read_models, seaweed, storage, table_jobs, task_credential, temporal_client,
               versions)
 
@@ -61,8 +61,9 @@ async def lifespan(app: FastAPI):
     activator = asyncio.create_task(activation.run_forever())
     closer = asyncio.create_task(lifecycle.run_forever())
     dispatcher = asyncio.create_task(table_jobs.run_forever())
+    ender = asyncio.create_task(development_outputs.run_forever())
     yield
-    for task in (activator, closer, dispatcher):
+    for task in (activator, closer, dispatcher, ender):
         task.cancel()
         try:
             await task
@@ -123,6 +124,7 @@ app.include_router(agent_upload.router)
 app.include_router(dag_pipelines.router)
 app.include_router(step_routes.router)
 app.include_router(development_sample_routes.router)
+app.include_router(record_routes.router)
 app.include_router(auth.router)
 app.include_router(pipeline.router)
 app.include_router(access_preview.router)

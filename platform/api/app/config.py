@@ -201,6 +201,8 @@ HOLD_REVIEW_DAYS = int(os.environ.get("MUNITAS_HOLD_REVIEW_DAYS", "90"))
 # timer off (the sweep can still be run by hand), which a verification run uses
 # so a purge only happens when it asks for one.
 LIFECYCLE_SWEEP_SECONDS = int(os.environ.get("MUNITAS_LIFECYCLE_SWEEP_SECONDS", "300"))
+# How often development samples that have run out are ended and what was made from them is deleted. 0 turns the timer off.
+DEVELOPMENT_SWEEP_SECONDS = int(os.environ.get("MUNITAS_DEVELOPMENT_SWEEP_SECONDS", "60"))
 
 # What a purge keeps: the audit rows of a deleted organisation, for this many years, and then removes
 # (purge.py). Seven is the retention period the platform was asked to meet for records of who read what.

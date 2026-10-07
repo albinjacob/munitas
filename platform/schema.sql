@@ -1803,6 +1803,42 @@ create table if not exists step_output_part (
   primary key (output_id, part_number)
 );
 
+-- A file a step wrote from a patient's recording is locked under that patient's key as it arrives, like the recording itself. The step names the
+-- recording and says the file's size up front (the lock is fitted to it), and the platform checks the step opened that recording in this run.
+alter table step_output add column if not exists person_code text;
+alter table step_output add column if not exists source_record text;
+alter table step_output add column if not exists plain_bytes bigint;
+
+-- Every time a person opened a file of a version (a recording, or what a step made) through the platform: who, which file, and why the platform let
+-- them. `bytes_served` grows as the file is streamed. It carries no trigger for a retired organisation: reading must not depend on being able to
+-- record that it happened, as the same is true of a catalog token's last use.
+create table if not exists record_read_log (
+  id           uuid primary key,
+  tenant_id    text not null references tenant(id),
+  at           timestamptz not null default now(),
+  principal    text not null references directory(id),
+  version_id   uuid not null references dataset_version(id),
+  record_id    text not null,
+  basis        text not null,
+  via          text not null default 'console',
+  bytes_total  bigint not null,
+  bytes_served bigint not null default 0,
+  locked       boolean not null
+);
+create index if not exists record_read_log_version_idx on record_read_log (tenant_id, version_id, at);
+create index if not exists record_read_log_person_idx on record_read_log (tenant_id, principal, at);
+
+-- The recordings a step opened in a run, which is what lets it say that a file was made from one.
+create table if not exists step_recording_opened (
+  pipeline_run_id uuid not null references pipeline_run(id),
+  step            text not null,
+  record_id       text not null,
+  tenant_id       text not null references tenant(id),
+  person_code     text not null,
+  opened_at       timestamptz not null default now(),
+  primary key (pipeline_run_id, step, record_id)
+);
+
 -- A development sample: a small set of recordings drawn from a sealed version of locked recordings, for building and testing a pipeline version that is
 -- still in development. A person asks (a kind, a purpose, how many, for how many days), a department approver who is not that person decides, and the
 -- platform draws the recordings and seals a new version that names the same stored files, so no audio is copied and nothing is stored in the clear.
@@ -1848,12 +1884,26 @@ create table if not exists development_data_declaration (
   declared_at timestamptz not null default now()
 );
 
+-- What was made for development ends: a development sample's own version, and what a run made on a sample or on synthetic recordings. It ends at the
+-- earlier of a number of days and the end of the sample it came from, and then its files are deleted and the version's row is kept, with a
+-- storage_reclamation record that says why. A sealed version is never edited, so this is a record of its own.
+create table if not exists development_output (
+  version_id uuid primary key references dataset_version(id),
+  tenant_id  text not null references tenant(id),
+  kind       text not null check (kind in ('sample', 'output')),
+  sample_id  uuid references development_sample(id),
+  expires_at timestamptz not null,
+  expired_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists development_output_due_idx on development_output (expires_at) where expired_at is null;
+
 -- The retired-tenant rule for the tables created since the first block above, which runs before they exist: a trigger cannot be put on a table
 -- that is not there yet, and a database built from this file from nothing stops at the first one that is missing.
 do $$
 declare t text;
 begin
-  foreach t in array array['pipeline_version_approval','pipeline_version_retirement','step_output','step_output_part','development_sample','development_data_declaration'] loop
+  foreach t in array array['pipeline_version_approval','pipeline_version_retirement','step_output','step_output_part','step_recording_opened','development_sample','development_data_declaration','development_output'] loop
     execute format('drop trigger if exists %I on %I', 'refuse_retired_' || t, t);
     execute format(
       'create trigger %I before insert or update on %I

@@ -1591,6 +1591,9 @@ development_sample_max_days := 14
 
 development_sample_max_records := 50
 
+# What a run makes on development data ends at the earlier of this many days and the end of the sample it came from, and its files are then deleted.
+development_output_days := 7
+
 default may_request_development_sample := false
 
 may_request_development_sample if {
@@ -1726,6 +1729,49 @@ synthetic_declaration_reason contains "a declaration needs a reason, which is re
 synthetic_declaration_decision := {
 	"allow": may_declare_synthetic,
 	"reasons": [r | some r in synthetic_declaration_reason],
+}
+
+# ------------------------------------------------------ opening a version's files --
+
+# A person opens the files of a version (a recording, or a file a step made) through the platform, which unlocks a locked one with its patient's key
+# and writes every opening to a log. The platform works out, from what it holds and never from what the person says, why this person may open them:
+#
+#   own_sample              the version is a development sample drawn for this person, and it is in force;
+#   synthetic               the version was declared synthetic, so no real person is in it;
+#   own_development_output  the version was made by a run this person started, on development data that is still in force for them;
+#   none                    anything else: real recordings, or what was made from them.
+#
+# What was made from a recording is no more open than the recording (what a step makes from a sample is the sample's person's to open, and what it
+# makes from real recordings is not yet anybody's). Real recordings are opened under a lease, which is asked for on the page of the recordings.
+open_record_bases := {"own_sample", "synthetic", "own_development_output"}
+
+open_record_roles := development_sample_requester_roles | approver_roles
+
+default may_open_record := false
+
+may_open_record if {
+	input.read.basis in open_record_bases
+	some role in input.person.roles
+	open_record_roles[role]
+}
+
+open_record_reason contains "these are real recordings, or files made from them, which a person opens only under a lease, asked for on the page of the recordings" if {
+	input.read.basis == "none"
+}
+
+open_record_reason contains "this version was made for development and has ended, with the sample or the days it was made for, so its files are deleted" if {
+	input.read.basis == "expired"
+}
+
+open_record_reason contains "this person holds no role that may open recordings and the files made from them (a data engineer, a de-identification reviewer or a data custodian)" if {
+	every role in input.person.roles {
+		not open_record_roles[role]
+	}
+}
+
+open_record_decision := {
+	"allow": may_open_record,
+	"reasons": [r | some r in open_record_reason],
 }
 
 # Retiring a pipeline version, which only tightens: the department's approver, or the person who uploaded the version.

@@ -328,6 +328,7 @@ _SAMPLE_REQUEST_PATH = "/v1/data/munitas/access/development_sample_request_decis
 _SAMPLE_DECISION_PATH = "/v1/data/munitas/access/development_sample_decision"
 _SAMPLE_END_PATH = "/v1/data/munitas/access/development_sample_end_decision"
 _SYNTHETIC_PATH = "/v1/data/munitas/access/synthetic_declaration_decision"
+_OPEN_RECORD_PATH = "/v1/data/munitas/access/open_record_decision"
 
 
 def may_request_locked_lease(payload: dict) -> tuple[bool, list[str]]:
@@ -373,6 +374,11 @@ def may_decide_development_sample(payload: dict) -> tuple[bool, list[str]]:
 def may_end_development_sample(payload: dict) -> tuple[bool, list[str]]:
     """May this person end a sample early? The department's approver, or the person it was drawn for."""
     return _ask(_SAMPLE_END_PATH, payload)
+
+
+def may_open_record(payload: dict) -> tuple[bool, list[str]]:
+    """May this person open the files of this version, given why the platform finds they might (own sample, synthetic, own development output, none)?"""
+    return _ask(_OPEN_RECORD_PATH, payload)
 
 
 def may_declare_synthetic(payload: dict) -> tuple[bool, list[str]]:

@@ -1,5 +1,10 @@
 """The files a custom pipeline step writes, through the platform and nowhere else.
 
+A file a step made from a patient's recording is locked under that patient's key as each part arrives, so no plain copy of what is made from a
+patient's voice is ever stored. The step names the recording and the file's size when it opens the file. The platform checks the step opened that
+recording in this run, and records the file as belonging to that patient, so erasing the patient makes it unreadable with the recording itself. A file
+that is sound, from a step that was given recordings, and says nothing of where it came from, is refused.
+
 A step that says `writes_files: true` in its pipeline file cannot reach storage and holds no key. It sends each file to the platform in parts, the
 way a recording is uploaded, and the platform stores them under the folder the next version of the output dataset will own. Nothing is a version
 yet. When the step ends, the platform's worker says how it ended:
@@ -23,7 +28,10 @@ import re
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from . import db, storage, versions
+from crypto import DestroyedKeyError, stream
+from crypto.stream import lock_part
+
+from . import db, development_outputs, storage, versions
 
 PART = 8 * 1024 * 1024
 MAX_FILES = 500
@@ -90,8 +98,38 @@ def _stale(tenant_id: str) -> None:
         _drop(row, _target(run, row["step"]))
 
 
-def open_output(*, tenant_id: str, pipeline_run_id: str, step: str, name: str) -> dict:
-    """Open one file to be sent in parts. Opening a name again replaces the earlier file of that name."""
+def _looks_like_sound(head: bytes) -> bool:
+    """Whether the first bytes of a file are those of a common sound format: wav, mp3, flac, ogg or mp4 audio."""
+    return (head[:4] == b"RIFF" and head[8:12] == b"WAVE") or head[:3] == b"ID3" or head[:4] in (b"fLaC", b"OggS") or head[4:8] == b"ftyp" \
+        or (len(head) >= 2 and head[0] == 0xFF and head[1] & 0xE0 == 0xE0)
+
+
+def note_opening(tenant_id: str, pipeline_run_id: str, step: str, version_id: str, record_id: str) -> None:
+    """Record that this step opened this recording of this run, when the recording is a locked one: it is what a file can later say it was made from."""
+    db.execute("insert into step_recording_opened (pipeline_run_id, step, record_id, tenant_id, person_code) "
+               "select %s, %s, record_id, tenant_id, person_code from recording_person where dataset_version_id = %s and record_id = %s and tenant_id = %s "
+               "on conflict do nothing returning record_id", (pipeline_run_id, step, version_id, record_id, tenant_id))
+
+
+def open_output(*, tenant_id: str, pipeline_run_id: str, step: str, name: str, source_record: str | None = None, size: int | None = None) -> dict:
+    """Open one file to be sent in parts. Opening a name again replaces the earlier file of that name.
+
+    With `source_record` the file is locked under the patient of that recording, and `size` (in bytes, at least 1) says how big it will be.
+    """
+    person = None
+    if source_record is not None:
+        if size is None or isinstance(size, bool) or not isinstance(size, int) or size < 1:
+            raise Refused(["a file made from a recording says its size in bytes up front, at least 1: the lock is fitted to the size"])
+        if size > MAX_FILE_BYTES:
+            raise Refused([f"a file is at most {MAX_FILE_BYTES} bytes"])
+        opened = db.one("select person_code from step_recording_opened where pipeline_run_id = %s and step = %s and record_id = %s", (pipeline_run_id, step, source_record))
+        if not opened:
+            raise Refused([f"this step has not opened recording {source_record} in this run, so it cannot say that a file was made from it"])
+        if db.one("select 1 as x from subject_key where tenant_id = %s and person_code = %s and destroyed_at is not null", (tenant_id, opened["person_code"])):
+            raise Refused([f"the patient recording {source_record} is about was erased, so nothing more can be made from it"])
+        person = opened["person_code"]
+    elif size is not None:
+        raise Refused(["a size is given only for a file made from a recording, which is locked to fit it"])
     if not NAME.match(name):
         raise Refused([f"{name!r} is not a name that can be stored: letters, digits, dots, dashes and underscores, at most 128, starting with a letter or digit"])
     if name in RESERVED:
@@ -109,9 +147,10 @@ def open_output(*, tenant_id: str, pipeline_run_id: str, step: str, name: str) -
     key = f"{target['prefix']}/{name}"
     upload = target["client"].create_multipart_upload(Bucket=target["bucket"], Key=key)["UploadId"]
     output_id = str(uuid.uuid4())
-    db.execute("insert into step_output (id, tenant_id, pipeline_run_id, step, name, storage_key, storage_upload, status) values (%s, %s, %s, %s, %s, %s, %s, 'open') returning id",
-               (output_id, tenant_id, pipeline_run_id, step, name, key, upload))
-    return {"output_id": output_id, "part_bytes": PART, "max_parts": MAX_PARTS}
+    db.execute("insert into step_output (id, tenant_id, pipeline_run_id, step, name, storage_key, storage_upload, status, person_code, source_record, plain_bytes) "
+               "values (%s, %s, %s, %s, %s, %s, %s, 'open', %s, %s, %s) returning id",
+               (output_id, tenant_id, pipeline_run_id, step, name, key, upload, person, source_record, size))
+    return {"output_id": output_id, "part_bytes": PART, "max_parts": MAX_PARTS, "locked": person is not None}
 
 
 def _open_output(pipeline_run_id: str, step: str, name: str) -> dict:
@@ -121,13 +160,29 @@ def _open_output(pipeline_run_id: str, step: str, name: str) -> dict:
     return row
 
 
-def put_part(*, pipeline_run_id: str, step: str, name: str, part_number: int, data: bytes) -> dict:
-    """One part of an open file, at most 8 MiB. Sending a part again replaces it, so a part that failed on a poor connection is simply sent again."""
+def put_part(*, service, pipeline_run_id: str, step: str, name: str, part_number: int, data: bytes) -> dict:
+    """One part of an open file, at most 8 MiB. Sending a part again replaces it, so a part that failed on a poor connection is simply sent again.
+
+    A file made from a recording is locked here, part by part, under its patient's key, and it is the locked part that is stored. Each part must be
+    exactly the size its place in the file gives it.
+    """
     row = _open_output(pipeline_run_id, step, name)
     if not 1 <= part_number <= MAX_PARTS:
         raise Refused([f"a file has at most {MAX_PARTS} parts of {PART} bytes ({MAX_FILE_BYTES} bytes)"])
     if len(data) > PART:
         raise Refused([f"a part is at most {PART} bytes"])
+    if row["person_code"]:
+        total = int(row["plain_bytes"])
+        if part_number > stream.part_count(total):
+            raise Refused([f"{name} was opened as {total} bytes, which is {stream.part_count(total)} part(s), so there is no part {part_number}"])
+        expected = stream.part_plain_size(total, part_number)
+        if len(data) != expected:
+            raise Refused([f"part {part_number} of {name} must be {expected} bytes, and {len(data)} arrived"])
+        try:
+            key = service.unwrap(row["tenant_id"], row["person_code"], f"step_run {pipeline_run_id}", f"lock part {part_number} of output {name} for custom step {step}")
+        except DestroyedKeyError as exc:
+            raise Refused(["the key for this patient was destroyed, so nothing more can be locked for them"]) from exc
+        data = lock_part(key, row["tenant_id"], row["person_code"], name, total, part_number, data)
     held = db.one("""select coalesce(sum(p.bytes), 0) as n from step_output_part p join step_output o on o.id = p.output_id
                       where o.pipeline_run_id = %s and o.step = %s and o.status in ('open','complete') and not (o.id = %s and p.part_number = %s)""",
                   (pipeline_run_id, step, str(row["id"]), part_number))["n"]
@@ -142,8 +197,11 @@ def put_part(*, pipeline_run_id: str, step: str, name: str, part_number: int, da
     return {"part_number": part_number, "bytes": len(data)}
 
 
-def complete_output(*, pipeline_run_id: str, step: str, name: str) -> dict:
-    """Finish a file: every part from 1 must be there and every part but the last must be a full 8 MiB. Its size and fingerprint are taken from what was stored."""
+def complete_output(*, pipeline_run_id: str, step: str, name: str, reads_recordings: bool = False) -> dict:
+    """Finish a file: every part from 1 must be there and every part but the last must be a full 8 MiB. Its size and fingerprint are taken from what was stored.
+
+    A file that is sound, from a step that was given recordings, must say which recording it was made from: it is refused and thrown away otherwise.
+    """
     row = _open_output(pipeline_run_id, step, name)
     parts = db.all_rows("select part_number, etag, bytes from step_output_part where output_id = %s order by part_number", (str(row["id"]),))
     problems = []
@@ -151,7 +209,11 @@ def complete_output(*, pipeline_run_id: str, step: str, name: str) -> dict:
         problems.append(f"{name} has no parts: send at least one, which may be empty")
     if [p["part_number"] for p in parts] != list(range(1, len(parts) + 1)):
         problems.append(f"the parts of {name} are not 1 to {len(parts)} with none missing")
-    if any(p["bytes"] != PART for p in parts[:-1]):
+    if row["person_code"]:
+        total = int(row["plain_bytes"])
+        if len(parts) != stream.part_count(total) or any(p["bytes"] != stream.part_stored_size(total, p["part_number"]) for p in parts):
+            problems.append(f"{name} was opened as {total} bytes, which is {stream.part_count(total)} part(s) of the sizes that follow from it, and the parts sent are not those")
+    elif any(p["bytes"] != PART for p in parts[:-1]):
         problems.append(f"every part of {name} but the last must be exactly {PART} bytes")
     if problems:
         raise Refused(problems)
@@ -164,13 +226,20 @@ def complete_output(*, pipeline_run_id: str, step: str, name: str) -> dict:
     else:
         target["client"].complete_multipart_upload(Bucket=target["bucket"], Key=row["storage_key"], UploadId=row["storage_upload"],
                                                    MultipartUpload={"Parts": [{"PartNumber": p["part_number"], "ETag": p["etag"]} for p in parts]})
-    digest, size = hashlib.sha256(), 0
+    digest, size, head = hashlib.sha256(), 0, b""
     for block in target["client"].get_object(Bucket=target["bucket"], Key=row["storage_key"])["Body"].iter_chunks(chunk_size=PART):
+        if not head:
+            head = block[:16]
         digest.update(block)
         size += len(block)
+    if reads_recordings and not row["person_code"] and _looks_like_sound(head):
+        target["client"].delete_object(Bucket=target["bucket"], Key=row["storage_key"])
+        db.execute("update step_output set status = 'aborted', storage_upload = null, finished_at = now() where id = %s returning id", (str(row["id"]),))
+        raise Refused([f"{name} is sound, and this step was given recordings, so a file of sound must say which recording it was made from. Open it with the recording's "
+                       f"identifier and its size, and the platform locks it under that patient's key. Nothing of it was kept"])
     db.execute("update step_output set status = 'complete', storage_upload = null, bytes = %s, sha256 = %s, finished_at = now() where id = %s returning id",
                (size, digest.hexdigest(), str(row["id"])))
-    return {"name": name, "bytes": size, "sha256": digest.hexdigest()}
+    return {"name": name, "bytes": size, "sha256": digest.hexdigest(), "locked": bool(row["person_code"])}
 
 
 def finish(*, tenant_id: str, pipeline_run_id: str, step: str, succeeded: bool, principal: str) -> dict:
@@ -226,4 +295,9 @@ def finish(*, tenant_id: str, pipeline_run_id: str, step: str, succeeded: bool, 
                             records_key=f"{target['prefix']}/records.json")
     for row in rows:
         db.execute("update step_output set status = 'sealed', version_id = %s where id = %s returning id", (version["id"], str(row["id"])))
+        if row["person_code"]:
+            # A locked file belongs to its patient like a recording does, so erasing the patient makes it unreadable and lists this version.
+            db.execute("insert into recording_person (dataset_version_id, record_id, tenant_id, person_code, plain_bytes, format) values (%s, %s, %s, %s, %s, %s) "
+                       "on conflict do nothing returning record_id", (version["id"], row["name"], tenant_id, row["person_code"], row["plain_bytes"], stream.FORMAT))
+    development_outputs.note_output(tenant_id, pipeline_run_id, version["id"])
     return {"status": "sealed", "files_written": len(index), "output_version_id": version["id"], "output_dataset": target["name"]}

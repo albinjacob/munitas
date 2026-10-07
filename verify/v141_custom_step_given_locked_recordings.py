@@ -175,8 +175,10 @@ for item in step.list_recordings():
     with wave.open(out, "wb") as target:
         target.setparams(params)
         target.writeframes(b"\\x00" * quiet + frames[quiet:])
-    with step.write_output(record + ".silenced.wav") as written:
-        written.write(out.getvalue())
+    silent = out.getvalue()
+    # Sound made from a recording says which one and how big it is, and the platform locks it under that patient's key as it arrives.
+    with step.write_output(record + ".silenced.wav", from_record=record, size=len(silent)) as written:
+        written.write(silent)
     done.append(record)
 step.result({"recommendation": "not_measured", "reason": "fixture", "done": done})
 '''
@@ -187,6 +189,11 @@ import munitas_step as step
 step.save_output("half-written.bin", b"this file is finished, and must still be thrown away")
 raise RuntimeError("the step fails after writing")
 '''
+
+
+def locked_size(plain: int) -> int:
+    """How many bytes a locked file of `plain` bytes takes in storage: each 1 MiB chunk carries 28 bytes (a nonce and a tag)."""
+    return plain + 28 * (-(-plain // (1024 * 1024)))
 
 
 def silenced(wav: bytes) -> bytes:
@@ -353,15 +360,25 @@ def main() -> int:
     shown = api("GET", f"/pipeline-runs/{wrun.get('id')}", headers=engineer).json()
     made = {x["action"]: x["output_version"] for x in shown["steps"]}
     check("the run's page names the version the writing step made, so a person can open it from there", made.get("silence") == wout.get("output_version_id") and made.get("decide") is None, str(made))
-    check("each file in storage is the original sound with its first half second made silent, byte for byte",
-          got["w-0001.silenced.wav"] == silenced(wav_c) and got["w-0002.silenced.wav"] == silenced(wav_d))
-    check("and the sound really did change, and only at the start", got["w-0001.silenced.wav"] != wav_c and got["w-0001.silenced.wav"][44 + 16000:] == wav_c[44 + 16000:])
+    check("each file in storage is locked: exactly the size of the silenced sound plus the lock, and none of it, nor of the original sound, can be found in it",
+          len(got["w-0001.silenced.wav"]) == locked_size(len(silenced(wav_c))) and len(got["w-0002.silenced.wav"]) == locked_size(len(silenced(wav_d)))
+          and silenced(wav_c)[2000:2064] not in got["w-0001.silenced.wav"] and wav_c[2000:2064] not in got["w-0001.silenced.wav"]
+          and not got["w-0001.silenced.wav"].startswith(b"RIFF"))
+    with db() as conn:
+        locked_rows = {r["record_id"]: (r["plain_bytes"], r["person_code"]) for r in conn.execute(
+            "select record_id, plain_bytes, person_code from recording_person where dataset_version_id = %s", (wout.get("output_version_id"),)).fetchall()}
+        patient_codes = {r["locator"]: r["locked_person_code"] for r in conn.execute("select locator, locked_person_code from dataset_source where dataset_id = %s", (wdataset,)).fetchall()}
+    check("the platform recorded each as belonging to the patient of the recording it was made from, with the size the library said",
+          locked_rows == {"w-0001.silenced.wav": (len(silenced(wav_c)), patient_codes["w-0001.wav"]), "w-0002.silenced.wav": (len(silenced(wav_d)), patient_codes["w-0002.wav"])}, str(locked_rows))
     check("the dataset belongs to the department of the recordings it was made from", dept_match is True, str(dept_match))
     check("the run that made it names the version it read, and this pipeline run", action["input_versions"] == [uuid.UUID(wversion)] and str(action["pipeline_run_id"]) == wrun.get("id")
           and action["status"] == "succeeded", str(action))
     with db() as conn:
         opened = [r["purpose"] for r in conn.execute("select purpose from key_use_log where tenant_id = %s and action = 'unwrap' and actor = %s", (CANARY, f"step_run {wrun.get('id')}")).fetchall()]
-    check("the step's two openings are in the key log, naming the step", len(opened) == 2 and all("custom step silence of pipeline silence-" in x for x in opened), str(opened))
+    openings = [x for x in opened if x.startswith("open a recording")]
+    locks = [x for x in opened if x.startswith("lock part")]
+    check("the step's two openings are in the key log, naming the step", len(openings) == 2 and all("custom step silence of pipeline silence-" in x for x in openings), str(opened))
+    check("and so are the two files it locked, one part each, naming the file and the step", len(locks) == 2 and all("for custom step silence" in x for x in locks), str(locks))
 
     heading("A step that fails after writing a file leaves nothing")
     _, fpv = register(dept, FAILING_YAML, f"fail-{tag}", FAILING_SCRIPT, engineer)

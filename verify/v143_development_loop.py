@@ -35,7 +35,7 @@ import httpx  # noqa: E402
 from common import ADMIN, API, CANARY, api, bearer_for, bucket_for, check, db, fixture_tenant, heading, require_api, s3_client, summary  # noqa: E402
 from v128_person_keys_erasure import CUSTODIAN, ENGINEER, register_dataset, reset_keys  # noqa: E402
 from v137_locked_recordings import make_wav, upload_whole  # noqa: E402
-from v141_custom_step_given_locked_recordings import SCRIPT, WRITER_SCRIPT, WRITER_YAML, YAML, run_and_wait, silenced, zipped  # noqa: E402
+from v141_custom_step_given_locked_recordings import SCRIPT, WRITER_SCRIPT, WRITER_YAML, YAML, locked_size, run_and_wait, silenced, zipped  # noqa: E402
 
 
 def upload_in_development(dept: str, yaml_text: str, name: str, script: str, headers: dict) -> tuple[str, str]:
@@ -115,8 +115,27 @@ def main() -> int:
     check("sealed under review, so nobody may use it until a person has looked", made and made["visibility_class"] == "UNDER_REVIEW", str(made and made["visibility_class"]))
     client = s3_client(*ADMIN)
     files = {m["key"].rsplit("/", 1)[1]: m["key"] for m in made["object_manifest"] if m["key"].endswith(".silenced.wav")}
-    check("and what it wrote is the original sound with its first half second silenced", sorted(files) == [f"{r}.silenced.wav" for r in chosen]
-          and all(client.get_object(Bucket=bucket_for(CANARY), Key=files[f"{r}.silenced.wav"])["Body"].read() == silenced(wavs[r]) for r in chosen))
+    blobs = {r: client.get_object(Bucket=bucket_for(CANARY), Key=files[f"{r}.silenced.wav"])["Body"].read() for r in chosen} if sorted(files) == [f"{r}.silenced.wav" for r in chosen] else {}
+    check("and what it wrote is locked under each patient's key: the size of the silenced sound plus the lock, and none of the sound in it",
+          sorted(blobs) == chosen and all(len(blobs[r]) == locked_size(len(silenced(wavs[r]))) and silenced(wavs[r])[2000:2064] not in blobs[r] and not blobs[r].startswith(b"RIFF") for r in chosen))
+
+    heading("The engineer opens what the step wrote, and the sample's own recordings, through the platform")
+
+    def opened(version_id: str, record: str) -> bytes:
+        got = api("POST", f"/dataset-versions/{version_id}/records/{record}/open", headers=engineer)
+        assert got.status_code == 200, (got.status_code, got.text[:200])
+        return httpx.get(f"{API}/record-stream/{got.json()['handle']}", timeout=60.0).content
+
+    listing_out = api("GET", f"/dataset-versions/{wout.get('output_version_id')}/records", headers=engineer).json()
+    check("the platform says the engineer may open the files of the version their run made, because their run made it on their sample",
+          listing_out["basis"] == "own_development_output" and listing_out["may_open"] is True and sorted(r["record_id"] for r in listing_out["records"]) == [f"{r}.silenced.wav" for r in chosen], str(listing_out)[:240])
+    check("each file the step wrote opens, unlocked inside the platform, to the original sound with its first half second silenced, byte for byte",
+          all(opened(wout.get("output_version_id"), f"{r}.silenced.wav") == silenced(wavs[r]) for r in chosen))
+    check("and the sound really did change, and only at the start", all(opened(wout.get("output_version_id"), f"{r}.silenced.wav") != wavs[r]
+                                                                     and opened(wout.get("output_version_id"), f"{r}.silenced.wav")[44 + 16000:] == wavs[r][44 + 16000:] for r in chosen[:1]))
+    check("the sample's own recordings open to the original sound, though the sample holds no audio of its own", all(opened(sample_version, r) == wavs[r] for r in chosen))
+    custodian_view = api("GET", f"/dataset-versions/{wout.get('output_version_id')}/records", headers=custodian).json()
+    check("the approver, who did not run it, may not open what it made", custodian_view["may_open"] is False and custodian_view["basis"] == "none")
 
     heading("When the sample is ended, a new run on it is refused at the start")
     ended = api("POST", f"/development-samples/{asked.json()['id']}/end", headers=custodian)

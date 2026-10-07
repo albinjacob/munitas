@@ -399,7 +399,7 @@ def main() -> int:
     small = bytes(range(256)) * 40
     done = write_whole(wtoken, "small.bin", small)
     check("a small file is written and finished, and its size and fingerprint are the stored bytes'",
-          done.status_code == 200 and done.json() == {"name": "small.bin", "bytes": len(small), "sha256": hashlib.sha256(small).hexdigest()}, f"{done.status_code} {done.text[:200]}")
+          done.status_code == 200 and done.json() == {"name": "small.bin", "bytes": len(small), "sha256": hashlib.sha256(small).hexdigest(), "locked": False}, f"{done.status_code} {done.text[:200]}")
     big = bytes(random.Random(9).randrange(256) for _ in range(1000)) * 8_400  # 8.4 MB: a full 8 MiB part and a small last one
     big = big[:8 * 1024 * 1024 + 5]
     done = write_whole(wtoken, "big.bin", big)

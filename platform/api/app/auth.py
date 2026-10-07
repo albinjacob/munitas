@@ -284,6 +284,8 @@ def organisation_scope(
             raise HTTPException(401, {"reasons": [f"run credential rejected: {exc}"]}) from exc
         if claim.task_kind in ("step_run", "step_read"):
             raise HTTPException(401, {"reasons": ["a custom step's pass is for the step routes and cannot be used here"]})
+        if claim.task_kind == "person_read":
+            raise HTTPException(401, {"reasons": ["the handle to an opened file is for the stream route and cannot be used here"]})
         if claim.task_kind == "table_write_job":
             # A table worker holds this for hours and for one job. It names an organisation, but it is for that job's own
             # endpoints (table_jobs.py), which check it themselves, and it is not a way to read that organisation's records.
