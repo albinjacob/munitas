@@ -220,7 +220,7 @@ def register(dept: str, yaml_text: str, name: str, script: str, headers: dict) -
                     files={"config_file": ("pipeline.yaml", yaml_text.encode(), "application/x-yaml"), "scripts": ("scripts.zip", zipped("steps/silence.py", script), "application/zip")})
     assert up.status_code == 201, up.text[:200]
     version_id = up.json()["id"]
-    approved = api("POST", f"/pipelines/{pipeline_id}/versions/{version_id}/approve", json={"note": "reviewed on synthetic data"}, headers=bearer_for(CUSTODIAN))
+    approved = api("POST", f"/pipelines/{pipeline_id}/versions/{version_id}/promote", json={"note": "reviewed on synthetic data"}, headers=bearer_for(CUSTODIAN))
     assert approved.status_code == 200, approved.text[:200]
     return pipeline_id, version_id
 
@@ -280,9 +280,9 @@ def main() -> int:
     check("the version uploads", uploaded.status_code == 201, uploaded.text[:200])
     pv = uploaded.json()["id"]
     refused = api("POST", f"/datasets/{dataset}/versions/{version}/deidentify", json={"pipeline_kind": "dag", "pipeline_version_id": pv}, headers=engineer)
-    check("before approval the run is refused", refused.status_code == 400 and "has not been approved" in refused.text, f"{refused.status_code} {refused.text[:200]}")
-    approved = api("POST", f"/pipelines/{pid}/versions/{pv}/approve", json={"note": "reviewed on synthetic data"}, headers=bearer_for(CUSTODIAN))
-    check("the department's approver approves it", approved.status_code == 200, approved.text[:160])
+    check("in development the run is refused", refused.status_code == 400 and "in development" in refused.text, f"{refused.status_code} {refused.text[:200]}")
+    approved = api("POST", f"/pipelines/{pid}/versions/{pv}/promote", json={"note": "reviewed on synthetic data"}, headers=bearer_for(CUSTODIAN))
+    check("the department's approver moves it to production", approved.status_code == 200 and approved.json()["stage"] == "production", approved.text[:160])
 
     heading("The step reads the sound, three ways, from inside its container")
     run, out = run_and_wait(dataset, version, pv, engineer)

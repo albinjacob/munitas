@@ -1578,6 +1578,24 @@ pipeline_approval_withdrawal_decision := {
 	"reasons": [r | not may_withdraw_pipeline_approval; r := "only an approver of the department that owns this pipeline may take an approval back"],
 }
 
+# Retiring a pipeline version, which only tightens: the department's approver, or the person who uploaded the version.
+default may_retire_pipeline_version := false
+
+may_retire_pipeline_version if {
+	some role in input.actor.roles
+	approver_roles[role]
+	input.actor.id in input.dataset.approvers
+}
+
+may_retire_pipeline_version if {
+	input.actor.id == input.version.uploaded_by
+}
+
+pipeline_version_retirement_decision := {
+	"allow": may_retire_pipeline_version,
+	"reasons": [r | not may_retire_pipeline_version; r := "only an approver of the department that owns this pipeline, or the person who uploaded this version, may retire it"],
+}
+
 # Ending a lease early: the department's approver, or the person who holds it.
 default may_revoke_locked_lease := false
 

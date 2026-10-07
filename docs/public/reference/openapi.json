@@ -9798,69 +9798,6 @@
         ]
       }
     },
-    "/pipelines/{pipeline_id}/versions/{version_id}/approve": {
-      "post": {
-        "description": "Approve a version whose custom step is given the recordings. The department's approver, never the person who uploaded it.\n\nUntil this is done a run of the version is refused, and the recordings are refused to its steps if a run somehow started.",
-        "operationId": "approve_version_pipelines__pipeline_id__versions__version_id__approve_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "pipeline_id",
-            "required": true,
-            "schema": {
-              "title": "Pipeline Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "version_id",
-            "required": true,
-            "schema": {
-              "title": "Version Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/app__dag_pipelines__Decision"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "title": "Response Approve Version Pipelines  Pipeline Id  Versions  Version Id  Approve Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Approve Version",
-        "tags": [
-          "pipelines"
-        ]
-      }
-    },
     "/pipelines/{pipeline_id}/versions/{version_id}/code": {
       "get": {
         "description": "Stream a version's scripts.zip back, for the worker only.\n\nGated the same way agent_upload.py's own download_code is: a shared\nsecret, not a directory identity, because the caller is the worker\nprocess itself. Never reachable from agentnet.",
@@ -9927,10 +9864,10 @@
         ]
       }
     },
-    "/pipelines/{pipeline_id}/versions/{version_id}/withdraw-approval": {
+    "/pipelines/{pipeline_id}/versions/{version_id}/demote": {
       "post": {
-        "description": "Take an approval back. A run already going keeps going; no later run, and no later opening of a recording by a step, is allowed.",
-        "operationId": "withdraw_approval_pipelines__pipeline_id__versions__version_id__withdraw_approval_post",
+        "description": "Return a version to development. No later run is allowed, and a step already running is refused at its next request, so what it was\nwriting is discarded.",
+        "operationId": "demote_version_pipelines__pipeline_id__versions__version_id__demote_post",
         "parameters": [
           {
             "in": "path",
@@ -9966,7 +9903,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "title": "Response Withdraw Approval Pipelines  Pipeline Id  Versions  Version Id  Withdraw Approval Post",
+                  "title": "Response Demote Version Pipelines  Pipeline Id  Versions  Version Id  Demote Post",
                   "type": "object"
                 }
               }
@@ -9984,7 +9921,133 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Withdraw Approval",
+        "summary": "Demote Version",
+        "tags": [
+          "pipelines"
+        ]
+      }
+    },
+    "/pipelines/{pipeline_id}/versions/{version_id}/promote": {
+      "post": {
+        "description": "Move a version whose custom step is given the recordings, or writes files, from development to production. The department's approver,\nnever the person who uploaded it.\n\nUntil this is done a run of the version is refused, and the recordings are refused to its steps if a run somehow started.",
+        "operationId": "promote_version_pipelines__pipeline_id__versions__version_id__promote_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pipeline_id",
+            "required": true,
+            "schema": {
+              "title": "Pipeline Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/app__dag_pipelines__Decision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Promote Version Pipelines  Pipeline Id  Versions  Version Id  Promote Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Promote Version",
+        "tags": [
+          "pipelines"
+        ]
+      }
+    },
+    "/pipelines/{pipeline_id}/versions/{version_id}/retire": {
+      "post": {
+        "description": "End a version's life. It cannot be run again and a step already running is refused at its next request. It is final: a retired version is\nreplaced by a later one. An approver of the owning department, or the person who uploaded the version, since this only tightens.",
+        "operationId": "retire_version_pipelines__pipeline_id__versions__version_id__retire_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pipeline_id",
+            "required": true,
+            "schema": {
+              "title": "Pipeline Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/app__dag_pipelines__Decision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Retire Version Pipelines  Pipeline Id  Versions  Version Id  Retire Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retire Version",
         "tags": [
           "pipelines"
         ]

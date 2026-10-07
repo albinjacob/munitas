@@ -212,10 +212,10 @@ def main() -> int:
     check("the pipeline registers", pipeline.status_code == 201, pipeline.text[:160])
     pid = pipeline.json()["id"]
     first = upload_version(pid, YAML)
-    check("the version uploads, and says it needs approval and for which step", first.status_code == 201 and first.json()["needs_approval"] is True
+    check("the version uploads in development, and says it needs promotion and for which step", first.status_code == 201 and first.json()["needs_promotion"] is True and first.json()["stage"] == "development"
           and first.json()["steps_given_recordings"] == ["inspect"], f"{first.status_code} {first.text[:200]}")
     plain_version = upload_version(pid, YAML_WITHOUT)
-    check("a version that asks for nothing says it needs no approval", plain_version.status_code == 201 and plain_version.json()["needs_approval"] is False)
+    check("a version that asks for nothing says it needs no promotion, and starts in production", plain_version.status_code == 201 and plain_version.json()["needs_promotion"] is False and plain_version.json()["stage"] == "production")
     w1, w2 = first.json()["id"], plain_version.json()["id"]
     with db() as conn:
         uploader = conn.execute("select uploaded_by from pipeline_version where id = %s", (w1,)).fetchone()["uploaded_by"]
@@ -237,30 +237,32 @@ def main() -> int:
         client.post(f"{API}/datasets/{plain_dataset}/files", headers=bearer_for(ENGINEER), files={"file": ("p-0001.wav", plain_wav, "audio/wav")}).raise_for_status()
     plain_recordings = api("POST", f"/datasets/{plain_dataset}/seal-audio", headers=bearer_for(ENGINEER)).json()["id"]
 
-    heading("Before anyone approves")
+    heading("Before anyone promotes it: a version with custom steps is in development")
     run = open_run(locked_version, w1)
     r = make_pass(run)
-    check("the platform will not make the step a pass", r.status_code == 403 and "not been approved" in reasons_of(r), f"{r.status_code} {reasons_of(r)[:160]}")
+    check("the platform will not make the step a pass", r.status_code == 403 and "in development" in reasons_of(r), f"{r.status_code} {reasons_of(r)[:160]}")
     started = api("POST", f"/datasets/{locked_dataset}/versions/{locked_version}/deidentify", json={"pipeline_kind": "dag", "pipeline_version_id": w1}, headers=bearer_for(ENGINEER))
-    check("a run of the version is refused at the start, and says why", started.status_code == 400 and "has not been approved" in reasons_of(started) and "inspect" in reasons_of(started), f"{started.status_code} {reasons_of(started)[:200]}")
+    check("a run of the version is refused at the start, and says why", started.status_code == 400 and "in development" in reasons_of(started) and "inspect" in reasons_of(started), f"{started.status_code} {reasons_of(started)[:200]}")
 
-    heading("Who may approve")
-    asking = lambda who: api("POST", f"/pipelines/{pid}/versions/{w1}/approve", json={"note": "reviewed"}, headers=bearer_for(who))  # noqa: E731
+    heading("Who may move a version to production")
+    asking = lambda who: api("POST", f"/pipelines/{pid}/versions/{w1}/promote", json={"note": "reviewed"}, headers=bearer_for(who))  # noqa: E731
     r = asking(ENGINEER)
     check("the person who uploaded it may not", r.status_code == 403, f"{r.status_code} {reasons_of(r)[:200]}")
     r = asking(RESEARCHER)
     check("a researcher may not", r.status_code == 403, f"{r.status_code} {reasons_of(r)[:120]}")
     r = asking(ELSEWHERE)
     check("another department's custodian may not, and is told why", r.status_code == 403 and "department that owns this pipeline" in reasons_of(r), f"{r.status_code} {reasons_of(r)[:200]}")
-    r = api("POST", f"/pipelines/{pid}/versions/{w2}/approve", json={"note": "x"}, headers=bearer_for(CUSTODIAN))
-    check("a version that gives no step the recordings has nothing to approve", r.status_code == 400 and "nothing to approve" in reasons_of(r), f"{r.status_code} {reasons_of(r)[:160]}")
+    r = api("POST", f"/pipelines/{pid}/versions/{w2}/promote", json={"note": "x"}, headers=bearer_for(CUSTODIAN))
+    check("a version made only of the platform's own steps is in production already, and has nothing to promote", r.status_code == 400 and "in production already" in reasons_of(r), f"{r.status_code} {reasons_of(r)[:160]}")
     r = asking(CUSTODIAN)
-    check("the owning department's approver approves it", r.status_code == 200 and r.json()["approved"] is True, f"{r.status_code} {r.text[:200]}")
+    check("the owning department's approver moves it to production", r.status_code == 200 and r.json()["stage"] == "production", f"{r.status_code} {r.text[:200]}")
     r = asking(CUSTODIAN)
-    check("approving it again is refused", r.status_code == 409, f"{r.status_code}")
+    check("promoting it again is refused", r.status_code == 409, f"{r.status_code}")
     shown = api("GET", f"/pipelines/{pid}", headers=bearer_for(ENGINEER)).json()["versions"]
     mine = next(v for v in shown if v["id"] == w1)
-    check("the pipeline's page says it is approved, by whom, and who uploaded it", mine["approved"] and mine["approved_by"] == CUSTODIAN and mine["uploaded_by"] == ENGINEER and mine["needs_approval"], str({k: mine[k] for k in ("approved", "approved_by", "uploaded_by")}))
+    check("the pipeline's page says it is in production, by whom, and who uploaded it", mine["stage"] == "production" and mine["promoted_by"] == CUSTODIAN and mine["uploaded_by"] == ENGINEER and mine["needs_promotion"], str({k: mine[k] for k in ("stage", "promoted_by", "uploaded_by")}))
+    others = {v["id"]: v["stage"] for v in shown}
+    check("and the version that needs nothing is in production, which is the stage the platform's own steps start in", others[w2] == "production", str(others))
 
     heading("The platform makes the step a pass, and only for a step it would serve")
     made = make_pass(run)
@@ -365,20 +367,20 @@ def main() -> int:
     r = listing(dtoken)
     check("and stops when the run has ended, though the pass has not expired", r.status_code == 403 and "has ended" in reasons_of(r), f"{r.status_code} {reasons_of(r)[:160]}")
 
-    heading("A step that writes files: its own version, its own approval, and its own pass")
+    heading("A step that writes files: its own version, its own promotion, and its own pass")
     third = upload_version(pid, YAML_WRITES)
-    check("a version whose step writes files says it needs approval, and for what", third.status_code == 201 and third.json()["needs_approval"] is True
+    check("a version whose step writes files says it needs promotion, and for what", third.status_code == 201 and third.json()["needs_promotion"] is True
           and third.json()["steps_writing_files"] == ["inspect"] and third.json()["steps_given_recordings"] == [], f"{third.status_code} {third.text[:200]}")
     w3 = third.json()["id"]
     wrun = open_run(locked_version, w3)
     r = make_pass(wrun)
-    check("before approval it gets no pass, and a run of it is refused at the start, naming the step",
-          r.status_code == 403 and "not been approved" in reasons_of(r) and api("POST", f"/datasets/{locked_dataset}/versions/{locked_version}/deidentify",
+    check("in development it gets no pass, and a run of it is refused at the start, naming the step",
+          r.status_code == 403 and "in development" in reasons_of(r) and api("POST", f"/datasets/{locked_dataset}/versions/{locked_version}/deidentify",
                                                                                  json={"pipeline_kind": "dag", "pipeline_version_id": w3}, headers=bearer_for(ENGINEER)).status_code == 400)
-    r = api("POST", f"/pipelines/{pid}/versions/{w3}/approve", json={"note": "reviewed"}, headers=bearer_for(ENGINEER))
-    check("the person who uploaded it may not approve it", r.status_code == 403)
-    r = api("POST", f"/pipelines/{pid}/versions/{w3}/approve", json={"note": "reviewed"}, headers=bearer_for(CUSTODIAN))
-    check("the owning department's approver does", r.status_code == 200, f"{r.status_code} {reasons_of(r)[:160]}")
+    r = api("POST", f"/pipelines/{pid}/versions/{w3}/promote", json={"note": "reviewed"}, headers=bearer_for(ENGINEER))
+    check("the person who uploaded it may not promote it", r.status_code == 403)
+    r = api("POST", f"/pipelines/{pid}/versions/{w3}/promote", json={"note": "reviewed"}, headers=bearer_for(CUSTODIAN))
+    check("the owning department's approver does", r.status_code == 200 and r.json()["stage"] == "production", f"{r.status_code} {reasons_of(r)[:160]}")
     wtoken = pass_for(wrun)
 
     heading("What each pass may do is what its step declared, and no more")
@@ -495,12 +497,12 @@ def main() -> int:
     wrun4 = open_run(locked_version, w3)
     wtoken4 = pass_for(wrun4)
     write_whole(wtoken4, "withdrawn.bin", b"written while approved")
-    api("POST", f"/pipelines/{pid}/versions/{w3}/withdraw-approval", json={"note": "no longer"}, headers=bearer_for(CUSTODIAN))
+    api("POST", f"/pipelines/{pid}/versions/{w3}/demote", json={"note": "no longer"}, headers=bearer_for(CUSTODIAN))
     r = finish(wrun4)
-    check("when the approval is withdrawn while the step runs, the platform seals nothing and throws it away, and says why",
-          r.json().get("status") == "refused" and "approved" in r.json().get("reason", "") and "Nothing the step wrote was kept" in r.json()["reason"], f"{r.text[:240]}")
+    check("when the version is returned to development while the step runs, the platform seals nothing and throws it away, and says why",
+          r.json().get("status") == "refused" and "in development" in r.json().get("reason", "") and "Nothing the step wrote was kept" in r.json()["reason"], f"{r.text[:240]}")
     check("and the step's next request is refused", open_out(wtoken4, "after.bin").status_code == 403)
-    api("POST", f"/pipelines/{pid}/versions/{w3}/approve", json={"note": "approved again"}, headers=bearer_for(CUSTODIAN))
+    api("POST", f"/pipelines/{pid}/versions/{w3}/promote", json={"note": "approved again"}, headers=bearer_for(CUSTODIAN))
 
     heading("A version sealed while a step was running moves its place")
     slow, quick = open_run(locked_version, w3), open_run(locked_version, w3)
@@ -513,21 +515,63 @@ def main() -> int:
     check("the other is refused, because the folder it wrote into belongs to a version that now exists, and nothing it wrote is kept",
           r.json().get("status") == "refused" and "place has moved" in r.json().get("reason", ""), f"{r.text[:240]}")
 
-    heading("Taking the approval back")
-    r = api("POST", f"/pipelines/{pid}/versions/{w1}/withdraw-approval", json={"note": "x"}, headers=bearer_for(ENGINEER))
-    check("the person who uploaded it may not take the approval back", r.status_code == 403, f"{r.status_code}")
-    r = api("POST", f"/pipelines/{pid}/versions/{w1}/withdraw-approval", json={"note": "changed my mind"}, headers=bearer_for(CUSTODIAN))
-    check("the department's approver may", r.status_code == 200 and r.json()["approved"] is False, f"{r.status_code} {r.text[:120]}")
+    heading("Returning a version to development")
+    r = api("POST", f"/pipelines/{pid}/versions/{w1}/demote", json={"note": "x"}, headers=bearer_for(ENGINEER))
+    check("the person who uploaded it may not return it to development", r.status_code == 403, f"{r.status_code}")
+    r = api("POST", f"/pipelines/{pid}/versions/{w1}/demote", json={"note": "changed my mind"}, headers=bearer_for(CUSTODIAN))
+    check("the department's approver may", r.status_code == 200 and r.json()["stage"] == "development", f"{r.status_code} {r.text[:120]}")
     r = listing(token)
-    check("a pass already issued stops working at its next request", r.status_code == 403 and "not been approved" in reasons_of(r), f"{r.status_code} {reasons_of(r)[:160]}")
+    check("a pass already issued stops working at its next request", r.status_code == 403 and "in development" in reasons_of(r), f"{r.status_code} {reasons_of(r)[:160]}")
     check("so does a handle already issued", ranged(token, "r-0002", other.json()["handle"], 0, 10).status_code == 403)
     check("no new pass is made", make_pass(run).status_code == 403)
     started = api("POST", f"/datasets/{locked_dataset}/versions/{locked_version}/deidentify", json={"pipeline_kind": "dag", "pipeline_version_id": w1}, headers=bearer_for(ENGINEER))
-    check("and a new run is refused at the start again", started.status_code == 400 and "has not been approved" in reasons_of(started), f"{started.status_code}")
-    check("taking it back twice is refused", api("POST", f"/pipelines/{pid}/versions/{w1}/withdraw-approval", json={"note": "x"}, headers=bearer_for(CUSTODIAN)).status_code == 409)
+    check("and a new run is refused at the start again", started.status_code == 400 and "in development" in reasons_of(started), f"{started.status_code}")
+    check("returning it twice is refused", api("POST", f"/pipelines/{pid}/versions/{w1}/demote", json={"note": "x"}, headers=bearer_for(CUSTODIAN)).status_code == 409)
     with db() as conn:
         rows = conn.execute("select approved_by, withdrawn_by from pipeline_version_approval where pipeline_version_id = %s", (w1,)).fetchall()
-    check("the record keeps who approved it and who took it back", len(rows) == 1 and rows[0]["approved_by"] == CUSTODIAN and rows[0]["withdrawn_by"] == CUSTODIAN, str(rows))
+    check("the record keeps who promoted it and who returned it", len(rows) == 1 and rows[0]["approved_by"] == CUSTODIAN and rows[0]["withdrawn_by"] == CUSTODIAN, str(rows))
+
+    heading("Retiring a version")
+    fourth = upload_version(pid, YAML)
+    w4 = fourth.json()["id"]
+    api("POST", f"/pipelines/{pid}/versions/{w4}/promote", json={"note": "reviewed"}, headers=bearer_for(CUSTODIAN))
+    rrun = open_run(locked_version, w4)
+    rtoken = pass_for(rrun)
+    retiring = lambda who, vid=w4: api("POST", f"/pipelines/{pid}/versions/{vid}/retire", json={"note": "replaced by a later version"}, headers=bearer_for(who))  # noqa: E731
+    check("a researcher may not retire a version", retiring(RESEARCHER).status_code == 403)
+    r = retiring(ELSEWHERE)
+    check("another department's custodian may not, and is told why", r.status_code == 403 and "department that owns this pipeline" in reasons_of(r), f"{r.status_code} {reasons_of(r)[:160]}")
+    r = retiring(ENGINEER)
+    check("the person who uploaded the version may retire it, since that only tightens", r.status_code == 200 and r.json()["stage"] == "retired", f"{r.status_code} {r.text[:160]}")
+    shown = {v["id"]: v for v in api("GET", f"/pipelines/{pid}", headers=bearer_for(ENGINEER)).json()["versions"]}
+    check("the pipeline's page says it is retired, by whom and why", shown[w4]["stage"] == "retired" and shown[w4]["retired_by"] == ENGINEER and shown[w4]["retired_note"] == "replaced by a later version", str({k: shown[w4][k] for k in ("stage", "retired_by", "retired_note")}))
+    r = listing(rtoken)
+    check("a pass already issued stops working at its next request, and the answer says retired", r.status_code == 403 and "retired" in reasons_of(r), f"{r.status_code} {reasons_of(r)[:160]}")
+    check("no new pass is made for it", make_pass(rrun).status_code == 403)
+    started = api("POST", f"/datasets/{locked_dataset}/versions/{locked_version}/deidentify", json={"pipeline_kind": "dag", "pipeline_version_id": w4}, headers=bearer_for(ENGINEER))
+    check("a run of it is refused at the start, and says it was retired", started.status_code == 400 and "retired" in reasons_of(started), f"{started.status_code} {reasons_of(started)[:160]}")
+    check("retiring it again is refused", retiring(CUSTODIAN).status_code == 409)
+    r = api("POST", f"/pipelines/{pid}/versions/{w4}/promote", json={"note": "x"}, headers=bearer_for(CUSTODIAN))
+    check("a retired version cannot be promoted back", r.status_code == 409 and "retired" in reasons_of(r), f"{r.status_code} {reasons_of(r)[:160]}")
+    r = api("POST", f"/pipelines/{pid}/versions/{w4}/demote", json={"note": "x"}, headers=bearer_for(CUSTODIAN))
+    check("nor returned to development", r.status_code == 409 and "retired" in reasons_of(r), f"{r.status_code} {reasons_of(r)[:160]}")
+    with db() as conn:
+        row = conn.execute("select retired_by, note from pipeline_version_retirement where pipeline_version_id = %s", (w4,)).fetchone()
+    check("the record keeps who retired it and why", row and row["retired_by"] == ENGINEER and row["note"] == "replaced by a later version", str(row))
+
+    r = retiring(CUSTODIAN, w2)
+    check("a version made only of the platform's own steps is retired the same way", r.status_code == 200, f"{r.status_code} {reasons_of(r)[:160]}")
+    started = api("POST", f"/datasets/{locked_dataset}/versions/{locked_version}/deidentify", json={"pipeline_kind": "dag", "pipeline_version_id": w2}, headers=bearer_for(ENGINEER))
+    check("and a run of it is refused at the start", started.status_code == 400 and "retired" in reasons_of(started), f"{started.status_code} {reasons_of(started)[:160]}")
+
+    wrun6 = open_run(locked_version, w3)
+    wtoken6 = pass_for(wrun6)
+    write_whole(wtoken6, "retired-while-running.bin", b"written before the version was retired")
+    retiring(CUSTODIAN, w3)
+    r = finish(wrun6)
+    check("when the version is retired while the step runs, the platform seals nothing and throws it away, and says why",
+          r.json().get("status") == "refused" and "retired" in r.json().get("reason", "") and "Nothing the step wrote was kept" in r.json()["reason"], f"{r.text[:240]}")
+    check("and the step's next request is refused", open_out(wtoken6, "after.bin").status_code == 403)
 
     reset_keys()
     return summary("v140")

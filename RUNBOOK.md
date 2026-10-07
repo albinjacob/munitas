@@ -525,16 +525,27 @@ the gateway's address, and no storage address, no key, no password and no worker
 
 **What the platform checks, on every request and not only the first.** The pass is real, unexpired and made for a step (a run's own credential, or a
 pass presented anywhere else, is refused); the pipeline run is still going; the version of the pipeline that run came from declares this step as one
-that is given the recordings; the approval of that version still stands; and the patient was not erased. A recording is opened before it is read.
+that is given the recordings; the version is still in production (not returned to development, not retired); and the patient was not erased. A recording is opened before it is read.
 Opening is the one write to the key log (`open a recording for custom step inspect of pipeline <name> version <n>`), and it returns a handle that every
 read must carry. A patient erased while their recording is being read makes the next block that has to be fetched raise `RecordingErased`.
 
-**Approval.** Because code the platform did not write now reads the sound, a version with such a step is approved before it can run:
+**The life of a version.** A pipeline version is in one of three stages, and the pipeline's page shows which beside the version number.
 
-1. an engineer uploads the version;
-2. an approver of the department that owns the pipeline, who is not the person who uploaded it, approves it on the pipeline's page (or with
-   `POST /pipelines/{id}/versions/{version_id}/approve`). Taking the approval back is `withdraw-approval`, by the same kind of person;
-3. a run of an unapproved version is refused at the start. A pass already issued stops working at its next request when the approval is withdrawn.
+| Stage | What it means | How it gets there |
+| --- | --- | --- |
+| In development | Cannot be run. | A version with a script step that is given the recordings or writes files starts here. |
+| In production | May be run, and its steps may be served. | A version made only of the platform's own steps starts here. A version with such a script step gets here when an approver of the department that owns the pipeline, who is not the person who uploaded it, moves it (button **Move to production**, or `POST /pipelines/{id}/versions/{version_id}/promote`). |
+| Retired | Cannot be run, and cannot come back. | An approver of the owning department, or the person who uploaded the version, retires it (button **Retire this version**, which asks first, or `POST .../retire`). A later version replaces it. |
+
+**Return to development** (`POST .../demote`, an approver of the owning department) undoes a promotion. It applies only to a version that was
+promoted. Retiring and returning only tighten, which is why the person who uploaded a version may retire it and needs nobody else to agree.
+
+**When it takes effect.** At the start of a run (the version is refused with the stage named) and on every request a step makes (a pass already
+issued stops working at its next request, and a step still writing has everything it wrote discarded when it finishes). Each decision keeps who made it
+and when: the promotion in `pipeline_version_approval` (a returned one stays as a record), the retirement in `pipeline_version_retirement`.
+
+**What the stages do not cover today.** A version made only of the platform's own steps is in production from the start, and a version in
+development has no data it is limited to, because nothing declares a development sample. Development means "cannot be run".
 
 **Writing files back.** A step with `writes_files: true` (it can have this with or without `recordings: true`) writes through the same door, with the
 same library, and the same pass. It never holds a storage address or key:
@@ -551,7 +562,7 @@ them to storage and reads the finished file back to check its checksum. Limits: 
 worker tells the platform (`/internal/dag-step/finish`). If the step succeeded, the platform seals everything that was completed as one new version
 in a dataset named after the run's dataset and the step, owned by the same department, at the access level **under review**, so nobody may use it
 until a reviewer decides. The version records the step, the code version and the version it was made from, so erasing a patient later lists it. If the step failed,
-or the approval was withdrawn during the run, everything it wrote is discarded and nothing is sealed. Finishing twice does nothing the second time.
+or the version was returned to development or retired during the run, everything it wrote is discarded and nothing is sealed. Finishing twice does nothing the second time.
 
 **What a step cannot do.** Anything the platform does not offer as a route. The console shows the version a step made and links to it from the
 run page, but it does not list or play the files inside; that is deferred. If a step copies audio into its JSON, the approver is the safeguard, not

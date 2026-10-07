@@ -323,13 +323,17 @@ async def start_deidentification(
                 )
 
     if pipeline_version is not None:
-        from .dag_pipelines import is_approved
+        from .dag_pipelines import version_stage
         from .pipeline_dag import steps_needing_approval
-        asking = steps_needing_approval(pipeline_version["dag_config"])
-        if asking and not is_approved(str(pipeline_version["id"])):
+        stage = version_stage(str(pipeline_version["id"]), pipeline_version["dag_config"])
+        if stage == "retired":
+            problems.append("this version of the pipeline was retired, so it cannot be run. Run a later version")
+        elif stage == "development":
+            asking = steps_needing_approval(pipeline_version["dag_config"])
             problems.append(
-                f"this version lets the custom step{'s' if len(asking) > 1 else ''} {', '.join(asking)} read the recordings or write files, and it has "
-                f"not been approved. An approver of the department that owns the pipeline, who is not the person who uploaded it, approves it first"
+                f"this version is in development, and it lets the custom step{'s' if len(asking) > 1 else ''} {', '.join(asking)} read the recordings or "
+                f"write files, which only a version in production may do. An approver of the department that owns the pipeline, who is not the person "
+                f"who uploaded it, moves it to production first"
             )
 
     backend = version["storage_backend"] or "seaweedfs"

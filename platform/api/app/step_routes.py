@@ -58,8 +58,11 @@ def run_context(pipeline_run_id: str, tenant_id: str, step: str) -> dict:
                 if x.get("name") == step and x.get("kind") == "script" and (x.get("recordings") is True or x.get("writes_files") is True)]
     if not declared:
         raise HTTPException(403, {"reasons": [f"step {step!r} of this run does not declare that it is given the recordings or writes files"]})
-    if not dag_pipelines.is_approved(str(version["id"])):
-        raise HTTPException(403, {"reasons": ["this version of the pipeline has not been approved to be given the recordings or to write files, or its approval was withdrawn"]})
+    stage = dag_pipelines.version_stage(str(version["id"]), version["dag_config"])
+    if stage == "retired":
+        raise HTTPException(403, {"reasons": ["this version of the pipeline was retired"]})
+    if stage != "production":
+        raise HTTPException(403, {"reasons": ["this version of the pipeline is in development, or was returned to it, and only a version in production may be given the recordings or write files"]})
     return {"source_version_id": str(run["source_version_id"]) if run["source_version_id"] else None,
             "recordings": declared[0].get("recordings") is True, "writes_files": declared[0].get("writes_files") is True,
             "label": f"custom step {step} of pipeline {version['name']} version {version['version']}"}

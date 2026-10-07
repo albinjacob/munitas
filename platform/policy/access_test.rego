@@ -1890,6 +1890,16 @@ test_only_a_department_approver_with_the_role_approves_a_pipeline_version if {
 	"this person holds no role that may approve a pipeline version (a data custodian)" in decision2.reasons
 }
 
+test_a_department_approver_or_the_uploader_retires_a_pipeline_version_and_nobody_else if {
+	access.may_retire_pipeline_version with input as {"actor": {"id": "c", "roles": ["data_custodian"]}, "version": {"uploaded_by": "e"}, "dataset": {"approvers": ["c"]}}
+	access.may_retire_pipeline_version with input as {"actor": {"id": "e", "roles": ["pipeline_operator"]}, "version": {"uploaded_by": "e"}, "dataset": {"approvers": ["c"]}}
+	not access.may_retire_pipeline_version with input as {"actor": {"id": "x", "roles": ["pipeline_operator"]}, "version": {"uploaded_by": "e"}, "dataset": {"approvers": ["c"]}}
+	not access.may_retire_pipeline_version with input as {"actor": {"id": "z", "roles": ["data_custodian"]}, "version": {"uploaded_by": "e"}, "dataset": {"approvers": ["c"]}}
+	decision := access.pipeline_version_retirement_decision with input as {"actor": {"id": "x", "roles": []}, "version": {"uploaded_by": "e"}, "dataset": {"approvers": ["c"]}}
+	decision.allow == false
+	count(decision.reasons) == 1
+}
+
 test_a_department_approver_may_take_an_approval_back_and_nobody_else if {
 	access.may_withdraw_pipeline_approval with input as {"actor": {"id": "c", "roles": ["data_custodian"]}, "dataset": {"approvers": ["c"]}}
 	not access.may_withdraw_pipeline_approval with input as {"actor": {"id": "e", "roles": ["pipeline_operator"]}, "dataset": {"approvers": ["c"]}}

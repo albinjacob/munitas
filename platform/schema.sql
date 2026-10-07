@@ -1003,7 +1003,7 @@ begin
     'lease_request','access_lease','department','project','directory',
     'record_key','tombstone','datasink','write_grant',
     'org_key','subject_lookup','subject_key','privacy_contract','locked_column_lease','group_size_report',
-    'recording_upload','recording_part','recording_person','pipeline_version_approval','step_output','step_output_part'
+    'recording_upload','recording_part','recording_person'
   ] loop
     execute format('drop trigger if exists %I on %I', 'refuse_retired_' || t, t);
     execute format(
@@ -1763,6 +1763,18 @@ create table if not exists pipeline_version_approval (
 create unique index if not exists pipeline_version_approval_live_idx
   on pipeline_version_approval (pipeline_version_id) where withdrawn_at is null;
 
+-- A pipeline version is in development, in production or retired. Production is a standing approval (above), development is the absence of
+-- one, and retired is this row. Retiring is final: a retired version is replaced by a later one, never brought back. A version is sealed and
+-- never edited, so the end of its life is a row of its own.
+create table if not exists pipeline_version_retirement (
+  id                  uuid primary key,
+  pipeline_version_id uuid not null unique references pipeline_version(id),
+  tenant_id           text not null references tenant(id),
+  retired_by          text not null references directory(id),
+  note                text,
+  retired_at          timestamptz not null default now()
+);
+
 -- A file a custom step writes through the platform. It is stored in parts under the folder the next version of the output dataset will own, and it
 -- becomes part of a version only when the step succeeded and the platform seals them together, "under review". A step that fails leaves nothing.
 create table if not exists step_output (
@@ -1790,6 +1802,20 @@ create table if not exists step_output_part (
   bytes        int not null,
   primary key (output_id, part_number)
 );
+
+-- The retired-tenant rule for the tables created since the first block above, which runs before they exist: a trigger cannot be put on a table
+-- that is not there yet, and a database built from this file from nothing stops at the first one that is missing.
+do $$
+declare t text;
+begin
+  foreach t in array array['pipeline_version_approval','pipeline_version_retirement','step_output','step_output_part'] loop
+    execute format('drop trigger if exists %I on %I', 'refuse_retired_' || t, t);
+    execute format(
+      'create trigger %I before insert or update on %I
+         for each row execute function refuse_write_to_retired_tenant()',
+      'refuse_retired_' || t, t);
+  end loop;
+end $$;
 
 alter table pipeline_run drop constraint if exists pipeline_run_kind_valid;
 alter table pipeline_run add constraint pipeline_run_kind_valid

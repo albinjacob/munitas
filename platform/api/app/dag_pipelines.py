@@ -169,7 +169,7 @@ async def upload_version(
         "id": version_id, "pipeline_id": pipeline_id, "version": version,
         "config_hash": config_hash, "sealed": True, "step_count": len(dag_config["steps"]),
         "steps_given_recordings": steps_asking_for_recordings(dag_config), "steps_writing_files": steps_writing_files(dag_config),
-        "needs_approval": bool(needing),
+        "needs_promotion": bool(needing), "stage": "development" if needing else "production",
     }
 
 
@@ -237,25 +237,50 @@ def read_pipeline(
     pipeline = _pipeline(pipeline_id, identity["tenant_id"])
     versions = db.all_rows(
         """select pv.id, pv.version, pv.dag_config, pv.config_hash, pv.created_at, pv.uploaded_by, u.label as uploaded_by_label,
-                  a.approved_by, ab.label as approved_by_label, a.approved_at
+                  a.approved_by as promoted_by, ab.label as promoted_by_label, a.approved_at as promoted_at,
+                  r.retired_by, rb.label as retired_by_label, r.retired_at, r.note as retired_note
              from pipeline_version pv
              left join directory u on u.id = pv.uploaded_by
              left join pipeline_version_approval a on a.pipeline_version_id = pv.id and a.withdrawn_at is null
              left join directory ab on ab.id = a.approved_by
+             left join pipeline_version_retirement r on r.pipeline_version_id = pv.id
+             left join directory rb on rb.id = r.retired_by
             where pv.pipeline_id = %s order by pv.version desc""",
         (pipeline_id,),
     )
     for v in versions:
         v["steps_given_recordings"] = steps_asking_for_recordings(v["dag_config"])
         v["steps_writing_files"] = steps_writing_files(v["dag_config"])
-        v["needs_approval"] = bool(steps_needing_approval(v["dag_config"]))
-        v["approved"] = v["approved_by"] is not None
+        v["needs_promotion"] = bool(steps_needing_approval(v["dag_config"]))
+        v["stage"] = _stage(retired=v["retired_at"] is not None, promoted=v["promoted_by"] is not None, needs_promotion=v["needs_promotion"])
     return {**pipeline, "versions": versions}
 
 
 def is_approved(pipeline_version_id: str) -> bool:
-    """Whether a second person's approval of this version stands (not withdrawn)."""
+    """Whether a second person's promotion of this version stands (not taken back)."""
     return db.one("select 1 as x from pipeline_version_approval where pipeline_version_id = %s and withdrawn_at is null", (pipeline_version_id,)) is not None
+
+
+def is_retired(pipeline_version_id: str) -> bool:
+    return db.one("select 1 as x from pipeline_version_retirement where pipeline_version_id = %s", (pipeline_version_id,)) is not None
+
+
+def _stage(*, retired: bool, promoted: bool, needs_promotion: bool) -> str:
+    """The stage of a pipeline version: retired for good, in production, or in development.
+
+    A version with custom steps that read the recordings or write files is in production while a second person's promotion stands, and in
+    development otherwise. A version made only of the platform's own steps is in production from the start: there is no code to look at, and
+    what it may run on is not yet limited to development data, which comes with the declaration of a development sample.
+    """
+    if retired:
+        return "retired"
+    return "production" if promoted or not needs_promotion else "development"
+
+
+def version_stage(pipeline_version_id: str, dag_config: dict) -> str:
+    """The stage of a version right now. Asked on every request that depends on it, so a change of stage takes effect at the next one."""
+    return _stage(retired=is_retired(pipeline_version_id), promoted=is_approved(pipeline_version_id),
+                  needs_promotion=bool(steps_needing_approval(dag_config)))
 
 
 class Decision(BaseModel):
@@ -275,32 +300,38 @@ def _approvers(pipeline: dict) -> list[str]:
     return approvers_of(pipeline["department_id"])
 
 
-@router.post("/pipelines/{pipeline_id}/versions/{version_id}/approve")
-def approve_version(pipeline_id: str, version_id: str, body: Decision, identity: dict = Depends(current_session)) -> dict:
-    """Approve a version whose custom step is given the recordings. The department's approver, never the person who uploaded it.
+@router.post("/pipelines/{pipeline_id}/versions/{version_id}/promote")
+def promote_version(pipeline_id: str, version_id: str, body: Decision, identity: dict = Depends(current_session)) -> dict:
+    """Move a version whose custom step is given the recordings, or writes files, from development to production. The department's approver,
+    never the person who uploaded it.
 
     Until this is done a run of the version is refused, and the recordings are refused to its steps if a run somehow started.
     """
     pipeline, version = _version_of(pipeline_id, version_id, identity)
+    if is_retired(version_id):
+        raise HTTPException(409, {"reasons": ["this version was retired, and a retired version is replaced by a later one, never brought back"]})
     if not steps_needing_approval(version["dag_config"]):
-        raise HTTPException(400, {"reasons": ["no step of this version is given the recordings or writes files, so there is nothing to approve"]})
+        raise HTTPException(400, {"reasons": ["every step of this version is one the platform provides, so it is in production already"]})
     allowed, reasons = opa.may_approve_pipeline_version({
         "approver": {"id": identity["id"], "roles": identity["roles"]}, "version": {"uploaded_by": version["uploaded_by"]},
         "dataset": {"approvers": _approvers(pipeline)}})
     if not allowed:
         raise HTTPException(403, {"reasons": reasons})
     if is_approved(version_id):
-        raise HTTPException(409, {"reasons": ["this version is already approved"]})
+        raise HTTPException(409, {"reasons": ["this version is already in production"]})
     approval_id = str(uuid.uuid4())
     db.execute("insert into pipeline_version_approval (id, pipeline_version_id, tenant_id, approved_by, note) values (%s, %s, %s, %s, %s) returning id",
                (approval_id, version_id, pipeline["tenant_id"], identity["id"], body.note.strip() or None))
-    return {"id": approval_id, "pipeline_version_id": version_id, "approved_by": identity["id"], "approved": True}
+    return {"id": approval_id, "pipeline_version_id": version_id, "promoted_by": identity["id"], "stage": "production"}
 
 
-@router.post("/pipelines/{pipeline_id}/versions/{version_id}/withdraw-approval")
-def withdraw_approval(pipeline_id: str, version_id: str, body: Decision, identity: dict = Depends(current_session)) -> dict:
-    """Take an approval back. A run already going keeps going; no later run, and no later opening of a recording by a step, is allowed."""
+@router.post("/pipelines/{pipeline_id}/versions/{version_id}/demote")
+def demote_version(pipeline_id: str, version_id: str, body: Decision, identity: dict = Depends(current_session)) -> dict:
+    """Return a version to development. No later run is allowed, and a step already running is refused at its next request, so what it was
+    writing is discarded."""
     pipeline, _version = _version_of(pipeline_id, version_id, identity)
+    if is_retired(version_id):
+        raise HTTPException(409, {"reasons": ["this version was retired, and a retired version is replaced by a later one, never brought back"]})
     allowed, reasons = opa.may_withdraw_pipeline_approval({
         "actor": {"id": identity["id"], "roles": identity["roles"]}, "dataset": {"approvers": _approvers(pipeline)}})
     if not allowed:
@@ -309,8 +340,27 @@ def withdraw_approval(pipeline_id: str, version_id: str, body: Decision, identit
         """update pipeline_version_approval set withdrawn_by = %s, withdrawn_at = now()
             where pipeline_version_id = %s and withdrawn_at is null returning id""", (identity["id"], version_id))
     if row is None:
-        raise HTTPException(409, {"reasons": ["this version has no approval standing"]})
-    return {"pipeline_version_id": version_id, "approved": False}
+        raise HTTPException(409, {"reasons": ["this version is not in production because of a promotion, so there is nothing to return to development"]})
+    return {"pipeline_version_id": version_id, "stage": "development"}
+
+
+@router.post("/pipelines/{pipeline_id}/versions/{version_id}/retire")
+def retire_version(pipeline_id: str, version_id: str, body: Decision, identity: dict = Depends(current_session)) -> dict:
+    """End a version's life. It cannot be run again and a step already running is refused at its next request. It is final: a retired version is
+    replaced by a later one. An approver of the owning department, or the person who uploaded the version, since this only tightens."""
+    pipeline, version = _version_of(pipeline_id, version_id, identity)
+    allowed, reasons = opa.may_retire_pipeline_version({
+        "actor": {"id": identity["id"], "roles": identity["roles"]}, "version": {"uploaded_by": version["uploaded_by"]},
+        "dataset": {"approvers": _approvers(pipeline)}})
+    if not allowed:
+        raise HTTPException(403, {"reasons": reasons})
+    retirement_id = str(uuid.uuid4())
+    row = db.execute("insert into pipeline_version_retirement (id, pipeline_version_id, tenant_id, retired_by, note) values (%s, %s, %s, %s, %s) "
+                     "on conflict (pipeline_version_id) do nothing returning id",
+                     (retirement_id, version_id, pipeline["tenant_id"], identity["id"], body.note.strip() or None))
+    if row is None:
+        raise HTTPException(409, {"reasons": ["this version was retired already"]})
+    return {"id": retirement_id, "pipeline_version_id": version_id, "retired_by": identity["id"], "stage": "retired"}
 
 
 @router.get("/pipelines/{pipeline_id}/versions/{version_id}/code")
