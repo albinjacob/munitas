@@ -7,7 +7,7 @@ short-lived pass for this one step and a way to reach the platform's step routes
 
     for item in step.list_recordings():              # [{"record_id": "visit-7", "bytes": 4349894, "erased": False}, ...]
         if item["erased"]:
-            continue                                 # the patient was erased: it cannot be opened, and is left out
+            continue                                 # the person was erased: it cannot be opened, and is left out
         audio = step.open_recording(item["record_id"])   # a file you can read, seek in and pass to audio libraries
         ...
     step.result({"recommendation": "not_measured", "reason": "..."})   # the step's small JSON result, printed as its last line
@@ -30,7 +30,7 @@ Three ways to read one recording, whichever the script needs:
     step.save_recording(id, "/tmp/x.wav") # to a path inside this container (/tmp is memory-backed and size-limited, and goes with the container)
 
 The platform decides every time, not only the first: whether the pass is real, whether the run is still going, whether the version of the pipeline was
-approved to be given the recordings, and whether the patient was erased. Erasing a patient while their recording is being read makes the next block
+approved to be given the recordings, and whether the person was erased. Erasing a person while their recording is being read makes the next block
 raise RecordingErased. Opening a recording is written to the platform's key log, naming this step.
 
 Standard library only. It is the one implementation of the reader: the platform's own workers import the same class.
@@ -56,7 +56,7 @@ class StepError(Exception):
 
 
 class RecordingErased(StepError):
-    """The patient this recording is about was erased, so it cannot be opened."""
+    """The person this recording is about was erased, so it cannot be opened."""
 
 
 class RangeFile(io.RawIOBase):
@@ -161,7 +161,7 @@ def _refusal(status: int, body: bytes, record_id: str, what: str) -> Exception:
 
 
 def list_recordings() -> list[dict]:
-    """The recordings this step may be given: each one's `record_id`, its `bytes` once opened, and whether its patient was `erased`."""
+    """The recordings this step may be given: each one's `record_id`, its `bytes` once opened, and whether its person was `erased`."""
     status, _, body = _call("GET", "/step/v1/recordings")
     if status != 200:
         raise StepError(f"listing the recordings returned {status}: {body[:300].decode('utf-8', 'replace')}")
@@ -169,7 +169,7 @@ def list_recordings() -> list[dict]:
 
 
 def open_recording(record_id: str) -> RangeFile:
-    """A recording as a file to read. Opening it is written to the platform's key log. Raises RecordingErased when its patient was erased."""
+    """A recording as a file to read. Opening it is written to the platform's key log. Raises RecordingErased when its person was erased."""
     status, _, body = _call("POST", f"/step/v1/recordings/{record_id}/open")
     if status != 200:
         raise _refusal(status, body, record_id, "opening")
@@ -270,20 +270,20 @@ def write_output(name: str, from_record: str | None = None, size: int | None = N
     """A file to write to, sent to the platform as it is written. Use it as `with write_output("name.wav") as out:`.
 
     A file made from a recording says which one and how many bytes it will be: `write_output("x.wav", from_record="r-0001", size=n)`. The platform then
-    locks it under that recording's patient as it arrives. Sound made from a recording must be written this way.
+    locks it under that recording's person as it arrives. Sound made from a recording must be written this way.
     """
     return OutputFile(name, from_record, size)
 
 
 def save_output(name: str, data: bytes, from_record: str | None = None) -> dict:
-    """A whole file from bytes, locked under the patient of `from_record` when it is given. Returns its size and fingerprint."""
+    """A whole file from bytes, locked under the person of `from_record` when it is given. Returns its size and fingerprint."""
     out = OutputFile(name, from_record, len(data) if from_record is not None else None)
     out.write(data)
     return out.finish()
 
 
 def copy_to_output(name: str, path: str, from_record: str | None = None) -> dict:
-    """A file from this container's own scratch space, sent in pieces, locked under the patient of `from_record` when it is given. Returns its size and fingerprint."""
+    """A file from this container's own scratch space, sent in pieces, locked under the person of `from_record` when it is given. Returns its size and fingerprint."""
     import os
     out = OutputFile(name, from_record, os.path.getsize(path) if from_record is not None else None)
     with open(path, "rb") as source:

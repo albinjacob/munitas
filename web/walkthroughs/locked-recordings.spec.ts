@@ -110,13 +110,13 @@ test("capture: bring in recordings so that one patient can be erased later", asy
 
   // A manifest and a set of files with several mistakes: all of them are listed before a single byte is sent.
   await page.getByTestId("recordings-kind").fill("hospital chart number");
-  await page.getByTestId("recordings-manifest").setInputFiles(csv("manifest.csv", `file,patient\nvisit-1.wav,${chartA}\nvisit-2.wav,\nvisit-3.wav,${chartB}\n`));
+  await page.getByTestId("recordings-manifest").setInputFiles(csv("manifest.csv", `file,person\nvisit-1.wav,${chartA}\nvisit-2.wav,\nvisit-3.wav,${chartB}\n`));
   await page.getByTestId("recordings-files").setInputFiles([audio("visit-1.wav", 30_000), audio("visit-4.wav", 20_000), answerKey("visit-9.truth.json", "invented words")]);
-  await expect(page.getByTestId("recordings-problems")).toContainText("visit-2.wav names no patient");
+  await expect(page.getByTestId("recordings-problems")).toContainText("visit-2.wav names no person");
   await shotAt(page, "recordings-panel", "every-mistake-is-listed-before-anything-is-sent", 40);
 
   // The corrected manifest and the right files.
-  await page.getByTestId("recordings-manifest").setInputFiles(csv("manifest.csv", `file,patient\nvisit-1.wav,${chartA}\nvisit-2.wav,${chartB}\n`));
+  await page.getByTestId("recordings-manifest").setInputFiles(csv("manifest.csv", `file,person\nvisit-1.wav,${chartA}\nvisit-2.wav,${chartB}\n`));
   await page.getByTestId("recordings-files").setInputFiles([
     audio("visit-1.wav", 30_000),
     audio("visit-2.wav", 60_000),
@@ -130,10 +130,10 @@ test("capture: bring in recordings so that one patient can be erased later", asy
   await expect(page.getByTestId("recording-visit-1.wav")).toContainText("Locked", { timeout: 90_000 });
   await expect(page.getByTestId("recording-visit-2.wav")).toContainText("Locked", { timeout: 90_000 });
   await expect(page.getByTestId("recording-visit-1.truth.json")).toContainText("Locked", { timeout: 90_000 });
-  await shotAt(page, "recordings-panel", "every-file-is-locked-under-its-patients-key", 40);
+  await shotAt(page, "recordings-panel", "every-file-is-locked-under-its-persons-key", 40);
 
   await page.getByTestId("recordings-seal").click();
-  await expect(page.getByTestId("recordings-sealed")).toContainText("2 recordings about 2 patients", { timeout: 60_000 });
+  await expect(page.getByTestId("recordings-sealed")).toContainText("2 recordings about 2 people", { timeout: 60_000 });
   await shotAt(page, "recordings-sealed", "the-recordings-are-sealed", 200);
 
   await page.getByTestId("open-sealed-recordings").click();

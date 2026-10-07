@@ -1049,7 +1049,7 @@ def get_gate_decision(
     The leak list carries the identifier and what survived redaction, which is
     personal data and the reason this endpoint exists at all: judging severity
     is the whole job, and a count cannot tell a partial postcode from a
-    patient's full name.
+    person's full name.
 
     `steps` is every action run of the pipeline run that produced this, which
     is what the correlation id is for. It stays correct once work after the

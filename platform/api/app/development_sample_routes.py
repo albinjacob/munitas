@@ -49,7 +49,7 @@ def _refusals(call):
 def development_samples_of(version_id: str, identity: dict = Depends(auth.current_session)) -> dict:
     """What a screen needs on a version of recordings: the caller's samples, the requests waiting for them as an approver, what they may do, the limits.
 
-    Never a recording or a patient. An approver sees how many recordings came from each length band, and nothing more.
+    Never a recording or a person. An approver sees how many recordings came from each length band, and nothing more.
     """
     return _refusals(lambda: development_samples.for_version(identity, version_id))
 

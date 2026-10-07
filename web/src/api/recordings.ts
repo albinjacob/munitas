@@ -39,11 +39,11 @@ export interface SealedRecordings {
 export interface RecordingsSummary {
   version_id: string;
   recordings: number;
-  patients: number;
+  people: number;
   erased_recordings: number;
 }
 
-export const openRecordingUpload = (datasetId: string, body: { file_name: string; size_bytes: number; patient_kind: string; patient_value: string }) =>
+export const openRecordingUpload = (datasetId: string, body: { file_name: string; size_bytes: number; person_kind: string; person_value: string }) =>
   api.post<UploadSession>(`/datasets/${datasetId}/recording-uploads`, body);
 
 export const recordingUploadStatus = (uploadId: string) => api.get<UploadSession>(`/recording-uploads/${uploadId}`);

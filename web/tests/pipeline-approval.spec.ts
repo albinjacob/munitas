@@ -101,7 +101,7 @@ test.describe("U143: a version that is given the recordings starts in developmen
     await page.goto(`/pipelines/${id}`);
     const panel = page.getByTestId("pipeline-lifecycle-1");
     await expect(page.getByTestId("pipeline-stage-1")).toHaveText("In development");
-    await expect(panel).toContainText("Step inspect reads the patient recordings and writes files, which become a new version that a reviewer checks before anyone can use it");
+    await expect(panel).toContainText("Step inspect reads the locked recordings and writes files, which become a new version that a reviewer checks before anyone can use it");
     await expect(panel).toContainText("an approver of Verification other than");
     await expect(page.getByTestId("pipeline-version-1")).toContainText("reads the recordings, writes files, 2048 MB of memory");
     await expect(panel.getByRole("button", { name: "Move to production" })).toHaveCount(0);

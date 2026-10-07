@@ -1,7 +1,7 @@
 /**
  * The files of a version, on the page of the version: what is there, whether you may open it, and playing or reading the ones you may.
  *
- * Opening goes through the platform. It unlocks a locked file with its patient's key and does not hand you the key or where the file is stored. Every
+ * Opening goes through the platform. It unlocks a locked file with the key of the person it is about and does not hand you the key or where the file is stored. Every
  * opening is written down. A sound plays in the page and a text file is shown in part: there is no download here. Nothing about a patient is shown:
  * a file is named by its identifier, its size and whether it is locked.
  */
@@ -57,7 +57,7 @@ function Row({ versionId, file }: { versionId: string; file: RecordFile }) {
         <span className="font-mono text-xs">{file.record_id}</span>
         <span className="text-xs text-slate-500">{size(file.bytes)}</span>
         {file.locked && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-700">Locked</span>}
-        {file.erased && <span className="rounded bg-red-100 px-1.5 py-0.5 text-xs text-red-900">Patient erased</span>}
+        {file.erased && <span className="rounded bg-red-100 px-1.5 py-0.5 text-xs text-red-900">Person erased</span>}
         {(isSound || isText) && !file.erased && (
           <button
             type="button"
@@ -103,7 +103,7 @@ export function RecordFilesSection({ versionId }: { versionId: string }) {
   return (
     <Section
       title="Files"
-      description="The files this version holds. You open one through the platform, which unlocks it with its patient's key. You are never given the key or where the file is stored, and every opening is written down."
+      description="The files this version holds. You open one through the platform, which unlocks it with the key of the person it is about. You are never given the key or where the file is stored, and every opening is written down."
     >
       <div data-testid="record-files" className="space-y-3">
         {ended && (

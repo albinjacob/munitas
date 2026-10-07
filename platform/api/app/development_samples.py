@@ -5,16 +5,16 @@ development data: recordings declared synthetic, or a sample of real ones that a
 
 A person asks for a sample (a kind, a purpose, how many recordings, for how many days). An approver of the department that owns the recordings, who
 is not that person, decides. The platform then draws the recordings and seals a new version that names the same stored files, so no audio is
-copied and nothing is stored in the clear. Erasing a patient makes their recording unreadable in the sample too, because it is the same file under
+copied and nothing is stored in the clear. Erasing a person makes their recording unreadable in the sample too, because it is the same file under
 the same key. A debug sample names the recordings that went wrong instead of drawing them.
 
 The draw is the platform's. It is reproducible from the salt kept with the sample, so anyone can see that it was not hand-picked:
-  1. leave out recordings of erased patients;
-  2. one recording for each patient, the one whose hash ranks first;
+  1. leave out recordings of erased people;
+  2. one recording for each person, the one whose hash ranks first;
   3. three length bands, each a third of what is left;
   4. the number asked for divided across the bands in proportion, the remainder going to the shorter bands first;
-  5. in each band, the patients whose hash ranks first.
-The hash is SHA-256 of the salt, the patient's code and the recording's identifier, so the same person asking for the same purpose of the same version
+  5. in each band, the people whose hash ranks first.
+The hash is SHA-256 of the salt, the person's code and the recording's identifier, so the same person asking for the same purpose of the same version
 gets the same sample, and asking again does not collect a different one.
 """
 
@@ -52,8 +52,8 @@ def salt_for(version_id: str, principal: str, kind: str) -> str:
 def draw(candidates: list[dict], count: int, salt: str, *, bands: int = BANDS, per_person: int = 1) -> dict:
     """Choose `count` recordings from `candidates` (each `record_id`, `person_code`, `bytes`), by the method in the module note.
 
-    A pure function of its arguments, so that it can be tested alone and reproduced from the salt. The caller has already left out erased patients.
-    Returns the chosen identifiers, how many came from each band, and how many recordings and patients there were to choose from.
+    A pure function of its arguments, so that it can be tested alone and reproduced from the salt. The caller has already left out erased people.
+    Returns the chosen identifiers, how many came from each band, and how many recordings and people there were to choose from.
     """
     by_person: dict[str, list[dict]] = {}
     for c in candidates:
@@ -181,11 +181,11 @@ def request_sample(identity: dict, version_id: str, kind: str, purpose: str, day
     by_id = {c["record_id"]: c for c in candidates}
     if kind == "debug":
         problems = [f"{n} is not a recording of this version" for n in named if n not in by_id]
-        problems += [f"{n} is a recording of a patient who was erased" for n in named if n in by_id and by_id[n]["erased"]]
+        problems += [f"{n} is a recording about a person who was erased" for n in named if n in by_id and by_id[n]["erased"]]
         if problems:
             raise Refused(problems)
     elif not any(not c["erased"] for c in candidates):
-        raise Refused(["every recording in this version is of a patient who was erased, so there is nothing to draw"])
+        raise Refused(["every recording in this version is about a person who was erased, so there is nothing to draw"])
     try:
         row = db.execute(
             """insert into development_sample (id, tenant_id, source_version_id, principal, kind, purpose, requested_count, days, named_records)
@@ -238,7 +238,7 @@ def decide(identity: dict, sample_id: str, approve: bool, note: str | None, reco
         drawn = draw(candidates, count, salt)
         chosen, strata = drawn["chosen"], drawn["strata"]
     if not chosen:
-        raise Refused(["nothing is left to give: every recording asked for is of a patient who was erased"])
+        raise Refused(["nothing is left to give: every recording asked for is about a person who was erased"])
     sample_version = _make_version(sample, version, chosen, identity)
     row = db.execute(
         """update development_sample
@@ -348,7 +348,7 @@ def _declaration(row: dict | None) -> dict | None:
 def for_version(identity: dict, version_id: str) -> dict:
     """What a screen needs on a version of recordings: this person's samples, the requests waiting for them as an approver, what they may do, the limits.
 
-    Never a recording or a patient. A person who is an approver sees the counts of what was drawn, band by band, and nothing more.
+    Never a recording or a person. A person who is an approver sees the counts of what was drawn, band by band, and nothing more.
     """
     sweep()
     version = _version(version_id, identity["tenant_id"])

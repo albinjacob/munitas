@@ -80,10 +80,10 @@ STEPS = [
         "screen": VERSION,
         "text": "The platform made the sample as a version of its own, in a dataset named after the recordings with dev-sample and a short code "
                 "added. A dataset is a registered, owned collection of data. Devi opens the sample from the list of Devi&rsquo;s own samples. The "
-                "page counts 3 recordings of 3 patients and says that the sample is for the person it was drawn for and for nobody else. Lower "
+                "page counts 3 recordings about 3 people and says that the sample is for the person it was drawn for and for nobody else. Lower "
                 "down, the section Where this came from names the platform&rsquo;s own step that made the sample, and links to the recordings it "
                 "was made from.",
-        "note": "Under <strong>Locked recordings</strong> the counts read <strong>Recordings 3</strong> and <strong>Patients 3</strong>. Under "
+        "note": "Under <strong>Locked recordings</strong> the counts read <strong>Recordings 3</strong> and <strong>People 3</strong>. Under "
                 "<strong>Development sample</strong> a green box reads <strong>This is a development sample of 3 recordings, drawn for you.</strong>, "
                 "then the date it ends, and says that it names the same locked recordings as <strong>the recordings it was drawn from</strong> and "
                 "copies none of them. Under <strong>Where this came from</strong>, <strong>Step</strong> reads <strong>development_sample</strong>, "

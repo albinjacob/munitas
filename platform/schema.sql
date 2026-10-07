@@ -882,9 +882,9 @@ create trigger group_size_report_guard before update on group_size_report for ea
 
 -- ------------------------------------ recordings locked per person ---------
 
--- A recording is one patient's, and it is stored locked under that patient's key, in chunks, so erasing the patient makes it unreadable.
--- It is sent in parts that can each be sent again: an upload is opened first (naming the file, its size and its patient), then each part is
--- sent on its own, then the upload is completed. Only the patient's person code is kept here, never the identifier that found them.
+-- A recording is one person's, and it is stored locked under that person's key, in chunks, so erasing the person makes it unreadable.
+-- It is sent in parts that can each be sent again: an upload is opened first (naming the file, its size and its person), then each part is
+-- sent on its own, then the upload is completed. Only the person's person code is kept here, never the identifier that found them.
 create table if not exists recording_upload (
   id               uuid primary key,
   tenant_id        text not null references tenant(id),
@@ -915,7 +915,7 @@ create table if not exists recording_part (
   primary key (upload_id, part_number)
 );
 
--- Which patient a recording in a sealed version is about, by person code only. Erasing the person destroys their key and leaves this row, as
+-- Which person a recording in a sealed version is about, by person code only. Erasing the person destroys their key and leaves this row, as
 -- it leaves the person code in a sealed table: the code names nobody.
 create table if not exists recording_person (
   dataset_version_id uuid not null references dataset_version(id),
@@ -926,11 +926,11 @@ create table if not exists recording_person (
   format             text not null,
   primary key (dataset_version_id, record_id)
 );
--- The recording's answer key is locked under the same patient's key, and opened the same way; null when none was uploaded.
+-- The recording's answer key is locked under the same person's key, and opened the same way; null when none was uploaded.
 alter table recording_person add column if not exists answer_key_bytes bigint;
 create index if not exists recording_person_person_idx on recording_person (tenant_id, person_code);
 
--- An upload that was locked under a patient's key is marked on the file it became, so the two ways of sealing recordings can refuse each
+-- An upload that was locked under a person's key is marked on the file it became, so the two ways of sealing recordings can refuse each
 -- other's files: opened as audio, locked bytes would be noise, and sealed as locked, plain bytes would not be locked.
 alter table dataset_source add column if not exists locked_person_code text;
 alter table dataset_source add column if not exists locked_format text;
@@ -1803,7 +1803,7 @@ create table if not exists step_output_part (
   primary key (output_id, part_number)
 );
 
--- A file a step wrote from a patient's recording is locked under that patient's key as it arrives, like the recording itself. The step names the
+-- A file a step wrote from a person's recording is locked under that person's key as it arrives, like the recording itself. The step names the
 -- recording and says the file's size up front (the lock is fitted to it), and the platform checks the step opened that recording in this run.
 alter table step_output add column if not exists person_code text;
 alter table step_output add column if not exists source_record text;

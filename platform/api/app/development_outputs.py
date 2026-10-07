@@ -1,7 +1,7 @@
 """What is made from development data ends with the data it was made from.
 
 A development sample, and whatever a run makes on a sample or on synthetic recordings, is for building and testing. Left alone it would pile up: copies
-of real patient data, derived from a sample, each one more thing to find when a patient asks to be erased, and each outliving the permission that let
+of real person data, derived from a sample, each one more thing to find when a person asks to be erased, and each outliving the permission that let
 the input be read. So each ends, at the earlier of a number of days (7, `development_output_days` in the policy) and the end of the sample it came from.
 
 When one ends the platform deletes its files and keeps its row. The version is sealed and never edited or deleted, so the row stays, with a

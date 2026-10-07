@@ -173,7 +173,7 @@ test("capture: let your own code read recordings and write files, with an approv
   await page.getByTestId("erase-yes").check();
   await page.getByTestId("bringing-recordings").check();
   await page.getByTestId("recordings-kind").fill("hospital chart number");
-  await page.getByTestId("recordings-manifest").setInputFiles({ name: "manifest.csv", mimeType: "text/csv", buffer: Buffer.from(`file,patient\nvisit-1.wav,HC-${stamp}-1\nvisit-2.wav,HC-${stamp}-2\n`) });
+  await page.getByTestId("recordings-manifest").setInputFiles({ name: "manifest.csv", mimeType: "text/csv", buffer: Buffer.from(`file,person\nvisit-1.wav,HC-${stamp}-1\nvisit-2.wav,HC-${stamp}-2\n`) });
   await page.getByTestId("recordings-files").setInputFiles([
     { name: "visit-1.wav", mimeType: "audio/wav", buffer: wav(64_000) },
     { name: "visit-2.wav", mimeType: "audio/wav", buffer: wav(48_000) },
@@ -181,7 +181,7 @@ test("capture: let your own code read recordings and write files, with an approv
   await page.getByTestId("recordings-start").click();
   await expect(page.getByTestId("recording-visit-2.wav")).toContainText("Locked", { timeout: 90_000 });
   await page.getByTestId("recordings-seal").click();
-  await expect(page.getByTestId("recordings-sealed")).toContainText("2 recordings about 2 patients", { timeout: 60_000 });
+  await expect(page.getByTestId("recordings-sealed")).toContainText("2 recordings about 2 people", { timeout: 60_000 });
   await page.getByTestId("open-sealed-recordings").click();
   await expect(page).toHaveURL(/\/versions\/[0-9a-f-]{36}$/);
   const versionUrl = page.url();

@@ -46,9 +46,9 @@ function Lifecycle({ pipelineId, department, version }: { pipelineId: string; de
   const made = "which become a new version that a reviewer checks before anyone can use it.";
   const same = reading.length > 0 && reading.join() === writing.join();
   const what = same
-    ? `${named(reading)} ${reading.length > 1 ? "read the patient recordings and write" : "reads the patient recordings and writes"} files, ${made}`
+    ? `${named(reading)} ${reading.length > 1 ? "read the locked recordings and write" : "reads the locked recordings and writes"} files, ${made}`
     : [
-        reading.length ? `${named(reading)} ${reading.length > 1 ? "read" : "reads"} the patient recordings.` : "",
+        reading.length ? `${named(reading)} ${reading.length > 1 ? "read" : "reads"} the locked recordings.` : "",
         writing.length ? `${named(writing)} ${writing.length > 1 ? "write" : "writes"} files, ${made}` : "",
       ].filter(Boolean).join(" ");
   const box = version.stage === "development" ? "border-amber-200 bg-amber-50" : version.stage === "retired" ? "border-slate-200 bg-slate-50" : "border-green-200 bg-green-50";

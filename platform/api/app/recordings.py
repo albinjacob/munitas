@@ -1,8 +1,8 @@
-"""Recordings locked per patient: an upload sent in parts that can each be sent again, a seal that refuses anything not locked, and the one way
+"""Recordings locked per person: an upload sent in parts that can each be sent again, a seal that refuses anything not locked, and the one way
 a pipeline run is given a recording back.
 
-A recording belongs to one patient. It is stored locked under that patient's key, in chunks (crypto.stream), so erasing the patient destroys the
-key and every recording of theirs is unreadable at once. The platform finds the patient from an identifier the uploader supplies with the
+A recording belongs to one person. It is stored locked under that person's key, in chunks (crypto.stream), so erasing the person destroys the
+key and every recording of theirs is unreadable at once. The platform finds the person from an identifier the uploader supplies with the
 file (and its kind: the chart number, say). The identifier is never stored: a blind index finds the person, as it does for a table.
 
 An upload is three acts, each of which can be repeated:
@@ -44,8 +44,8 @@ class NoSuchUpload(LookupError):
     pass
 
 
-class PatientErased(Exception):
-    """The patient's key was destroyed, so nothing more can be locked for them or opened for them."""
+class PersonErased(Exception):
+    """The person's key was destroyed, so nothing more can be locked for them or opened for them."""
 
 
 # Opening an upload ---------------------------------------------------------
@@ -64,9 +64,9 @@ def _problems_opening(file_name: str, size: int, kind: str, value: str) -> list[
     elif isinstance(file_name, str) and file_name.endswith(ANSWER_KEY) and size > stream.PART:
         out.append(f"an answer key is sent whole, in one part of at most {stream.PART} bytes")
     if not str(kind or "").strip():
-        out.append("say what kind of identifier names the patient, such as a hospital chart number")
+        out.append("say what kind of identifier names the person, such as a member number")
     if not str(value or "").strip():
-        out.append("this recording names no patient: a recording is locked to one patient, and the patient's identifier is empty")
+        out.append("this recording names no person: a recording is locked to one person, and the person's identifier is empty")
     return out
 
 
@@ -88,15 +88,15 @@ def _drop_storage_upload(tenant: str, backend: str, key: str, upload: str) -> No
 
 
 def open_upload(service: KeyService, *, dataset_id: str, identity: dict, file_name: str, size_bytes: int,
-                patient_kind: str, patient_value: str) -> dict:
+                person_kind: str, person_value: str) -> dict:
     dataset = person_keys.intake_dataset(dataset_id, identity)
-    problems = _problems_opening(file_name, size_bytes, patient_kind, patient_value)
+    problems = _problems_opening(file_name, size_bytes, person_kind, person_value)
     if problems:
         raise Refused(problems)
     tenant, backend = dataset["tenant_id"], dataset["storage_backend"] or "seaweedfs"
     expire_stale(tenant)
 
-    person = person_keys.resolve_person(service, tenant, patient_kind, patient_value, identity["id"])
+    person = person_keys.resolve_person(service, tenant, person_kind, person_value, identity["id"])
     prefix = versions.next_version(tenant, dataset_id)["storage_prefix"]
     key = f"{prefix}/{file_name}"
 
@@ -204,7 +204,7 @@ def receive_part(service: KeyService, *, upload_id: str, part_number: int, data:
     try:
         key = service.unwrap(tenant, person, identity["id"], f"lock part {part_number} of recording {up['file_name']}")
     except DestroyedKeyError as exc:
-        raise PatientErased(f"the key for this patient was destroyed, so nothing more can be locked for them") from exc
+        raise PersonErased(f"the key for this person was destroyed, so nothing more can be locked for them") from exc
     stored = lock_part(key, tenant, person, up["file_name"], total, part_number, data)
 
     dataset = db.one("select storage_backend from dataset where id = %s", (up["dataset_id"],))
@@ -280,7 +280,7 @@ def _pending(dataset_id: str) -> list[dict]:
 
 
 def seal_recordings(*, dataset_id: str, identity: dict) -> dict:
-    """Seal the uploads as a version the de-identification pipeline can read, every recording locked under its patient's key.
+    """Seal the uploads as a version the de-identification pipeline can read, every recording locked under its person's key.
 
     Pressing this is the check, as it is for a table: a refusal seals nothing and every problem is listed together.
     """
@@ -296,7 +296,7 @@ def seal_recordings(*, dataset_id: str, identity: dict) -> dict:
     if not uploads:
         reasons.append("nothing has been uploaded to this dataset yet")
     elif not audio:
-        reasons.append("no recording has been uploaded locked to a patient. Recordings are named <record>.wav")
+        reasons.append("no recording has been uploaded locked to a person. Recordings are named <record>.wav")
     for u in sorted(uploads, key=lambda u: u["locator"]):
         if not u["locked_person_code"]:
             reasons.append(f"{u['locator']} was uploaded as an ordinary file, which locks nothing. Withdraw it and upload it again as a locked recording")
@@ -304,7 +304,7 @@ def seal_recordings(*, dataset_id: str, identity: dict) -> dict:
         reasons.append(f"{stem}{ANSWER_KEY} is an answer key for a recording that was not uploaded. Upload {stem}{WAV} or withdraw the key")
     for stem in sorted(set(keys) & set(audio)):
         if keys[stem]["locked_person_code"] != audio[stem]["locked_person_code"]:
-            reasons.append(f"{stem}{ANSWER_KEY} is locked to a different patient from {stem}{WAV}: a recording and its answer key are one patient's")
+            reasons.append(f"{stem}{ANSWER_KEY} is locked to a different person from {stem}{WAV}: a recording and its answer key are one person's")
     if reasons:
         raise Refused(reasons)
 
@@ -330,18 +330,18 @@ def seal_recordings(*, dataset_id: str, identity: dict) -> dict:
 
 
 def summary(version_id: str, identity: dict) -> dict:
-    """How many recordings a version holds, locked, and how many different patients they are about. Counts only: no name, no person code.
+    """How many recordings a version holds, locked, and how many different people they are about. Counts only: no name, no person code.
 
     Asking records nothing, because it opens nothing. Raises NoSuchVersion for a version that is not this person's organisation's or that holds no
     locked recordings, so a screen shows the panel only where it is true.
     """
-    row = db.one("select v.tenant_id, count(*) as recordings, count(distinct r.person_code) as patients, count(*) filter (where p.destroyed_at is not null) as erased "
+    row = db.one("select v.tenant_id, count(*) as recordings, count(distinct r.person_code) as people, count(*) filter (where p.destroyed_at is not null) as erased "
                  "from recording_person r join dataset_version v on v.id = r.dataset_version_id "
                  "left join subject_key p on p.tenant_id = r.tenant_id and p.person_code = r.person_code "
                  "where r.dataset_version_id = %s group by v.tenant_id", (version_id,))
     if not row or row["tenant_id"] != identity["tenant_id"]:
         raise NoSuchVersion(version_id)
-    return {"version_id": version_id, "recordings": row["recordings"], "patients": row["patients"], "erased_recordings": row["erased"], "format": FORMAT}
+    return {"version_id": version_id, "recordings": row["recordings"], "people": row["people"], "erased_recordings": row["erased"], "format": FORMAT}
 
 
 # Giving a recording back to a pipeline run -----------------------------------------------------
@@ -352,9 +352,9 @@ def is_locked_version(version_id: str) -> bool:
 
 
 def list_for_step(version_id: str) -> list[dict]:
-    """Every recording a sealed version holds, as a custom pipeline step is told of them: its id, its size, and whether its patient was erased.
+    """Every recording a sealed version holds, as a custom pipeline step is told of them: its id, its size, and whether its person was erased.
 
-    Reads the version's plain index (the recordings' own contract, which names no patient). A recording of an erased patient is listed as erased
+    Reads the version's plain index (the recordings' own contract, which names no person). A recording of an erased person is listed as erased
     and is never opened.
     """
     row = db.one("select tenant_id, storage_backend, object_manifest from dataset_version where id = %s", (version_id,))
@@ -413,7 +413,7 @@ def _open_key(service: KeyService, where: dict, run: str, purpose: str, audit: b
     try:
         return service.unwrap(where["tenant"], where["person"], run, purpose, audit)
     except DestroyedKeyError as exc:
-        raise PatientErased("the patient this recording is about was erased, so it cannot be opened") from exc
+        raise PersonErased("the person this recording is about was erased, so it cannot be opened") from exc
 
 
 def _storage(where: dict):
@@ -424,7 +424,7 @@ def open_recording(service: KeyService, *, version_id: str, record_id: str, run:
     """The recording's bytes (or, with kind "answer_key", its answer key's), opened a chunk at a time. Each opening is recorded in the key log with
     the run named.
 
-    Raises NoSuchVersion when the version holds no such recording and PatientErased when the patient's key was destroyed.
+    Raises NoSuchVersion when the version holds no such recording and PersonErased when the person's key was destroyed.
     """
     where = _locate(version_id, record_id, kind, plain_ok)
     client, bucket = _storage(where)
@@ -437,7 +437,7 @@ def open_recording(service: KeyService, *, version_id: str, record_id: str, run:
 
 def begin_recording(service: KeyService, *, version_id: str, record_id: str, run: str, purpose: str, kind: str = "audio", plain_ok: bool = False) -> int:
     """Open a recording to be read a range at a time. This is the opening that is written to the key log, once, with the run named; it returns how
-    big the recording is when opened. Raises PatientErased when the patient's key was destroyed."""
+    big the recording is when opened. Raises PersonErased when the person's key was destroyed."""
     where = _locate(version_id, record_id, kind, plain_ok)
     if where["person"] is not None:
         _open_key(service, where, run, purpose, audit=True)
@@ -446,8 +446,8 @@ def begin_recording(service: KeyService, *, version_id: str, record_id: str, run
 
 def read_recording_range(service: KeyService, *, version_id: str, record_id: str, run: str, offset: int, length: int, kind: str = "audio",
                          plain_ok: bool = False) -> tuple[int, bytes]:
-    """`length` bytes of a recording from `offset`, opened, touching only the chunks that hold them. The patient's key is checked every time, so
-    a recording that is being read stops being readable the moment the patient is erased; the key log is not written again, because the opening
+    """`length` bytes of a recording from `offset`, opened, touching only the chunks that hold them. The person's key is checked every time, so
+    a recording that is being read stops being readable the moment the person is erased; the key log is not written again, because the opening
     it belongs to was logged by `begin_recording`. Returns the recording's size and the bytes."""
     where = _locate(version_id, record_id, kind, plain_ok)
     client, bucket = _storage(where)

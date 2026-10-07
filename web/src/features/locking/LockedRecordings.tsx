@@ -25,19 +25,19 @@ export function LockedRecordingsSection({ versionId }: { versionId: string }) {
     <>
     <Section
       title="Locked recordings"
-      description="Each recording is locked under the key of the patient it is about. Destroying a patient's key makes their recordings unreadable for good, and the sealed version never changes."
+      description="Each recording is locked under the key of the person it is about. Destroying a person's key makes their recordings unreadable for good, and the sealed version never changes."
     >
       <dl data-testid="locked-recordings" className="grid max-w-xl grid-cols-[auto,1fr] gap-x-6 gap-y-1 text-sm">
         <dt className="text-slate-500">Recordings</dt>
         <dd>{s.recordings}</dd>
-        <dt className="text-slate-500">Patients</dt>
-        <dd>{s.patients}</dd>
-        <dt className="text-slate-500">Unreadable because their patient was erased</dt>
+        <dt className="text-slate-500">People</dt>
+        <dd>{s.people}</dd>
+        <dt className="text-slate-500">Unreadable because the person was erased</dt>
         <dd data-testid="locked-recordings-erased">{erased}</dd>
       </dl>
       <p className="mt-2 text-xs text-slate-500">
         A pipeline run opens a recording only while it is running on this version, and every opening is recorded with the run named. A run leaves out the
-        recordings of patients who were erased.
+        recordings of people who were erased.
       </p>
     </Section>
     <DevelopmentSamplesSection versionId={versionId} />

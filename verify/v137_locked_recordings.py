@@ -62,7 +62,7 @@ def make_wav(data_bytes: int, rate: int = 16000) -> bytes:
 
 def open_up(dataset: str, who: str, name: str, size: int, kind: str = KIND, value: str = "x"):
     return httpx.post(f"{API}/datasets/{dataset}/recording-uploads", headers=bearer_for(who), timeout=60.0,
-                      json={"file_name": name, "size_bytes": size, "patient_kind": kind, "patient_value": value})
+                      json={"file_name": name, "size_bytes": size, "person_kind": kind, "person_value": value})
 
 
 def put(upload: str, n: int, data: bytes, who: str = ENGINEER):
@@ -131,7 +131,7 @@ def main() -> int:
     r = open_up(dataset, ENGINEER, "../visit 1.mp3", 0, kind=" ", value="")
     text = reasons_of(r)
     check("a bad name, an empty file and no patient are all listed in one answer",
-          r.status_code == 400 and "letters, numbers" in text and "empty" in text and "kind of identifier" in text and "no patient" in text, text[:300])
+          r.status_code == 400 and "letters, numbers" in text and "empty" in text and "kind of identifier" in text and "no person" in text, text[:300])
     r = open_up(dataset, ENGINEER, "visit-1.mp3", 100)
     check("a file that is neither a recording nor an answer key is refused", r.status_code == 400 and "neither a recording" in reasons_of(r), reasons_of(r)[:140])
     r = open_up(dataset, ENGINEER, "visit-1.wav", 513 * 1024 * 1024)
@@ -142,7 +142,7 @@ def main() -> int:
     org = make_org()
     try:
         r = httpx.post(f"{API}/datasets/{dataset}/recording-uploads", headers=org.bearer("custodian"), timeout=30.0,
-                       json={"file_name": "visit-1.wav", "size_bytes": 100, "patient_kind": KIND, "patient_value": "p"})
+                       json={"file_name": "visit-1.wav", "size_bytes": 100, "person_kind": KIND, "person_value": "p"})
         check("another organisation's custodian finds no such dataset", r.status_code == 404, str(r.status_code))
     finally:
         drop_org(org)
@@ -275,7 +275,7 @@ def main() -> int:
         conn.execute("update dataset_source set withdrawn_at = now() where dataset_id = %s and locator = 'visit-0004.wav'", (dataset,))
     mismatch = upload_whole(dataset, "visit-0003.truth.json", truth, patient_a)
     r = api("POST", f"/datasets/{dataset}/seal-recordings", headers=bearer_for(ENGINEER))
-    check("an answer key locked to a different patient from its recording is refused", r.status_code == 400 and "different patient" in reasons_of(r) and "visit-0003" in reasons_of(r), reasons_of(r)[:200])
+    check("an answer key locked to a different patient from its recording is refused", r.status_code == 400 and "different person" in reasons_of(r) and "visit-0003" in reasons_of(r), reasons_of(r)[:200])
     upload_whole(dataset, "visit-0003.truth.json", truth, patient_b)
     upload_whole(dataset, "visit-0099.truth.json", truth, patient_b)
     r = api("POST", f"/datasets/{dataset}/seal-recordings", headers=bearer_for(ENGINEER))
@@ -310,7 +310,7 @@ def main() -> int:
     heading("What a screen shows of the sealed version")
     shown = api("GET", f"/dataset-versions/{version}/recordings", headers=bearer_for(ENGINEER))
     check("it gives counts: three recordings, two patients, none erased", shown.status_code == 200
-          and (shown.json()["recordings"], shown.json()["patients"], shown.json()["erased_recordings"]) == (3, 2, 0), f"{shown.status_code} {shown.text[:160]}")
+          and (shown.json()["recordings"], shown.json()["people"], shown.json()["erased_recordings"]) == (3, 2, 0), f"{shown.status_code} {shown.text[:160]}")
     check("and names no patient and no person code", patient_a not in shown.text and codes["visit-0001.wav"] not in shown.text)
     check("a version with no locked recordings is not found", api("GET", f"/dataset-versions/{fixture_version_id()}/recordings", headers=bearer_for(ENGINEER)).status_code == 404)
     check("nor is one that does not exist", api("GET", f"/dataset-versions/{uuid.uuid4()}/recordings", headers=bearer_for(ENGINEER)).status_code == 404)
@@ -375,8 +375,8 @@ def main() -> int:
     check("the patient is erased: their key is destroyed", out["found"] and out["key_destroyed"], str(out))
     check("and the answer says what was made from their recordings and was not changed",
           {transcripts["id"], redacted["id"]} <= {d["version_id"] for d in out["derived_versions"]} and out["recording_versions"] == [version], str(out)[:200])
-    check("their first recording cannot be opened", _raises(lambda: recordings.open_recording(service, version_id=version, record_id="visit-0001", run="r", purpose="p"), recordings.PatientErased))
-    check("their second cannot be opened either", _raises(lambda: recordings.open_recording(service, version_id=version, record_id="visit-0002", run="r", purpose="p"), recordings.PatientErased))
+    check("their first recording cannot be opened", _raises(lambda: recordings.open_recording(service, version_id=version, record_id="visit-0001", run="r", purpose="p"), recordings.PersonErased))
+    check("their second cannot be opened either", _raises(lambda: recordings.open_recording(service, version_id=version, record_id="visit-0002", run="r", purpose="p"), recordings.PersonErased))
     check("the other patient's recording still opens", len(b"".join(recordings.open_recording(service, version_id=version, record_id="visit-0003", run="r", purpose="p")[1])) > 0)
     check("nothing stored changed", all(stored_object(k) == b for k, b in stored_before.items()))
     after = api("GET", f"/dataset-versions/{version}/recordings", headers=bearer_for(ENGINEER))

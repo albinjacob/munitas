@@ -45,13 +45,13 @@ def list_records(version_id: str, identity: dict = Depends(auth.current_session)
 def open_record(version_id: str, record_id: str, identity: dict = Depends(auth.current_session)) -> dict:
     """Open one file. This is the opening that is logged, and for a locked file written to the key log. Returns its size and a handle to stream it with.
 
-    Refused (403) when the caller may not open this version's files, and (410) when the patient the file is about was erased.
+    Refused (403) when the caller may not open this version's files, and (410) when the person the file is about was erased.
     """
     try:
         return record_door.open_record(_service(), identity, version_id, record_id)
     except NotPermitted as exc:
         raise HTTPException(403, {"reasons": exc.reasons}) from exc
-    except recordings.PatientErased as exc:
+    except recordings.PersonErased as exc:
         raise HTTPException(410, {"reasons": [str(exc)]}) from exc
     except (NoSuchVersion, record_door.NoSuchRecord) as exc:
         raise HTTPException(404, "no such version or file") from exc
@@ -61,7 +61,7 @@ def open_record(version_id: str, record_id: str, identity: dict = Depends(auth.c
 def stream(handle: str, request: Request, _claim: task_credential.TaskClaim = Depends(_handle)):
     """The bytes of the file the handle was made for, from the start or from a range (`Range: bytes=a-b`), unlocked inside the platform as they are sent.
 
-    Asked again on every request: the person is still in post, the reason they may open it still holds, the patient was not erased.
+    Asked again on every request: the person is still in post, the reason they may open it still holds, the person was not erased.
     """
     try:
         status, headers, body = record_door.serve(_service(), handle, request.headers.get("range"))

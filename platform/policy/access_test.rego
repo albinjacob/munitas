@@ -1349,7 +1349,7 @@ test_preview_unreadable_agrees_with_allow if {
 full_hold := {
 	"matter_name": "Doe v Harbour Clinic",
 	"matter_number": "HC-2026-0417",
-	"description": "A patient claim about a cardiology procedure in 2024.",
+	"description": "A person claim about a cardiology procedure in 2024.",
 	"triggering_event": "Letter before claim received on 2026-09-30",
 	"issuing_authority": "Aldous and Brennan LLP, for the claimant",
 	"authority_reference": "AB/2026/17",

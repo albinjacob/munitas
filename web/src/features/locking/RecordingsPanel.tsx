@@ -37,7 +37,7 @@ export function RecordingsPanel({ datasetId }: { datasetId: string }) {
   const stopped = useRef(false);
 
   const checked = manifest ? plan(manifestText, files) : null;
-  const problems = [...(checked?.problems ?? []), ...(files.length && manifest && !kind.trim() ? ["Say what kind of identifier names a patient."] : [])];
+  const problems = [...(checked?.problems ?? []), ...(files.length && manifest && !kind.trim() ? ["Say what kind of identifier names a person."] : [])];
   const allLocked = files.length > 0 && files.every((f) => progress[f.name]?.state === "locked");
   const refused = files.filter((f) => progress[f.name]?.state === "refused");
   const paused = files.some((f) => progress[f.name]?.state === "paused");
@@ -49,7 +49,7 @@ export function RecordingsPanel({ datasetId }: { datasetId: string }) {
     stopped.current = false;
     for (const file of files) {
       if (progress[file.name]?.state === "locked") continue;
-      const patient = checked.patients.get(file.name) ?? "";
+      const person = checked.people.get(file.name) ?? "";
       // The last thing said about this file, kept here and not read back from state, which is as it was when this run began.
       let last: Progress = { state: "waiting", held: 0, parts: 1 };
       const set = (p: Progress) => {
@@ -60,8 +60,8 @@ export function RecordingsPanel({ datasetId }: { datasetId: string }) {
         await uploadRecording({
           datasetId,
           file,
-          patientKind: kind.trim(),
-          patientValue: patient,
+          personKind: kind.trim(),
+          personValue: person,
           onProgress: set,
         });
         set({ state: "locked", held: 1, parts: 1 });
@@ -82,9 +82,9 @@ export function RecordingsPanel({ datasetId }: { datasetId: string }) {
       <div data-testid="recordings-sealed" className="space-y-2 rounded border border-teal-300 bg-teal-50 p-4 text-sm text-teal-900">
         <p className="font-medium">
           Sealed as version {seal.data.version}: {seal.data.records} recording{seal.data.records === 1 ? "" : "s"} about {seal.data.people}{" "}
-          {seal.data.people === 1 ? "patient" : "patients"}.
+          {seal.data.people === 1 ? "person" : "people"}.
         </p>
-        <p>Each recording is locked under its patient's key. Nothing about this version can change from here; later recordings become a new version.</p>
+        <p>Each recording is locked under the key of the person it is about. Nothing about this version can change from here; later recordings become a new version.</p>
         <Link to={`/versions/${seal.data.id}`} data-testid="open-sealed-recordings" className="inline-block text-sky-700 underline">
           Open this version
         </Link>
@@ -95,20 +95,20 @@ export function RecordingsPanel({ datasetId }: { datasetId: string }) {
   return (
     <div className="space-y-3" data-testid="recordings-panel">
       <p className="text-sm text-slate-700">
-        Each recording is locked under its patient's key as it uploads. Say which patient each recording is about in a manifest: a CSV file (a plain text table) with two columns, <strong>file</strong>{" "}
-        and <strong>patient</strong>, and one row for each recording. If you also have an answer key, the correct written text of a recording, which is used later to check how well names were
-        removed from it, name it after its recording (<code>visit-1.truth.json</code> beside <code>visit-1.wav</code>). It belongs to the same patient and needs no row of its own.
-        A recording is about one patient: if two people speak in it, split it first.
+        Each recording is locked under the key of the person it is about as it uploads. Say which person each recording is about in a manifest: a CSV file (a plain text table) with two columns, <strong>file</strong>{" "}
+        and <strong>person</strong>, and one row for each recording. If you also have an answer key, the correct written text of a recording, which is used later to check how well names were
+        removed from it, name it after its recording (<code>visit-1.truth.json</code> beside <code>visit-1.wav</code>). It belongs to the same person and needs no row of its own.
+        A recording is about one person: if two people speak in it, split it first.
       </p>
       <div className="flex flex-wrap gap-6">
         <label className="text-sm">
-          <span className="block text-slate-600">What kind of identifier names a patient</span>
+          <span className="block text-slate-600">What kind of identifier names a person</span>
           <input
             data-testid="recordings-kind"
             value={kind}
             onChange={(e) => setKind(e.target.value)}
             disabled={running || started}
-            placeholder="hospital chart number"
+            placeholder="member number"
             className="mt-1 w-64 rounded border border-slate-300 px-2 py-1 text-sm"
           />
         </label>

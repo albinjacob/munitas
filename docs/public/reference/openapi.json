@@ -1446,12 +1446,12 @@
             "type": "string"
           },
           "patient_kind": {
-            "description": "What kind of identifier names the patient, such as a hospital chart number",
+            "description": "What kind of identifier names the person, such as a member number",
             "title": "Patient Kind",
             "type": "string"
           },
           "patient_value": {
-            "description": "The patient's identifier. Used to find the patient and never stored",
+            "description": "The person's identifier. Used to find the person and never stored",
             "title": "Patient Value",
             "type": "string"
           },

@@ -1,4 +1,4 @@
-"""The routes for recordings locked per patient.
+"""The routes for recordings locked per person.
 
 Thin on purpose: what is refused, and why, lives in `recordings`, which the checks call directly as well. A part is sent as the raw body of the
 request, not as a form, so the platform never writes a plain copy of a recording to its own disk on the way in: each part (at most 8 MB) is held in
@@ -23,8 +23,8 @@ router = APIRouter(tags=["recordings"])
 class OpenUploadIn(BaseModel):
     file_name: str = Field(description="The recording, <record>.wav, or its answer key, <record>.truth.json")
     size_bytes: int = Field(description="The size of the file in bytes, stated before any part is sent")
-    patient_kind: str = Field(description="What kind of identifier names the patient, such as a hospital chart number")
-    patient_value: str = Field(description="The patient's identifier. Used to find the patient and never stored")
+    person_kind: str = Field(description="What kind of identifier names the person, such as a member number")
+    person_value: str = Field(description="The person's identifier. Used to find the person and never stored")
 
 
 class OpenRecordingIn(BaseModel):
@@ -56,7 +56,7 @@ def _answering(call):
         raise HTTPException(400, {"reasons": exc.reasons}) from exc
     except recordings.NoSuchUpload as exc:
         raise HTTPException(404, "no such upload") from exc
-    except recordings.PatientErased as exc:
+    except recordings.PersonErased as exc:
         raise HTTPException(409, {"reasons": [str(exc)]}) from exc
 
 
@@ -75,15 +75,15 @@ async def _body(request: Request, limit: int) -> bytes:
 
 @router.post("/datasets/{dataset_id}/recording-uploads", status_code=201)
 def open_upload(dataset_id: str, body: OpenUploadIn, identity: dict = Depends(auth.current_session)) -> dict:
-    """Open an upload of one recording (or its answer key) for one patient. It is sent in parts of at most 8 MB, each of which can be sent again.
+    """Open an upload of one recording (or its answer key) for one person. It is sent in parts of at most 8 MB, each of which can be sent again.
 
-    The patient's identifier finds their person code, made with a key the first time the identifier is seen. It is never stored.
+    The person's identifier finds their person code, made with a key the first time the identifier is seen. It is never stored.
     The upload stays open for a day.
     """
     service = _service()
     return _answering(lambda: recordings.open_upload(
         service, dataset_id=dataset_id, identity=identity, file_name=body.file_name, size_bytes=body.size_bytes,
-        patient_kind=body.patient_kind, patient_value=body.patient_value))
+        person_kind=body.person_kind, person_value=body.person_value))
 
 
 @router.get("/recording-uploads/{upload_id}")
@@ -121,7 +121,7 @@ def seal_recordings(dataset_id: str, identity: dict = Depends(auth.current_sessi
 
 @router.get("/dataset-versions/{version_id}/recordings")
 def recordings_summary(version_id: str, identity: dict = Depends(auth.current_session)) -> dict:
-    """How many locked recordings a sealed version holds, how many patients they are about, and how many belong to patients who were erased.
+    """How many locked recordings a sealed version holds, how many people they are about, and how many belong to people who were erased.
 
     Counts only. A version that holds no locked recordings answers 404.
     """
@@ -157,14 +157,14 @@ def _authorise(principal: str, tenant_id: str, task_credential: str, version_id:
 @router.post("/internal/recordings/begin", include_in_schema=False)
 def begin_recording(body: OpenRecordingIn, _worker: None = Depends(auth.worker_only)) -> dict:
     """Open a recording to be read a range at a time, and say how big it is. This is the opening that is written to the key log, once, with the run
-    named. A patient who was erased is refused (410)."""
+    named. A person who was erased is refused (410)."""
     claim = _authorise(body.principal, body.tenant_id, body.task_credential, body.dataset_version_id)
     try:
         size = recordings.begin_recording(_service(), version_id=body.dataset_version_id, record_id=body.record_id, run=f"{claim.task_kind} {claim.task_id}",
                                           purpose=f"open a recording for a pipeline run: {body.purpose}", kind=body.kind)
     except NoSuchVersion as exc:
         raise HTTPException(404, {"reasons": [str(exc)]}) from exc
-    except recordings.PatientErased as exc:
+    except recordings.PersonErased as exc:
         raise HTTPException(410, {"reasons": [str(exc)]}) from exc
     return {"bytes": size}
 
@@ -172,15 +172,15 @@ def begin_recording(body: OpenRecordingIn, _worker: None = Depends(auth.worker_o
 @router.post("/internal/recordings/range", include_in_schema=False)
 def read_range(body: RangeIn, _worker: None = Depends(auth.worker_only)) -> Response:
     """A range of an opened recording, opened. Every request is checked as the opening was: a real task of this organisation, with this version as an
-    input, still running. The patient's key is checked every time, so a recording being read stops the moment the
-    patient is erased (410). The key log is not written again."""
+    input, still running. The person's key is checked every time, so a recording being read stops the moment the
+    person is erased (410). The key log is not written again."""
     claim = _authorise(body.principal, body.tenant_id, body.task_credential, body.dataset_version_id)
     try:
         size, data = recordings.read_recording_range(_service(), version_id=body.dataset_version_id, record_id=body.record_id,
                                                      run=f"{claim.task_kind} {claim.task_id}", offset=body.offset, length=body.length, kind=body.kind)
     except NoSuchVersion as exc:
         raise HTTPException(404, {"reasons": [str(exc)]}) from exc
-    except recordings.PatientErased as exc:
+    except recordings.PersonErased as exc:
         raise HTTPException(410, {"reasons": [str(exc)]}) from exc
     except NotOpenable as exc:
         raise HTTPException(409, {"reasons": [f"the stored recording does not open: {exc}"]}) from exc

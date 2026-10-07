@@ -1733,7 +1733,7 @@ synthetic_declaration_decision := {
 
 # ------------------------------------------------------ opening a version's files --
 
-# A person opens the files of a version (a recording, or a file a step made) through the platform, which unlocks a locked one with its patient's key
+# A person opens the files of a version (a recording, or a file a step made) through the platform, which unlocks a locked one with its person's key
 # and writes every opening to a log. The platform works out, from what it holds and never from what the person says, why this person may open them:
 #
 #   own_sample              the version is a development sample drawn for this person, and it is in force;

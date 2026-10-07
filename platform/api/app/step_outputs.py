@@ -1,8 +1,8 @@
 """The files a custom pipeline step writes, through the platform and nowhere else.
 
-A file a step made from a patient's recording is locked under that patient's key as each part arrives, so no plain copy of what is made from a
-patient's voice is ever stored. The step names the recording and the file's size when it opens the file. The platform checks the step opened that
-recording in this run, and records the file as belonging to that patient, so erasing the patient makes it unreadable with the recording itself. A file
+A file a step made from a person's recording is locked under that person's key as each part arrives, so no plain copy of what is made from a
+person's voice is ever stored. The step names the recording and the file's size when it opens the file. The platform checks the step opened that
+recording in this run, and records the file as belonging to that person, so erasing the person makes it unreadable with the recording itself. A file
 that is sound, from a step that was given recordings, and says nothing of where it came from, is refused.
 
 A step that says `writes_files: true` in its pipeline file cannot reach storage and holds no key. It sends each file to the platform in parts, the
@@ -11,7 +11,7 @@ yet. When the step ends, the platform's worker says how it ended:
 
   * if it succeeded, the platform seals every file the step finished, together, as one version of the dataset `<the run's dataset>-<step>`, marked
     "under review" so that nobody can use it until a person has looked, with an index of the files (name, size, fingerprint) and the run that made
-    it recorded, so erasing a patient lists it among what was made from their recordings;
+    it recorded, so erasing a person lists it among what was made from their recordings;
   * if it failed, or left a file unfinished, everything it wrote is thrown away, and no version exists.
 
 The platform makes the version, so no key is handed to anything: not to the step, and not to the worker.
@@ -114,7 +114,7 @@ def note_opening(tenant_id: str, pipeline_run_id: str, step: str, version_id: st
 def open_output(*, tenant_id: str, pipeline_run_id: str, step: str, name: str, source_record: str | None = None, size: int | None = None) -> dict:
     """Open one file to be sent in parts. Opening a name again replaces the earlier file of that name.
 
-    With `source_record` the file is locked under the patient of that recording, and `size` (in bytes, at least 1) says how big it will be.
+    With `source_record` the file is locked under the person of that recording, and `size` (in bytes, at least 1) says how big it will be.
     """
     person = None
     if source_record is not None:
@@ -126,7 +126,7 @@ def open_output(*, tenant_id: str, pipeline_run_id: str, step: str, name: str, s
         if not opened:
             raise Refused([f"this step has not opened recording {source_record} in this run, so it cannot say that a file was made from it"])
         if db.one("select 1 as x from subject_key where tenant_id = %s and person_code = %s and destroyed_at is not null", (tenant_id, opened["person_code"])):
-            raise Refused([f"the patient recording {source_record} is about was erased, so nothing more can be made from it"])
+            raise Refused([f"the person that recording {source_record} is about was erased, so nothing more can be made from it"])
         person = opened["person_code"]
     elif size is not None:
         raise Refused(["a size is given only for a file made from a recording, which is locked to fit it"])
@@ -163,7 +163,7 @@ def _open_output(pipeline_run_id: str, step: str, name: str) -> dict:
 def put_part(*, service, pipeline_run_id: str, step: str, name: str, part_number: int, data: bytes) -> dict:
     """One part of an open file, at most 8 MiB. Sending a part again replaces it, so a part that failed on a poor connection is simply sent again.
 
-    A file made from a recording is locked here, part by part, under its patient's key, and it is the locked part that is stored. Each part must be
+    A file made from a recording is locked here, part by part, under its person's key, and it is the locked part that is stored. Each part must be
     exactly the size its place in the file gives it.
     """
     row = _open_output(pipeline_run_id, step, name)
@@ -181,7 +181,7 @@ def put_part(*, service, pipeline_run_id: str, step: str, name: str, part_number
         try:
             key = service.unwrap(row["tenant_id"], row["person_code"], f"step_run {pipeline_run_id}", f"lock part {part_number} of output {name} for custom step {step}")
         except DestroyedKeyError as exc:
-            raise Refused(["the key for this patient was destroyed, so nothing more can be locked for them"]) from exc
+            raise Refused(["the key for this person was destroyed, so nothing more can be locked for them"]) from exc
         data = lock_part(key, row["tenant_id"], row["person_code"], name, total, part_number, data)
     held = db.one("""select coalesce(sum(p.bytes), 0) as n from step_output_part p join step_output o on o.id = p.output_id
                       where o.pipeline_run_id = %s and o.step = %s and o.status in ('open','complete') and not (o.id = %s and p.part_number = %s)""",
@@ -236,7 +236,7 @@ def complete_output(*, pipeline_run_id: str, step: str, name: str, reads_recordi
         target["client"].delete_object(Bucket=target["bucket"], Key=row["storage_key"])
         db.execute("update step_output set status = 'aborted', storage_upload = null, finished_at = now() where id = %s returning id", (str(row["id"]),))
         raise Refused([f"{name} is sound, and this step was given recordings, so a file of sound must say which recording it was made from. Open it with the recording's "
-                       f"identifier and its size, and the platform locks it under that patient's key. Nothing of it was kept"])
+                       f"identifier and its size, and the platform locks it under the key of the person it is about. Nothing of it was kept"])
     db.execute("update step_output set status = 'complete', storage_upload = null, bytes = %s, sha256 = %s, finished_at = now() where id = %s returning id",
                (size, digest.hexdigest(), str(row["id"])))
     return {"name": name, "bytes": size, "sha256": digest.hexdigest(), "locked": bool(row["person_code"])}
@@ -296,7 +296,7 @@ def finish(*, tenant_id: str, pipeline_run_id: str, step: str, succeeded: bool, 
     for row in rows:
         db.execute("update step_output set status = 'sealed', version_id = %s where id = %s returning id", (version["id"], str(row["id"])))
         if row["person_code"]:
-            # A locked file belongs to its patient like a recording does, so erasing the patient makes it unreadable and lists this version.
+            # A locked file belongs to its person like a recording does, so erasing the person makes it unreadable and lists this version.
             db.execute("insert into recording_person (dataset_version_id, record_id, tenant_id, person_code, plain_bytes, format) values (%s, %s, %s, %s, %s, %s) "
                        "on conflict do nothing returning record_id", (version["id"], row["name"], tenant_id, row["person_code"], row["plain_bytes"], stream.FORMAT))
     development_outputs.note_output(tenant_id, pipeline_run_id, version["id"])

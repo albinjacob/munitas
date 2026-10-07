@@ -28,8 +28,8 @@ export interface Progress {
 export interface UploadJob {
   datasetId: string;
   file: File;
-  patientKind: string;
-  patientValue: string;
+  personKind: string;
+  personValue: string;
   onProgress: (p: Progress) => void;
   /** How long to wait before sending a failed part again, in milliseconds, by attempt. Tests shorten it. */
   waits?: number[];
@@ -79,8 +79,8 @@ async function session(job: UploadJob, key: string): Promise<UploadSession> {
   const opened = await openRecordingUpload(job.datasetId, {
     file_name: job.file.name,
     size_bytes: job.file.size,
-    patient_kind: job.patientKind,
-    patient_value: job.patientValue,
+    person_kind: job.personKind,
+    person_value: job.personValue,
   });
   remember(key, opened.id);
   return opened;
@@ -170,8 +170,8 @@ export const AUDIO = ".wav";
 export const ANSWER_KEY = ".truth.json";
 
 export interface Plan {
-  /** The patient identifier for each file to send, by file name. An answer key takes the patient of the recording it is named after. */
-  patients: Map<string, string>;
+  /** The patient identifier for each file to send, by file name. An answer key takes the person of the recording it is named after. */
+  people: Map<string, string>;
   problems: string[];
 }
 
@@ -184,38 +184,38 @@ export function plan(manifestText: string, files: { name: string; size: number }
   const lines = manifestText.replace(/^﻿/, "").split(/\r?\n/).filter((l) => l.trim() !== "");
   const header = lines.length ? fields(lines[0]).map((h) => h.toLowerCase()) : [];
   const fileAt = header.indexOf("file");
-  const patientAt = header.indexOf("patient");
+  const personAt = header.indexOf("person");
   const rows = new Map<string, string>();
-  if (!lines.length) problems.push("The manifest is empty. It needs a header row with the columns file and patient, then one row for each recording.");
-  else if (fileAt < 0 || patientAt < 0) problems.push("The manifest's first row must name two columns: file and patient.");
+  if (!lines.length) problems.push("The manifest is empty. It needs a header row with the columns file and person, then one row for each recording.");
+  else if (fileAt < 0 || personAt < 0) problems.push("The manifest's first row must name two columns: file and person.");
   else {
     lines.slice(1).forEach((line, i) => {
       const cells = fields(line);
       const name = cells[fileAt] ?? "";
-      const patient = cells[patientAt] ?? "";
+      const person = cells[personAt] ?? "";
       if (!name) problems.push(`Manifest row ${i + 2} names no file.`);
-      else if (!patient) problems.push(`${name} names no patient in the manifest, and a recording is locked to one patient.`);
+      else if (!person) problems.push(`${name} names no person in the manifest, and a recording is locked to one person.`);
       else if (rows.has(name)) problems.push(`${name} appears more than once in the manifest.`);
-      else rows.set(name, patient);
+      else rows.set(name, person);
     });
   }
 
-  const patients = new Map<string, string>();
+  const people = new Map<string, string>();
   const chosen = new Set(files.map((f) => f.name));
   for (const f of files) {
     if (f.name.endsWith(AUDIO)) {
-      const patient = rows.get(f.name);
-      if (patient) patients.set(f.name, patient);
-      else if (lines.length) problems.push(`${f.name} is not in the manifest, so nobody is named as its patient.`);
+      const person = rows.get(f.name);
+      if (person) people.set(f.name, person);
+      else if (lines.length) problems.push(`${f.name} is not in the manifest, so nobody is named as the person it is about.`);
     } else if (f.name.endsWith(ANSWER_KEY)) {
       const recording = f.name.slice(0, -ANSWER_KEY.length) + AUDIO;
-      const patient = rows.get(recording);
-      if (patient && chosen.has(recording)) patients.set(f.name, patient);
+      const person = rows.get(recording);
+      if (person && chosen.has(recording)) people.set(f.name, person);
       else problems.push(`${f.name} is an answer key, and its recording ${recording} is not among the files chosen or not in the manifest.`);
     } else problems.push(`${f.name} is neither a recording (${AUDIO}) nor an answer key (${ANSWER_KEY}).`);
   }
   for (const name of rows.keys()) {
     if (!chosen.has(name)) problems.push(`${name} is in the manifest, and the file was not chosen.`);
   }
-  return { patients, problems };
+  return { people, problems };
 }

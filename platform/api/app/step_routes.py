@@ -11,8 +11,8 @@ only the first:
   * does an approver's approval of that version still stand?
 
 A recording is opened before it is read. Opening it is the one write to the key log, naming the step, the pipeline and its version, and it returns a
-handle that every read of that recording must carry, so a read cannot skip the opening. A patient who was erased is refused (410) at the opening
-and at any later read, because the patient's key is checked every time. The key never leaves the platform.
+handle that every read of that recording must carry, so a read cannot skip the opening. A person who was erased is refused (410) at the opening
+and at any later read, because the person's key is checked every time. The key never leaves the platform.
 """
 
 from __future__ import annotations
@@ -115,7 +115,7 @@ def _step_pass(authorization: str | None = Header(default=None)) -> dict:
 
 @router.get("/step/v1/recordings")
 def list_recordings(step: dict = Depends(_step_pass)) -> dict:
-    """The recordings this step may be given: each one's id, its size when opened, and whether its patient was erased. Lists; opens nothing."""
+    """The recordings this step may be given: each one's id, its size when opened, and whether its person was erased. Lists; opens nothing."""
     _needs(step, "recordings")
     try:
         return {"recordings": recordings.list_for_step(step["source_version_id"])}
@@ -127,7 +127,7 @@ def list_recordings(step: dict = Depends(_step_pass)) -> dict:
 def open_recording(record_id: str, step: dict = Depends(_step_pass)) -> dict:
     """Open one recording to be read a range at a time. This is the opening that is written to the key log, once, naming the step.
 
-    Returns the recording's size and a handle that every read of it must carry. A patient who was erased is refused (410).
+    Returns the recording's size and a handle that every read of it must carry. A person who was erased is refused (410).
     """
     _needs(step, "recordings")
     claim = step["claim"]
@@ -136,7 +136,7 @@ def open_recording(record_id: str, step: dict = Depends(_step_pass)) -> dict:
                                           purpose=f"open a recording for {step['label']}", plain_ok=True)
     except NoSuchVersion as exc:
         raise HTTPException(404, {"reasons": [str(exc)]}) from exc
-    except recordings.PatientErased as exc:
+    except recordings.PersonErased as exc:
         raise HTTPException(410, {"reasons": [str(exc)]}) from exc
     step_outputs.note_opening(claim.tenant_id, claim.task_id, claim.step, step["source_version_id"], record_id)
     handle = task_credential.mint(principal=claim.principal, task_kind="step_read", task_id=claim.task_id, tenant_id=claim.tenant_id,
@@ -147,8 +147,8 @@ def open_recording(record_id: str, step: dict = Depends(_step_pass)) -> dict:
 @router.get("/step/v1/recordings/{record_id}/range")
 def read_range(record_id: str, offset: int = Query(ge=0), length: int = Query(ge=0, le=MAX_RANGE), x_handle: str | None = Header(default=None),
                step: dict = Depends(_step_pass)) -> Response:
-    """A range of an opened recording, opened. The handle from opening it must come with the request, and the patient's key is checked every time:
-    a recording being read stops the moment the patient is erased (410)."""
+    """A range of an opened recording, opened. The handle from opening it must come with the request, and the person's key is checked every time:
+    a recording being read stops the moment the person is erased (410)."""
     _needs(step, "recordings")
     claim = step["claim"]
     try:
@@ -162,7 +162,7 @@ def read_range(record_id: str, offset: int = Query(ge=0), length: int = Query(ge
                                                      offset=offset, length=length, plain_ok=True)
     except NoSuchVersion as exc:
         raise HTTPException(404, {"reasons": [str(exc)]}) from exc
-    except recordings.PatientErased as exc:
+    except recordings.PersonErased as exc:
         raise HTTPException(410, {"reasons": [str(exc)]}) from exc
     except NotOpenable as exc:
         raise HTTPException(409, {"reasons": [f"the stored recording does not open: {exc}"]}) from exc
@@ -180,7 +180,7 @@ def _refused(exc: step_outputs.Refused) -> HTTPException:
 def open_output(name: str, body: OpenOutputIn | None = None, step: dict = Depends(_step_pass)) -> dict:
     """Open one file to be written, in parts of at most 8 MiB. Opening a name again replaces the earlier file of that name.
 
-    A file made from a recording says which one (`source_record`) and its size in bytes (`size`), and is then locked under that recording's patient as
+    A file made from a recording says which one (`source_record`) and its size in bytes (`size`), and is then locked under that recording's person as
     it arrives. Nothing is a version yet. The files a step finished are sealed together, "under review", when the step ends successfully, and thrown
     away when it fails.
     """

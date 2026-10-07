@@ -35,7 +35,7 @@ FILTERING A TABLE TO THE ROWS FOR NAMED PEOPLE
 
 A demand often asks for one person's records, and a table holds thousands of people's. Handing over the whole table would
 send everybody else's data out with it. So a request may name a table dataset and one column that identifies a person
-(a patient id, say), and the custodian the hold names, who answers for the records, supplies the values: the people the
+(a person id, say), and the custodian the hold names, who answers for the records, supplies the values: the people the
 demand is about. The package then holds one file per version, a CSV of exactly the rows whose column equals one of the
 values. Nothing else of that dataset is included: not the original files, and not the Iceberg table that holds every
 row. The custodian sees how many rows each filter matches, and which values matched nothing, before confirming, and never

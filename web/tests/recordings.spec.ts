@@ -132,7 +132,7 @@ test.describe("U139: locking what identifies a person, from the first question",
     await openLocking(page, datasetId, "recordings");
 
     await page.getByTestId("recordings-kind").fill("hospital chart number");
-    await page.getByTestId("recordings-manifest").setInputFiles(csv("file,patient\nvisit-1.wav,HC-1\nvisit-2.wav,\nvisit-3.wav,HC-3\nvisit-3.wav,HC-4\n"));
+    await page.getByTestId("recordings-manifest").setInputFiles(csv("file,person\nvisit-1.wav,HC-1\nvisit-2.wav,\nvisit-3.wav,HC-3\nvisit-3.wav,HC-4\n"));
     await page.getByTestId("recordings-files").setInputFiles([
       audio("visit-1.wav", wav(1000)),
       audio("visit-5.wav", wav(1000)),
@@ -141,7 +141,7 @@ test.describe("U139: locking what identifies a person, from the first question",
     ]);
 
     const problems = page.getByTestId("recordings-problems");
-    await expect(problems).toContainText("visit-2.wav names no patient");
+    await expect(problems).toContainText("visit-2.wav names no person");
     await expect(problems).toContainText("visit-3.wav appears more than once");
     await expect(problems).toContainText("visit-5.wav is not in the manifest");
     await expect(problems).toContainText("visit-9.truth.json is an answer key, and its recording visit-9.wav");
@@ -167,7 +167,7 @@ test.describe("U139: locking what identifies a person, from the first question",
     });
 
     await page.getByTestId("recordings-kind").fill("hospital chart number");
-    await page.getByTestId("recordings-manifest").setInputFiles(csv(`file,patient\nbig.wav,${patientA}\nsmall.wav,${patientB}\n`));
+    await page.getByTestId("recordings-manifest").setInputFiles(csv(`file,person\nbig.wav,${patientA}\nsmall.wav,${patientB}\n`));
     await page.getByTestId("recordings-files").setInputFiles([
       audio("big.wav", wav(PART * 2 + 12_345)),
       audio("small.wav", wav(50_000)),
@@ -184,7 +184,7 @@ test.describe("U139: locking what identifies a person, from the first question",
     expect(dropped).toBe(1);
 
     await page.getByTestId("recordings-seal").click();
-    await expect(page.getByTestId("recordings-sealed")).toContainText("2 recordings about 2 patients", { timeout: 60_000 });
+    await expect(page.getByTestId("recordings-sealed")).toContainText("2 recordings about 2 people", { timeout: 60_000 });
     await page.getByTestId("open-sealed-recordings").click();
     const held = page.getByTestId("locked-recordings");
     await expect(held).toBeVisible();
@@ -206,7 +206,7 @@ test.describe("U139: locking what identifies a person, from the first question",
       else await route.continue();
     });
     await page.getByTestId("recordings-kind").fill("hospital chart number");
-    await page.getByTestId("recordings-manifest").setInputFiles(csv(`file,patient\nlong.wav,P-${Date.now()}\n`));
+    await page.getByTestId("recordings-manifest").setInputFiles(csv(`file,person\nlong.wav,P-${Date.now()}\n`));
     await page.getByTestId("recordings-files").setInputFiles([audio("long.wav", wav(PART + 20_000))]);
     await page.getByTestId("recordings-start").click();
 

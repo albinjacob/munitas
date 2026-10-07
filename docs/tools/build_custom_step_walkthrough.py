@@ -45,7 +45,7 @@ STEPS = [
                 "which means made up with no real person in them, or a small sample drawn for the person who asks, which the previous "
                 "walkthrough shows. A version with a step like this one starts in development. The line under the pipeline&rsquo;s name "
                 "explains the three stages. The page lists the two steps and then shows a yellow box. The box says that the first step reads "
-                "the patient recordings and writes files, which become a new version that a reviewer checks before anyone can use it. The "
+                "the locked recordings and writes files, which become a new version that a reviewer checks before anyone can use it. The "
                 "version runs on any other data only when an approver of the owning department moves it to production, and the approver "
                 "cannot be the person who uploaded it. An approver is a data custodian, a person who may decide who reads a "
                 "department&rsquo;s data, who is listed for that department.",

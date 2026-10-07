@@ -58,7 +58,7 @@ async function lockedVersion(stamp: number, chart: string): Promise<string> {
     const opened = await fetch(`${API_BASE}/datasets/${dataset}/recording-uploads`, {
       method: "POST",
       headers: { ...headers, "content-type": "application/json" },
-      body: JSON.stringify({ file_name: `v-000${n + 1}.wav`, size_bytes: data.length, patient_kind: "hospital chart number", patient_value: `${chart}-${p}` }),
+      body: JSON.stringify({ file_name: `v-000${n + 1}.wav`, size_bytes: data.length, person_kind: "hospital chart number", person_value: `${chart}-${p}` }),
     });
     expect(opened.status).toBe(201);
     const upload = (await opened.json()).id as string;

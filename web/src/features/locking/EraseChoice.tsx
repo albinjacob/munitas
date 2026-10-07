@@ -70,8 +70,8 @@ export function EraseChoice({
               className="mt-1"
             />
             <span>
-              <span className="font-medium">Recordings, one patient in each</span>
-              <span className="block text-xs text-slate-600">Audio files, and a manifest: a CSV file that says which patient each recording is about.</span>
+              <span className="font-medium">Recordings, one person in each</span>
+              <span className="block text-xs text-slate-600">Audio files, and a manifest: a CSV file that says which person each recording is about.</span>
             </span>
           </label>
         </fieldset>

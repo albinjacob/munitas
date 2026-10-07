@@ -131,7 +131,7 @@ function Ask({ versionId, data }: { versionId: string; data: DevelopmentSamples 
             <input type="radio" name="sample-kind" data-testid="sample-kind-develop" checked={kind === "develop"} onChange={() => setKind("develop")} className="mt-1" />
             <span>
               <span className="font-medium">Draw a sample for me.</span>
-              <span className="block text-xs text-slate-600">The platform picks recordings of different patients, spread across short, medium and long ones.</span>
+              <span className="block text-xs text-slate-600">The platform picks recordings about different people, spread across short, medium and long ones.</span>
             </span>
           </label>
         )}
@@ -184,7 +184,7 @@ function Ask({ versionId, data }: { versionId: string; data: DevelopmentSamples 
           rows={2}
           value={purpose}
           onChange={(e) => setPurpose(e.target.value)}
-          placeholder="Building a step that silences the patient's name"
+          placeholder="Building a step that silences the speaker's name"
           className="w-full max-w-xl rounded border border-slate-300 px-2 py-1"
         />
       </label>

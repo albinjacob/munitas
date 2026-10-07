@@ -150,7 +150,7 @@ function RegisterForm({
         </legend>
         <p className="mt-0.5 text-xs text-slate-500">
           Decides whether this may ever leave the platform. Separate from how
-          sensitive it is: de-identified clinical data can be low sensitivity
+          sensitive it is: de-identified data about people can be low sensitivity
           and still not be redistributable.
         </p>
         <div className="mt-1.5 space-y-2">

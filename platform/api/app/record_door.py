@@ -1,7 +1,7 @@
 """The door through which a person opens a file of a version: a recording, or a file a pipeline step made.
 
 Nothing is handed out. A person asks the platform, which decides from what it holds why this person may open this version's files (never from what the
-person says), unlocks a locked file with its patient's key inside the platform, and sends the bytes. The key and the storage address never leave. Every
+person says), unlocks a locked file with its person's key inside the platform, and sends the bytes. The key and the storage address never leave. Every
 opening is written to a log, naming the person, the version, the file and why, and a locked file's opening is written to the key log as well.
 
 Why a person may open a version's files (`basis_of`):
@@ -16,7 +16,7 @@ What is made from a recording is no more open than the recording. The policy (`a
 
 Opening gives a short-lived handle to that one file. The handle is the only thing the stream route accepts, and the stream route asks everything
 again on every request: is the handle real and unexpired, is the person still in post and their organisation open, is the basis still true, was the
-patient erased. So a sample that ends, or a patient who is erased, stops what is playing at its next request.
+person erased. So a sample that ends, or a person who is erased, stops what is playing at its next request.
 """
 
 from __future__ import annotations
@@ -143,11 +143,11 @@ def open_record(service, identity: dict, version_id: str, record_id: str) -> dic
         raise NoSuchRecord(record_id)
     if found["locked"]:
         if found["erased"]:
-            raise recordings.PatientErased("the patient this file is about was erased, so it cannot be opened")
+            raise recordings.PersonErased("the person this file is about was erased, so it cannot be opened")
         try:
             service.unwrap(version["tenant_id"], found["person"], f"person {identity['id']}", f"open record {record_id} of version {version_id} ({basis})", audit=True)
         except DestroyedKeyError as exc:
-            raise recordings.PatientErased("the patient this file is about was erased, so it cannot be opened") from exc
+            raise recordings.PersonErased("the person this file is about was erased, so it cannot be opened") from exc
     opening_id = str(uuid.uuid4())
     db.execute("""insert into record_read_log (id, tenant_id, principal, version_id, record_id, basis, bytes_total, locked)
                   values (%s, %s, %s, %s, %s, %s, %s, %s) returning id""",
@@ -212,7 +212,7 @@ def serve(service, token: str, range_header: str | None) -> tuple[int, dict, Ite
         try:
             key = service.unwrap(version["tenant_id"], found["person"], f"person {person['id']}", f"read a range of record {record_id}", audit=False)
         except DestroyedKeyError as exc:
-            raise HandleRefused(410, ["the patient this file is about was erased, so it cannot be read"]) from exc
+            raise HandleRefused(410, ["the person this file is about was erased, so it cannot be read"]) from exc
     total = found["bytes"]
     first, last, ranged = _span(range_header, total) if total else (0, -1, False)
     client, bucket = recordings._storage({"backend": version["storage_backend"], "tenant": version["tenant_id"]})

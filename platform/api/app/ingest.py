@@ -428,7 +428,7 @@ def seal_audio(dataset_id: str,
     reasons: list[str] = []
     for locked in sorted(f["locator"] for f in uploads if f["locked_person_code"]):
         reasons.append(
-            f"{locked} was uploaded locked to a patient, so opening it as ordinary "
+            f"{locked} was uploaded locked to the person it is about, so opening it as ordinary "
             f"audio would read noise. Seal it with the locked-recordings seal instead"
         )
     if not uploads:
@@ -708,7 +708,7 @@ def seal(dataset_id: str, identity: dict = Depends(auth.current_session)) -> dic
     if locked:
         # A locked recording sealed here would be listed as an ordinary file, with nothing saying whose it is or that a key opens it.
         raise HTTPException(400, {"reasons": [
-            f"{name} was uploaded locked to a patient. Seal it with the locked-recordings seal, "
+            f"{name} was uploaded locked to the person it is about. Seal it with the locked-recordings seal, "
             f"or withdraw it and upload it as an ordinary file" for name in locked]})
     if not files:
         raise HTTPException(
