@@ -107,3 +107,7 @@ platform/policy-bundle/published/*
 
 # Playwright output at the repository root
 test-results/
+
+# Replaced walkthroughs the kit builds into docs/archive are a private record, not part of the repository: they are not published or linked, and each is several
+# megabytes of pictures of a console that no longer exists.
+docs/archive/
