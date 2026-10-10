@@ -28,6 +28,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { EMAIL_BY_DIRECTORY_ID, PASSWORD, actingHeaders, bearerFor, loginAs } from "../tests/auth-helpers";
 import { API_BASE } from "../config/ports";
 import { settled } from "./settled";
+import { snap } from "./snap";
 import { closeTestRequests, revokeEarlierRecordings } from "./tidy";
 
 const SHOTS = join(process.cwd(), "walkthroughs", "shots", "finance");
@@ -69,7 +70,7 @@ async function shot(page: Page, name: string): Promise<void> {
   await settled(page);
   step += 1;
   const n = String(step).padStart(2, "0");
-  await page.screenshot({ path: join(SHOTS, `${n}-${name}.png`) });
+  await snap(page, { path: join(SHOTS, `${n}-${name}.png`) });
 }
 
 /**
@@ -173,7 +174,7 @@ async function waitForRunToFinish(page: Page, timeoutMs = 120_000): Promise<void
   }
   if (status === "succeeded") {
     await page.reload();
-    const row = page.getByTestId("agent-runs").locator("li", { hasText: RUN_PURPOSE }).first();
+    const row = page.getByTestId("agent-runs").locator("tr", { hasText: RUN_PURPOSE }).first();
     await expect(row).toContainText("succeeded", { timeout: 15_000 });
     return;
   }
@@ -255,7 +256,7 @@ test("capture: the finance worked example, start to finish", async ({ page }) =>
   // for it rules out counting before the agent has finished loading (count()
   // does not itself wait the way an assertion does).
   await expect(page.getByTestId("upload-agent-version-form")).toBeVisible();
-  const existingVersions = await page.getByTestId("agent-versions").locator("li").count();
+  const existingVersions = await page.getByTestId("agent-versions").locator("tbody tr").count();
   const nextVersion = existingVersions + 1;
 
   await page.getByTestId("agent-version-zip").setInputFiles(AGENT_ZIP);

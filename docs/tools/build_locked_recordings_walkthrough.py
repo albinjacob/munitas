@@ -46,7 +46,7 @@ STEPS = [
                 "each recording.",
         "note": "<strong>Yes. Lock what identifies a person, with one key for each person.</strong> is selected, and the sentence "
                 "<strong>Locked data is hidden, not anonymised</strong> is on the screen. Under <strong>What are you bringing "
-                "in?</strong>, <strong>Recordings, one person in each</strong> is selected. Three boxes follow: the kind of "
+                "in?</strong>, <strong>Files, one person in each</strong> is selected. Three boxes follow: the kind of "
                 "identifier that names a person, the manifest, which is the list that says which person each recording is "
                 "about, and the recordings themselves.",
     },
@@ -74,7 +74,7 @@ STEPS = [
                 "Nothing is left to list, and the button that starts the upload can be pressed. The chart numbers in the manifest "
                 "are invented, and the recordings are noise, so that nothing of a real person is in them.",
         "note": "The yellow box has gone. The button <strong>Upload and lock</strong> is now blue. The boxes read "
-                "<strong>manifest.csv</strong> and <strong>3 files</strong>.",
+                "<strong>manifest.csv</strong> and 3 files.",
     },
     {
         "file": "05-every-file-is-locked-under-its-persons-key.png", "actor": "devi",
@@ -87,7 +87,7 @@ STEPS = [
                 "identifier itself. A part that fails because the connection did is sent again by itself, and a connection that "
                 "stays down pauses the upload and keeps what was already sent, so carrying on sends only the rest.",
         "note": "Three rows, <strong>visit-1.wav</strong>, <strong>visit-2.wav</strong> and <strong>visit-1.truth.json</strong>, each "
-                "have a full green bar and end with <strong>Locked</strong>. A new button, <strong>Seal these recordings</strong>, "
+                "have a full green bar and end with <strong>Locked</strong>. A new button, <strong>Seal these files</strong>, "
                 "appears below them.",
     },
     {
@@ -99,19 +99,19 @@ STEPS = [
                 "seals, the platform checks that every file was locked, that no ordinary file is mixed in with the locked ones, "
                 "and that every answer key belongs to the same person as its recording. If any check fails, nothing is sealed, "
                 "and every reason is listed.",
-        "note": "A green box reads <strong>Sealed as version 1: 2 recordings about 2 people.</strong> It says that each "
+        "note": "A green box reads <strong>Sealed as version 1: 2 files about 2 people.</strong> It says that each "
                 "recording is locked under the key of the person it is about, and offers a link, <strong>Open this version</strong>.",
     },
     {
         "file": "07-the-version-says-what-it-holds.png", "actor": "devi",
         "title": "The version says how many recordings and people it holds, and names nobody",
         "screen": "Version detail &middot; /versions/&lt;id&gt;",
-        "text": "Devi opens the new version, which is the sealed state of the dataset that the upload just made. Under the heading <strong>Locked recordings</strong> the page counts what it holds and "
+        "text": "Devi opens the new version, which is the sealed state of the dataset that the upload just made. Under the heading <strong>Locked files</strong> the page counts what it holds and "
                 "says nothing about who the people are: no identifier and no name from the manifest appears anywhere on it. A "
                 "pipeline run is a program that runs on a version, and it opens a recording only while it is running, with every "
                 "opening written to a record that names the run. When a person is erased later, their recordings are counted here "
                 "as unreadable, and every later run leaves them out.",
-        "note": "<strong>Locked recordings</strong> shows three counts: <strong>Recordings 2</strong>, <strong>People 2</strong> "
+        "note": "<strong>Locked files</strong> shows three counts: <strong>Files 2</strong>, <strong>People 2</strong> "
                 "and <strong>Unreadable because the person was erased 0</strong>. The line below says that every opening is "
                 "recorded with the run named.",
     },
@@ -135,8 +135,8 @@ PAGE = Page(
     capture_note="Captured live against the <code>health</code> organisation by "
                  "<code>web/walkthroughs/locked-recordings.spec.ts</code> and built by "
                  "<code>docs/tools/build_locked_recordings_walkthrough.py</code>. The recordings are noise and the chart numbers are "
-                 "invented. What the platform refuses here is proved separately by <code>verify/v137_locked_recordings.py</code>, and "
-                 "what a pipeline can and cannot do with a locked recording by <code>verify/v138_worker_opens_locked_recordings.py</code>.",
+                 "invented. What the platform refuses here is proved separately by <code>verify/v137_locked_files.py</code>, and "
+                 "what a pipeline can and cannot do with a locked recording by <code>verify/v138_worker_opens_locked_files.py</code>.",
 )
 
 if __name__ == "__main__":

@@ -29,11 +29,11 @@ STEPS = [
                 "it is in development. Devi opens the sealed version of the consultation recordings, which means the version that is finished and "
                 "closed for good, so that it can never be edited. Under the heading Development samples, Devi says how many recordings are wanted, "
                 "for how many days, and what the sample is for. Devi cannot choose which recordings: the platform draws them.",
-        "note": "The heading <strong>Development samples</strong> explains that a sample is a few of these recordings, drawn by the platform, that "
-                "names the same locked recordings and copies none. Under <strong>Ask for a sample</strong>, <strong>Draw a sample for me.</strong> "
-                "is selected, the boxes read <strong>4</strong> recordings and <strong>5</strong> days, and the purpose reads "
+        "note": "The heading <strong>Development samples</strong> explains that a sample is a few of these files, drawn by the platform, that "
+                "names the same locked files and copies none. Under <strong>Ask for a sample</strong>, <strong>Draw a sample for me.</strong> "
+                "is selected, the boxes read <strong>4</strong> files and <strong>5</strong> days, and the purpose reads "
                 "<strong>Building a step that makes the first half second of each recording silent</strong>. The limits are written beside the "
-                "boxes: at most 50 recordings and at most 14 days.",
+                "boxes: at most 50 files and at most 14 days.",
     },
     {
         "file": "02-the-request-waits-for-an-approver.png", "actor": "devi",
@@ -42,9 +42,9 @@ STEPS = [
         "text": "Pressing the button records the request and does nothing else. A sample needs the agreement of an approver of the department that "
                 "owns the recordings, and the approver cannot be the person asking. An approver is a data custodian, a person who may decide who "
                 "reads a department&rsquo;s data, who is listed for that department. Devi may withdraw the request while it waits.",
-        "note": "Under <strong>Your samples</strong> a row reads <strong>Waiting for an approver</strong> and <strong>Asked for 4 recordings for 5 "
+        "note": "Under <strong>Your samples</strong> a row reads <strong>Waiting for an approver</strong> and <strong>Asked for 4 files for 5 "
                 "days, to build and test with</strong>, and offers the button <strong>Withdraw this request</strong>. The form above now offers "
-                "only <strong>Name the recordings that went wrong.</strong>, because a request to draw a sample is already waiting.",
+                "only <strong>Name the files that went wrong.</strong>, because a request to draw a sample is already waiting.",
     },
     {
         "file": "03-hartley-sees-the-request.png", "actor": "hartley",
@@ -53,11 +53,11 @@ STEPS = [
         "text": "Hartley is the data custodian for Cardiology, so the same page shows the request to Hartley, under Waiting for your decision. It "
                 "says who asked, how many recordings, for how many days and why. Hartley may lower the number or the days, and may not raise "
                 "them. Hartley may not pick recordings either: the platform draws them, so nobody can steer a sample towards particular patients.",
-        "note": "Under <strong>Waiting for your decision</strong> a yellow box reads <strong>Devi asks for 4 recordings for 5 days, to build and "
-                "test with.</strong>, then the purpose. Two boxes, <strong>Recordings</strong> and <strong>Days</strong>, each say that you may "
+        "note": "Under <strong>Waiting for your decision</strong> a yellow box reads <strong>Devi asks for 4 files for 5 days, to build and "
+                "test with.</strong>, then the purpose. Two boxes, <strong>Files</strong> and <strong>Days</strong>, each say that you may "
                 "lower this, and a third reads <strong>A note, recorded with your decision</strong>. The text says <strong>You cannot choose the "
-                "recordings: the platform draws them.</strong> The buttons are <strong>Approve</strong> and <strong>Decline</strong>. A white "
-                "box above them lets an approver declare recordings synthetic, which Part Four uses.",
+                "files: the platform draws them.</strong> The buttons are <strong>Approve</strong> and <strong>Decline</strong>. A white "
+                "box above them lets an approver declare the files synthetic, which Part Four uses.",
     },
     {
         "file": "04-hartley-approves-fewer-and-the-platform-draws.png", "actor": "hartley",
@@ -67,7 +67,7 @@ STEPS = [
                 "fixed method: at most one recording from each patient, spread across short, medium and long recordings, and picked by a value "
                 "that comes out the same every time for the same person asking for the same purpose. Nobody chooses, including Hartley. The "
                 "platform seals a new version, the sample, that names the same locked recordings as the original. No audio is copied.",
-        "note": "Under <strong>In force for these recordings</strong> one line reads <strong>Devi: 3 recordings (1 short, 1 medium and 1 long), "
+        "note": "Under <strong>In force for these files</strong> one line reads <strong>Devi: 3 files (1 short, 1 medium and 1 long), "
                 "ends</strong> followed by a date three days away, and offers <strong>End this sample</strong>. The line shows how many "
                 "recordings came from each length and names nobody but Devi: no recording and no patient.",
     },
@@ -83,9 +83,9 @@ STEPS = [
                 "page counts 3 recordings about 3 people and says that the sample is for the person it was drawn for and for nobody else. Lower "
                 "down, the section Where this came from names the platform&rsquo;s own step that made the sample, and links to the recordings it "
                 "was made from.",
-        "note": "Under <strong>Locked recordings</strong> the counts read <strong>Recordings 3</strong> and <strong>People 3</strong>. Under "
-                "<strong>Development sample</strong> a green box reads <strong>This is a development sample of 3 recordings, drawn for you.</strong>, "
-                "then the date it ends, and says that it names the same locked recordings as <strong>the recordings it was drawn from</strong> and "
+        "note": "Under <strong>Locked files</strong> the counts read <strong>Files 3</strong> and <strong>People 3</strong>. Under "
+                "<strong>Development sample</strong> a green box reads <strong>This is a development sample of 3 files, drawn for you.</strong>, "
+                "then the date it ends, and says that it names the same locked files as <strong>the files it was drawn from</strong> and "
                 "copies none of them. Under <strong>Where this came from</strong>, <strong>Step</strong> reads <strong>development_sample</strong>, "
                 "<strong>Code version</strong> reads <strong>sample:v1</strong> and <strong>Environment</strong> reads <strong>platform</strong>.",
     },
@@ -97,9 +97,9 @@ STEPS = [
                 "anything. A pipeline version in development may run only on development data, and the real recordings are not development data "
                 "for anybody. Nothing is left behind: no run, no file and no record of an attempt to read.",
         "note": "A red box reads <strong>Nothing was started. Fix these first:</strong> and says that <strong>this version is in development, so it "
-                "can be run only on development data</strong>: recordings declared synthetic, or a development sample drawn for you. It names the "
+                "can be run only on development data</strong>: files declared synthetic, or a development sample drawn for you. It names the "
                 "custom step <strong>silence</strong>, says that on any other data an approver of the department that owns the pipeline has to "
-                "check the version and move it to production first, and ends <strong>Ask for a sample on the page of the recordings</strong>.",
+                "check the version and move it to production first, and ends <strong>Ask for a sample on the version&rsquo;s page, under Development samples.</strong>",
     },
     {
         "file": "07-on-the-sample-it-runs.png", "actor": "devi",
@@ -136,7 +136,7 @@ STEPS = [
         "text": "Devi presses Play on the first file. A sound player appears in the page and loads the recording. The platform unscrambles the file "
                 "as it sends it, so the browser receives ordinary sound and never the key or the place where the file is stored. Each opening is "
                 "written down: who opened which file, why the platform allowed it, and how many bytes were sent.",
-        "note": "Under the first row a sound player shows a pause button, the time <strong>0:00 / 0:01</strong> and a volume control. "
+        "note": "Under the first row a sound player shows a pause button, the time 0:00 / 0:01 and a volume control. "
                 "There is no download button.",
     },
     {
@@ -160,7 +160,7 @@ STEPS = [
         "screen": VERSION,
         "text": "Devi presses End this sample on the page of the real recordings. The row changes to Ended, and the form for asking appears again "
                 "with Draw a sample for me selected, because the earlier request is over and a new one may be made.",
-        "note": "Under <strong>Your samples</strong> the row reads <strong>Ended</strong> and <strong>3 recordings, to build and test with</strong>, "
+        "note": "Under <strong>Your samples</strong> the row reads <strong>Ended</strong> and <strong>3 files, to build and test with</strong>, "
                 "and has no buttons. The form above offers both kinds of sample again, with <strong>Draw a sample for me.</strong> selected.",
     },
     {
@@ -192,10 +192,10 @@ STEPS = [
         "screen": VERSION,
         "text": "Synthetic means made up, with no real person in it. An approver of the owning department may declare a version of recordings "
                 "synthetic, and must give a reason. Hartley opens a version of recordings that volunteers read aloud and types why.",
-        "note": "Under <strong>Development samples</strong> a white box reads <strong>If these recordings hold no real person, declare them "
+        "note": "Under <strong>Development samples</strong> a white box reads <strong>If these files hold no real person, declare them "
                 "synthetic. Then any pipeline version in development may run on them, and nobody needs a sample.</strong> The reason box reads "
                 "<strong>Read aloud by volunteers from invented scripts, so no patient is in them</strong>, beside the button "
-                "<strong>Declare these recordings synthetic</strong>.",
+                "<strong>Declare these files synthetic</strong>.",
     },
     {
         "file": "15-the-declaration-is-recorded.png", "actor": "hartley",
@@ -205,14 +205,14 @@ STEPS = [
                 "development may run on these recordings for anybody in the organisation, because nobody real is in them. A development sample "
                 "holds real recordings, so it can never be declared synthetic.",
         "note": "A green box has three lines. <strong>Declared synthetic by Hartley on</strong> a date and time. <strong>Reason given: Read aloud by "
-                "volunteers from invented scripts, so no patient is in them</strong>. <strong>No real person is in these recordings, so a pipeline "
+                "volunteers from invented scripts, so no patient is in them</strong>. <strong>No real person is in these files, so a pipeline "
                 "version in development may run on them.</strong>",
     },
 ]
 
 ACTORS = {
     "devi": ("Devi", "Data engineer in the Health organisation"),
-    "hartley": ("Hartley", "Data custodian and approver for the Cardiology department"),
+    "hartley": ("Hartley", "Data custodian for the Cardiology department"),
 }
 
 PAGE = Page(

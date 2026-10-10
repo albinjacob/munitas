@@ -32,6 +32,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { bearerFor, loginAs } from "../tests/auth-helpers";
 import { API_BASE } from "../config/ports";
 import { settled } from "./settled";
+import { snap } from "./snap";
 
 const API = API_BASE;
 
@@ -81,7 +82,7 @@ async function shot(page: Page, name: string): Promise<void> {
   await settled(page);
   step += 1;
   const n = String(step).padStart(2, "0");
-  await page.screenshot({ path: join(SHOTS, `${n}-${name}.png`) });
+  await snap(page, { path: join(SHOTS, `${n}-${name}.png`) });
 }
 
 async function api(path: string, who: string, init: RequestInit = {}): Promise<any> {
@@ -101,7 +102,7 @@ async function versionIdOf(who: string, dataset: string): Promise<string> {
 
 async function searchDatasets(page: Page, text: string): Promise<void> {
   await page.goto("/datasets");
-  await page.getByLabel("Search by name").fill(text);
+  await page.getByTestId("dataset-search").fill(text);
   // The count of what the person can read is worked out after the row appears,
   // so wait for it, or the picture shows an empty cell that is not the result.
   await expect(page.getByRole("row").filter({ hasText: text }).first()).toContainText(/\d+ of \d+/);
@@ -197,7 +198,7 @@ test("a person makes a new dataset from a query, and the custodian stays in char
 
   await loginAs(page, CUSTODIAN);
   await page.goto("/audit");
-  await expect(page.getByText("Who accessed what").first()).toBeVisible();
+  await expect(page.getByText("Access decisions").first()).toBeVisible();
   // The newest rows are the platform's own reads of the inputs. The refusals are
   // what this step is about, so show the log filtered to them.
   await page.getByRole("button", { name: /^Refused/ }).click();

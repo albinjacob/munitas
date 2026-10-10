@@ -44,7 +44,7 @@ STEPS = [
         "note": "<strong>Yes. Lock what identifies a person, with one key for each person.</strong> is selected, and under "
                 "<strong>What are you bringing in?</strong> the choice <strong>A table of people&rsquo;s records</strong> is "
                 "selected. Two file choosers, <strong>The contract</strong> and <strong>The rows</strong>, both read "
-                "<strong>No file chosen</strong>. The button <strong>Seal as a table</strong> is greyed out, and the text "
+                "No file chosen. The button <strong>Seal as a table</strong> is greyed out, and the text "
                 "names the limits: <strong>20,000 rows and 5 MB</strong>.",
     },
     {
@@ -88,8 +88,7 @@ STEPS = [
                 "report is about.",
         "note": "<strong>patient_name</strong> and <strong>reason_for_visit</strong> carry the label <strong>Locked "
                 "under the person&rsquo;s key</strong>, and <strong>patient_number</strong> reads <strong>Replaced "
-                "by a person code</strong>. The footnote reads <strong>23 rows</strong>. Under <strong>Your access to "
-                "the locked values</strong> there is a form, and no name, number or reason for a visit appears "
+                "by a person code</strong>. The footnote reads <strong>23 rows</strong>. Under <strong>Your access</strong> there is a form, and no name, number or reason for a visit appears "
                 "anywhere on the page.",
     },
     {
@@ -111,7 +110,7 @@ STEPS = [
     {
         "file": "07-devi-asks-for-five-rows.png", "actor": "devi",
         "title": "Devi writes why, and asks for five rows for three days",
-        "screen": "Version detail &middot; Your access to the locked values",
+        "screen": "Version detail &middot; Your access",
         "text": "The form asks for a purpose, a number of days and a number of rows. The platform states the limits "
                 "itself, at most 7 days and at most 20 rows, and the purpose is recorded with the request. The rows "
                 "are chosen by the platform, not by the person asking, and they are the same every time, so asking "
@@ -124,7 +123,7 @@ STEPS = [
     {
         "file": "08-the-request-waits.png", "actor": "devi",
         "title": "The request waits for an approver",
-        "screen": "Version detail &middot; Your access to the locked values",
+        "screen": "Version detail &middot; Your access",
         "text": "Asking opens nothing. Devi still cannot read any locked value until an approver of the Cardiology "
                 "department decides.",
         "note": "A yellow box reads <strong>Your request is waiting for an approver.</strong> and repeats the request: "
@@ -134,12 +133,12 @@ STEPS = [
     {
         "file": "09-sam-has-no-way-to-ask.png", "actor": "sam",
         "title": "Sam, a researcher, has no way to ask at all",
-        "screen": "Version detail &middot; Your access to the locked values",
+        "screen": "Version detail &middot; Your access",
         "text": "Sam holds the researcher role, which is for working with data that has already been de-identified, "
                 "meaning the names, dates and other identifying detail have been taken out. "
                 "Sam opens the same table and sees how it is built, but no value, and is not offered a form, because "
                 "the locked values are not needed to work with the readable columns.",
-        "note": "The box under <strong>Your access to the locked values</strong> reads <strong>Your role cannot read "
+        "note": "The box under <strong>Your access</strong> reads <strong>Your role cannot read "
                 "the locked values and cannot ask for them</strong>. The table above it lists the same columns Devi "
                 "saw, and there is no form.",
     },
@@ -177,7 +176,7 @@ STEPS = [
         "note": "<strong>Waiting for you to decide</strong> now reads <strong>No requests waiting for you</strong>. "
                 "<strong>In force in your departments</strong> lists <strong>Devi</strong>, <strong>5 rows, 3 "
                 "days</strong>, the label <strong>In force</strong>, an end date three days after the approval, "
-                "and <strong>Approved by Hartley: Five rows is enough for that.</strong> A button reads <strong>End "
+                "and <strong>Approved by Hartley</strong> with the note <strong>Five rows is enough for that.</strong> A button reads <strong>End "
                 "now</strong>.",
     },
     {
@@ -213,12 +212,12 @@ STEPS = [
         "act": ("PART FOUR", "Devi reads the five rows the lease opens",
                 "A lease opens a fixed few rows for a short time. It does not open the table."),
         "title": "Devi now holds a lease",
-        "screen": "Version detail &middot; Your access to the locked values",
+        "screen": "Version detail &middot; Your access",
         "text": "The same section that showed a form now says what Devi holds: five of the 23 rows, until the "
                 "lease ends, approved by Hartley for the stated reason. Devi can read the rows or end the lease "
                 "personally.",
         "note": "A green box reads <strong>You hold a lease: 5 rows of 23</strong>, with the end date, and "
-                "<strong>Approved by Hartley for:</strong> followed by Devi&rsquo;s reason. Two actions are offered: "
+                "<strong>Approved by Hartley</strong> and the date, then <strong>for:</strong> followed by Devi&rsquo;s reason. Two actions are offered: "
                 "<strong>Read your 5 rows</strong> and <strong>End this lease now</strong>.",
     },
     {
@@ -239,7 +238,7 @@ STEPS = [
                 "A privacy auditor is a person who checks how locked data was used. The role reads records of use "
                 "and no personal data, and can ask for a lease like anybody else if it ever needs a real value."),
         "title": "Marlow reads who read, who was refused, and under which lease",
-        "screen": "Locking audit &middot; /locking-audit",
+        "screen": "Locked data audit &middot; /locking-audit",
         "text": "Marlow holds the privacy auditor role. The page lists every read of locked columns and every "
                 "refusal, every lease with who asked and who decided, and the treatment of every column. People "
                 "appear by name, and no value from any table appears at all. Reading this page is recorded too. "
@@ -248,13 +247,13 @@ STEPS = [
         "note": "<strong>Who read locked columns, and who was refused</strong> lists <strong>Devi</strong> with "
                 "<strong>Refused</strong>, the reason and <strong>asked without a lease</strong>, and with "
                 "<strong>Read</strong> beside Devi&rsquo;s purpose. Under <strong>Leases</strong>, Devi&rsquo;s lease "
-                "reads <strong>5 / 3</strong>, meaning five rows for three days, with <strong>Approved by "
-                "Hartley</strong>. No patient name appears.",
+                "reads <strong>5 rows for 3 days</strong>, with <strong>Approved by "
+                "Hartley</strong> and the date under it. No patient name appears.",
     },
     {
         "file": "18-marlow-sees-how-columns-were-treated.png", "actor": "marlow",
         "title": "Marlow sees how each table&rsquo;s columns were treated, and the small groups",
-        "screen": "Locking audit &middot; How each table&rsquo;s columns were treated, Small groups",
+        "screen": "Locked data audit &middot; How each table&rsquo;s columns were treated, Small groups",
         "text": "For each table sealed under a privacy contract, the page lists its columns, how identifying each is "
                 "and what was done to it, so an auditor can check that what the contract promised is what happened. "
                 "The small groups table shows each finding and whether the owner decided anything about it.",
@@ -267,14 +266,15 @@ STEPS = [
     {
         "file": "19-marlow-sees-the-keys.png", "actor": "marlow",
         "title": "Marlow sees every key that was opened, and by whom",
-        "screen": "Locking audit &middot; Keys",
+        "screen": "Locked data audit &middot; Keys",
         "text": "Each person has a key of their own. It is made when the person first appears in a table, opened "
                 "when their locked values are read, and destroyed if they are ever erased. The list shows each "
                 "opening with the time, who did it, and the person code, which means nothing on its own. The page "
-                "shows the latest 25 and offers the rest.",
-        "note": "Each line reads <strong>A key was opened</strong> with the time, <strong>Devi</strong> and a person "
-                "code beginning with <strong>T-</strong>. A link at the bottom reads <strong>Show all</strong> and "
-                "the number of entries.",
+                "shows the newest 25 lines first and turns the rest into pages.",
+        "note": "Each line reads <strong>A key was opened</strong>, why (<strong>To read locked rows, under a lease</strong>), the table, "
+                "the time, <strong>Devi</strong> and a person code beginning with <strong>T-</strong>. At the foot of the list "
+                "<strong>Previous</strong> and <strong>Next</strong> turn the pages, and <strong>Lines per page</strong> sets how many "
+                "lines a page holds.",
     },
 ]
 

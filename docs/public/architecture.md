@@ -16,7 +16,10 @@ Every request into the platform passes through one control plane, the API,
 which checks every read and every write against a separate policy engine
 before doing anything else. Sandboxed agent runs sit on their own isolated
 network, with no direct route to the internet or to storage, and still have
-every tool call checked against that same policy engine.
+every tool call checked against that same policy engine. A step of an
+organisation's own pipeline runs in a container on a network of its own,
+with no storage, no key and no route to anything but one small gateway that
+forwards only the platform's step routes.
 
 [Diagram: services and network boundaries →](https://albinjacob.github.io/munitas/diagrams/system-architecture.html)
 
@@ -25,10 +28,17 @@ every tool call checked against that same policy engine.
 | Console | Where a person signs in and works: registers data, requests access, approves it, reviews pipeline output |
 | API | The control plane. Every request passes through here; it decides nothing about access on its own |
 | Policy engine (Open Policy Agent) | Evaluates every access, approval, export, and release decision, and logs a reason for every allow and deny |
-| Worker | Runs pipelines and AI agents; the only thing that reads or writes a dataset's actual bytes on the platform's behalf |
+| Sign-in (Ory Kratos and Ory Hydra) | Kratos answers who a person is and issues the session every request carries. Hydra signs a notebook in on a person's behalf, with a short-lived pass; it holds no people |
+| Workflow engine (Temporal) | Keeps long jobs running and resumable: pipeline runs, imports, agent runs that wait for approval, and the scheduled sweeps |
+| Worker | Runs pipelines and AI agents. When it reads or writes a dataset's bytes it does so with a key the API made for that one task |
+| Table worker | A separate process that writes large tables. It holds no database and no organisation's standing key |
 | Database | Records every dataset version, every access decision (including denials), and the append-only history that answers what was allowed on any past date |
 | Object storage | Where the underlying files live, reached only through credentials the API mints. Each is scoped to one organisation's own bucket, and those issued for a lease or for a single task are limited to the folders involved and end with it |
+| Table catalog | The API serves a read-only Iceberg catalog: a person's own tool, such as DuckDB, lists only the tables that person may read and opens one with a short-lived key for that version |
 | Sandboxed agent run | Executes an agent's own uploaded code on a network with no route out, so what it may reach is a property of the network itself, not a rule that has to be remembered |
+| Derivation runner | Runs the query that makes a new dataset, in a container with no network connection and no credentials |
+| Custom pipeline step | Runs an organisation's own code as one step of a pipeline, in a container with no storage and no key. It reaches the platform only through the step gateway |
+| Step gateway | The only thing on the step network besides the steps. It forwards the platform's step routes to the API and answers 404 to everything else |
 
 ---
 
@@ -71,13 +81,55 @@ in a document the agent reads can change what the agent asks to do, but it
 cannot change which identity that request is checked against, so there is
 nothing for a prompt-injection attempt to escalate into.
 
-**Deletion without rewriting history.** Each record is protected by its
-own encryption key. Deleting a record destroys that key rather than
-rewriting any sealed version: the record becomes permanently unreadable
-everywhere it was ever included, while the version history, lineage, and
-audit trail that referenced it stay intact. A record of the deletion
-itself is kept, so erasure does not erase the fact that an erasure
-happened.
+**Locked data.** The columns of a table, and the files, that identify a
+person can be locked under a key made for that person. The owning
+department's approvers read their own locked columns in full. Anybody else
+sees real values only through a lease: a stated purpose, an approver of the
+owning department who is not the person asking, a short life, a cap on rows
+or on files, and every read logged. The platform draws the rows or files a
+lease opens and fixes the list, so reading again never reveals more. A
+privacy auditor reads the evidence of how locking was used, which contains
+no name, value, file name or identifier.
+
+**Development data.** A pipeline version that is still in development may
+run only on development data: files declared to hold no real person, or a
+sample of real ones that the platform draws after an approver of the owning
+department has approved it for the person who asked. A sample, and whatever
+is made from it, ends with the sample: its files are deleted and the sealed
+record of it stays.
+
+**An organisation's own code.** It runs as a step of a pipeline only after
+an approver of the owning department, who did not upload it, has approved
+that version. The platform asks four
+questions of every request a step makes: is the pass real and made for
+this step, is the pipeline run still going, does the version of the
+pipeline declare this step for what it is asking to do, and does the
+approver's approval still stand. A file is opened before it is read, and the
+opening is logged.
+
+**A notebook acts for one person.** A notebook signs in on a person's
+behalf without pasting a session: it shows a code, the person approves it
+in the console, and the notebook receives a short-lived pass. The platform
+asks Hydra whether the pass is live on every request, and the pass reaches
+only a short list of routes. Approving a request or changing a role is
+refused even for a person who may do it in the console.
+
+**Closing an organisation, and legal hold.** An organisation that leaves is
+closed in two stages, 15 days each by default, and nothing in it is deleted
+while a legal hold stands. A hold needs two different platform
+administrators. Records for a legal matter leave as an encrypted, signed
+package: one administrator asks, a different one approves, and the custodian
+the hold names confirms what is included.
+
+**Deletion without rewriting history.** Records that identify a person are
+protected by a key of their own: a key made for the record, or one made for
+the person it is about. Deleting destroys that key rather than rewriting
+any sealed version: the record becomes permanently unreadable everywhere it
+was ever included, while the version history, lineage, and audit trail that
+referenced it stay intact. A record of the deletion itself is kept, so
+erasure does not erase the fact that an erasure happened. A legal hold over
+an organisation stops any erasure while it stands, because a destroyed key
+cannot be brought back.
 
 ---
 
@@ -92,6 +144,8 @@ in the stack requires a commercial licence to run or extend.
 | --- | --- |
 | SeaweedFS or Cloudflare R2 | S3-compatible object storage, selected per organisation. Credentials are scoped to one organisation's bucket and, for a lease or a single task, to specific folders, which is how access is enforced physically and not only by convention |
 | PostgreSQL (with pgvector) | Dataset versions, access-level history, pipeline runs, leases, and the audit log; also the vector store for near-duplicate and contamination checks |
+| Apache Iceberg and DuckDB | A sealed table is also stored as an Iceberg table, which the API's read-only catalog lets a person's own tool, such as DuckDB, open. DuckDB also runs the query that makes a new dataset, with no network |
+| cryptography (Python) | Encrypts records and stored credentials. Keys are made and destroyed through one key-service interface, so what holds the keys can be replaced |
 
 **Control and policy**
 
@@ -100,6 +154,9 @@ in the stack requires a commercial licence to run or extend.
 | Temporal | Durable workflow execution for pipeline runs and background ingestion, with retry, timeout, and resume-after-crash as properties of the engine rather than something each workflow has to implement |
 | Open Policy Agent | Evaluates every access, approval, export, and release decision, and logs a reason for every allow and deny |
 | Ory Kratos | Real sign-in and session verification; every registered person authenticates for real, with no shared or assumed identity |
+| Ory Hydra | Issues, renews and revokes the short-lived pass a notebook signs in with. It holds no people: Kratos still answers who somebody is, and the platform decides what a pass may do |
+| nginx | The step gateway: the one thing besides the steps on the network a custom pipeline step runs on |
+| Docker | Runs the isolated containers for sandboxed agent runs, custom pipeline steps and derivation runs |
 | FastAPI | The control plane: register schemas, create dataset versions, mint scoped credentials, approve leases, promote access levels, start ingestion |
 
 **De-identification pipeline**
@@ -117,7 +174,7 @@ in the stack requires a commercial licence to run or extend.
 | Component | Role |
 | --- | --- |
 | LangGraph | An agent's execution graph, with checkpointed state and an explicit pause for human approval before a consequential action |
-| OpenTelemetry and Jaeger | Distributed tracing, with the access level of the data touched carried as a span attribute |
+| OpenTelemetry and Jaeger | Traces of an agent's tool calls, with the access level of the data touched carried as a span attribute |
 | MLflow | Registry for pipeline runs, models, and the evidence a promotion decision points to |
 
 ---

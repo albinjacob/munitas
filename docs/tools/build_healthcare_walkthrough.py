@@ -1,4 +1,4 @@
-r"""Build docs/public/walkthroughs/healthcare-walkthrough.html from captured screenshots.
+r"""Build four Health walkthroughs from one capture: bring-in-a-recording, ask-to-read, agent-asks and remove-names.
 
 The screenshots come from web/walkthroughs/healthcare.spec.ts, which drives the real console
 against the live stack, seeded by scripts/seed/seed-health-example.py. Run both first:
@@ -11,13 +11,15 @@ against the live stack, seeded by scripts/seed/seed-health-example.py. Run both 
 The pipeline run in this capture is real: it transcribes a synthetic four-minute recording,
 finds the identifying details in it and removes them, so the capture takes a few minutes.
 
+The capture is one continuous session, and the four pages are slices of it, one for each stage a reader moves through (see STAGES in
+walkthrough_kit.py). healthcare-walkthrough.html is kept as a short page that points at the index, for links made before the split.
 The capture also records a custodian choosing what a grant covers (screenshots 32 to 36). That
 story is told on the Finance page, where it began, so it is not repeated here. The page, its
 look and the wording check come from walkthrough_kit.py.
 """
 from __future__ import annotations
 
-from walkthrough_kit import SHOTS_ROOT, Page, series_entry, write
+from walkthrough_kit import PUBLIC, SERIES, SHOTS_ROOT, Page, series_entry, write
 
 STEPS = [
     {
@@ -29,8 +31,7 @@ STEPS = [
         "title": "Devi signs in",
         "screen": "Sign in &middot; /auth/login",
         "text": "Devi types an email address and a password. Devi's job title, data engineer, is fixed by the "
-                "organisation and is not chosen at sign-in. It decides what the platform lets Devi do, including "
-                "one thing it will not allow in Part Three.",
+                "organisation and is not chosen at sign-in. It decides what the platform lets Devi do.",
         "note": "The email field reads <strong>devi@health.example</strong>, and the yellow bar reads "
                 "<strong>Nobody is signed in</strong>, because the picture is taken before Devi presses "
                 "<strong>Sign in</strong>.",
@@ -40,11 +41,12 @@ STEPS = [
         "title": "Devi's home page counts the organisation's data",
         "screen": "Home &middot; /",
         "text": "The home page counts four things for the Health organisation only: datasets, sealed versions, "
-                "versions released for wider use, and versions held back. A dataset is a named collection of "
+                "versions released for wider use, and versions that have not been released. A dataset is a named collection of "
                 "records. A version is one state of a dataset, and sealed means finished and closed for good.",
-        "note": "The panel at the top left reads <strong>Devi, Data engineer, Organisation: health</strong>. The "
+        "note": "The panel at the bottom left of the menu reads <strong>Devi</strong> and, under the name, "
+                "<strong>Data engineer</strong>, with <strong>Organisation</strong> <strong>health</strong> below it. The "
                 "four tiles are <strong>Datasets</strong>, <strong>Sealed versions</strong>, <strong>Released "
-                "for wider use</strong> and <strong>Held back</strong>.",
+                "for wider use</strong> and <strong>Not released</strong>.",
     },
     {
         "file": "03-register-blank.png", "actor": "devi",
@@ -90,8 +92,8 @@ STEPS = [
         "screen": "Bring a dataset in &middot; upload and seal",
         "text": "Devi uploads a real recording and seals it with the ordinary seal button. Sealing closes the "
                 "version: nothing can be added to it, and nothing in it can change. A later fix becomes a new "
-                "version. This dataset only shows the three steps. The next part registers a second one "
-                "sealed in the way the pipeline needs.",
+                "version. This dataset only shows the three steps. The walkthrough on removing names registers "
+                "a second one, sealed in the way the pipeline needs.",
         "note": "<strong>Uploaded</strong> sits next to <strong>cardiology-consult-synthetic.wav</strong> with "
                 "its size and length, and a green panel reads <strong>Sealed as version 1, 1 file. Nothing "
                 "about it can change from here; a later upload becomes a new version</strong>.",
@@ -110,15 +112,15 @@ STEPS = [
                 "be checked afterwards and not taken on trust.",
         "note": "Two files are listed, <strong>cardiology-consult-synthetic.wav</strong> and "
                 "<strong>cardiology-consult-synthetic.truth.json</strong>. Two seal buttons appear: "
-                "<strong>Seal this as version 1</strong> and <strong>Seal as recordings</strong>.",
+                "<strong>Seal this as version 1</strong> and <strong>Seal as files</strong>.",
     },
     {
         "file": "08-sealed-as-recordings.png", "actor": "devi",
         "title": "Devi seals it as recordings",
         "screen": "Bring a dataset in &middot; upload and seal",
-        "text": "<strong>Seal as recordings</strong> reads each audio file as a recording and matches it with its "
+        "text": "<strong>Seal as files</strong> reads each audio file as a recording and matches it with its "
                 "answer key. The de-identification pipeline can only run on a version sealed this way.",
-        "note": "The green panel reads <strong>Sealed as version 1, 1 recording the de-identification pipeline "
+        "note": "The green panel reads <strong>Sealed as version 1, 1 file the de-identification pipeline "
                 "can read</strong>.",
     },
     {
@@ -128,7 +130,7 @@ STEPS = [
         "text": "A run is one execution of a pipeline. A worker starts reading the sealed version. The page "
                 "updates itself as the steps progress.",
         "note": "The line under the heading reads <strong>Running now. This page updates itself</strong>. "
-                "<strong>Steps</strong> lists <strong>Transcribe the recordings</strong>, <strong>Find the "
+                "<strong>Steps</strong> lists <strong>Transcribe the files</strong>, <strong>Find the "
                 "identifiers</strong>, <strong>Hand off for annotation</strong> and <strong>Remove the "
                 "identifiers</strong>, each marked <strong>Not started</strong>. <strong>What happens "
                 "next</strong> says that nothing has been decided or released.",
@@ -152,7 +154,7 @@ STEPS = [
                 "released to a more open access level. Here it would move the recording from Under review to "
                 "Open for annotation, which cannot be undone. Devi started the run, so Devi may not decide it.",
         "note": "The state reads <strong>Waiting for a decision</strong>. The text above the buttons reads "
-                "<strong>You started this run, so somebody else has to clear it</strong>, and both buttons are "
+                "<strong>You started this run, so somebody else has to decide it.</strong> and both buttons are "
                 "pale.",
     },
     {
@@ -161,9 +163,9 @@ STEPS = [
         "screen": "De-identification results &middot; /gates/&lt;id&gt;",
         "text": "Hartley owns the recording's department, yet opens the same decision and is refused. Owning a "
                 "department's data and reviewing what a pipeline did to it are two separate kinds of authority.",
-        "note": "The panel reads <strong>Hartley, Data custodian for Cardiology</strong>, and the text above "
-                "the buttons reads <strong>Clearing a de-identification result is not part of your "
-                "role</strong>.",
+        "note": "The panel reads <strong>Hartley</strong> and, under the name, <strong>Data custodian for "
+                "Cardiology</strong>, and the text above the buttons reads <strong>Deciding a de-identification "
+                "result is not part of your role.</strong>",
     },
     {
         "file": "13-imani-opens-the-decision.png", "actor": "imani",
@@ -171,8 +173,8 @@ STEPS = [
         "screen": "De-identification results &middot; /gates/&lt;id&gt;",
         "text": "Imani holds the one role this screen is built for, the de-identification reviewer. The buttons "
                 "are still pale, not because of Imani's role but because a decision needs a written reason.",
-        "note": "The panel reads <strong>Imani, De-identification reviewer</strong>. The <strong>Why you "
-                "decided this</strong> box is empty.",
+        "note": "The panel reads <strong>Imani</strong> and, under the name, <strong>De-identification "
+                "reviewer</strong>. The <strong>Your reason</strong> box is empty.",
     },
     {
         "file": "14-reason-written-buttons-enabled.png", "actor": "imani",
@@ -189,14 +191,14 @@ STEPS = [
         "screen": "De-identification results &middot; /gates/&lt;id&gt;",
         "text": "The decision is recorded with its reason. The recording stays at its original, most restricted "
                 "level, and nobody has to ask Imani later why it was not released.",
-        "note": "The state reads <strong>Held back</strong>, <strong>Your decision</strong> reads <strong>Held "
+        "note": "The state reads <strong>Held back</strong>, <strong>The decision</strong> reads <strong>Held "
                 "back by Imani</strong> followed by the reason, and a notice at the bottom right reads "
                 "<strong>Held back</strong>.",
     },
     {
         "file": "16-sam-finds-a-request-form.png", "actor": "sam",
         "act": ("PART FOUR", "A researcher asks, and a custodian decides",
-                "Sam is a researcher who wants to read the original recording that Devi sealed. Sam's role does "
+                "Sam is a researcher who wants to read an original recording that a data engineer has sealed. Sam's role does "
                 "not read data at the Raw level, so the recording's page asks what the data would be used for "
                 "before it shows anything more."),
         "title": "Sam opens the recording and finds a request form",
@@ -230,8 +232,7 @@ STEPS = [
         "title": "Hartley finds Sam's request waiting",
         "screen": "Home &middot; the custodian's home page",
         "text": "Hartley's home page lists the requests to read Cardiology's data. A request for a recording that "
-                "Radiology owns would never appear here. The decisions below the request were made earlier, "
-                "some of them while other walkthroughs were recorded.",
+                "Radiology owns would never appear here. The decisions listed below the request were made earlier.",
         "note": "<strong>Waiting for your decision</strong> counts <strong>1</strong>. The card reads "
                 "<strong>Sam (Researcher) wants to read</strong> the recording, with <strong>Raw</strong>, "
                 "Sam's reason, and <strong>Granting gives Sam 24 hours, for this purpose only</strong>.",
@@ -247,15 +248,15 @@ STEPS = [
     },
     {
         "file": "21-agent-before-upload.png", "actor": "devi",
-        "act": ("PART FIVE", "A program asks for access, the way a person does",
+        "act": ("PART FIVE", "A run waits until a custodian grants permission",
                 "An agent is a program registered on Munitas, with a named owner, that Munitas runs on "
                 "somebody's behalf. Registering an agent gives it no right to read data. When it needs a Raw "
                 "dataset, its run waits until the custodian of the department that owns the dataset decides."),
         "title": "Devi opens the radiology triage agent",
         "screen": "Agents &middot; /agents",
         "text": "<code>radiology-intake-triage</code> ranks radiology documents so that the most urgent ones "
-                "reach a human reviewer first. It belongs to Radiology, so the Radiology custodian decides "
-                "what it may read, not Hartley.",
+                "reach a human reviewer first. It belongs to Radiology, so the custodian of Radiology decides "
+                "what it may read, and no other department's custodian does.",
         "note": "The row reads <strong>radiology-intake-triage</strong>, the purpose <strong>Ranks radiology "
                 "intake documents for human review</strong>, the department <strong>Radiology</strong>, and "
                 "the newest version followed by <strong>sealed</strong>.",
@@ -267,8 +268,8 @@ STEPS = [
         "text": "An agent's code is kept as sealed versions, the same way a dataset is. When it runs, the agent "
                 "acts under an identity of its own, shown here as its runtime identity.",
         "note": "<strong>Owned by</strong> reads <strong>Radiology</strong>, <strong>Runtime identity "
-                "(principal)</strong> shows a name ending in <strong>-runtime</strong>, and the newest version "
-                "carries the label <strong>active</strong>.",
+                "(principal)</strong> shows a name ending in <strong>-runtime</strong>, and the agent "
+                "has no versions yet: under <strong>Versions</strong> the page reads <strong>No versions.</strong>",
     },
     {
         "file": "23-agent-upload-filled.png", "actor": "devi",
@@ -286,11 +287,11 @@ STEPS = [
         "file": "24-agent-version-sealed.png", "actor": "devi",
         "title": "The new version is sealed",
         "screen": "Agent detail &middot; Versions",
-        "text": "The version is identified by a hash of its own code and is sealed on arrival. The platform "
+        "text": "The version is identified by a fingerprint of its own code, which changes if any part of the code changes, and it is sealed on arrival. The platform "
                 "runs it in a container, an isolated environment with no network access beyond its own "
-                "requests for access. Older versions below come from earlier recordings.",
-        "note": "The newest version is at the top with a <strong>Deploy</strong> button, and the version "
-                "below it carries the label <strong>active</strong>.",
+                "requests for access.",
+        "note": "The version, <strong>v1</strong>, is listed with <strong>Tools: read_dataset_version</strong> and a "
+                "<strong>Deploy</strong> button.",
     },
     {
         "file": "25-run-warned.png", "actor": "devi",
@@ -332,8 +333,7 @@ STEPS = [
         "screen": "Agent detail &middot; Runs",
         "text": "Okonjo's grant covered one purpose and was not a standing credential. Devi starts a second run "
                 "on the same dataset for another purpose, and it waits again. This is what Raw data always gets. "
-                "Reviewed data, which is no longer Raw, can be granted more widely, as the Finance walkthrough "
-                "shows.",
+                "Reviewed data, which is no longer Raw, can be granted more widely.",
         "note": "A new row at the top reads <strong>waiting for data access</strong> and ends with "
                 "<strong>second batch</strong>, separate from the first run below it.",
     },
@@ -351,7 +351,7 @@ STEPS = [
     {
         "file": "30-pipeline-registry-empty.png", "actor": "devi",
         "act": ("PART SIX", "Other pipelines, and the platform's own health",
-                "The de-identification pipeline in Part Three is the one that Munitas offers. Anybody may "
+                "The de-identification pipeline above is the one that Munitas offers. Anybody may "
                 "register a different pipeline that ends in the same kind of decision, as the custom pipeline "
                 "walkthrough shows. And behind every screen is Priya, who can see whether the parts of "
                 "Munitas are healthy."),
@@ -400,27 +400,101 @@ CROPS = {
     "30-pipeline-registry-empty.png": (320, 0, 1600, 420),
 }
 
-PAGE = Page(
-    slug="healthcare", org="health",
-    title=series_entry("healthcare")["title"],
-    eyebrow="Health organisation &middot; Patient recordings",
-    lede="A recording of a cardiology consultation is brought in, and a pipeline removes the names and dates from "
-         "it. A reviewer decides whether it may be released. A researcher then asks for access, and a program "
-         "has to ask the same way a person does.",
-    actors=ACTORS, steps=STEPS, crops=CROPS,
-    words=["organisation", "department", "dataset", "version", "sealed", "access_level", "custodian", "pipeline",
-           "run", "gate", "deid_reviewer", "request", "purpose", "lease", "agent", "container",
-           "open_for_annotation"],
-    shots_dir=SHOTS_ROOT / "healthcare",
-    capture_note="Captured live against the <code>health</code> organisation by "
-                 "<code>web/walkthroughs/healthcare.spec.ts</code> and built by "
-                 "<code>docs/tools/build_healthcare_walkthrough.py</code>. The pipeline run is real: "
-                 "transcription and identifier detection ran on a synthetic recording made for this purpose.",
-)
+CAPTURE = ("Captured live against the <code>health</code> organisation by <code>web/walkthroughs/healthcare.spec.ts</code> "
+           "and built by <code>docs/tools/build_healthcare_walkthrough.py</code>.")
+PIPELINE_NOTE = " The pipeline run is real: transcription and identifier detection ran on a synthetic recording made for this purpose."
+
+PART_WORDS = ["PART ONE", "PART TWO", "PART THREE"]
+
+
+def take(*spans):
+    """Steps by their number on the capture (counted from 1), in the order given; each span is first and last."""
+    out = []
+    for first, last in spans:
+        out += STEPS[first - 1:last]
+    return out
+
+
+def counted(steps):
+    """Copies of the steps, with the part labels counted from this page's own first part."""
+    out, n = [], 0
+    for step in steps:
+        step = dict(step)
+        if "act" in step:
+            step["act"] = (PART_WORDS[n],) + tuple(step["act"][1:])
+            n += 1
+        out.append(step)
+    return out
+
+
+def page(slug, eyebrow, lede, cast, steps, words, note=""):
+    return Page(
+        slug=slug, org="health", title=series_entry(slug)["title"], eyebrow=eyebrow, lede=lede,
+        actors={key: ACTORS[key] for key in cast}, steps=counted(steps), crops=CROPS, words=words,
+        shots_dir=SHOTS_ROOT / "healthcare", capture_note=CAPTURE + note,
+    )
+
+
+PAGES = [
+    page("bring-in-a-recording", "Health organisation &middot; A dataset",
+         "A data engineer registers a dataset for a recording of a cardiology consultation, names the department that "
+         "owns it, and tries a file that is not a real recording. A real recording is then uploaded and sealed as "
+         "version 1, and nothing can be added to a sealed version afterwards.",
+         ["devi", "hartley"], take((1, 6)),
+         ["organisation", "department", "dataset", "version", "sealed", "access_level", "custodian"]),
+    page("ask-to-read", "Health organisation &middot; Who may read it",
+         "A researcher opens a recording that is more sensitive than the researcher's role may read, and asks to read it "
+         "for a stated purpose. The custodian of the department that owns it decides, and the decision is recorded and "
+         "lasts a limited time.",
+         ["sam", "hartley"], take((16, 20)),
+         ["organisation", "department", "dataset", "access_level", "custodian", "request", "purpose", "lease"]),
+    page("agent-asks", "Health organisation &middot; AI agents",
+         "An AI agent that ranks radiology documents is given a new version of its code and run. The run waits until the "
+         "custodian of the Radiology department grants it access, in the same way a person's request would wait, and a "
+         "second run has to ask again.",
+         ["devi", "okonjo"], take((21, 29)),
+         ["organisation", "department", "dataset", "version", "sealed", "access_level", "custodian", "request", "purpose",
+          "lease", "agent", "container", "run"]),
+    page("remove-names", "Health organisation &middot; Removing names",
+         "A recording of a cardiology consultation is brought in with its answer key, and a pipeline removes the names and "
+         "dates from it. The person who started the run cannot decide the result, and neither can the department's "
+         "custodian: the de-identification reviewer decides, with a written reason. The page ends with where this "
+         "built-in pipeline is listed and the parts of Munitas that ran it.",
+         ["devi", "hartley", "imani", "priya"], take((7, 15), (30, 31)),
+         ["organisation", "department", "dataset", "version", "sealed", "access_level", "custodian", "answer_key", "pipeline",
+          "run", "gate", "deid_reviewer", "open_for_annotation"], note=PIPELINE_NOTE),
+]
+
+# Every step of the capture is on exactly one page.
+used = sum(len(p.steps) for p in PAGES)
+assert used == len(STEPS), (used, len(STEPS))
+
+STUB = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="refresh" content="0; url=index.html">
+<title>Munitas walkthroughs</title>
+<link rel="canonical" href="index.html">
+</head>
+<body>
+<p>This walkthrough is now four shorter ones. <a href="index.html">Continue to all walkthroughs</a>.</p>
+</body>
+</html>
+"""
 
 if __name__ == "__main__":
-    missing = [s["file"] for s in STEPS if not (PAGE.shots_dir / s["file"]).exists()]
+    missing = [s["file"] for s in STEPS if not (PAGES[0].shots_dir / s["file"]).exists()]
     if missing:
         raise SystemExit("No screenshot for: " + ", ".join(missing) + "\nRun the capture first: cd web && npx "
                          "playwright test --config=walkthroughs/playwright.config.ts healthcare")
-    write(PAGE)
+    # Three of the four pages were replaced by newer ones and live in the archive. Their notes describe a console that has changed (the engineer's home, for one), so
+    # rebuilding them only fails on words that are no longer on the screens; they stay as they were archived. Only the pages still in the series are rebuilt.
+    live = {entry["slug"] for entry in SERIES}
+    for p in PAGES:
+        if p.slug in live:
+            write(p)
+        else:
+            print(f"{p.slug}: archived, not rebuilt")
+    (PUBLIC / "healthcare-walkthrough.html").write_text(STUB, encoding="utf-8")
+    print("wrote healthcare-walkthrough.html (a short page that points at the index)")

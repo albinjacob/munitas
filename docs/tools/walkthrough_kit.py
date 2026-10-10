@@ -23,6 +23,7 @@ from __future__ import annotations
 import base64
 import html
 import io
+import os
 import re
 from dataclasses import dataclass, field
 from datetime import date
@@ -49,26 +50,132 @@ ORG_TITLES = {
     "harbour": "Harbour Clinic",
 }
 
+# The stages a reader moves through inside one organisation. An entry in SERIES with a "stage" is listed under that heading on the
+# index, and the headings appear in the order the stages first occur.
+STAGES = {
+    "Set-up: Departments, Roles and Limits": "Before any data arrives, an organisation decides which department owns which data, who may approve access to it, which role each person holds, and what people are allowed to ask for.",
+    "Regular data": "Data that does not identify anyone, such as a table of hospital admissions counted by ward and quarter. At first nobody can read the table, not even the person who brought it in. A researcher finds it and asks to read it, and the department that owns it decides. The researcher then uses it from a notebook and makes a new table from a query.",
+    "Locked patient data": "Data that does identify patients, such as consultation recordings and a table of clinic appointments about the same patients. Unlike the admissions table, it names people, so every identifying detail is locked under a key made for each patient. An approver decides who may open a few rows or files. A reviewer decides whether the names have been removed well enough to release the result. An auditor can see how everything was used without seeing a name.",
+    "Roles and approvers": "A person asks for a role and an approver decides. When a department's usual approver is away, another approver covers for them.",
+    "AI agents": "A program that works on data is held to the same rules as a person: it asks for access and waits for an approver to decide. A network architect decides which external hosts a version of it may call.",
+    "Custom pipelines": "An organisation can write its own pipelines, which are series of steps that Munitas runs on data. A new version first runs only on development data, and a step that reads recordings needs an approver's agreement.",
+    "Audit": "Every request to read data, from a person or a program, is recorded with who asked, what for and why it was allowed or refused. The people who watch can read the record and change nothing.",
+    "Closing an organisation": "When an organisation stops using Munitas, it is closed in two stages of 15 days each. Its records can be kept for a legal case and handed over to the people who need them.",
+}
+
 SERIES = [
-    {"slug": "healthcare", "org": "health", "title": "Remove names from a patient recording and release it",
-     "summary": "A recording of a cardiology consultation is brought in, a pipeline removes the names and dates "
-                "from it, and a reviewer decides whether it may be released. A researcher then asks for access, "
-                "and a program has to ask in the same way a person does.",
-     "you_see": "Bringing a recording in, a pipeline that removes names, a reviewer's yes or no, requests for "
-                "access, a program asking for permission"},
-    {"slug": "people-administration", "org": "health", "title": "Ask for a role, and see who may grant it",
+    {"slug": "before-any-data", "org": "health", "stage": "Set-up: Departments, Roles and Limits",
+     "title": "Before the programme starts: who owns what, and who may do what",
+     "summary": "Before a research programme brings in any new data, the Health organisation already has its structure in "
+                "place. The platform administrator walks through it: the departments and who answers for each, the people "
+                "and their roles, what each role may read without asking, and the limits on what people may ask for.",
+     "you_see": "The departments with their approvers, the people and their roles, what each role may read without "
+                "asking, and the limits an organisation has set"},
+    {"slug": "a-table-arrives", "org": "health", "stage": "Regular data", "title": "Bring in a table, and see that nobody can read it yet",
+     "summary": "A data engineer brings in a table of hospital admissions and a small public list of diagnosis codes. The "
+                "admissions table starts closed to everybody, including the person who brought it in. The list is "
+                "registered with a claim that it is open to all, and the custodian of the owning department agrees with "
+                "the claim.",
+     "you_see": "Registering a dataset with an owner, a contract and rows checked and sealed as a table, a version that "
+                "nobody can read yet, and a claim that a custodian agrees with"},
+    {"slug": "find-and-ask", "org": "health", "stage": "Regular data", "title": "Find a table, ask to read it, and the custodian decides",
+     "summary": "A researcher is stopped at the table of admissions that a data engineer brought in, and sees only the public "
+                "lookup. The researcher asks for access with a purpose and a reason, the custodian of the owning department "
+                "grants it for a limited time, and the table opens.",
+     "you_see": "Python and the console side by side: a refusal with its reason, a request, the custodian's decision, and "
+                "rows that could not be read a moment before"},
+    {"slug": "work-from-a-notebook", "org": "health", "stage": "Regular data", "title": "Sign a notebook in, with a pass that cannot decide anything",
+     "summary": "A researcher signs a Python notebook in as themself: the notebook shows a code, the researcher types it in the "
+                "console and approves, and the notebook receives a short-lived pass. The pass cannot decide a request, and "
+                "the researcher ends it from the list of notebooks.",
+     "you_see": "A code typed in the console, a page that says what the notebook will and will not be able to do, a refusal "
+                "of the one thing a notebook cannot do, and the sign-in ending"},
+    {"slug": "make-a-dataset", "org": "health", "stage": "Regular data", "title": "Make a new dataset from a query, under the same rules",
+     "summary": "The researcher makes a new dataset from a query over the admissions and the diagnosis lookup. Munitas "
+                "plans it, runs it, and keeps the new dataset as restricted as its inputs. A colleague without access is "
+                "refused, a query that reaches too far is stopped, and when the custodian withdraws the access the new "
+                "dataset closes too.",
+     "you_see": "A plan, a finished dataset that records where it came from, three refusals with reasons, and a dataset "
+                "that closes when access is withdrawn"},
+    {"slug": "people-arrive", "org": "health", "stage": "Locked patient data", "title": "Bring in patient data, locked under a key for each patient",
+     "summary": "A data engineer brings in data that identifies patients. The page first asks whether anybody will ever need "
+                "to be erased from it. Three consultation recordings are then locked under a key made for each patient, and a "
+                "table of appointments about the same patients is sealed with what identifies them locked too.",
+     "you_see": "The question that comes first, every mistake listed before anything is sent, recordings locked and counted "
+                "without naming anybody, a table refused and then sealed, and what was done to each column"},
+    {"slug": "read-a-few-rows", "org": "health", "stage": "Locked patient data", "title": "Read five locked rows, with an approver's say",
+     "summary": "The data engineer who brought in a table of appointments is refused its locked names and reasons, asks to "
+                "read five rows for three days, and the custodian of the owning department decides. A researcher has no "
+                "way to ask. The platform reports which readable columns could single a person out, and the lease opens "
+                "exactly five rows.",
+     "you_see": "A refusal with its reason, a request, the custodian's decision with a note, a report on small groups, "
+                "and five rows with their locked values opened"},
+    {"slug": "open-a-few-files", "org": "health", "stage": "Locked patient data", "title": "Open two of the recordings, with an approver's say",
+     "summary": "The data engineer asks to open three of the locked recordings in the page, for an hour. The custodian "
+                "allows two, the platform chooses which, and the engineer plays one. When the custodian ends the "
+                "permission, the files close again.",
+     "you_see": "A request for files, a custodian allowing fewer, a recording playing in the page, and the files closing "
+                "when the permission ends"},
+    {"slug": "de-identify-and-release", "org": "health", "stage": "Locked patient data", "title": "Remove names from the recordings, and a reviewer decides",
+     "summary": "The built-in pipeline removes names, dates and addresses from the three locked recordings and is scored "
+                "against their answer keys. The person who started the run cannot decide the result, and neither can the "
+                "custodian of the owning department. The de-identification reviewer decides, with a written reason, and a "
+                "release widens access by one step.",
+     "you_see": "A run on real speech, two people refused for different reasons, a reviewer's measurement and decision, and a "
+                "researcher who still cannot read the released result"},
+    {"slug": "evidence-without-names", "org": "health", "stage": "Locked patient data", "title": "See how locked data was used, without seeing a name",
+     "summary": "The privacy auditor and the data protection officer read the record of everything that happened to the "
+                "locked data: who read, who was refused, what was done to each column, and which key was opened and why. "
+                "No patient's name appears, and the same person code ties a patient's recording to the same patient's row.",
+     "you_see": "An audit page with no names on it, how each column was treated, and every key opening with its reason"},
+    {"slug": "people-administration", "org": "health", "stage": "Roles and approvers", "title": "Ask for a role, and see who may grant it",
      "summary": "A researcher asks to hold a role and cannot decide the request alone. The person who runs "
                 "Munitas is refused when trying to grant it, and the custodian of a department grants it instead.",
      "you_see": "A request for a role, a refusal with its reason, and a grant that starts as never checked"},
-    {"slug": "custom-pipeline", "org": "health", "title": "Run a pipeline that you wrote yourself",
+    {"slug": "department-approvers", "org": "health", "stage": "Roles and approvers", "title": "Cover a department while its custodian is away",
+     "summary": "The custodian of Cardiology names a colleague from another department as cover. The cover "
+                "confirms a claim about Cardiology's data on their own, then the custodian ends the cover. The "
+                "platform refuses to remove the last permanent approver and keeps a record of every change.",
+     "you_see": "Adding an approver with a reason and an end date, a claim confirmed by the cover, a removal, a "
+                "refusal with its reason, and the history of who answered for the department"},
+    {"slug": "agent-asks", "org": "health", "stage": "AI agents", "title": "Grant an AI agent permission to read a dataset",
+     "summary": "An AI agent that ranks radiology documents is given a new version of its code and run. The run "
+                "waits until the custodian of the Radiology department grants it permission to read a dataset, in the same "
+                "way a person's request would wait, and a second run has to ask again.",
+     "you_see": "An agent version sealed, a run waiting for permission, a request that names who asked and who "
+                "will read, and the runs finishing"},
+    {"slug": "agent-egress", "org": "health", "stage": "AI agents", "title": "Grant an AI agent permission to call an external host",
+     "summary": "A data engineer uploads a new version of a radiology agent and lists the one external host it needs to call. The "
+                "version is sealed but cannot be deployed. Neither the engineer nor the custodian who owns the agent can decide the "
+                "list: the network architect does, with a written reason. An approved version can then be deployed, and a version "
+                "whose host is refused cannot.",
+     "you_see": "A version waiting for a decision with its Deploy button greyed out, two people refused for different reasons, "
+                "the architect's approval and refusal with their reasons, and what each decision does to the version"},
+    {"slug": "custom-pipeline", "org": "health", "stage": "Custom pipelines", "title": "Register a custom pipeline, and run it",
      "summary": "A data engineer in Cardiology registers a pipeline of their own, asks for access to a note, and "
                 "runs the pipeline. A reviewer makes the final decision, as for every other pipeline.",
      "you_see": "Registering a pipeline, asking for access, running it, and a reviewer's decision"},
-    {"slug": "derive-health", "org": "health", "title": "Make a new dataset from patient admissions",
-     "summary": "A researcher is stopped at a restricted table of patient admissions, asks for access, and makes "
-                "a new dataset from a query. The new dataset closes again when the custodian takes the access "
-                "back.",
-     "you_see": "Python and the console side by side: a refusal, a lease, a plan, and a finished dataset"},
+    {"slug": "development-sample", "org": "health", "stage": "Custom pipelines", "title": "Test a new pipeline version on a development sample",
+     "summary": "A data engineer in Cardiology has written a pipeline version that is still in development, so it "
+                "may run only on development data. The engineer asks for a sample of the locked recordings, a "
+                "custodian approves fewer, and the platform draws them. The pipeline version then runs for real "
+                "on the sample and is refused on the real recordings. The sample ends, and recordings with no "
+                "real person in them are declared synthetic.",
+     "you_see": "A request for a sample, a custodian lowering it and the platform drawing it, a sample that says "
+                "what it is, a run refused on real recordings and working on the sample, a sample that ends, and "
+                "a declaration of synthetic recordings"},
+    {"slug": "custom-step", "org": "health", "stage": "Custom pipelines", "title": "Approve a custom step before it runs",
+     "summary": "A data engineer in Cardiology uploads a pipeline with a step of their own that reads recordings "
+                "and writes files. The platform refuses to run it until an approver of the owning department, who "
+                "did not upload it, approves it. The run then makes a new version that waits for a review.",
+     "you_see": "A version waiting for an approver, a refused run, an approval, a finished run that links to what "
+                "it made, and a new version that records exactly what produced it"},
+    {"slug": "audit-decisions", "org": "health", "stage": "Audit", "title": "Read every access decision, including every refusal",
+     "summary": "The data protection officer opens a home page of counts, then the list of every request to read data, newest first, and then "
+                "only the refusals, each with its date and time, who asked, what for and the reason. Each request is recorded twice, once for whether "
+                "it was allowed and once for whether the access was given, and reading the record is itself recorded.",
+     "you_see": "A home page of counts and the latest refusals, every request in one list, the refusals alone with the reason for each, and the "
+                "auditors' own reading appearing in the list"},
     {"slug": "finance", "org": "finance", "title": "Score card transactions for fraud, with permission",
      "summary": "A fraud operations team brings in card transactions, and a scoring program has to ask the "
                 "custodian of the owning department before it may read them. A second custodian in the same "
@@ -78,59 +185,88 @@ SERIES = [
      "summary": "An analyst is stopped at a restricted table of card transactions, asks the Fraud Operations "
                 "custodian for access, and makes a new dataset of large payments made abroad.",
      "you_see": "Python and the console side by side: a refusal, a lease, a plan, and a finished dataset"},
-    {"slug": "closing-an-organisation", "org": "harbour", "title": "Close down an organisation, and keep its records for a legal case",
+    {"slug": "closing-an-organisation", "org": "harbour", "stage": "Closing an organisation", "title": "Close down an organisation, and keep its records for a legal case",
      "summary": "A small clinic is closing. Its data custodian starts the closing, and an ordinary member cannot "
                 "stop it. A law firm asks that the records be kept for a patient claim, two platform "
                 "administrators record and approve a legal hold, and everything is deleted only after the hold is "
                 "released.",
      "you_see": "A closing with two stages, a refusal, a legal hold that needs two administrators, and a short "
                 "record of what was deleted"},
-    {"slug": "legal-export", "org": "harbour", "title": "Hand over a closed clinic's records for a legal case",
+    {"slug": "legal-export", "org": "harbour", "stage": "Closing an organisation", "title": "Hand over a closed clinic's records for a legal case",
      "summary": "A court demands a patient's records from the clinic that is closing. One platform administrator "
                 "asks for them, a different one approves, and the custodian named by the legal hold confirms what "
                 "is included and names the patient, so that only that patient's rows leave. The platform builds a "
                 "signed, encrypted package that the recipient opens with a passphrase.",
      "you_see": "Three people each doing one step, a refusal, a passphrase shown once, a download link, and the "
                 "recipient checking the package on their own computer"},
-    {"slug": "department-approvers", "org": "health", "title": "Cover a department while its custodian is away",
-     "summary": "The custodian of Cardiology names a colleague from another department as cover. The cover confirms "
-                "a claim about Cardiology's data on their own, then the custodian ends the cover. The platform "
-                "refuses to remove the last permanent approver and keeps a record of every change.",
-     "you_see": "Adding an approver with a reason and an end date, a claim confirmed by the cover, a removal, a "
-                "refusal with its reason, and the history of who answered for the department"},
+]
+
+
+# Pages that newer ones have replaced. They are not on the index, not in the Previous and Next chain and not in the tour's list. Each is
+# still built, into docs/archive/walkthroughs/, and its old address in docs/public/walkthroughs/ is a short page that goes to the index.
+ARCHIVED = [
+    {"slug": "bring-in-a-recording", "org": "health", "title": "Bring a recording in, and seal it",
+     "summary": "A data engineer registers a dataset for a recording of a cardiology consultation, names the "
+                "department that owns it, and tries a file that is not a real recording, which is refused. A real "
+                "recording is then uploaded and sealed as version 1, and nothing can be added to a sealed version "
+                "afterwards.",
+     "you_see": "Registering a dataset with an owner, a file refused because it is not what its name says, and a "
+                "sealed version"},
+    {"slug": "ask-to-read", "org": "health", "title": "Ask to read a recording, and the custodian decides",
+     "summary": "A researcher opens a recording that is more sensitive than the researcher's role may read, and "
+                "asks to read it for a stated purpose. The custodian of the owning department decides, and the "
+                "decision is recorded and lasts a limited time.",
+     "you_see": "A request form where a file would be, a purpose and a reason, the custodian's waiting list, and "
+                "a grant for a limited time"},
+    {"slug": "remove-names", "org": "health", "title": "Remove names from a recording, and a reviewer decides",
+     "summary": "A recording of a cardiology consultation is brought in with its answer key, and a pipeline "
+                "removes the names and dates from it. The person who started the run cannot decide the result, "
+                "and neither can the department's custodian: the de-identification reviewer decides, with a "
+                "written reason. The page ends with where this built-in pipeline is listed and the parts of "
+                "Munitas that ran it.",
+     "you_see": "A pipeline that removes names, two people refused for different reasons, and a reviewer's "
+                "decision with its reason"},
     {"slug": "locked-columns", "org": "health", "title": "Lock what identifies a person, and read it only with permission",
-     "summary": "A data engineer in Cardiology seals a table of appointments from two files, so that each patient's "
-                "name and reason for visit are locked. The engineer asks to read a few locked rows and the "
-                "department's custodian decides. A privacy auditor then checks how the locked columns were used, "
-                "without seeing a single name.",
+     "summary": "A data engineer in Cardiology seals a table of appointments from two files, so that each "
+                "patient's name and reason for visit are locked. The engineer asks to read a few locked rows and "
+                "the department's custodian decides. A privacy auditor then checks how the locked columns were "
+                "used, without seeing a single name.",
      "you_see": "Two files turned into a sealed table, a refusal that lists every problem, a request and its "
                 "decision, a few rows read under permission, a report on small groups, and an audit page with no "
                 "names on it"},
     {"slug": "locked-recordings", "org": "health", "title": "Bring in recordings so that one patient can be erased later",
-     "summary": "A data engineer in Cardiology brings in recordings of consultations. The page first asks whether anyone "
-                "will ever need to be erased from the data, and each recording is then locked under a key made for its "
-                "patient as it arrives. A mistake in the list of patients is caught before anything is sent.",
+     "summary": "A data engineer in Cardiology brings in recordings of consultations. The page first asks whether "
+                "anyone will ever need to be erased from the data, and each recording is then locked under a key "
+                "made for its patient as it arrives. A mistake in the list of patients is caught before anything "
+                "is sent.",
      "you_see": "The question that comes first, a refusal that lists every mistake, recordings sent in parts and "
                 "locked, and a sealed version that counts recordings and patients without naming anybody"},
-    {"slug": "development-sample", "org": "health", "title": "Build a pipeline version on a development sample of locked recordings",
-     "summary": "A data engineer in Cardiology has written a pipeline version that is still in development, so it may run "
-                "only on development data. The engineer asks for a sample of the locked recordings, a custodian approves "
-                "fewer, and the platform draws them. The pipeline version then runs for real on the sample and is refused "
-                "on the real recordings. The sample ends, and recordings with no real person in them are declared synthetic.",
-     "you_see": "A request for a sample, a custodian lowering it and the platform drawing it, a sample that says what it "
-                "is, a run refused on real recordings and working on the sample, a sample that ends, and a declaration "
-                "of synthetic recordings"},
-    {"slug": "custom-step", "org": "health", "title": "Let your own code read recordings and write files, with an approver",
-     "summary": "A data engineer in Cardiology uploads a pipeline with a step of their own that reads recordings and writes "
-                "files. The platform refuses to run it until an approver of the owning department, who did not upload "
-                "it, approves it. The run then makes a new version that waits for a review.",
-     "you_see": "A version waiting for an approver, a refused run, an approval, a finished run that links to what it "
-                "made, and a new version that records exactly what produced it"},
 ]
 
 
+def org_page(org: str) -> str:
+    """The file name of the page that lists one organisation's walkthroughs."""
+    return f"{org}_walkthrough.html"
+
+
 def series_entry(slug: str) -> dict:
-    return next(e for e in SERIES if e["slug"] == slug)
+    return next(e for e in SERIES + ARCHIVED if e["slug"] == slug)
+
+
+ARCHIVE_DIR = DOCS / "archive" / "walkthroughs"
+ARCHIVE_STUB = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="refresh" content="0; url=index.html">
+<title>Munitas walkthroughs</title>
+<link rel="canonical" href="index.html">
+</head>
+<body>
+<p>This walkthrough has been replaced by newer ones. <a href="index.html">Continue to all walkthroughs</a>.</p>
+</body>
+</html>
+"""
 
 
 # ----------------------------------------------------------------------------------
@@ -194,6 +330,11 @@ WORDS = {
                            "custodian chooses otherwise."),
     "agent": ("Agent", "A program registered on Munitas, with a named owner, that Munitas runs on somebody&rsquo;s "
                        "behalf instead of a person reading data directly."),
+    "agent_version": ("Version of an agent", "One uploaded and sealed copy of an agent&rsquo;s code. Uploading again makes a new version, and the older ones stay."),
+    "host": ("Host", "The name of a computer on the internet that a program contacts, such as reports.radiology.example. For an agent, a host is an external address that it asks to be allowed to call."),
+    "egress": ("Egress approval", "A network architect&rsquo;s decision on the list of external hosts that one version of an agent asks to call. A version that lists hosts cannot be deployed until the list is approved, and a version that lists none needs no approval."),
+    "network_architect": ("Network architect", "A role that decides which external hosts an agent version may call. The person who uploaded the version cannot decide it, and neither can a custodian who does not hold this role."),
+    "deploy": ("Deploy", "To make one version of an agent the one that runs when somebody starts a run. Only one version of an agent is active at a time."),
     "run": ("Run", "One execution of an agent or a pipeline, started for a stated purpose."),
     "container": ("Container", "An isolated environment, with no network access of its own, where Munitas runs an "
                                "agent."),
@@ -233,8 +374,8 @@ WORDS = {
     "person_code": ("Person code", "A label that stands for one person and means nothing on its own. It replaces the number "
                                    "that identified them."),
     "locked_lease": ("Locked-column lease", "Permission, decided by an approver of the owning department, to read a few rows of "
-                                             "a table&rsquo;s locked columns for a few days, for a stated purpose. It is not "
-                                             "the same as a lease on a dataset."),
+                                             "a table&rsquo;s locked columns for a few days, for a stated purpose. It opens "
+                                             "only those rows, never the whole table."),
     "locked_recording": ("Locked recording", "A recording stored scrambled under a key made for the one patient it is about. Reading it "
                                               "back needs the platform to open it, and destroying the patient&rsquo;s key later makes it "
                                               "unreadable for good."),
@@ -271,6 +412,7 @@ SLOTS = [  # light (fg, bg, line), dark (fg, bg, line)
     (("#6b7a1f", "#f1f4de", "#d9e0a8"), ("#c2d16a", "#2b3010", "#464f1c")),
     (("#b03a5b", "#fbe7ed", "#efc3cf"), ("#f09ab4", "#3d1522", "#62283a")),
 ]
+
 
 
 def _slot_css() -> str:
@@ -483,7 +625,32 @@ __SLOTS__
   .group { margin: 0 0 44px; }
   .group h2 { font-size: 26px; margin: 0 0 4px; }
   .group > p { margin: 0 0 18px; color: var(--ink-soft); }
-  .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .group h3.stage { font-size: 24px; font-weight: 700; margin: 40px 0 4px; padding-top: 22px; border-top: 1px solid var(--paper-line); }
+  .group h3.stage:first-of-type { margin-top: 24px; }
+  .group h3.stage + p { margin: 0 0 14px; color: var(--ink-soft); font-size: 16px; max-width: 110ch; }
+  .group h3.stage { scroll-margin-top: 72px; }
+  .tile { scroll-margin-top: 72px; }
+  .tile:target { outline: 2px solid var(--brass); outline-offset: 3px; }
+  .quicknav { margin: 0 0 28px; padding: 18px 22px; border: 1px solid var(--paper-line); border-radius: 12px; }
+  .quicknav h2 { margin: 0 0 10px; font-size: 18px; }
+  .quicknav .quicknav-stages { margin: 0; padding: 0; list-style: none; column-count: 2; column-gap: 40px; }
+  .quicknav .quicknav-stages > li { break-inside: avoid; margin: 0 0 14px; }
+  .quicknav .quicknav-stage { font-size: 16px; font-weight: 700; }
+  .quicknav ul { margin: 4px 0 0; padding: 0; list-style: none; }
+  .quicknav ul li { margin: 3px 0; font-size: 14.5px; }
+  .quicknav ul li a { color: var(--ink-soft); }
+  .quicknav .quicknav-n { display: inline-block; min-width: 1.7em; color: var(--ink-faint); }
+  .quicknav .quicknav-stages.quicknav-few { column-count: 1; }
+  @media (max-width: 800px) { .quicknav .quicknav-stages { column-count: 1; } }
+  .people { margin: 0 0 28px; padding: 18px 22px; border: 1px solid var(--paper-line); border-radius: 12px; }
+  .people h2 { margin: 0 0 6px; font-size: 20px; }
+  .people > p { margin: 0 0 12px; color: var(--ink-soft); font-size: 14.5px; max-width: 110ch; }
+  .people table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+  .people th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-faint); padding: 6px 14px 6px 0; border-bottom: 1px solid var(--paper-line); }
+  .people td { padding: 8px 14px 8px 0; border-bottom: 1px solid var(--paper-line); vertical-align: top; }
+  .people td.who { font-weight: 700; white-space: nowrap; }
+  .people td.for { color: var(--ink-soft); }
+  .tiles { display: grid; grid-template-columns: 1fr; gap: 16px; }
   @media (max-width: 720px) { .tiles { grid-template-columns: 1fr; } }
   .tile {
     display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--paper-line); background: var(--paper-raised);
@@ -563,9 +730,10 @@ HOW_TO_READ_CODE = [
 # ----------------------------------------------------------------------------------
 # Helpers
 # ----------------------------------------------------------------------------------
-# Console screenshots are 1920 wide with an empty margin on each side of the console itself.
-# Cutting the same pixels away makes the part that matters larger on the page.
-DEFAULT_CROP = (320, 0, 1600, 1080)
+# A console screenshot is the whole 1920 by 1080 screen: the menu with the signed-in person at its foot, the header, and the page. Nothing is cut away,
+# because the person's name, role and organisation are in the menu and the notes point at them. (Before the console had a fixed menu, the pictures were cut to
+# the middle 1280 pixels and to the top of the page.)
+DEFAULT_CROP = None
 
 
 def encoded(path: Path, crop: tuple[int, int, int, int] | None = None) -> str:
@@ -618,15 +786,22 @@ class Page:
     crops: dict = field(default_factory=dict)
     evidence: Callable | None = None  # builds the evidence HTML for steps without `file`
     org: str | None = None
+    before_steps: str = ""        # html shown after the contents list and before the first step
 
 
 def _step_evidence(page: Page, step: dict) -> str:
     if "file" in step:
-        crop = page.crops.get(step["file"], DEFAULT_CROP)
+        crop = DEFAULT_CROP  # the whole screen; `page.crops` is no longer used, see DEFAULT_CROP
         alt = html.escape(strip_tags(step["title"]))
         return (f'<div class="shot"><img src="{encoded(page.shots_dir / step["file"], crop)}" '
                 f'alt="Screenshot: {alt}" loading="lazy"></div>')
     return page.evidence(step)
+
+
+def quote_screen_text(note: str) -> str:
+    """Screen text that ends with a full stop or a question mark and is followed by more of the note goes in quotation marks, so that
+    the note does not read as a sentence that stops and starts again."""
+    return re.sub(r"<strong>([^<]*[.?!])</strong>(?=,? [a-z])", lambda m: f"<strong>&ldquo;{m.group(1)}&rdquo;</strong>", note)
 
 
 def _screen_label(step: dict) -> str:
@@ -638,8 +813,23 @@ def _screen_label(step: dict) -> str:
 def _glance(page: Page) -> str:
     n = len(page.steps)
     minutes = max(3, round(n * 0.8))
-    cells = [("Steps", str(n)), ("People", str(len(page.actors))), ("Minutes to read", f"about {minutes}")]
+    people = len(page.actors)
+    cells = [("Steps", str(n)), ("Person" if people == 1 else "People", str(people)), ("Minutes to read", f"about {minutes}")]
     return '<div class="glance">' + "".join(f"<div><b>{v}</b>{k}</div>" for k, v in cells) + "</div>"
+
+
+COMMON_WORDS = {"request", "purpose", "run", "role", "stage"}
+
+
+def completed_words(page: Page) -> list[str]:
+    """The page's own list of words, plus every platform word its prose uses that the list leaves out, so that no word is used without a plain-words
+    meaning on the page. Words that are also everyday English are left to the page."""
+    prose = [page.lede] + [s["act"][2] for s in page.steps if "act" in s] + [s.get("text", "") for s in page.steps] + [s.get("note", "") for s in page.steps]
+    text = html.unescape(strip_tags(" ".join(prose))).lower()
+    add = [key for key, (term, _meaning) in WORDS.items()
+           if key not in page.words and term.lower() not in COMMON_WORDS
+           and re.search(rf"\b{re.escape(html.unescape(term).lower())}s?\b", text)]
+    return page.words + add
 
 
 def _reference(page: Page) -> str:
@@ -649,21 +839,25 @@ def _reference(page: Page) -> str:
     if page.parts:
         dl = "\n".join(f"      <dt>{PARTS[k][0]}</dt><dd>{PARTS[k][1]}</dd>" for k in page.parts)
         out.append(f'<section class="before">\n  <h2>The parts of Munitas, and the tools around it</h2>\n  <dl>\n{dl}\n  </dl>\n</section>')
-    if page.words:
-        dl = "\n".join(f"      <dt>{WORDS[k][0]}</dt><dd>{WORDS[k][1]}</dd>" for k in page.words)
+    words = completed_words(page)
+    if words:
+        dl = "\n".join(f"      <dt>{WORDS[k][0]}</dt><dd>{WORDS[k][1]}</dd>" for k in words)
         out.append(f'<section class="before">\n  <h2>Words used on this page</h2>\n  <dl>\n{dl}\n  </dl>\n</section>')
     return "\n".join(out)
 
 
 def _pager(slug: str) -> str:
-    slugs = [e["slug"] for e in SERIES]
-    i = slugs.index(slug)
+    mine = next((e for e in SERIES if e["slug"] == slug), None)
+    if mine is None:
+        return ""
+    group = [e for e in SERIES if e["org"] == mine["org"]]
+    i = group.index(mine)
     parts = []
     if i > 0:
-        e = SERIES[i - 1]
+        e = group[i - 1]
         parts.append(f'<a class="prev" href="{e["slug"]}-walkthrough.html"><small>Previous</small>{e["title"]}</a>')
-    if i < len(SERIES) - 1:
-        e = SERIES[i + 1]
+    if i < len(group) - 1:
+        e = group[i + 1]
         parts.append(f'<a class="next" href="{e["slug"]}-walkthrough.html"><small>Next</small>{e["title"]}</a>')
     return f'<div class="pager">{"".join(parts)}</div>'
 
@@ -693,13 +887,13 @@ def render(page: Page) -> str:
             f'      <span class="step-screen">{_screen_label(step)}</span>\n'
             f'      <p class="step-text">{step["text"]}</p>\n'
             f'      {_step_evidence(page, step)}\n'
-            f'      <div class="step-note"><span class="note-body">{step["note"]}</span></div>\n'
+            f'      <div class="step-note"><span class="note-body">{quote_screen_text(step["note"])}</span></div>\n'
             f'    </div>\n  </div>')
     if open_act:
         body.append("</section>")
     org = ORG_TITLES.get(page.org or "", "")
     crumbs = (f'<p class="crumbs"><a href="index.html">All walkthroughs</a>'
-              + (f' / {org}' if org else "") + "</p>")
+              + (f' / <a href="{org_page(page.org)}">{org}</a>' if org else "") + "</p>")
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -712,7 +906,7 @@ def render(page: Page) -> str:
 {topbar("")}
 <header class="hero">
   {crumbs}
-  <div class="eyebrow">{page.eyebrow}</div>
+  <div class="eyebrow">{eyebrow_for(page)}</div>
   <h1>{page.title}</h1>
   <p class="lede">{page.lede}</p>
   {_glance(page)}
@@ -729,6 +923,7 @@ def render(page: Page) -> str:
 {toc}
   </ol>
 </nav>
+{page.before_steps}
 {chr(10).join(body)}
 {_pager(page.slug)}
 </div>
@@ -743,12 +938,34 @@ def render(page: Page) -> str:
 """
 
 
+def eyebrow_for(page: Page) -> str:
+    """The line above a page's title is the organisation and the heading the index lists the page under, so the two always agree."""
+    entry = next((e for e in SERIES if e["slug"] == page.slug), None)
+    if entry and entry.get("stage"):
+        return f"{ORG_TITLES[entry['org']]} &middot; {entry['stage']}"
+    return page.eyebrow
+
+
 def write(page: Page) -> Path:
     problems = check_wording(page)
     if problems:
         raise SystemExit(f"{page.slug}: wording problems\n  " + "\n  ".join(problems))
-    out = PUBLIC / f"{page.slug}-walkthrough.html"
-    out.write_text(render(page), encoding="utf-8")
+    missing = check_notes(page)
+    if missing:
+        report = f"{page.slug}: notes name things that are not on their screens\n  " + "\n  ".join(missing)
+        if not os.environ.get("MUNITAS_NOTES_WARN"):
+            raise SystemExit(report)
+        print("WARNING " + report)
+    archived = page.slug in {e["slug"] for e in ARCHIVED}
+    out = (ARCHIVE_DIR if archived else PUBLIC) / f"{page.slug}-walkthrough.html"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    rendered = render(page)
+    gone = check_references(rendered)
+    if gone:
+        raise SystemExit(f"{page.slug}: the page names files that do not exist\n  " + "\n  ".join(gone))
+    out.write_text(rendered, encoding="utf-8")
+    if archived:
+        (PUBLIC / out.name).write_text(ARCHIVE_STUB, encoding="utf-8")
     print(f"wrote {out.name} ({out.stat().st_size // 1024} KB, {len(page.steps)} steps)")
     return out
 
@@ -767,6 +984,44 @@ def _prose(step: dict) -> str:
     text = " ".join(str(step.get(k, "")) for k in ("title", "text", "note"))
     text = re.sub(r"<code>.*?</code>", " ", text, flags=re.S)
     return html.unescape(strip_tags(text))
+
+
+def _words(text: str) -> str:
+    """Words as they compare: lower case, straight quotes, single spaces."""
+    text = text.replace("\u2018", "'").replace("\u2019", "'").replace("\u201c", '"').replace("\u201d", '"').replace("\u00a0", " ")
+    return re.sub(r"\s+", " ", text).strip().lower()
+
+
+def check_notes(page: Page) -> list[str]:
+    """Every phrase a note sets in bold or as code has to be on the screen at that step.
+
+    The capture saves the words of each screen beside its picture (web/walkthroughs/snap.ts), so this compares what a note says is on screen with what was
+    on screen. A phrase that is a date, a count or a name made up at capture time can be left out of the bold on purpose.
+    """
+    problems = []
+    for i, step in enumerate(page.steps, 1):
+        if "file" not in step or page.shots_dir is None:
+            continue
+        saved = page.shots_dir / (step["file"].rsplit(".", 1)[0] + ".txt")
+        if not saved.exists():
+            problems.append(f"step {i} ({step['file']}): no words were saved with this picture; capture it again")
+            continue
+        seen = _words(saved.read_text(encoding="utf-8"))
+        for phrase in re.findall(r"<(?:strong|code)>(.*?)</(?:strong|code)>", step.get("note", ""), re.S):
+            want = _words(html.unescape(strip_tags(phrase)))
+            if len(want) >= 2 and want not in seen:
+                problems.append(f"step {i} ({step['file']}): not on the screen: {want!r}")
+    return problems
+
+
+REFERENCED_FILE = re.compile(r"(?<![\w/.-])((?:verify|docs/tools|web/walkthroughs|scripts(?:/[a-z]+)?|worker|agent|platform/api(?:/app)?)/[\w./-]+\.(?:py|ts|ps1|sql))")
+
+
+def check_references(rendered: str) -> list[str]:
+    """Every file a page names has to be in the repository, so a renamed check cannot leave a public page pointing at nothing."""
+    text = re.sub(r"data:[a-z/+.-]+;base64,[A-Za-z0-9+/=]+", "", rendered)
+    root = DOCS.parent
+    return sorted({f"{m}" for m in REFERENCED_FILE.findall(text) if "<" not in m and "{" not in m and not (root / m).exists()})
 
 
 def check_wording(page: Page) -> list[str]:

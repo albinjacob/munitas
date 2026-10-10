@@ -24,6 +24,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { EMAIL_BY_DIRECTORY_ID, PASSWORD, bearerFor, loginAs } from "../tests/auth-helpers";
 import { API_BASE } from "../config/ports";
 import { settled } from "./settled";
+import { snap } from "./snap";
 import { closeTestRequests, revokeEarlierRecordings } from "./tidy";
 
 const SHOTS = join(process.cwd(), "walkthroughs", "shots", "custom-pipeline");
@@ -44,7 +45,7 @@ async function shot(page: Page, name: string): Promise<void> {
   await settled(page);
   step += 1;
   const n = String(step).padStart(2, "0");
-  await page.screenshot({ path: join(SHOTS, `${n}-${name}.png`) });
+  await snap(page, { path: join(SHOTS, `${n}-${name}.png`) });
 }
 
 /**
@@ -128,7 +129,6 @@ test("capture: an operator registers and runs their own pipeline", async ({ page
   await page.goto("/datasets/register");
   await page.getByTestId("register-name").fill(datasetName);
   await page.getByTestId("register-department").selectOption({ label: "Cardiology" });
-  await page.getByTestId("modality-text").check();
   await shot(page, "registers-the-dataset");
 
   await page.getByTestId("register-submit").click();

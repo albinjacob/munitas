@@ -19,13 +19,11 @@ import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { loginAs } from "../tests/auth-helpers";
 import { settled } from "./settled";
-import {
-  ADMIN,
-  ASKER,
-  CUSTODIAN,
-  WANTED,
-  clearTheRole,
-} from "../tests/role-fixtures";
+import { snap } from "./snap";
+import { WALKTHROUGH, WANTED, clearTheRole } from "../tests/role-fixtures";
+
+// The pictures are of the walkthrough organisation, not the test one.
+const { ADMIN, ASKER, CUSTODIAN } = WALKTHROUGH;
 
 const SHOTS = join(process.cwd(), "walkthroughs", "shots", "people-administration");
 
@@ -45,7 +43,7 @@ async function shot(page: Page, name: string): Promise<void> {
   await settled(page);
   step += 1;
   const n = String(step).padStart(2, "0");
-  await page.screenshot({ path: join(SHOTS, `${n}-${name}.png`) });
+  await snap(page, { path: join(SHOTS, `${n}-${name}.png`) });
 }
 
 test("capture: a role is asked for, refused the wrong way, then granted", async ({
@@ -54,7 +52,7 @@ test("capture: a role is asked for, refused the wrong way, then granted", async 
   mkdirSync(SHOTS, { recursive: true });
   // A capture that inherited a grant from an earlier run would photograph
   // two identical rows and call one of them new.
-  await clearTheRole();
+  await clearTheRole(CUSTODIAN);
 
   // ---- Sam asks -------------------------------------------------------
   await loginAs(page, ASKER);
@@ -65,7 +63,7 @@ test("capture: a role is asked for, refused the wrong way, then granted", async 
   await expect(page.getByRole("row").filter({ hasText: "Hartley" })).toBeVisible();
   await shot(page, "sam-opens-the-directory");
 
-  await page.getByTestId("ask-role").fill(WANTED);
+  await page.getByTestId("ask-role").selectOption(WANTED);
   await page.getByTestId("ask-reason").fill(WHY);
   await page.getByTestId("ask-reason").scrollIntoViewIfNeeded();
   await shot(page, "sam-fills-in-the-ask");

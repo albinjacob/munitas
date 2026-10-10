@@ -19,6 +19,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { bearerFor, loginAs } from "../tests/auth-helpers";
 import { API_BASE } from "../config/ports";
 import { settled } from "./settled";
+import { snap } from "./snap";
 
 const SHOTS = join(process.cwd(), "walkthroughs", "shots", "locked-recordings");
 const DEVI = "eng-devi";
@@ -34,7 +35,7 @@ async function shotAt(page: Page, testid: string, name: string, offset = 90): Pr
   }, offset);
   await page.waitForTimeout(250);
   step += 1;
-  await page.screenshot({ path: join(SHOTS, `${String(step).padStart(2, "0")}-${name}.png`) });
+  await snap(page, { path: join(SHOTS, `${String(step).padStart(2, "0")}-${name}.png`) });
 }
 
 async function headingAt(page: Page, heading: string, name: string, offset = 90): Promise<void> {
@@ -45,7 +46,7 @@ async function headingAt(page: Page, heading: string, name: string, offset = 90)
   }, offset);
   await page.waitForTimeout(250);
   step += 1;
-  await page.screenshot({ path: join(SHOTS, `${String(step).padStart(2, "0")}-${name}.png`) });
+  await snap(page, { path: join(SHOTS, `${String(step).padStart(2, "0")}-${name}.png`) });
 }
 
 /** A real wav file: a header that says so, and noise for the sound. */
@@ -104,42 +105,42 @@ test("capture: bring in recordings so that one patient can be erased later", asy
   await shotAt(page, "erase-choice", "devi-is-asked-whether-anyone-may-need-erasing", 40);
 
   await page.getByTestId("erase-yes").check();
-  await page.getByTestId("bringing-recordings").check();
-  await expect(page.getByTestId("recordings-panel")).toBeVisible();
+  await page.getByTestId("bringing-files").check();
+  await expect(page.getByTestId("files-panel")).toBeVisible();
   await shotAt(page, "erase-choice", "devi-chooses-recordings", 40);
 
   // A manifest and a set of files with several mistakes: all of them are listed before a single byte is sent.
-  await page.getByTestId("recordings-kind").fill("hospital chart number");
-  await page.getByTestId("recordings-manifest").setInputFiles(csv("manifest.csv", `file,person\nvisit-1.wav,${chartA}\nvisit-2.wav,\nvisit-3.wav,${chartB}\n`));
-  await page.getByTestId("recordings-files").setInputFiles([audio("visit-1.wav", 30_000), audio("visit-4.wav", 20_000), answerKey("visit-9.truth.json", "invented words")]);
-  await expect(page.getByTestId("recordings-problems")).toContainText("visit-2.wav names no person");
-  await shotAt(page, "recordings-panel", "every-mistake-is-listed-before-anything-is-sent", 40);
+  await page.getByTestId("files-kind").fill("hospital chart number");
+  await page.getByTestId("files-manifest").setInputFiles(csv("manifest.csv", `file,person\nvisit-1.wav,${chartA}\nvisit-2.wav,\nvisit-3.wav,${chartB}\n`));
+  await page.getByTestId("files-files").setInputFiles([audio("visit-1.wav", 30_000), audio("visit-4.wav", 20_000), answerKey("visit-9.truth.json", "invented words")]);
+  await expect(page.getByTestId("files-problems")).toContainText("visit-2.wav names no person");
+  await shotAt(page, "files-panel", "every-mistake-is-listed-before-anything-is-sent", 40);
 
   // The corrected manifest and the right files.
-  await page.getByTestId("recordings-manifest").setInputFiles(csv("manifest.csv", `file,person\nvisit-1.wav,${chartA}\nvisit-2.wav,${chartB}\n`));
-  await page.getByTestId("recordings-files").setInputFiles([
+  await page.getByTestId("files-manifest").setInputFiles(csv("manifest.csv", `file,person\nvisit-1.wav,${chartA}\nvisit-2.wav,${chartB}\n`));
+  await page.getByTestId("files-files").setInputFiles([
     audio("visit-1.wav", 30_000),
     audio("visit-2.wav", 60_000),
     answerKey("visit-1.truth.json", "A doctor and a patient talk about a check up, using invented names."),
   ]);
-  await expect(page.getByTestId("recordings-problems")).toHaveCount(0);
-  await expect(page.getByTestId("recordings-start")).toBeEnabled();
-  await shotAt(page, "recordings-panel", "the-files-are-ready", 40);
+  await expect(page.getByTestId("files-problems")).toHaveCount(0);
+  await expect(page.getByTestId("files-start")).toBeEnabled();
+  await shotAt(page, "files-panel", "the-files-are-ready", 40);
 
-  await page.getByTestId("recordings-start").click();
-  await expect(page.getByTestId("recording-visit-1.wav")).toContainText("Locked", { timeout: 90_000 });
-  await expect(page.getByTestId("recording-visit-2.wav")).toContainText("Locked", { timeout: 90_000 });
-  await expect(page.getByTestId("recording-visit-1.truth.json")).toContainText("Locked", { timeout: 90_000 });
-  await shotAt(page, "recordings-panel", "every-file-is-locked-under-its-persons-key", 40);
+  await page.getByTestId("files-start").click();
+  await expect(page.getByTestId("file-visit-1.wav")).toContainText("Locked", { timeout: 90_000 });
+  await expect(page.getByTestId("file-visit-2.wav")).toContainText("Locked", { timeout: 90_000 });
+  await expect(page.getByTestId("file-visit-1.truth.json")).toContainText("Locked", { timeout: 90_000 });
+  await shotAt(page, "files-panel", "every-file-is-locked-under-its-persons-key", 40);
 
-  await page.getByTestId("recordings-seal").click();
-  await expect(page.getByTestId("recordings-sealed")).toContainText("2 recordings about 2 people", { timeout: 60_000 });
-  await shotAt(page, "recordings-sealed", "the-recordings-are-sealed", 200);
+  await page.getByTestId("files-seal").click();
+  await expect(page.getByTestId("files-sealed")).toContainText("2 files about 2 people", { timeout: 60_000 });
+  await shotAt(page, "files-sealed", "the-recordings-are-sealed", 200);
 
-  await page.getByTestId("open-sealed-recordings").click();
-  await expect(page.getByTestId("locked-recordings")).toBeVisible();
+  await page.getByTestId("open-sealed-files").click();
+  await expect(page.getByTestId("locked-files")).toBeVisible();
   await expect(page.locator("body")).not.toContainText(chartA);
   // A shorter window, so that the page can scroll far enough to put this panel at the top of the picture, and so that the picture holds this panel only.
   await page.setViewportSize({ width: 1920, height: 305 });
-  await headingAt(page, "Locked recordings", "the-version-says-what-it-holds", 40);
+  await headingAt(page, "Locked files", "the-version-says-what-it-holds", 40);
 });

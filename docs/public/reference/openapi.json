@@ -211,6 +211,44 @@
             "title": "Contract",
             "type": "string"
           },
+          "delimiter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delimiter"
+          },
+          "encoding": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Encoding"
+          },
+          "header": {
+            "default": true,
+            "title": "Header",
+            "type": "boolean"
+          },
+          "null_values": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Null Values"
+          },
           "rows": {
             "format": "binary",
             "title": "Rows",
@@ -340,6 +378,39 @@
           "purpose"
         ],
         "title": "CatalogTokenIn",
+        "type": "object"
+      },
+      "ChallengeIn": {
+        "properties": {
+          "login_challenge": {
+            "title": "Login Challenge",
+            "type": "string"
+          }
+        },
+        "required": [
+          "login_challenge"
+        ],
+        "title": "ChallengeIn",
+        "type": "object"
+      },
+      "CodeIn": {
+        "properties": {
+          "device_challenge": {
+            "title": "Device Challenge",
+            "type": "string"
+          },
+          "user_code": {
+            "maxLength": 32,
+            "minLength": 4,
+            "title": "User Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "device_challenge",
+          "user_code"
+        ],
+        "title": "CodeIn",
         "type": "object"
       },
       "ConfirmClassification": {
@@ -542,6 +613,18 @@
             "description": "The object in object_manifest that holds this version's rows, which the platform also writes as a table. Its name chooses the shape: a name ending in .parquet is a Parquet file, one ending in .ndjson or .jsonl is one JSON row per line, and any other name is a JSON list of rows. A JSON list is read whole and is limited to 32 MB; the other two are read in batches and are limited to 2 GB, so a large table is sent as one of them. Parquet columns are matched to the contract by name and must have a fitting type. Leave it out for a version made of files.",
             "title": "Records Key"
           },
+          "records_options": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How the records file was written, when it is a text file to be read strictly: delimiter (one character), encoding (utf-8 by default), header (true by default), null_values (the words that mean a missing value, an empty field by default), compression (gzip, zstd or none) and check_keys (true by default: refuse a primary key that repeats). The file's name says the format: .csv, .tsv, .jsonl, .ndjson or .json, with .gz or .zst after it for a compressed file. A binary table file (.parquet, .avro, .orc, .arrow, .feather or .xlsx) is read the same way; for a workbook, sheet names the sheet. Every value is checked against the contract, and the version is refused with every problem found, by row, line and column, when any is wrong.",
+            "title": "Records Options"
+          },
           "schema_id": {
             "title": "Schema Id",
             "type": "string"
@@ -604,6 +687,24 @@
           "visibility_class"
         ],
         "title": "DatasetVersionIn",
+        "type": "object"
+      },
+      "DecisionIn": {
+        "properties": {
+          "approve": {
+            "title": "Approve",
+            "type": "boolean"
+          },
+          "consent_challenge": {
+            "title": "Consent Challenge",
+            "type": "string"
+          }
+        },
+        "required": [
+          "consent_challenge",
+          "approve"
+        ],
+        "title": "DecisionIn",
         "type": "object"
       },
       "DeployAgent": {
@@ -787,7 +888,7 @@
             "type": "integer"
           },
           "kind": {
-            "description": "'develop' to draw recordings for building a pipeline version, or 'debug' to name the recordings that went wrong",
+            "description": "'develop' to draw files for building a pipeline version, or 'debug' to name the files that went wrong",
             "title": "Kind",
             "type": "string"
           },
@@ -803,7 +904,7 @@
                 "type": "null"
               }
             ],
-            "description": "For a debug sample, the identifiers of the recordings",
+            "description": "For a debug sample, the identifiers of the files",
             "title": "Named Records"
           },
           "purpose": {
@@ -811,7 +912,7 @@
             "type": "string"
           },
           "records": {
-            "description": "How many recordings the sample holds",
+            "description": "How many files the sample holds",
             "title": "Records",
             "type": "integer"
           }
@@ -1039,6 +1140,79 @@
         "title": "Field_",
         "type": "object"
       },
+      "FileLeaseDecisionIn": {
+        "properties": {
+          "hours": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "An approver may lower the hours asked for, never raise them",
+            "title": "Hours"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "records": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "An approver may lower the number of files asked for, never raise it",
+            "title": "Records"
+          }
+        },
+        "title": "FileLeaseDecisionIn",
+        "type": "object"
+      },
+      "FileLeaseRequestIn": {
+        "properties": {
+          "hours": {
+            "description": "How many hours the lease lasts",
+            "title": "Hours",
+            "type": "integer"
+          },
+          "kind": {
+            "description": "'console' to listen in the page, or 'notebook' to read through the client library",
+            "title": "Kind",
+            "type": "string"
+          },
+          "purpose": {
+            "description": "What the files are for. Recorded with the lease.",
+            "title": "Purpose",
+            "type": "string"
+          },
+          "records": {
+            "description": "How many files the lease opens",
+            "title": "Records",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "purpose",
+          "records",
+          "hours"
+        ],
+        "title": "FileLeaseRequestIn",
+        "type": "object"
+      },
       "FilterIn": {
         "properties": {
           "column": {
@@ -1064,6 +1238,17 @@
             "title": "Blocking",
             "type": "boolean"
           },
+          "group_report": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Report"
+          },
           "metadata_location": {
             "anyOf": [
               {
@@ -1079,10 +1264,25 @@
             "enum": [
               "written",
               "skipped",
-              "failed"
+              "failed",
+              "refused"
             ],
             "title": "Outcome",
             "type": "string"
+          },
+          "problems": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Problems"
           },
           "reason": {
             "anyOf": [
@@ -1364,6 +1564,39 @@
         "title": "LeaseRequestIn",
         "type": "object"
       },
+      "LockIn": {
+        "properties": {
+          "columns": {
+            "additionalProperties": {
+              "items": {},
+              "type": "array"
+            },
+            "title": "Columns",
+            "type": "object"
+          },
+          "record_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Record Ids",
+            "type": "array"
+          },
+          "subjects": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Subjects",
+            "type": "array"
+          }
+        },
+        "required": [
+          "subjects",
+          "record_ids",
+          "columns"
+        ],
+        "title": "LockIn",
+        "type": "object"
+      },
       "LockedColumnLeaseDecisionIn": {
         "properties": {
           "note": {
@@ -1438,21 +1671,52 @@
         "title": "OpenOutputIn",
         "type": "object"
       },
-      "OpenUploadIn": {
+      "OpenTableUploadIn": {
         "properties": {
+          "contract": {
+            "description": "The contract for the table, as YAML or JSON text. A table brought in this way is not about people, so its contract says it cannot be erased and why",
+            "title": "Contract",
+            "type": "string"
+          },
           "file_name": {
-            "description": "The recording, <record>.wav, or its answer key, <record>.truth.json",
+            "description": "The file's name. Its ending says how it is laid out: .csv, .tsv, .jsonl, .ndjson or .json, with .gz or .zst after it if it is compressed, or .parquet, .avro, .orc, .arrow, .feather or .xlsx for a binary table file",
             "title": "File Name",
             "type": "string"
           },
-          "patient_kind": {
-            "description": "What kind of identifier names the person, such as a member number",
-            "title": "Patient Kind",
+          "options": {
+            "description": "How a text file was written: delimiter (one character), encoding (utf-8 by default), header (true by default), and null_values (the words that mean a missing value; an empty field by default). For a workbook, sheet names the sheet to read (the first when it is left out). Compression comes from the file's name. A binary table file carries its own column types, which must fit the contract.",
+            "title": "Options",
+            "type": "object"
+          },
+          "size_bytes": {
+            "description": "The size of the file in bytes, stated before any part is sent",
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "file_name",
+          "size_bytes",
+          "contract"
+        ],
+        "title": "OpenTableUploadIn",
+        "type": "object"
+      },
+      "OpenUploadIn": {
+        "properties": {
+          "file_name": {
+            "description": "The file, <record>.wav, or its answer key, <record>.truth.json",
+            "title": "File Name",
             "type": "string"
           },
-          "patient_value": {
+          "person_kind": {
+            "description": "What kind of identifier names the person, such as a member number",
+            "title": "Person Kind",
+            "type": "string"
+          },
+          "person_value": {
             "description": "The person's identifier. Used to find the person and never stored",
-            "title": "Patient Value",
+            "title": "Person Value",
             "type": "string"
           },
           "size_bytes": {
@@ -1464,8 +1728,8 @@
         "required": [
           "file_name",
           "size_bytes",
-          "patient_kind",
-          "patient_value"
+          "person_kind",
+          "person_value"
         ],
         "title": "OpenUploadIn",
         "type": "object"
@@ -1539,6 +1803,19 @@
         "title": "PipelineRunIn",
         "type": "object"
       },
+      "PollIn": {
+        "properties": {
+          "device_code": {
+            "title": "Device Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "device_code"
+        ],
+        "title": "PollIn",
+        "type": "object"
+      },
       "PreviewIn": {
         "properties": {
           "values": {
@@ -1556,6 +1833,34 @@
           "values"
         ],
         "title": "PreviewIn",
+        "type": "object"
+      },
+      "ProgressIn": {
+        "properties": {
+          "phase": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phase"
+          },
+          "rows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rows"
+          }
+        },
+        "title": "ProgressIn",
         "type": "object"
       },
       "PromotionIn": {
@@ -1899,6 +2204,19 @@
         "title": "RemoveApprover",
         "type": "object"
       },
+      "RenewIn": {
+        "properties": {
+          "refresh_token": {
+            "title": "Refresh Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "refresh_token"
+        ],
+        "title": "RenewIn",
+        "type": "object"
+      },
       "RetireIn": {
         "properties": {
           "reason": {
@@ -2062,6 +2380,19 @@
         "title": "StartAgentRun",
         "type": "object"
       },
+      "StartIn": {
+        "properties": {
+          "label": {
+            "default": "a notebook",
+            "description": "What the notebook calls itself, for example the machine's name. Shown to the person who approves it.",
+            "maxLength": 80,
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "title": "StartIn",
+        "type": "object"
+      },
       "StartPipeline": {
         "properties": {
           "pipeline_kind": {
@@ -2087,7 +2418,7 @@
       "SyntheticDeclarationIn": {
         "properties": {
           "note": {
-            "description": "Why these recordings hold no real person. Recorded with the declaration.",
+            "description": "Why these files hold no real person. Recorded with the declaration.",
             "title": "Note",
             "type": "string"
           }
@@ -2096,6 +2427,42 @@
           "note"
         ],
         "title": "SyntheticDeclarationIn",
+        "type": "object"
+      },
+      "TestIn": {
+        "properties": {
+          "capability": {
+            "description": "locked_rows, files_in_page or files_in_notebook",
+            "title": "Capability",
+            "type": "string"
+          },
+          "length": {
+            "description": "How many days (locked_rows) or hours",
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Length",
+            "type": "integer"
+          },
+          "role": {
+            "description": "The role the person asking holds",
+            "title": "Role",
+            "type": "string"
+          },
+          "size": {
+            "description": "How many rows (locked_rows) or files",
+            "maximum": 10000000.0,
+            "minimum": 0.0,
+            "title": "Size",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "capability",
+          "role",
+          "size",
+          "length"
+        ],
+        "title": "TestIn",
         "type": "object"
       },
       "ValidationError": {
@@ -2170,6 +2537,11 @@
               }
             ],
             "title": "Ended At"
+          },
+          "locked": {
+            "default": false,
+            "title": "Locked",
+            "type": "boolean"
           },
           "mark": {
             "enum": [
@@ -2365,7 +2737,7 @@
   "paths": {
     "/access-decisions": {
       "get": {
-        "description": "Read the audit log. Denials included, which is the point of having it.\n\n`tenant_id` used to be a caller-supplied query parameter, and this\nendpoint took no session at all: anyone who could reach the API could\nread any tenant's full audit log, unauthenticated, just by naming it.\nScoped to the caller's own tenant now, the same fix every read endpoint\nin `read_models.py` already has; this one was missed because it is a\nread stranded in `main.py`, which by that file's own docstring is\nsupposed to hold only endpoints with a consequence.\n\nNow the same `{decisions, shown, total, limit, offset}` envelope every\n`read_models.py` list endpoint uses, for real page controls.\n\n`allowed`/`resource` (`\"dataset\"` or `\"agent\"`, by whether\n`agent_run_id` is set) used to be filtered in the browser, on whatever\none page's worth of rows happened to already be fetched -- harmless\nwhile every row was fetched at once, silently wrong the moment\npagination means most rows never reach the browser to be filtered at\nall. Filtered here instead, the same principle `/datasets` already\nstates: a console that fetches everything and hides most of it in the\nbrowser gets slower and, now, also wronger as the platform grows.",
+        "description": "Read the record of access decisions: every request to read data in the caller's own organisation, and what happened to it. Refusals are included.\n\nOnly a data custodian, the data protection officer or a platform administrator may read it. Any other role is refused with a 403. The answer is `{decisions, shown, total, limit, offset}`, for page controls. `allowed` and `resource`\n(`\"dataset\"` or `\"agent\"`, by whether `agent_run_id` is set) filter here, in the database, so the total and the page always agree.",
         "operationId": "list_decisions_access_decisions_get",
         "parameters": [
           {
@@ -2502,9 +2874,75 @@
         "summary": "Access Preview"
       }
     },
+    "/access-rules": {
+      "get": {
+        "description": "Every rule of the caller's organisation: the value in force, the default, the most the platform allows, and who set it and why when the organisation has.",
+        "operationId": "rules_access_rules_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Rules Access Rules Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Rules",
+        "tags": [
+          "access rules"
+        ]
+      }
+    },
+    "/access-rules/what-would-happen": {
+      "post": {
+        "description": "Would a request of this size, from a person holding this role, be accepted under this organisation's rules, and if not, which rule says so. Records nothing.",
+        "operationId": "what_would_happen_access_rules_what_would_happen_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response What Would Happen Access Rules What Would Happen Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "What Would Happen",
+        "tags": [
+          "access rules"
+        ]
+      }
+    },
     "/action-runs": {
       "get": {
-        "description": "Runs, with how each one started, and the total for real page controls.\n\n`trigger_kind`/`triggered_by`/`schedule_id` say whether a human ran this by\nhand or a schedule fired it; `operator` stays the workload that executed\nit regardless, the same separation `requested_by` keeps for leases.\n\nEnvelope shape matches `/datasets`/`/agents`: `{action_runs, shown,\ntotal, limit, offset}`, not a bare list, so one pagination component\ncan front all three.",
+        "description": "Runs, with how each one started, and the total for real page controls.\n\n`trigger_kind`/`triggered_by`/`schedule_id` say whether a human ran this by\nhand or a schedule fired it; `operator` stays the workload that executed\nit regardless, the same separation `requested_by` keeps for leases.\n\nEnvelope shape matches `/datasets`/`/agents`: `{action_runs, shown,\ntotal, limit, offset}`, not a bare list, so one pagination component\ncan front all three.\n\nFor data engineers and platform administrators.",
         "operationId": "list_action_runs_action_runs_get",
         "parameters": [
           {
@@ -2559,7 +2997,7 @@
         ]
       },
       "post": {
-        "description": "Start an action run, keyed by an idempotency key.\n\nRe-submitting the same key returns the original run instead of starting a\nsecond one. This is what makes V6 checkable: kill the worker mid-action, let\nTemporal retry, and exactly one output version should exist afterwards.\n\nA manual run must name who triggered it, and a scheduled one must name its\nschedule instead; each is refused before the workflow even reaches this\nendpoint's insert, the same \"an unattributable run should not start\" logic\n`run_pipeline.py`'s CLI applies before starting the Temporal workflow at all.\nRetrying an existing idempotency key returns the original row unchanged\nregardless of what trigger fields this call carries: the row already exists,\nso nothing here is re-validated or re-attributed.",
+        "description": "Start an action run, keyed by an idempotency key.\n\nSubmitting the same key again returns the original run instead of starting a second one, so a retried action leaves exactly one output\nversion. A manual run must name who triggered it, and a scheduled run must name its schedule; a run with neither is refused. Retrying an\nexisting key returns the original row unchanged, whatever trigger fields the new call carries.",
         "operationId": "start_run_action_runs_post",
         "parameters": [
           {
@@ -2617,7 +3055,7 @@
     },
     "/agent-versions/{version_id}/egress-status": {
       "get": {
-        "description": "What this version may call, and whether that has been approved.\n\nCalled by the agent's own runtime (`agent/tools.py`'s `fetch_url`), a\nworkload with no Kratos session to present. (`GET /dataset-versions/{id}`\nused to take no session either, and no longer does: it carries a version's\nstorage keys, so it answers a session, the worker token or a run credential\nonly.) A version's requested hosts and approval state are not sensitive in the\nway tenant data is, and this is read on every network call an agent\nmakes, not once at deploy time. Scoped by version id alone, no tenant\ncheck: an agent already knows only its own `agent_version_id`, and a\nstranger who guessed one learns a host list and a state, nothing about\nany tenant's actual data.\n\nThe most recent approval decides, not \"any approval ever\", the same\ndefensive read `deploy` above and `_pending_gate` elsewhere both make.",
+        "description": "What this version may call, and whether that has been approved.\n\nRead by the agent's own runtime before each network call. The runtime has no sign-in session to present, so the answer is scoped by version\nid alone and holds only the hosts the version asked for and the state of its approval, nothing about any organisation's data. The most\nrecent approval decides, not any approval ever.",
         "operationId": "egress_status_agent_versions__version_id__egress_status_get",
         "parameters": [
           {
@@ -2709,7 +3147,7 @@
     },
     "/agents": {
       "get": {
-        "description": "Registered agents, most recently registered first, with the total.\n\nEach carries its version count and its latest version's content hash, so\nthe list view can show \"what's actually running\" without a second\nround trip per row.\n\nNow the same `{agents, shown, total, limit, offset}` shape `/datasets`\nuses, for real page controls rather than a \"show more\" that only ever\ngrows the same list -- a deliberate break from this endpoint's own\nformer bare-array response, made because the console-wide pagination\npass this is part of asked for one consistent shape everywhere, not\nbecause the earlier reasoning for keeping it bare was wrong at the\ntime. `useAgents()` and the two tests that read this response directly\n(`activation.spec.ts`, `real-auth.spec.ts`) were updated in the same\nchange.",
+        "description": "Registered agents, most recently registered first, with the total.\n\nEach carries its version count and its latest version's content hash, so\nthe list view can show \"what's actually running\" without a second\nround trip per row.\n\nNow the same `{agents, shown, total, limit, offset}` shape `/datasets`\nuses, for real page controls rather than a \"show more\" that only ever\ngrows the same list -- a deliberate break from this endpoint's own\nformer bare-array response, made because the console-wide pagination\npass this is part of asked for one consistent shape everywhere, not\nbecause the earlier reasoning for keeping it bare was wrong at the\ntime. `useAgents()` and the two tests that read this response directly\n(`activation.spec.ts`, `real-auth.spec.ts`) were updated in the same\nchange.\n\nFor data engineers and platform administrators.",
         "operationId": "list_agents_agents_get",
         "parameters": [
           {
@@ -2957,7 +3395,7 @@
     },
     "/agents/{agent_id}/access-preflight": {
       "get": {
-        "description": "Whether starting a run against this version would need access requested.\n\nThe console calls this when somebody picks a dataset, so the start button\ncan say what pressing it will do before it does it. Requesting access in\nsomebody's name without showing them first is the kind of thing that is\ntechnically consented to and actually a surprise.\n\nPreviously took no session at all, unlike the console flow that calls\nit (a signed-in person choosing a dataset), and unlike its sibling\n`egress_status` below it is not workload-facing, so it had no comment\njustifying that. Tenant-checked the same way `deploy` further down\nalready checks an agent against the caller's own tenant.",
+        "description": "Whether starting a run against this version would need access requested.\n\nThe console calls this when somebody picks a dataset, so the start button can say what pressing it will do before it does it. It needs a\nsession, and the agent is checked against the caller's own organisation.",
         "operationId": "access_preflight_agents__agent_id__access_preflight_get",
         "parameters": [
           {
@@ -3109,7 +3547,7 @@
         ]
       },
       "post": {
-        "description": "Start a real run of this agent, in the background.\n\nNot synchronous, for the same reason `POST /datasets/{id}/fetch-huggingface`\nis not: a model call can run long under GPU contention with the\nde-identification pipeline (agent/model.py's own comment notes a\n300-second timeout for exactly this), and a slow or stuck run has no\nbusiness holding a browser tab or the process serving every other\nrequest.\n\nThe version pinned onto the created row is resolved once, here, and\nnever re-derived later: whatever is active right now (or the version\nnamed explicitly) is what this run is defined to have used, even if\nsomebody deploys a different version before it finishes.",
+        "description": "Start a real run of this agent, in the background.\n\nThe call does not wait for the run, because a model call can take a long time and a slow or stuck run should not hold a browser tab or the\nprocess serving every other request. The version recorded on the run is resolved once, here, and never changed afterwards: it is the\nversion active now, or the one named explicitly, even if a different version is deployed before the run finishes.",
         "operationId": "start_run_agents__agent_id__runs_post",
         "parameters": [
           {
@@ -3217,7 +3655,7 @@
     },
     "/agents/{agent_id}/versions/upload": {
       "post": {
-        "description": "Upload a project as this agent's next version, sealed on arrival.\n\n`code_hash` is not a claim here, unlike the declare-only path: it is\ncomputed from the bytes actually received, the same discipline\n`ingest.py` already applies to dataset uploads via `dataset_source.\nchecksum`. `tool_scope` arrives as a comma-separated string because this\nis a plain multipart form, not JSON, parsed and sorted the same way\n`scripts/admin/register-agent-version.py` already sorts its own `--tool` flags before\nsending them.",
+        "description": "Upload a project as this agent's next version, sealed on arrival.\n\nThe code hash is computed from the bytes received, not claimed by the caller. `tool_scope` arrives as a comma-separated string, because this\nis a plain multipart form, and it is parsed and sorted before it is stored.",
         "operationId": "upload_version_agents__agent_id__versions_upload_post",
         "parameters": [
           {
@@ -3337,7 +3775,7 @@
     },
     "/audit/locked-columns": {
       "get": {
-        "description": "How locking was used in the caller's organisation: reads and refusals, key uses, leases, contract treatments and erasures.\n\nFor the privacy auditor and the data protection officer. Never a name, a value or an identifier.",
+        "description": "How locking was used in the caller's organisation, for locked columns and locked files.\n\nWithout `section`, the latest lines of every list: reads and refusals, key uses, leases, contract treatments, erasures, and the opening of locked files.\nWith `section` (reads, column_leases, file_reads, file_leases, keys, erasures, small_groups or contracts), one list a page at a time, newest first, narrowed by\n`person`, `table`, `file` (part of a file name), `date_from` and `date_to` (date and time; to is exclusive), `result` and `q`, with the number of lines that match. Each list accepts only\nsome of the filters, and says which.\n\nFor the privacy auditor and the data protection officer. Never a name, a value, a file name or an identifier.",
         "operationId": "audit_locked_columns_audit_locked_columns_get",
         "parameters": [
           {
@@ -3348,6 +3786,160 @@
               "default": 200,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "section",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Section"
+            }
+          },
+          {
+            "in": "query",
+            "name": "person",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Person"
+            }
+          },
+          {
+            "in": "query",
+            "name": "table",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Table"
+            }
+          },
+          {
+            "in": "query",
+            "name": "file",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "File"
+            }
+          },
+          {
+            "in": "query",
+            "name": "date_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "date_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "result",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Result"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Page Size"
             }
           }
         ],
@@ -3405,7 +3997,7 @@
     },
     "/credentials": {
       "post": {
-        "description": "Mint a storage credential for one dataset version, or refuse and say why.\n\nThe order of operations matters and is not negotiable: decide, record the\ndecision, then act on it. Recording after acting would lose the audit trail\nfor exactly the requests that fail partway.\n\nThree outcomes: 200 with the key when access is allowed and in effect,\n403 when it is refused, and 202 when it is allowed but the storage\npermissions could not be updated yet. A 202 is never a refusal: the\nactivator finishes the job and resumes a run that parked on it.",
+        "description": "Mint a storage credential for one dataset version, or refuse and say why.\n\nThe order of operations matters and is not negotiable: decide, record the\ndecision, then act on it. File after acting would lose the audit trail\nfor exactly the requests that fail partway.\n\nThree outcomes: 200 with the key when access is allowed and in effect,\n403 when it is refused, and 202 when it is allowed but the storage\npermissions could not be updated yet. A 202 is never a refusal: the\nactivator finishes the job and resumes a run that parked on it.",
         "operationId": "request_credential_credentials_post",
         "parameters": [
           {
@@ -3523,7 +4115,7 @@
         ]
       },
       "post": {
-        "description": "Seal a new dataset version.\n\nSealed on creation, which is why there is no update endpoint anywhere in\nthis file. The storage prefix encodes tenant, dataset and version and never\nthe class, so a later promotion changes a grant rather than moving bytes.\n\nA version that names a records file is also written as an Iceberg table, before the row exists. A small one is\nwritten while this request waits. A large one is written by a worker, in a job (table_jobs.py): the answer is then\n202 with the job, the version number and folder are reserved, and the version is sealed, with its table inside it,\nwhen the job finishes. `table_mode` chooses; left out, the size of the records file does.\n\nOnly the platform's own workers may call this (the worker token). It names the organisation in its body and writes a\nversion into it, so a caller that could reach it without proving what it is could seal a version into any organisation,\nand start table jobs that hold a version number and a storage key. A person's data arrives through the upload endpoint,\nwhich seals in-process under their session.",
+        "description": "Seal a new dataset version.\n\nA version is sealed on creation, which is why there is no update endpoint: a change is always a new version. The storage prefix encodes\norganisation, dataset and version and never the class, so a later promotion changes a grant and moves no bytes.\n\nA version that names a records file is also written as an Iceberg table, before the row exists. A small one is written while the request\nwaits. A large one is written by a worker, in a job: the answer is then 202 with the job, the version number and folder are reserved, and the\nversion is sealed, with its table inside it, when the job finishes. `table_mode` chooses; left out, the size of the records file does.\n\nOnly the platform's own workers may call this (the worker token). It names the organisation in its body, so a caller that could reach it\nwithout proving what it is could seal a version into any organisation. A person's data arrives through the upload endpoint, which seals\nunder their session.",
         "operationId": "create_version_dataset_versions_post",
         "parameters": [
           {
@@ -3578,7 +4170,7 @@
     },
     "/dataset-versions/{version_id}": {
       "get": {
-        "description": "One version, with the fields a detail screen needs.\n\n`version_class` deliberately carries only the class question. The name,\ncontent hash and record count are joined in here rather than added to the\nview, because widening the view would make every caller pay for columns most\nof them ignore, and the view's single purpose is what makes it trustworthy.\n\nThe organisation comes from the caller's session (`auth.organisation_scope`), never from\nthe URL, and a version belonging to another is **not found** rather than forbidden. That\ndistinction is the point: 403 confirms the version exists, which is half of what somebody\nprobing ids was trying to learn. The platform's own workers send the worker token instead\nand name the organisation they act for. This endpoint also returns `object_manifest`, the\nstorage keys of the version's files, so it must never answer without one or the other.",
+        "description": "One version, with the fields a detail screen needs.\n\n`version_class` deliberately carries only the class question. The name,\ncontent hash and record count are joined in here rather than added to the\nview, because widening the view would make every caller pay for columns most\nof them ignore, and the view's single purpose is what makes it trustworthy.\n\nThe organisation comes from the caller's session (`auth.organisation_scope`), never from\nthe URL, and a version belonging to another is **not found** rather than forbidden. That\ndistinction is the point: 403 confirms the version exists, which is half of what somebody\nprobing ids was trying to learn. The platform's own workers send the worker token instead\nand name the organisation they act for. This endpoint also returns `object_manifest`, the\nstorage keys of the version's files, so it must never answer without one or the other.\n\nA version made from a file somebody brought in also says so (`brought_in`): the file's name, its size and\nits SHA-256, who sent it and when. It is null for a version nothing was brought in for, such as one a\npipeline made.",
         "operationId": "get_version_dataset_versions__version_id__get",
         "parameters": [
           {
@@ -3721,7 +4313,7 @@
     },
     "/dataset-versions/{version_id}/development-samples": {
       "get": {
-        "description": "What a screen needs on a version of recordings: the caller's samples, the requests waiting for them as an approver, what they may do, the limits.\n\nNever a recording or a patient. An approver sees how many recordings came from each length band, and nothing more.",
+        "description": "What a screen needs on a version of files: the caller's samples, the requests waiting for them as an approver, what they may do, the limits.\n\nNever a file or a person. An approver sees how many files came from each length band, and nothing more.",
         "operationId": "development_samples_of_dataset_versions__version_id__development_samples_get",
         "parameters": [
           {
@@ -3763,7 +4355,7 @@
         ]
       },
       "post": {
-        "description": "Ask for a sample of these recordings for building a pipeline version: a purpose, up to 14 days, up to 50 recordings. A department approver decides.",
+        "description": "Ask for a sample of these files for building a pipeline version: a purpose, up to 14 days, up to 50 files. A department approver decides.",
         "operationId": "request_development_sample_dataset_versions__version_id__development_samples_post",
         "parameters": [
           {
@@ -3812,6 +4404,192 @@
         "summary": "Request Development Sample",
         "tags": [
           "development samples"
+        ]
+      }
+    },
+    "/dataset-versions/{version_id}/file-lease": {
+      "get": {
+        "description": "What a version's page needs about leases on its files: this person's own lease on it, the limits, and whether anybody can decide a request.",
+        "operationId": "file_lease_of_version_dataset_versions__version_id__file_lease_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response File Lease Of Version Dataset Versions  Version Id  File Lease Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "File Lease Of Version",
+        "tags": [
+          "file leases"
+        ]
+      }
+    },
+    "/dataset-versions/{version_id}/file-leases": {
+      "post": {
+        "description": "Ask to open a few of a version's real files for a few hours. An approver of the owning department who is not the person asking decides.",
+        "operationId": "request_file_lease_dataset_versions__version_id__file_leases_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FileLeaseRequestIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Request File Lease Dataset Versions  Version Id  File Leases Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Request File Lease",
+        "tags": [
+          "file leases"
+        ]
+      }
+    },
+    "/dataset-versions/{version_id}/files": {
+      "get": {
+        "description": "How many locked files a sealed version holds, how many people they are about, and how many belong to people who were erased.\n\nCounts only. A version that holds no locked files answers 404.",
+        "operationId": "files_summary_dataset_versions__version_id__files_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Files Summary Dataset Versions  Version Id  Files Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Files Summary",
+        "tags": [
+          "files"
+        ]
+      }
+    },
+    "/dataset-versions/{version_id}/files-token": {
+      "post": {
+        "description": "A token for reading the files a notebook lease opens: one version, at most an hour, never past the lease.\n\nRefused (403) when the caller holds no notebook lease in force on this version. Asked again to renew it; nothing is recorded until a file is opened.",
+        "operationId": "files_token_dataset_versions__version_id__files_token_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Files Token Dataset Versions  Version Id  Files Token Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Files Token",
+        "tags": [
+          "notebook files"
         ]
       }
     },
@@ -3913,6 +4691,50 @@
         ]
       }
     },
+    "/dataset-versions/{version_id}/holds": {
+      "get": {
+        "description": "What one version holds: its kinds, its formats, its structure, how many files and how much, and how many rows when it is a table.\n\nThe same facts the datasets list shows for a whole dataset, for this one version. They are worked out from what was written against each\nfile when the version was sealed and, for an older version, from the file's name. `read_from` says which: \"content\" when every file was read,\n\"name\" when none was (locked files cannot be read, and an older version was sealed before files were read), \"mixed\" otherwise. A version\nstored as a table counts as one table in the format \"table\", not as the files its rows came from. File names are not returned, because a\nname can identify a person. Narrowed to the caller's own organisation, answering 404 for anything else.",
+        "operationId": "version_holds_dataset_versions__version_id__holds_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Version Holds Dataset Versions  Version Id  Holds Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Version Holds",
+        "tags": [
+          "read"
+        ]
+      }
+    },
     "/dataset-versions/{version_id}/locking": {
       "get": {
         "description": "What a screen needs to show a locked table to the caller: its columns and how each is treated, what they may do, their lease, the limits.\n\nNever a value. Asking records nothing: looking at a screen is not reading what was locked.",
@@ -3959,7 +4781,7 @@
     },
     "/dataset-versions/{version_id}/person-rows": {
       "get": {
-        "description": "The rows of a table sealed under a privacy contract, with the locked columns opened for somebody the policy lets.\n\nThe owning department's approvers read every row (\"mode\": \"full\"). Anybody else reads only the fixed sample their current lease opens\n(\"mode\": \"sample\"). A person who was erased has an erased marker where their locked values were. The decision is recorded either way.",
+        "description": "The rows of a table sealed under a privacy contract, with the locked columns opened for somebody the policy lets.\n\nThe owning department's approvers read every row (\"mode\": \"full\"). Anybody else reads only the fixed sample their current lease opens\n(\"mode\": \"sample\"). A person who was erased has an erased marker where their locked values were. The decision is recorded either way.\n\nA table stored as a table is read a page at a time: `limit` rows (200 unless asked, at most 1,000) from where `cursor` says, and the answer's `next` is\nthe cursor for the page after, or null at the end. The key log gets one line per page, with the count of people opened. `total` is the table's row count.",
         "operationId": "person_rows_dataset_versions__version_id__person_rows_get",
         "parameters": [
           {
@@ -3969,6 +4791,38 @@
             "schema": {
               "title": "Version Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
             }
           }
         ],
@@ -3998,6 +4852,60 @@
         "summary": "Person Rows",
         "tags": [
           "person keys"
+        ]
+      }
+    },
+    "/dataset-versions/{version_id}/preview": {
+      "get": {
+        "description": "The first rows of a version's table, for somebody who may read it.\n\nWho may is the answer the console already shows next to every version (a role that covers its class, or a lease): this asks the same question and\ngives the same answer, so a person is never shown rows by one screen that another would refuse. The rows are the first ones in the table, at most\n100 (20 unless asked for more), typed as stored: a decimal or a date is written as text so no digit is lost. Showing them is a read, so it is\nrecorded whether it is allowed or refused. A version that is not stored as a table has no rows to show, and a table of people is not shown here:\nits locked columns are read through the locked-data requests, which are decided and counted row by row.",
+        "operationId": "version_preview_dataset_versions__version_id__preview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Version Preview Dataset Versions  Version Id  Preview Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Version Preview",
+        "tags": [
+          "read"
         ]
       }
     },
@@ -4068,10 +4976,10 @@
         "summary": "Promote"
       }
     },
-    "/dataset-versions/{version_id}/recordings": {
+    "/dataset-versions/{version_id}/readability": {
       "get": {
-        "description": "How many locked recordings a sealed version holds, how many patients they are about, and how many belong to patients who were erased.\n\nCounts only. A version that holds no locked recordings answers 404.",
-        "operationId": "recordings_summary_dataset_versions__version_id__recordings_get",
+        "description": "What is locked in this version and what a permission to read the whole of it is worth, in one answer for every screen and route.\n\n`shape` is \"files\" (every file locked), \"columns\" (a table with locked columns) or \"plain\" (nothing locked); `reads` is what the whole-version\npermission reads: \"all\", \"readable_columns\" or \"nothing\"; `says` is one sentence for the person looking, or null when nothing is locked.\nCounts only. Narrowed to the caller's own organisation, answering 404 for anything else, as the other reads of one version do.",
+        "operationId": "version_readability_dataset_versions__version_id__readability_get",
         "parameters": [
           {
             "in": "path",
@@ -4088,7 +4996,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "title": "Response Recordings Summary Dataset Versions  Version Id  Recordings Get",
+                  "title": "Response Version Readability Dataset Versions  Version Id  Readability Get",
                   "type": "object"
                 }
               }
@@ -4106,9 +5014,9 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Recordings Summary",
+        "summary": "Version Readability",
         "tags": [
-          "recordings"
+          "read"
         ]
       }
     },
@@ -4158,7 +5066,7 @@
     },
     "/dataset-versions/{version_id}/records/{record_id}/open": {
       "post": {
-        "description": "Open one file. This is the opening that is logged, and for a locked file written to the key log. Returns its size and a handle to stream it with.\n\nRefused (403) when the caller may not open this version's files, and (410) when the patient the file is about was erased.",
+        "description": "Open one file. This is the opening that is logged, and for a locked file written to the key log. Returns its size and a handle to stream it with.\n\nRefused (403) when the caller may not open this version's files, and (410) when the person the file is about was erased.",
         "operationId": "open_record_dataset_versions__version_id__records__record_id__open_post",
         "parameters": [
           {
@@ -4255,7 +5163,7 @@
     },
     "/dataset-versions/{version_id}/transitions": {
       "get": {
-        "description": "The class history of one version.\n\nThis is what makes a promotion legible: which class it moved from and to,\nwho decided, and the evidence they pointed at. A version with no transitions\nhas never been promoted, and an empty list is the correct answer rather than\na 404.\n\n`class_transition` carries no tenant of its own, so the version is joined for\nthe check rather than the column being copied onto it. Two places recording\nwhich organisation something belongs to is two places that can disagree.",
+        "description": "The class history of one version.\n\nThis is what makes a promotion legible: which class it moved from and to,\nwho decided, and the evidence they pointed at. A version with no transitions\nhas never been promoted, and an empty list is the correct answer rather than\na 404.\n\n`class_transition` carries no tenant of its own, so the version is joined for\nthe check rather than the column being copied onto it. Two places file\nwhich organisation something belongs to is two places that can disagree.",
         "operationId": "list_transitions_dataset_versions__version_id__transitions_get",
         "parameters": [
           {
@@ -4302,7 +5210,7 @@
     },
     "/datasets": {
       "get": {
-        "description": "Datasets, filtered, with the total so the caller knows what is hidden.\n\nFiltering happens here rather than in the browser because a console that\nfetches everything and hides most of it is a console that gets slower as the\nplatform gets more useful.\n\nThe class shown is the widest any version has reached. A dataset whose newest\nversion is raw but which has an older version released is not a raw dataset\nfrom an exposure point of view, and showing the newest would understate it.\n\nWhere the data came from travels with each row, with the licence a\nHuggingFace fetch found and, when that licence corrected what was\nregistered, the original answer and when it changed. The console showed\na correction only at the moment of the fetch, so anybody arriving later\nsaw the corrected answer and no sign it had ever been different.\n\n`has_versions` exists because a registered dataset with nothing in it is a\nreal and easily missed state: somebody created it and never uploaded, and it\notherwise sits in the list looking like a failure rather than an empty shelf.",
+        "description": "Datasets, filtered, with the total so the caller knows what is hidden.\n\nFiltering happens here, not in the browser, so the list stays fast as the platform grows.\n\nThe class shown is the widest any version has reached. A dataset whose newest version is raw but which has an older version released is not\na raw dataset from an exposure point of view, and showing the newest would understate it.\n\nWhere the data came from travels with each row: the licence a HuggingFace fetch found and, when that licence corrected what was registered,\nthe original answer and when it changed.\n\n`has_versions` marks a registered dataset with nothing in it, so an empty shelf is not mistaken for a failure.\n\nEvery dataset has a `state`, worked out from its versions. `registered`: it has no version yet. `active`: at least one of its versions still has\ndata that can be read, whether that data is files or a table. `deleted`: it has versions and the data of every one of them has been deleted; its\nrecord, its versions and the decisions made about them are kept. The state is separate from the access level. Deleted datasets are left out of the\nlist unless `include_deleted` is true or `state` asks for them, and `deleted` always says how many deleted datasets match the other filters, so a\ncaller can offer them without a second request.",
         "operationId": "list_datasets_datasets_get",
         "parameters": [
           {
@@ -4339,7 +5247,7 @@
           },
           {
             "in": "query",
-            "name": "modality",
+            "name": "kind",
             "required": false,
             "schema": {
               "anyOf": [
@@ -4350,7 +5258,55 @@
                   "type": "null"
                 }
               ],
-              "title": "Modality"
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Format"
+            }
+          },
+          {
+            "in": "query",
+            "name": "structure",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Structure"
+            }
+          },
+          {
+            "in": "query",
+            "name": "department_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Department Id"
             }
           },
           {
@@ -4367,6 +5323,52 @@
                 }
               ],
               "title": "Has Versions"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_deleted",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Deleted",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "registered",
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "direction",
+            "required": false,
+            "schema": {
+              "default": "desc",
+              "title": "Direction",
+              "type": "string"
             }
           },
           {
@@ -4552,7 +5554,7 @@
     },
     "/datasets/register": {
       "post": {
-        "description": "Register a dataset and say where it came from.\n\nRegistering exposes nothing, so it needs nobody's approval. It does need an\nowning department, because that is who becomes accountable, and it does need\na provenance, because that is what decides whether the data may ever leave.\n\nThe sensitivity claim is recorded here rather than assumed. Asking for the\nmost restrictive class is not a claim and carries no basis. Asking for\nanything less is one, and every claim starts out `asserted`: a person said\nso, at registration, before any bytes have arrived.\n\n`verified_source` is not granted here, even when `source_kind` names\nHuggingFace. That would trust a label the caller supplied instead of\nchecking anything, the same shape of bug this project has already fixed\nthree times over: identity or provenance taken from what was claimed\nrather than from what was done. The basis is upgraded later, by\n`fetch_huggingface`, and only once the platform has made the request\nitself and can show the origin.\n\nThe `provenance` chosen here is provisional in exactly the same way when\n`source_kind` is `huggingface`: `fetch_huggingface` looks up the repo's\nactual licence and overwrites it once the fetch runs, the same as\n`declared_class` is provisional until a custodian confirms it.",
+        "description": "Register a dataset and say where it came from.\n\nRegistering exposes nothing, so it needs nobody's approval. It does need an owning department, because that is who becomes accountable, and\na provenance, because that decides whether the data may ever leave.\n\nThe sensitivity claim is recorded, not assumed. Asking for the most restrictive class is not a claim and carries no basis. Asking for\nanything less is one, and every claim starts out `asserted`: a person said so, at registration, before any bytes have arrived. Until an\napprover of the owning department confirms it, what is sealed is sealed at the most restrictive class and read as that.\n\n`verified_source` is never granted here, even when `source_kind` names HuggingFace, because that would trust a label the caller supplied.\nThe basis is upgraded later by `fetch_huggingface`, and only once the platform has made the request itself and can show the origin. The\n`provenance` chosen here is provisional in the same way when `source_kind` is `huggingface`: the fetch looks up the repository's actual\nlicence and overwrites it, just as `declared_class` stays provisional until a custodian confirms it.",
         "operationId": "register_datasets_register_post",
         "requestBody": {
           "content": {
@@ -4687,7 +5689,7 @@
     },
     "/datasets/{dataset_id}/confirm-classification": {
       "post": {
-        "description": "The custodian agreeing with somebody's sensitivity claim.\n\nDecided by the policy (`classification_confirmation_decision`): a data custodian who is a department approver of the owning department, never the\nperson who made the claim. Any one approver may confirm, and nobody who is not an approver of the owning department. When the claimant is the\ndepartment's only approver, the claim waits until a second approver is added. The person who made the claim is also refused by a check\nconstraint. Until this happens the data cannot be released above the class that was claimed for it.",
+        "description": "The custodian agreeing with somebody's sensitivity claim.\n\nDecided by the policy (`classification_confirmation_decision`): a data custodian who is a department approver of the owning department, never the\nperson who made the claim. Any one approver may confirm, and nobody who is not an approver of the owning department. When the claimant is the\ndepartment's only approver, the claim waits until a second approver is added. The person who made the claim is also refused by a check\nconstraint. Until this happens the data is sealed and read at the most restrictive class. Agreeing raises every version sealed meanwhile to the\nclass that was claimed, recorded as a decision by the approver with its time, and a version sealed afterwards starts at that class.",
         "operationId": "confirm_datasets__dataset_id__confirm_classification_post",
         "parameters": [
           {
@@ -4741,7 +5743,7 @@
     },
     "/datasets/{dataset_id}/export": {
       "get": {
-        "description": "May this data leave, and where from.\n\nAnswered by provenance rather than by class. Two datasets at the same class\ncan differ here: a public corpus was already published, and de-identified\nclinical data was not, because de-identification reduces re-identification\nrisk without removing it and the original consent did not cover\nrepublishing.\n\nReturns object keys rather than bytes even when allowed. Streaming the data\nthrough the control plane would make this endpoint the data plane, which is\nthe thing the design spent its effort avoiding.\n\nWhether a licensed dataset's export is allowed can depend on whether this\nplatform has modified it: a no-derivatives licence permits the data\nexactly as fetched but not after a pipeline action has touched it. That\nfact is already on record (`dataset_version.produced_by_run`, set only\nwhen a version is a pipeline's output rather than an original ingest),\nso it needs no new tracking, only reading.\n\n`principal` used to be a caller-supplied query parameter: anyone could\nask \"may this leave\" as anyone else, and if OPA said yes, the real\n`access_decision` row it wrote down attributed the export to whichever\nname the caller typed. Taken from the verified session instead, the\nsame fix `read_models.py`'s own endpoints already apply everywhere else.",
+        "description": "May this data leave, and where from.\n\nAnswered by provenance rather than by class. Two datasets at the same class can differ here: a public corpus was already published, and\nde-identified personal data was not, because de-identification reduces re-identification risk without removing it and the original consent\ndid not cover republishing.\n\nReturns object keys rather than bytes even when allowed, so the control plane never becomes the data plane.\n\nFor a licensed dataset the answer can depend on whether the platform has modified it: a no-derivatives licence permits the data exactly as\nfetched but not after a pipeline action has touched it. That is read from `dataset_version.produced_by_run`, which is set only when a\nversion is a pipeline's output rather than an original ingest.\n\nThe person asking is taken from the verified session, so the decision that is recorded names the real caller.",
         "operationId": "export_datasets__dataset_id__export_get",
         "parameters": [
           {
@@ -4795,7 +5797,7 @@
     },
     "/datasets/{dataset_id}/fetch-huggingface": {
       "post": {
-        "description": "Start fetching files from a public HuggingFace dataset repo, in the\nbackground.\n\nThis used to do the whole fetch inline, one HTTP request holding the\nconnection until every file arrived. A real repo's single largest file\nturned out to be several hundred megabytes, downloaded whole into memory\nbefore this container's own 512MB limit, which got the process\nOOM-killed mid-request; the browser had nothing to show but a dropped\nconnection. Buffering was fixed independently of this, but the deeper\nproblem was the shape: a slow or large fetch has no business holding a\nbrowser tab, or living or dying with the same process that serves every\nother request.\n\nWhat happens here is only what can be checked before anything talks to\nHuggingFace: the department exists, `fetched_by` is registered. Every\nHuggingFace-specific fact (does the repo exist, is it gated, what licence\ngoverns it, how many files it holds) is a network call, and none of that\nbelongs in something a browser is waiting on. It happens in\n`worker/hf_ingest_workflow.py`, a Temporal workflow running in a separate\nprocess, so a crash there is not a crash here. The job row this creates\nis what the console polls instead of waiting on this request; see\n`GET /datasets/{id}/huggingface-fetch-jobs`.",
+        "description": "Start fetching files from a public HuggingFace dataset repository, in the background.\n\nThe request checks only what can be checked before anything talks to HuggingFace: that the department exists and that `fetched_by` is\nregistered. Everything specific to HuggingFace (whether the repository exists, whether it is gated, which licence governs it, how many files\nit holds) is a network call, so it happens in a workflow running in a separate worker process, and a slow or large fetch never holds a\nbrowser tab. The job row this creates is what the console polls: see `GET /datasets/{id}/huggingface-fetch-jobs`.",
         "operationId": "fetch_huggingface_datasets__dataset_id__fetch_huggingface_post",
         "parameters": [
           {
@@ -4844,6 +5846,60 @@
         "summary": "Fetch Huggingface",
         "tags": [
           "ingest"
+        ]
+      }
+    },
+    "/datasets/{dataset_id}/file-uploads": {
+      "post": {
+        "description": "Open an upload of one file (or its answer key) for one person. It is sent in parts of at most 8 MB, each of which can be sent again.\n\nThe person's identifier finds their person code, made with a key the first time the identifier is seen. It is never stored.\nThe upload stays open for a day.",
+        "operationId": "open_upload_datasets__dataset_id__file_uploads_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenUploadIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Open Upload Datasets  Dataset Id  File Uploads Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Open Upload",
+        "tags": [
+          "files"
         ]
       }
     },
@@ -4950,7 +6006,7 @@
     },
     "/datasets/{dataset_id}/huggingface-fetch-jobs/{job_id}/cancel": {
       "post": {
-        "description": "Stop a running HuggingFace fetch.\n\nAsks Temporal to cancel the workflow; the workflow itself\n(`worker/hf_ingest_workflow.py`) is what marks the job row 'cancelled'\nonce the cancellation actually lands there, not this endpoint, so this\ncan return before that has happened. Files already recorded before the\ncancellation reaches the workflow are not undone: a later fetch of the\nsame repo picks up from there.",
+        "description": "Stop a running HuggingFace fetch.\n\nAsks Temporal to cancel the workflow. The workflow marks the job 'cancelled' once the cancellation reaches it, so this can return before that\nhas happened. Files already recorded before then are not undone: a later fetch of the same repository picks up from there.",
         "operationId": "cancel_huggingface_fetch_datasets__dataset_id__huggingface_fetch_jobs__job_id__cancel_post",
         "parameters": [
           {
@@ -5003,7 +6059,7 @@
     },
     "/datasets/{dataset_id}/next-version": {
       "get": {
-        "description": "Tell a producer where the next version's objects must be written.\n\nA pipeline has to write its objects before it can seal a version, but the\nstorage prefix belongs to the version, so it does not exist yet. Without\nthis the producer invents its own prefix, the sealed version points\nsomewhere else, and a prefix-scoped credential grants access to nothing.\nThat failure is silent: the version looks fine and the grant looks fine.\n\nThis is a reservation in name only. It computes the same prefix\n`create_version` will compute, and two producers racing on one dataset would\nboth be told the same answer and one would lose. Single producer per dataset\nis the assumption, and a real deployment needs an allocation that takes a\nlock instead.\n\nThe bucket is answered here too, and for the same reason the prefix is. A\nproducer that picks its own bucket from a constant writes into the shared\none while the sealed version's credential points at the tenant's own, and\nthat failure is silent in exactly the way this endpoint exists to prevent:\nthe objects are somewhere real, the version looks fine, the grant looks\nfine, and there is nothing to read. Every tenant grandfathered onto the\nshared bucket hides it, which is why it went unnoticed until a tenant with\nits own provisioned bucket was asked the question.",
+        "description": "Tell a producer where the next version's objects must be written.\n\nA pipeline has to write its objects before it can seal a version, but the storage prefix belongs to the version, so it does not exist yet.\nThis answers with the prefix and the bucket that `create_version` will use, so the sealed version points at the objects and a prefix-scoped\ncredential grants access to them. A producer that chose its own prefix or bucket would write somewhere the grant does not reach.\n\nThis is a reservation in name only: two producers racing on one dataset would be told the same answer and one would lose. One producer per\ndataset is the assumption.",
         "operationId": "next_version_datasets__dataset_id__next_version_get",
         "parameters": [
           {
@@ -5083,60 +6139,6 @@
         "summary": "Next Version"
       }
     },
-    "/datasets/{dataset_id}/recording-uploads": {
-      "post": {
-        "description": "Open an upload of one recording (or its answer key) for one patient. It is sent in parts of at most 8 MB, each of which can be sent again.\n\nThe patient's identifier finds their person code, made with a key the first time the identifier is seen. It is never stored.\nThe upload stays open for a day.",
-        "operationId": "open_upload_datasets__dataset_id__recording_uploads_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "dataset_id",
-            "required": true,
-            "schema": {
-              "title": "Dataset Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/OpenUploadIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "title": "Response Open Upload Datasets  Dataset Id  Recording Uploads Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Open Upload",
-        "tags": [
-          "recordings"
-        ]
-      }
-    },
     "/datasets/{dataset_id}/seal": {
       "post": {
         "description": "Close the upload and create the first sealed version.\n\nGoes through the same sealing path the pipeline uses, so nothing arriving\nthis way sidesteps immutability or the prefix rules.",
@@ -5183,7 +6185,7 @@
     },
     "/datasets/{dataset_id}/seal-audio": {
       "post": {
-        "description": "Seal the uploads as a version the de-identification pipeline can read.\n\nThere is no separate check step, deliberately. Sealing is irreversible, so\na mistake cannot be undone, but a refusal seals nothing, which makes\npressing this the check. A second Check button would ask the same question\nand say the same thing twice.\n\nEvery problem is reported together. Reporting only the first would turn\ntwelve problems into twelve attempts.\n\nThe ordinary seal uses a two-field contract because the platform does not\nknow what an uploaded file is. This path does know, because the upload\nendpoint read the audio, so it can claim encounter_raw honestly rather than\nasserting a shape nothing checked.",
+        "description": "Seal the uploads as a version the de-identification pipeline can read.\n\nThere is no separate check step, deliberately. Sealing is irreversible, so\na mistake cannot be undone, but a refusal seals nothing, which makes\npressing this the check. A second Check button would ask the same question\nand say the same thing twice.\n\nEvery problem is reported together. Reporting only the first would turn\ntwelve problems into twelve attempts.\n\nThe ordinary seal uses a two-field contract because the platform does not\nknow what an uploaded file is. This path does know, because the upload\nendpoint read the audio, so it can claim audio_raw honestly rather than\nasserting a shape nothing checked.",
         "operationId": "seal_audio_datasets__dataset_id__seal_audio_post",
         "parameters": [
           {
@@ -5225,10 +6227,10 @@
         ]
       }
     },
-    "/datasets/{dataset_id}/seal-recordings": {
+    "/datasets/{dataset_id}/seal-files": {
       "post": {
         "description": "Seal the locked uploads as a version the de-identification pipeline can read. Pressing this is the check: a refusal seals nothing.",
-        "operationId": "seal_recordings_datasets__dataset_id__seal_recordings_post",
+        "operationId": "seal_files_datasets__dataset_id__seal_files_post",
         "parameters": [
           {
             "in": "path",
@@ -5245,7 +6247,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "title": "Response Seal Recordings Datasets  Dataset Id  Seal Recordings Post",
+                  "title": "Response Seal Files Datasets  Dataset Id  Seal Files Post",
                   "type": "object"
                 }
               }
@@ -5263,9 +6265,9 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Seal Recordings",
+        "summary": "Seal Files",
         "tags": [
-          "recordings"
+          "files"
         ]
       }
     },
@@ -5325,7 +6327,7 @@
     },
     "/datasets/{dataset_id}/seal-table-files": {
       "post": {
-        "description": "Seal a table from two files: the privacy contract (YAML or JSON) and the rows (a CSV with a header).\n\nPressing this is the check: when anything is wrong in either file, nothing is sealed and every problem is listed together, each naming\nits row and column. Values are read as the types the contract declares. At most 20,000 rows and 5 MB; larger tables are sealed another way.",
+        "description": "Seal a table from two files: the privacy contract (YAML or JSON) and the rows.\n\nThe rows are a CSV or TSV with a header, a JSON list of rows, or a JSONL file with one row per line; the ending of the file's name says which,\nwith .gz or .zst after it for a compressed file. A CSV is read with the delimiter and encoding it declares (`delimiter`, `encoding`), with or\nwithout a header (`header`), and the words that mean a missing value (`null_values`, separated by commas; an empty field by default).\nPressing this is the check: when anything is wrong in either file, nothing is sealed and every problem is listed together, each naming\nits row, its line and its column. Values are read as the types the contract declares, strictly. A table about people sealed here is at most 20,000 rows\nand 5 MB; an ordinary table is at most 5 MB. Larger tables are sealed another way.\n\nA contract that names how to find the person each row is about seals a table of people, with the identifying columns locked under each\nperson's own key. A contract that says the table cannot be erased and names nobody seals an ordinary table, with nothing locked, that can be\nqueried like any other; the answer then carries `\"plain\": true` and no people. Either way the version starts at the most restricted level.",
         "operationId": "seal_table_files_datasets__dataset_id__seal_table_files_post",
         "parameters": [
           {
@@ -5377,9 +6379,60 @@
         ]
       }
     },
+    "/datasets/{dataset_id}/table-uploads": {
+      "post": {
+        "description": "Start bringing in a table that is not about people, from a file too large for the table route, sent in parts of 8 MB.\n\nThe contract is checked and the file's name and size are accepted or refused before anything is sent. The upload reserves the next version\nof the dataset, so a long upload is never refused at its end because somebody else sealed a version meanwhile. It stays open for a day, and\neach part can be sent again. Past a limit (uploads open at once, uploads started in an hour, and the organisation's own limits on the largest\nfile, the files kept while they wait and the amount brought in a day) the answer is 429 with the seconds to wait.",
+        "operationId": "open_upload_datasets__dataset_id__table_uploads_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenTableUploadIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Open Upload",
+        "tags": [
+          "table uploads"
+        ]
+      }
+    },
     "/datasets/{dataset_id}/uploads/{source_id}/withdraw": {
       "post": {
-        "description": "Take one upload out of the pending set, without erasing that it arrived.\n\nThe row stays, so the ledger continues to show the file was uploaded and by\nwhom it was withdrawn. Deleting it would leave no answer to \"what happened\nto that recording\", which is the question somebody asks precisely when a\nfile has gone missing.\n\nWithdrawing twice is not an error. The second call finds the row already\nwithdrawn and reports the same result, because the caller's intent is\nalready satisfied.",
+        "description": "Take one upload out of the pending set, without erasing that it arrived.\n\nThe row stays, so the ledger continues to show the file was uploaded and by\nwhom it was withdrawn. Deleting it would leave no answer to \"what happened\nto that file\", which is the question somebody asks precisely when a\nfile has gone missing.\n\nWithdrawing twice is not an error. The second call finds the row already\nwithdrawn and reports the same result, because the caller's intent is\nalready satisfied.",
         "operationId": "withdraw_upload_datasets__dataset_id__uploads__source_id__withdraw_post",
         "parameters": [
           {
@@ -5432,7 +6485,7 @@
     },
     "/datasets/{dataset_id}/versions": {
       "get": {
-        "description": "The versions inside one dataset.\n\nNarrowed to the caller's own organisation, returning nothing rather than\nrefusing, for the reason given on `get_version` in `main.py`.",
+        "description": "The versions inside one dataset.\n\nNarrowed to the caller's own organisation, returning nothing rather than refusing.",
         "operationId": "list_dataset_versions_datasets__dataset_id__versions_get",
         "parameters": [
           {
@@ -5479,7 +6532,7 @@
     },
     "/datasets/{dataset_id}/versions/{version_id}/deidentify": {
       "post": {
-        "description": "Start a pipeline run against a version already sealed.\n\nEvery refusal below is decided before Temporal is touched, so a request\nthat cannot succeed leaves nothing behind: no workflow, no run row, and\nnothing for anyone to find and clean up later.\n\nThe identity comes from the session and never from a body. A run is\nattributed to whoever started it, and that attribution is exactly what\nstops the same person clearing its gate afterwards, so it cannot be a value\nthe caller asserts about themselves.\n\nbody.pipeline_kind picks which workflow runs. The checks below that are\nspecific to the de-identification pipeline (the recordings contract, the\nanswer-key check) only apply when that is the kind requested; a kind that\nis not 'deidentify' still needs a sealed version, a supported backend, no\nrun already in flight, and a live worker, the same as every kind does.",
+        "description": "Start a pipeline run against a version already sealed.\n\nEvery refusal below is decided before Temporal is touched, so a request\nthat cannot succeed leaves nothing behind: no workflow, no run row, and\nnothing for anyone to find and clean up later.\n\nThe identity comes from the session and never from a body. A run is\nattributed to whoever started it, and that attribution is exactly what\nstops the same person clearing its gate afterwards, so it cannot be a value\nthe caller asserts about themselves.\n\nbody.pipeline_kind picks which workflow runs. The checks below that are\nspecific to the de-identification pipeline (the files contract, the\nanswer-key check) only apply when that is the kind requested; a kind that\nis not 'deidentify' still needs a sealed version, a supported backend, no\nrun already in flight, and a live worker, the same as every kind does.",
         "operationId": "start_deidentification_datasets__dataset_id__versions__version_id__deidentify_post",
         "parameters": [
           {
@@ -6188,7 +7241,7 @@
     },
     "/development-samples/{sample_id}/approve": {
       "post": {
-        "description": "Approve a request, and the platform draws the recordings. Only an approver of the department that owns them, and never the person who asked.\n\nThe approver may lower the number or the days asked for, and cannot choose the recordings.",
+        "description": "Approve a request, and the platform draws the files. Only an approver of the department that owns them, and never the person who asked.\n\nThe approver may lower the number or the days asked for, and cannot choose the files.",
         "operationId": "approve_development_sample_development_samples__sample_id__approve_post",
         "parameters": [
           {
@@ -6354,7 +7407,7 @@
     },
     "/directory": {
       "get": {
-        "description": "The people and workloads the organisation registered.\n\nDeliberately not scoped to the caller's own tenant: `IdentityContext`'s\nown identity-resolution seam needs to find a session-resolved person in\nwhichever organisation they actually belong to, before their tenant is\nknown client-side, and every other organisation's roster is what a\ncustodian-chooser needs to render honestly (see the docstring below).\nAuthentication is still required -- only a real session may read it.\n\nThis is the answer to \"who exists\", and it is the platform's answer rather\nthan the console's. Before this endpoint the console carried its own list,\nwhich meant it could offer a custodian the database had never heard of and\nevery approval that person made would be refused by a foreign key.\n\nApprovers carry the departments they answer for (`approver_of`, with the\nfirst of them as `department_name`), because a custodian who answers for no\ndepartment can approve nothing and the console should be able to say so.\nA person who answers for several departments is listed once: listing them\nonce per department is how a chooser ends up offering the same person as\ntwo different people.\n\nOnly live tenants by default. Verification runs as its own principals in the\ncanary tenant, and offering those alongside real people would put \"Canary\nengineer\" on the login screen of a customer's console. Pass `purpose=all` to\nsee every tenant, which is what an operator investigating the platform\nitself wants.",
+        "description": "The people and workloads of the caller's own organisation.\n\nA session is required. Whatever role the caller holds, the list is the caller's own organisation and no other, and `purpose` does not\nchange that. The platform administrator runs the platform across organisations (legal holds, closing an organisation, the services\npage), so the platform administrator is offered the people of every live organisation, or of every organisation with `purpose=all`.\n\nApprovers carry the departments they answer for (`approver_of`, with the first of them as `department_name`). A department counts only while\nthe person can act for it right now: listed, not removed, not past the end of their cover, and still holding the data custodian role. It is\nworked out from the same function the policy uses, on every request, so a label on a screen cannot outlive the right. A person who answers\nfor several departments is listed once.\n\nFor the platform administrator, only live organisations are listed by default. Verification runs as its own principals in a test\norganisation, and those are not offered beside real people. Pass `purpose=all` to see every organisation.",
         "operationId": "list_directory_directory_get",
         "parameters": [
           {
@@ -6556,7 +7609,7 @@
     },
     "/directory/{directory_id}/huggingface-token/secret": {
       "get": {
-        "description": "The plaintext token, for the worker to use while building a fetch.\n\nThe one place in this codebase a token round-trips out of this module.\nCalled only by `worker/hf_ingest_activities.py`, a process with no\nKratos session to present, so it is gated the same way the two\n`download_code` endpoints (`agent_upload.py`, `dag_pipelines.py`) gate\ntheir own worker-only reads: a shared secret, not a directory identity.\nPreviously not gated at all, which meant anyone who could reach this API\ncould read any connected person's live HuggingFace token by guessing\ntheir directory id -- a real credential, usable on HuggingFace itself,\nnot just platform data.",
+        "description": "The plaintext token, for the worker to use while building a fetch.\n\nThis is the one place a token leaves this module. It is called only by the HuggingFace import worker, which has no sign-in session to\npresent, so it is gated with a shared secret and not a directory identity, as the other worker-only reads are.",
         "operationId": "huggingface_secret_directory__directory_id__huggingface_token_secret_get",
         "parameters": [
           {
@@ -6616,7 +7669,7 @@
     },
     "/egress-approvals": {
       "get": {
-        "description": "Requests to approve the hosts an agent version may call, pending and\npast, with the total for real page controls.\n\nStates come back together by default, the same choice `/gate-decisions`\nmakes: a queue showing only pending work hides how the previous ones\nwent, and that history is what tells a reviewer whether this one is\nunusual.\n\nEnvelope shape matches `/datasets`/`/agents`/`/action-runs`:\n`{egress_approvals, shown, total, limit, offset}`.",
+        "description": "Requests to approve the hosts an agent version may call, pending and\npast, with the total for real page controls.\n\nStates come back together by default, the same choice `/gate-decisions`\nmakes: a queue showing only pending work hides how the previous ones\nwent, and that history is what tells a reviewer whether this one is\nunusual.\n\nEnvelope shape matches `/datasets`/`/agents`/`/action-runs`:\n`{egress_approvals, shown, total, limit, offset}`.\n\nFor network architects, data engineers and platform administrators.",
         "operationId": "list_egress_approvals_egress_approvals_get",
         "parameters": [
           {
@@ -6839,9 +7892,381 @@
         ]
       }
     },
+    "/file-leases": {
+      "get": {
+        "description": "The person's own leases, the requests waiting for them as an approver of the department that owns the files, and the leases in force there.",
+        "operationId": "list_file_leases_file_leases_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response List File Leases File Leases Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List File Leases",
+        "tags": [
+          "file leases"
+        ]
+      }
+    },
+    "/file-leases/{lease_id}/approve": {
+      "post": {
+        "description": "Approve a request. The platform draws the files and fixes them. An approver may grant fewer files or fewer hours than were asked for.",
+        "operationId": "approve_file_lease_file_leases__lease_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "lease_id",
+            "required": true,
+            "schema": {
+              "title": "Lease Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/FileLeaseDecisionIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Approve File Lease File Leases  Lease Id  Approve Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve File Lease",
+        "tags": [
+          "file leases"
+        ]
+      }
+    },
+    "/file-leases/{lease_id}/decline": {
+      "post": {
+        "description": "Decline a request, with a note saying why.",
+        "operationId": "decline_file_lease_file_leases__lease_id__decline_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "lease_id",
+            "required": true,
+            "schema": {
+              "title": "Lease Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/FileLeaseDecisionIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Decline File Lease File Leases  Lease Id  Decline Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Decline File Lease",
+        "tags": [
+          "file leases"
+        ]
+      }
+    },
+    "/file-leases/{lease_id}/end": {
+      "post": {
+        "description": "End a lease early: the department's approver, or the person it was granted to.",
+        "operationId": "end_file_lease_file_leases__lease_id__end_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "lease_id",
+            "required": true,
+            "schema": {
+              "title": "Lease Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response End File Lease File Leases  Lease Id  End Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "End File Lease",
+        "tags": [
+          "file leases"
+        ]
+      }
+    },
+    "/file-uploads/{upload_id}": {
+      "delete": {
+        "description": "Give up on an upload. What was sent is dropped.",
+        "operationId": "abort_upload_file_uploads__upload_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "upload_id",
+            "required": true,
+            "schema": {
+              "title": "Upload Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Abort Upload File Uploads  Upload Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Abort Upload",
+        "tags": [
+          "files"
+        ]
+      },
+      "get": {
+        "description": "Which parts have arrived and which are missing, so an upload that was cut off carries on from where it stopped.",
+        "operationId": "upload_status_file_uploads__upload_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "upload_id",
+            "required": true,
+            "schema": {
+              "title": "Upload Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Upload Status File Uploads  Upload Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Status",
+        "tags": [
+          "files"
+        ]
+      }
+    },
+    "/file-uploads/{upload_id}/complete": {
+      "post": {
+        "description": "Finish the upload. Every part must have arrived and the stored size must be exactly what a locked file of that size is.",
+        "operationId": "complete_upload_file_uploads__upload_id__complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "upload_id",
+            "required": true,
+            "schema": {
+              "title": "Upload Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Complete Upload File Uploads  Upload Id  Complete Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Complete Upload",
+        "tags": [
+          "files"
+        ]
+      }
+    },
+    "/file-uploads/{upload_id}/parts/{part_number}": {
+      "put": {
+        "description": "Send one part, as the raw body of the request. Sending a part again replaces it.",
+        "operationId": "send_part_file_uploads__upload_id__parts__part_number__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "upload_id",
+            "required": true,
+            "schema": {
+              "title": "Upload Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "part_number",
+            "required": true,
+            "schema": {
+              "title": "Part Number",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Send Part File Uploads  Upload Id  Parts  Part Number  Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Send Part",
+        "tags": [
+          "files"
+        ]
+      }
+    },
     "/gate-decisions": {
       "get": {
-        "description": "De-identification gate decisions, pending and past, with the total\nfor real page controls.\n\nStates come back together by default, the same choice the lease queue\nmakes: a queue showing only what is pending hides how the previous ones\nwent, and that history is what tells a reviewer whether this one is\nunusual.\n\n`reviewer` narrows to decisions that person may actually make, which today\nmeans excluding runs they started themselves. A queue listing work you\ncannot do is worse than an empty one.\n\nThe leak identifiers are deliberately not in this list, only their count. A\nqueue is read at a glance and over shoulders, and the personal data lives\none further, deliberate click away.\n\nEnvelope shape matches every other list endpoint: `{gate_decisions,\nshown, total, limit, offset}`. The total query filters `gate_decision`\nalone, without the two joins the row query needs: `state` and\n`reviewer` are both columns on `gd` itself, so the joins exist only to\nfetch display columns, never to narrow which rows match.",
+        "description": "De-identification gate decisions, pending and past, with the total for page controls.\n\nAll states come back together by default, because a queue showing only what is pending hides how the previous ones went. `reviewer`\nnarrows to decisions that person may actually make, which means excluding runs they started themselves. `started_by` narrows to the runs\none person started.\n\nEvery row says who it is waiting on (`waiting_on`, pending rows only) and whether the caller may decide it (`can_decide`). Both come from\nthe rule the decision itself is checked against: the roles the policy names as deciders, held right now, and never the person who started\nthe run.\n\nThe leak identifiers are not in this list, only their count, because a queue is read at a glance and the personal data is one deliberate\nclick further. The answer is `{gate_decisions, shown, total, limit, offset}`.",
         "operationId": "list_gate_decisions_gate_decisions_get",
         "parameters": [
           {
@@ -6874,6 +8299,22 @@
                 }
               ],
               "title": "Reviewer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "started_by",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Started By"
             }
           },
           {
@@ -6930,7 +8371,7 @@
     },
     "/gate-decisions/{decision_id}": {
       "get": {
-        "description": "One decision, with the evidence a reviewer needs to make it.\n\nThe leak list carries the identifier and what survived redaction, which is\npersonal data and the reason this endpoint exists at all: judging severity\nis the whole job, and a count cannot tell a partial postcode from a\npatient's full name.\n\n`steps` is every action run of the pipeline run that produced this, which\nis what the correlation id is for. It stays correct once work after the\npromotion runs in a workflow of its own.",
+        "description": "One decision, with the evidence a reviewer needs to make it.\n\nThe leak list carries the identifier and what survived redaction, which is\npersonal data and the reason this endpoint exists at all: judging severity\nis the whole job, and a count cannot tell a partial postcode from a\nperson's full name.\n\n`steps` is every action run of the pipeline run that produced this, which\nis what the correlation id is for. It stays correct once work after the\npromotion runs in a workflow of its own.",
         "operationId": "get_gate_decision_gate_decisions__decision_id__get",
         "parameters": [
           {
@@ -7072,6 +8513,50 @@
           }
         },
         "summary": "Decide Gate Refuse"
+      }
+    },
+    "/gate-decisions/{decision_id}/review": {
+      "get": {
+        "description": "The files of the version a decision is about, with the checks the platform ran on each, what the caller has opened so far, and whether\nanything stops the caller releasing it now. Opens nothing for the caller to read; the files are opened through the file door.",
+        "operationId": "get_review_gate_decisions__decision_id__review_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "decision_id",
+            "required": true,
+            "schema": {
+              "title": "Decision Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Get Review Gate Decisions  Decision Id  Review Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Review",
+        "tags": [
+          "release review"
+        ]
       }
     },
     "/health": {
@@ -7916,7 +9401,7 @@
     },
     "/lease-requests": {
       "get": {
-        "description": "Lease requests, with the department that owns what was asked for, and\nthe total for real page controls.\n\n`custodian` narrows to requests that person can actually decide. Without it\na custodian's queue showed every pending request in the platform under a\nheading naming their own department, including requests for data owned by\nsomebody else and for data owned by nobody. A queue that lists work you\ncannot do is worse than an empty one.\n\nStates are returned together by default. A queue showing only pending\nrequests hides how the previous ones were decided, and that history is what\ntells a reviewer whether this one is unusual.\n\n`exclude_pending` exists for the console's own \"what you have decided\"\nlists, which want a page of history without the still-open queue mixed\nin. Filtering `state != \"pending\"` in the browser after the fact was\nthe old approach; it silently mis-paginates the moment only one page's\nworth of rows is fetched at a time, since a pending row taking one of\nthe 15 slots on a page means fewer than 15 decided rows actually show,\nand the reported total would count pending rows a \"decided\" page never\ndisplays. A real query parameter keeps the count and the rows in\nagreement, the same fix `/access-decisions`'s `resource` filter\nalready made for the same shape of problem.\n\n`version` is returned because what is granted is one version, not a dataset.\nTwo versions of the same dataset can sit at different sensitivities, so a\nrequest naming only the dataset asks the custodian to approve something\nthey cannot see the shape of.\n\n`requested_by`/`requested_by_label` are set only when a human asked on a\nworkload's behalf; the reading principal stays `lr.principal` regardless,\nsince a workload's identity is never inferred from who invoked it.",
+        "description": "Lease requests, with the department that owns what was asked for, and the total for page controls.\n\n`custodian` narrows to requests that person can actually decide, so a custodian's queue lists only work they can do. States come back\ntogether by default, because the history of how earlier requests were decided tells a reviewer whether this one is unusual.\n`exclude_pending` returns decided requests only, with a total that matches the rows.\n\n`version` is returned because what is granted is one version, not a dataset: two versions of the same dataset can sit at different\nsensitivities. `requested_by` and `requested_by_label` are set only when a person asked on a workload's behalf; the reading principal stays\n`lr.principal`, because a workload's identity is never inferred from who invoked it.",
         "operationId": "list_lease_requests_lease_requests_get",
         "parameters": [
           {
@@ -8031,7 +9516,7 @@
     },
     "/leases": {
       "get": {
-        "description": "Granted leases, with the total for real page controls.\n\n`active_only` filters to leases that are neither revoked nor expired. It is\noff by default, because an expired lease is evidence of who had access last\nweek and deleting it from view would break the audit story.\n\n`standing` marks a lease with no expiry, granted only ever to a workload\nand lasting until revoked. `expires_at is null` is what \"standing\" means\neverywhere in this system, including here: `active` treats a standing\nlease as active until revoked, never as expired, which a bare\n`expires_at > now()` would get backwards (NULL, not true) rather than\nright.\n\nCalled two shapes of way: `ResearcherHome`'s own \"access you have been\ngiven\" paginates one principal's leases directly; `CustodianHome` calls\nit with no `principal` and a large `limit` purely to build a lookup map\n(which lease backs which decided request), never rendered as a list in\nits own right -- that caller keeps asking for everything in one page\nrather than paginating, since a lookup missing a later page's entries\nwould silently under-report which grants are still active.",
+        "description": "Granted leases, with the total for page controls.\n\n`active_only` filters to leases that are neither revoked nor expired. It is off by default, because an expired lease is evidence of who had\naccess last week.\n\n`standing` marks a lease with no expiry, granted only to a workload and lasting until revoked. `expires_at is null` means \"standing\"\neverywhere in the platform, and a standing lease counts as active until revoked, never as expired.\n\nA caller that needs to look up which lease backs which decided request asks for one large page with no `principal`.",
         "operationId": "list_leases_leases_get",
         "parameters": [
           {
@@ -8258,7 +9743,7 @@
     },
     "/leases/{lease_id}/revoke": {
       "post": {
-        "description": "Withdraw a lease before it would otherwise expire.\n\nSame authority as approving one: the asset's custodian, not the principal\nor requester it was granted to, and not anybody outside that relationship.\nUnauthenticated and unauthorized revocation was a real, open gap before\nthis: nothing checked who was asking, or whether they had any standing\nover the asset at all.",
+        "description": "Withdraw a lease before it would otherwise expire.\n\nSame authority as approving one: the asset's custodian, not the principal or requester it was granted to, and not anybody outside that\nrelationship.",
         "operationId": "revoke_lease_leases__lease_id__revoke_post",
         "parameters": [
           {
@@ -9619,6 +11104,523 @@
         ]
       }
     },
+    "/notebook-sign-in/code": {
+      "post": {
+        "description": "The person types the code the notebook is showing. Only a code this platform started is accepted, and only a few wrong ones.",
+        "operationId": "code_notebook_sign_in_code_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Code Notebook Sign In Code Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Code",
+        "tags": [
+          "notebook sign-in"
+        ]
+      }
+    },
+    "/notebook-sign-in/consent": {
+      "get": {
+        "description": "What the person is asked to approve: the notebook, where it is, and what it will and will not be able to do.",
+        "operationId": "consent_notebook_sign_in_consent_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "consent_challenge",
+            "required": true,
+            "schema": {
+              "title": "Consent Challenge",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Consent Notebook Sign In Consent Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Consent",
+        "tags": [
+          "notebook sign-in"
+        ]
+      },
+      "post": {
+        "description": "The person approves or refuses. Both are recorded with who and when.",
+        "operationId": "decide_notebook_sign_in_consent_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Decide Notebook Sign In Consent Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Decide",
+        "tags": [
+          "notebook sign-in"
+        ]
+      }
+    },
+    "/notebook-sign-in/login": {
+      "post": {
+        "description": "The sign-in step: the console session is the sign-in. Refused when the person is not the one who typed the code.",
+        "operationId": "login_notebook_sign_in_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChallengeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Login Notebook Sign In Login Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Login",
+        "tags": [
+          "notebook sign-in"
+        ]
+      }
+    },
+    "/notebook-sign-ins": {
+      "get": {
+        "description": "The person's own notebook sign-ins, newest first. `everyone=true` lists the whole organisation's, for the data protection officer and the privacy auditor only.",
+        "operationId": "mine_notebook_sign_ins_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "everyone",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Everyone",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Mine Notebook Sign Ins Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mine",
+        "tags": [
+          "notebook sign-in"
+        ]
+      }
+    },
+    "/notebook-sign-ins/revoke-all": {
+      "post": {
+        "description": "The person ends every notebook sign-in they have, at once. A notebook's own pass cannot call this: only the console can.",
+        "operationId": "revoke_all_notebook_sign_ins_revoke_all_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Revoke All Notebook Sign Ins Revoke All Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Revoke All",
+        "tags": [
+          "notebook sign-in"
+        ]
+      }
+    },
+    "/notebook-sign-ins/{sign_in_id}/revoke": {
+      "post": {
+        "description": "The person ends their notebook sign-in. The pass and the renewal token stop at once.",
+        "operationId": "revoke_notebook_sign_ins__sign_in_id__revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sign_in_id",
+            "required": true,
+            "schema": {
+              "title": "Sign In Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Revoke Notebook Sign Ins  Sign In Id  Revoke Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke",
+        "tags": [
+          "notebook sign-in"
+        ]
+      }
+    },
+    "/notebook/v1/files": {
+      "get": {
+        "description": "The files the caller's notebook lease opens, with their sizes and whether the person each is about was erased. Opens nothing, so nothing is logged.",
+        "operationId": "list_files_notebook_v1_files_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response List Files Notebook V1 Files Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Files",
+        "tags": [
+          "notebook files"
+        ]
+      }
+    },
+    "/notebook/v1/files/{record_id}/open": {
+      "post": {
+        "description": "Open one file. This is the opening that is logged, and for a locked file written to the key log. Returns its size and a handle to read it with.\n\nRefused (403) when the lease does not name this file or is no longer in force, and (410) when the person the file is about was erased.",
+        "operationId": "open_file_notebook_v1_files__record_id__open_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "title": "Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Open File Notebook V1 Files  Record Id  Open Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Open File",
+        "tags": [
+          "notebook files"
+        ]
+      }
+    },
+    "/notebook/v1/sign-in": {
+      "post": {
+        "description": "A notebook asks to sign in. Returns the code to show the person, the address to open, and the device code to ask with. Nobody is identified yet.",
+        "operationId": "start_notebook_v1_sign_in_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Start Notebook V1 Sign In Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start",
+        "tags": [
+          "notebook sign-in"
+        ]
+      }
+    },
+    "/notebook/v1/sign-in/refresh": {
+      "post": {
+        "description": "The notebook renews its pass with the renewal token it holds. The old renewal token stops working, and using it again ends the sign-in.",
+        "operationId": "renew_notebook_v1_sign_in_refresh_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenewIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Renew",
+        "tags": [
+          "notebook sign-in"
+        ]
+      }
+    },
+    "/notebook/v1/sign-in/token": {
+      "post": {
+        "description": "The notebook asks whether the person has approved. 200 with the pass once they have; 400 with `authorization_pending`, `slow_down`, `access_denied` or `expired_token`.",
+        "operationId": "poll_notebook_v1_sign_in_token_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PollIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Poll",
+        "tags": [
+          "notebook sign-in"
+        ]
+      }
+    },
     "/organisation": {
       "get": {
         "description": "Departments, their approvers, and which datasets they own.\n\nAn unowned dataset is reported as such rather than omitted. Thirty-nine\ndatasets predate the organisation model, and nobody can approve access to\nthem until somebody takes ownership. Hiding that would make the gap look\nlike a smaller number of datasets rather than an unanswered question.",
@@ -9818,7 +11820,7 @@
     },
     "/people/{directory_id}/appointment": {
       "post": {
-        "description": "Stop somebody acting here, or let them act again.\n\nRemoving somebody's ability to act is the safe direction: it grants\nnothing, so it does not need the two-person rule that granting does. It\nstill refuses the caller's own id, because an account that can lock\nitself out is a support call waiting to happen and no security gain.\n\nThis does not touch the identity provider, and that is deliberate rather\nthan an omission. Signing in is that system's question: a person\ndeactivated there cannot get a session at all, which `auth.py` already\ndepends on. This is the other half, so that somebody who has left stops\nacting here even in the window before the identity provider is updated.",
+        "description": "Stop somebody acting here, or let them act again.\n\nRemoving somebody's ability to act grants nothing, so it does not need the two-person rule that granting does. It still refuses the\ncaller's own id, because an account that can lock itself out gains nothing in security.\n\nThis does not change the identity provider, by design. Signing in is that system's question: a person deactivated there cannot get a\nsession at all. This is the other half, so that somebody who has left stops acting here even before the identity provider is updated.",
         "operationId": "end_appointment_people__directory_id__appointment_post",
         "parameters": [
           {
@@ -9930,7 +11932,7 @@
     },
     "/pipeline-runs/{pipeline_run_id}": {
       "get": {
-        "description": "One run: what it started from, what it has done, and where it stands.\n\nThe workflow's status is asked of Temporal on every read rather than stored\nin a column here. A stored status is written by the very process whose\ndeath it would need to report: kill the worker mid-run and the column says\n`running` for as long as the database exists. This platform has that defect\nlive in one place already, on `/health`, where the Temporal error is set\nonce at startup and never cleared, so the API keeps reporting Temporal down\nafter Temporal has recovered. Repeating the shape one table over would be\nhard to defend.\n\nThe steps and the gate decision are database facts, so an unreachable\nTemporal costs the status line and nothing else. That is why it produces a\nnull status and a stated reason rather than an error.\n\nPreviously took no session at all: any run's detail, including who\ntriggered it, readable by anyone who knew or guessed its id, cross-\ntenant. Answers \"no such pipeline run\" rather than \"not yours\" for one\nin another tenant, the same non-disclosure posture `get_dataset`\n(`ingest.py`) already uses.",
+        "description": "One run: what it started from, what it has done, and where it stands.\n\nThe workflow's status is asked of Temporal on every read, not stored in a column, because a stored status is written by the very process\nwhose death it would need to report. The steps and the gate decision are database facts, so an unreachable Temporal costs the status line\nand nothing else: the status is then null, with a stated reason, and the call does not fail.\n\nA session is required. A run in another organisation answers \"no such pipeline run\", not \"not yours\".",
         "operationId": "read_pipeline_run_pipeline_runs__pipeline_run_id__get",
         "parameters": [
           {
@@ -10041,7 +12043,7 @@
     },
     "/pipeline/kinds": {
       "get": {
-        "description": "Which pipeline kinds this process knows how to start.\n\nMirrors worker/main.py's own registered-workflows list, the same\nreasoning as served_backends above: this process names the kind, that\nprocess names the workflow class backing it, and a verify script checks\nthe two agree rather than trusting a comment to keep them in step.",
+        "description": "Which pipeline kinds this process knows how to start.\n\nIt mirrors the worker's list of registered workflows: this process names the kind, the worker names the workflow class behind it, and a\ncheck verifies that the two agree.",
         "operationId": "pipeline_kinds_pipeline_kinds_get",
         "parameters": [
           {
@@ -10143,7 +12145,7 @@
     },
     "/pipelines": {
       "get": {
-        "description": "Every pipeline in the caller's own tenant, with the total for real\npage controls.\n\nPreviously took a caller-supplied `tenant_id` with no session at all --\nany tenant's full pipeline list, names, departments and who registered\nthem, readable by guessing the tenant id. Scoped to the session's own\ntenant now, the same fix every read endpoint in `read_models.py`\nalready has for this exact shape of gap.\n\nAlso previously had no `limit`/`offset` at all, unlike every other list\nendpoint -- missed in the console-wide pagination pass this was found\nduring, since nothing had ever flagged it as unbounded before an\norganisation actually had enough pipelines for that to matter. Same\n`{pipelines, shown, total, limit, offset}` envelope as the rest.",
+        "description": "Every pipeline in the caller's own organisation, with the total for page controls.\n\nA session is required, and the list is scoped to it. The answer is `{pipelines, shown, total, limit, offset}`, like the other lists.",
         "operationId": "list_pipelines_pipelines_get",
         "parameters": [
           {
@@ -10243,7 +12245,7 @@
     },
     "/pipelines/{pipeline_id}": {
       "get": {
-        "description": "One pipeline and its versions, scoped to the caller's own tenant.\n\nPreviously took no session at all: any pipeline's config and version\nhistory, by anyone who knew or guessed its id, cross-tenant.",
+        "description": "One pipeline and its versions, scoped to the caller's own organisation. A session is required.",
         "operationId": "read_pipeline_pipelines__pipeline_id__get",
         "parameters": [
           {
@@ -10341,7 +12343,7 @@
     },
     "/pipelines/{pipeline_id}/versions/{version_id}/code": {
       "get": {
-        "description": "Stream a version's scripts.zip back, for the worker only.\n\nGated the same way agent_upload.py's own download_code is: a shared\nsecret, not a directory identity, because the caller is the worker\nprocess itself. Never reachable from agentnet.",
+        "description": "Stream a version's scripts.zip back, for the worker only.\n\nGated with a shared secret, not a directory identity, because the caller is the worker process itself, as for the agent code download.\nNever reachable from the agent network.",
         "operationId": "download_code_pipelines__pipeline_id__versions__version_id__code_get",
         "parameters": [
           {
@@ -10470,7 +12472,7 @@
     },
     "/pipelines/{pipeline_id}/versions/{version_id}/promote": {
       "post": {
-        "description": "Move a version whose custom step is given the recordings, or writes files, from development to production. The department's approver,\nnever the person who uploaded it.\n\nUntil this is done a run of the version is refused, and the recordings are refused to its steps if a run somehow started.",
+        "description": "Move a version whose custom step is given the files, or writes files, from development to production. The department's approver,\nnever the person who uploaded it.\n\nUntil this is done a run of the version is refused, and the files are refused to its steps if a run somehow started.",
         "operationId": "promote_version_pipelines__pipeline_id__versions__version_id__promote_post",
         "parameters": [
           {
@@ -10596,7 +12598,7 @@
     },
     "/policy/roles": {
       "get": {
-        "description": "The class floors and the approving roles, read from the policy engine.\n\nNot restated here. `role_floor` and `approver_roles` live in\nplatform/policy/access.rego, and anything that copies them acquires the\nability to disagree with them.\n\nThe shape of the policy, not any tenant's data -- the same rules apply\nto every organisation, so this needs no session at all, unlike every\nother endpoint in this file. Left unauthenticated on purpose: the\nconsole's own `/roles` page is designed to explain what each role can do\nto somebody who has not signed in yet (see `web/src/features/roles/\nRoles.tsx`'s own module comment), and item 24's original security review\n(which made every other endpoint here session-gated) never intended to\ncatch a page with no tenant data behind it -- confirmed live: the\nunauthenticated case broke outright (\"no active session\") until this was\ncorrected.",
+        "description": "The class floors, the approving roles and what each role is called, read from the policy engine.\n\n`role_words` gives every role its console `label` and, for the roles people hold, `one` and `many` of them with their article (\"a data engineer\", \"data\nengineers\"), the same words every refusal uses. The values are read, not restated here, so they cannot disagree with the policy. They describe the shape of the policy, not any\norganisation's data: the same rules apply to every organisation, so this needs no session. That is deliberate, so the console's roles page\ncan explain what each role can do to somebody who has not signed in yet.",
         "operationId": "policy_roles_policy_roles_get",
         "responses": {
           "200": {
@@ -10619,7 +12621,7 @@
     },
     "/record-stream/{handle}": {
       "get": {
-        "description": "The bytes of the file the handle was made for, from the start or from a range (`Range: bytes=a-b`), unlocked inside the platform as they are sent.\n\nAsked again on every request: the person is still in post, the reason they may open it still holds, the patient was not erased.",
+        "description": "The bytes of the file the handle was made for, from the start or from a range (`Range: bytes=a-b`), unlocked inside the platform as they are sent.\n\nAsked again on every request: the person is still in post, the reason they may open it still holds, the person was not erased.",
         "operationId": "stream_record_stream__handle__get",
         "parameters": [
           {
@@ -10655,189 +12657,6 @@
         "summary": "Stream",
         "tags": [
           "record files"
-        ]
-      }
-    },
-    "/recording-uploads/{upload_id}": {
-      "delete": {
-        "description": "Give up on an upload. What was sent is dropped.",
-        "operationId": "abort_upload_recording_uploads__upload_id__delete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "upload_id",
-            "required": true,
-            "schema": {
-              "title": "Upload Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "title": "Response Abort Upload Recording Uploads  Upload Id  Delete",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Abort Upload",
-        "tags": [
-          "recordings"
-        ]
-      },
-      "get": {
-        "description": "Which parts have arrived and which are missing, so an upload that was cut off carries on from where it stopped.",
-        "operationId": "upload_status_recording_uploads__upload_id__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "upload_id",
-            "required": true,
-            "schema": {
-              "title": "Upload Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "title": "Response Upload Status Recording Uploads  Upload Id  Get",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Upload Status",
-        "tags": [
-          "recordings"
-        ]
-      }
-    },
-    "/recording-uploads/{upload_id}/complete": {
-      "post": {
-        "description": "Finish the upload. Every part must have arrived and the stored size must be exactly what a locked file of that size is.",
-        "operationId": "complete_upload_recording_uploads__upload_id__complete_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "upload_id",
-            "required": true,
-            "schema": {
-              "title": "Upload Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "title": "Response Complete Upload Recording Uploads  Upload Id  Complete Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Complete Upload",
-        "tags": [
-          "recordings"
-        ]
-      }
-    },
-    "/recording-uploads/{upload_id}/parts/{part_number}": {
-      "put": {
-        "description": "Send one part, as the raw body of the request. Sending a part again replaces it.",
-        "operationId": "send_part_recording_uploads__upload_id__parts__part_number__put",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "upload_id",
-            "required": true,
-            "schema": {
-              "title": "Upload Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "part_number",
-            "required": true,
-            "schema": {
-              "title": "Part Number",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "title": "Response Send Part Recording Uploads  Upload Id  Parts  Part Number  Put",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Send Part",
-        "tags": [
-          "recordings"
         ]
       }
     },
@@ -11089,9 +12908,32 @@
         "summary": "Register Contract"
       }
     },
+    "/screens": {
+      "get": {
+        "description": "Every page of the console, and what the signed-in person may do with each.\n\nEach page carries its path, the label the menu gives it, `open` (whether the caller may open it), `menu` (whether the menu offers it to the caller; it can\nbe narrower than `open`, never wider) and `who` (the people it is for, in a phrase that completes \"This page is for ...\"). The answer is\n`{screens}`, keyed by the page's name.",
+        "operationId": "list_screens_screens_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response List Screens Screens Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Screens",
+        "tags": [
+          "screens"
+        ]
+      }
+    },
     "/services": {
       "get": {
-        "description": "What each workload has actually been doing, across every organisation.\n\nAssembled from `action_run` and `access_decision` rather than from a status\nthe services report about themselves. A service claiming to be healthy and a\nservice that has successfully done something are different facts, and only\nthe second is worth an administrator's attention.\n\nDenials are counted separately. A workload accumulating refusals is either\nmisconfigured or reaching for something it should not, and both matter.\n\nPlatform-wide, not one organisation's own: `platform_admin` runs the\nsystem and holds no standing access to any tenant's contents (the same\nproperty `housekeeping.py`'s platform view keeps), and this is\ntelemetry about workloads, not customer data, so seeing it across every\ntenant does not cross that line. The console's own nav already hides\nthis behind the same role; this is that check actually enforced.",
+        "description": "What each workload has actually been doing, across every organisation.\n\nAssembled from the records of action runs and access decisions, not from a status the services report about themselves, because a service\nclaiming to be healthy and a service that has done something are different facts. Denials are counted separately: a workload accumulating\nrefusals is either misconfigured or reaching for something it should not.\n\nPlatform-wide, for the platform administrator only. That role runs the system and holds no standing access to any organisation's contents,\nand this is information about workloads, not customer data.",
         "operationId": "list_services_services_get",
         "responses": {
           "200": {
@@ -11112,9 +12954,214 @@
         ]
       }
     },
+    "/step/v1/files": {
+      "get": {
+        "description": "The files this step may be given: each one's id, its size when opened, and whether its person was erased. Lists; opens nothing.",
+        "operationId": "list_files_step_v1_files_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response List Files Step V1 Files Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Files",
+        "tags": [
+          "custom steps"
+        ]
+      }
+    },
+    "/step/v1/files/{record_id}/open": {
+      "post": {
+        "description": "Open one file to be read a range at a time. This is the opening that is written to the key log, once, naming the step.\n\nReturns the file's size and a handle that every read of it must carry. A person who was erased is refused (410).",
+        "operationId": "open_file_step_v1_files__record_id__open_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "title": "Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Open File Step V1 Files  Record Id  Open Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Open File",
+        "tags": [
+          "custom steps"
+        ]
+      }
+    },
+    "/step/v1/files/{record_id}/range": {
+      "get": {
+        "description": "A range of an opened file, opened. The handle from opening it must come with the request, and the person's key is checked every time:\na file being read stops the moment the person is erased (410).",
+        "operationId": "read_range_step_v1_files__record_id__range_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "title": "Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "length",
+            "required": true,
+            "schema": {
+              "maximum": 16777216,
+              "minimum": 0,
+              "title": "Length",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-handle",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Handle"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Range",
+        "tags": [
+          "custom steps"
+        ]
+      }
+    },
     "/step/v1/outputs/{name}": {
       "post": {
-        "description": "Open one file to be written, in parts of at most 8 MiB. Opening a name again replaces the earlier file of that name.\n\nA file made from a recording says which one (`source_record`) and its size in bytes (`size`), and is then locked under that recording's patient as\nit arrives. Nothing is a version yet. The files a step finished are sealed together, \"under review\", when the step ends successfully, and thrown\naway when it fails.",
+        "description": "Open one file to be written, in parts of at most 8 MiB. Opening a name again replaces the earlier file of that name.\n\nA file made from a file says which one (`source_record`) and its size in bytes (`size`), and is then locked under that file's person as\nit arrives. Nothing is a version yet. The files a step finished are sealed together, \"under review\", when the step ends successfully, and thrown\naway when it fails.",
         "operationId": "open_output_step_v1_outputs__name__post",
         "parameters": [
           {
@@ -11313,211 +13360,6 @@
           }
         },
         "summary": "Put Output Part",
-        "tags": [
-          "custom steps"
-        ]
-      }
-    },
-    "/step/v1/recordings": {
-      "get": {
-        "description": "The recordings this step may be given: each one's id, its size when opened, and whether its patient was erased. Lists; opens nothing.",
-        "operationId": "list_recordings_step_v1_recordings_get",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "title": "Response List Recordings Step V1 Recordings Get",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "List Recordings",
-        "tags": [
-          "custom steps"
-        ]
-      }
-    },
-    "/step/v1/recordings/{record_id}/open": {
-      "post": {
-        "description": "Open one recording to be read a range at a time. This is the opening that is written to the key log, once, naming the step.\n\nReturns the recording's size and a handle that every read of it must carry. A patient who was erased is refused (410).",
-        "operationId": "open_recording_step_v1_recordings__record_id__open_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "record_id",
-            "required": true,
-            "schema": {
-              "title": "Record Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "title": "Response Open Recording Step V1 Recordings  Record Id  Open Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Open Recording",
-        "tags": [
-          "custom steps"
-        ]
-      }
-    },
-    "/step/v1/recordings/{record_id}/range": {
-      "get": {
-        "description": "A range of an opened recording, opened. The handle from opening it must come with the request, and the patient's key is checked every time:\na recording being read stops the moment the patient is erased (410).",
-        "operationId": "read_range_step_v1_recordings__record_id__range_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "record_id",
-            "required": true,
-            "schema": {
-              "title": "Record Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "offset",
-            "required": true,
-            "schema": {
-              "minimum": 0,
-              "title": "Offset",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "length",
-            "required": true,
-            "schema": {
-              "maximum": 16777216,
-              "minimum": 0,
-              "title": "Length",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-handle",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Handle"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Read Range",
         "tags": [
           "custom steps"
         ]
@@ -11861,6 +13703,140 @@
         "summary": "Finish"
       }
     },
+    "/table-jobs/{job_id}/lock": {
+      "post": {
+        "description": "A worker sends rows of a table about people to be locked: it gets back each row's person code and the cells of the locked columns, locked under the key of\nthe row's person. The keys are found or made and opened here, and never leave.",
+        "operationId": "lock_table_jobs__job_id__lock_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-task-credential",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Task-Credential"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LockIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Lock Table Jobs  Job Id  Lock Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lock"
+      }
+    },
+    "/table-jobs/{job_id}/progress": {
+      "post": {
+        "description": "The worker says how far it has got. The answer says whether to carry on: it does not once the job has ended, so a cancelled job is not written.",
+        "operationId": "progress_table_jobs__job_id__progress_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-task-credential",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Task-Credential"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProgressIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Progress Table Jobs  Job Id  Progress Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Progress"
+      }
+    },
     "/table-jobs/{job_id}/work": {
       "get": {
         "description": "What a worker needs to write one job's table. Asking for it marks the job running.",
@@ -11916,6 +13892,179 @@
           }
         },
         "summary": "Work"
+      }
+    },
+    "/table-uploads/{job_id}": {
+      "get": {
+        "description": "Where an upload stands: which parts have arrived and which are missing, so one that was cut off carries on from where it stopped, and, once\nit is finished, how far the table has got and how it ended. Only the person who started it can ask.",
+        "operationId": "upload_status_table_uploads__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Status",
+        "tags": [
+          "table uploads"
+        ]
+      }
+    },
+    "/table-uploads/{job_id}/cancel": {
+      "post": {
+        "description": "Cancel an upload, or a table that is waiting or being written. What was sent is thrown away and the version it reserved is free again.",
+        "operationId": "cancel_upload_table_uploads__job_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Upload",
+        "tags": [
+          "table uploads"
+        ]
+      }
+    },
+    "/table-uploads/{job_id}/finish": {
+      "post": {
+        "description": "Finish the upload. Every part must have arrived. The table is then checked and written by a worker, which can take a while: the answer is 202\nat once, and the upload's status says how far it has got and how it ended, with every problem found if the file was refused.",
+        "operationId": "finish_upload_table_uploads__job_id__finish_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Finish Upload",
+        "tags": [
+          "table uploads"
+        ]
+      }
+    },
+    "/table-uploads/{job_id}/parts/{part_number}": {
+      "put": {
+        "description": "Send one part as the raw body of the request: 8 MB, except the last. Sending a part again replaces it. At most four parts of one upload are\ntaken at the same moment, and the platform takes only so many in all; past that the answer is 429 with the seconds to wait.",
+        "operationId": "send_part_table_uploads__job_id__parts__part_number__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "part_number",
+            "required": true,
+            "schema": {
+              "title": "Part Number",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Send Part",
+        "tags": [
+          "table uploads"
+        ]
       }
     },
     "/tenants/{organisation_id}/table-worker": {

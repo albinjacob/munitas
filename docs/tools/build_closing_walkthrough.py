@@ -18,8 +18,7 @@ from datetime import date, datetime, timedelta
 from walkthrough_kit import SHOTS_ROOT, Page, series_entry, write
 
 CLOCK = (
-    "Recording cannot wait 15 days. At each jump in time a small script, "
-    "<code>scripts/admin/advance-closing-clock.py</code>, moved the clinic&rsquo;s two closing dates back, "
+    "Fifteen days is too long to wait. At each jump in time a small script run by an administrator moved the clinic&rsquo;s two closing dates back, "
     "and changed nothing else. The platform works out where the clinic stands from those two dates every time "
     "it is asked, so moving them is all that a clock moving on would change. For that reason the dates on the "
     "screens after a jump are earlier than they would be on a real calendar."
@@ -69,9 +68,9 @@ STEPS = [
                 "database. Reading still works until the first date. Because this is the first stage, the "
                 "page offers Dunmore a button to cancel.",
         "note": "A yellow banner across the top reads <strong>This organisation is closing down</strong> and "
-                "gives <strong>@D15@ (15 days left)</strong> as the last day to cancel. The status "
-                "box says <strong>Closing down started on @D0@, asked for by Dunmore</strong> and "
-                "names <strong>@D30@</strong> as the day everything inside is deleted. The "
+                "gives <strong>@D15@</strong> (<strong>15 days left</strong>) as the last day to cancel, with the time of "
+                "day after it. The status box says <strong>Closing down started on @D0@</strong>, <strong>asked for "
+                "by Dunmore</strong>, and names <strong>@D30@</strong> as the day everything inside is deleted. The "
                 "<strong>Cancel the closing down</strong> button is there, and a notice at the bottom right "
                 "reads <strong>harbour is closing down</strong>.",
     },
@@ -87,8 +86,8 @@ STEPS = [
                 "data protection officers and platform administrators. The banner carries a link instead.",
         "note": "The banner reads <strong>This organisation is closing down</strong> with the same last day to "
                 "cancel, <strong>@D15@</strong>, and ends with a link <strong>See where it "
-                "stands</strong>. In the box at the top left the clinic is marked <strong>closing down</strong> "
-                "and the role is <strong>Analyst</strong>.",
+                "stands</strong>. At the bottom of the menu the role is <strong>Analyst</strong> and the clinic is "
+                "marked <strong>closing down</strong>.",
     },
     {
         "file": "05-quinn-is-refused.png", "actor": "quinn",
@@ -115,8 +114,8 @@ STEPS = [
                 "menu whose every link would be refused.",
         "note": "The heading reads <strong>harbour has closed down to its people</strong>, with a red "
                 "<strong>Closed to its people</strong> "
-                "label. The status line reads <strong>The time to cancel ended on @D0@. Everything "
-                "inside is deleted on @D15@ (15 days left)</strong>, which are earlier dates than "
+                "label. The status line reads <strong>The time to cancel ended on @CE@</strong>. <strong>Everything "
+                "inside is deleted on @D15@</strong> (<strong>15 days left</strong>), which are earlier dates than "
                 "before because of the clock move described above. The only control is <strong>Sign "
                 "out</strong>.",
     },
@@ -166,8 +165,8 @@ STEPS = [
                 "lapses and stops standing in the way.",
         "note": "A card titled <strong>HC-2026-0417: Alder v Harbour Clinic</strong> carries an amber label "
                 "<strong>Waiting for a second administrator</strong>. It repeats every part of the notice, "
-                "reads <strong>Recorded by Priya on @D0@</strong>, and gives "
-                "<strong>@D7@</strong> as the day it lapses if nobody approves it. Under the "
+                "reads <strong>Recorded by</strong> <strong>Priya on @D0@</strong>, and under <strong>Lapses if not approved "
+                "by</strong> gives <strong>@D7@</strong> as the day it lapses if nobody approves it. Under the "
                 "buttons: <strong>You recorded this one, so a different administrator approves it</strong>.",
     },
     {
@@ -192,7 +191,7 @@ STEPS = [
         "text": "Ravi sees the same waiting hold, with every part of the notice in front of the decision. The "
                 "note is stored with the decision, and a note is required only when a hold is declined. Ravi "
                 "writes down what was checked.",
-        "note": "The signed-in name at the top left is <strong>Ravi</strong>, a <strong>Platform "
+        "note": "The signed-in name at the bottom left of the menu is <strong>Ravi</strong>, a <strong>Platform "
                 "administrator</strong>. The note field reads <strong>Notice checked against the issuing "
                 "firm&rsquo;s reference</strong>. Both <strong>Approve it</strong> and <strong>Decline</strong> "
                 "are offered, and there is no line saying that Ravi recorded this one.",
@@ -205,9 +204,9 @@ STEPS = [
                 "nothing inside the clinic is deleted, whatever the dates say. A hold in force has a review "
                 "date, so that somebody has to look at it again and it does not stand by default for ever. "
                 "Releasing it is possible only with a written reason.",
-        "note": "The card now carries a red label <strong>In force</strong> and reads <strong>Approved by Ravi "
-                "on @D0@: Notice checked against the issuing firm&rsquo;s reference</strong> and "
-                "<strong>Review by @D90@</strong>. The line <strong>Adeyemi, has not acknowledged "
+        "note": "The card now carries a red label <strong>In force</strong> and reads <strong>Approved by</strong> "
+                "<strong>Ravi on @D0@</strong>: <strong>Notice checked against the issuing firm&rsquo;s reference.</strong> and "
+                "<strong>Review by</strong> <strong>@RB@</strong>. The line <strong>Adeyemi, has not acknowledged "
                 "it yet</strong> shows that the temporary custodian has not responded. Below the card the "
                 "button <strong>Release this hold</strong> says that releasing starts the closing period "
                 "again.",
@@ -295,9 +294,9 @@ STEPS = [
         "note": "Under <strong>Deleted organisations</strong> the entry for <strong>harbour</strong> begins "
                 "with the line <strong>Filed under</strong> and the new name, which starts with "
                 "<code>harbour~deleted-</code>. It then reads <strong>Closing down was asked for by Dunmore "
-                "on @D0@, because: Harbour Clinic is winding down</strong>, <strong>Removed 3 "
+                "on @D0@</strong>, <strong>because: Harbour Clinic is winding down</strong>, <strong>Removed 3 "
                 "sign-in accounts</strong>, and <strong>2 audit rows of who read what are kept until "
-                "@Y7@, and then removed</strong>. The last line, <strong>Legal holds that applied: HC-2026-0417 (Aldous and Brennan "
+                "@Y7@</strong>, and then removed. The last line, <strong>Legal holds that applied: HC-2026-0417 (Aldous and Brennan "
                 "LLP, for the claimant, released)</strong>, shows the hold by its number and issuer.",
     },
 ]
@@ -306,8 +305,8 @@ ACTORS = {
     "dunmore": ("Dunmore", "Data custodian of the Patient Records department at Harbour Clinic"),
     "quinn": ("Quinn", "Analyst at Harbour Clinic, with no say over the clinic"),
     "priya": ("Priya", "Platform administrator, who runs Munitas itself"),
-    "ravi": ("Ravi", "A second platform administrator"),
-    "adeyemi": ("Adeyemi", "Data protection officer at Harbour Clinic, named temporary custodian"),
+    "ravi": ("Ravi", "A second platform administrator, who approves"),
+    "adeyemi": ("Adeyemi", "Data protection officer at Harbour Clinic, the temporary custodian the hold names"),
 }
 
 # The dates a screen shows depend on the day it was captured, so the notes name them from the date of the capture and are never typed in.
@@ -318,10 +317,26 @@ CAPTURED = datetime.fromtimestamp(_FIRST.stat().st_mtime).date() if _FIRST.exist
 def _on(days: int = 0, years: int = 0) -> str:
     d = CAPTURED + timedelta(days=days)
     d = d.replace(year=d.year + years)
-    return f"{d.strftime('%B')} {d.day}, {d.year}"
+    return f"{d.strftime('%b')} {d.day}, {d.year}"
 
 
-_DATES = {"@D0@": _on(), "@D7@": _on(7), "@D15@": _on(15), "@D30@": _on(30), "@D90@": _on(90), "@Y7@": _on(0, 7)}
+
+
+def _shown(picture: str, pattern: str, fallback: str) -> str:
+    """A date a picture shows, read from the text recorded with it. Two of the dates on screen can fall on the other side of midnight from the day the capture
+    started (one is set two hours back, one is typed in from the date in UTC), so they are quoted from the screen and not worked out."""
+    import re
+
+    sidecar = (SHOTS_ROOT / "closing" / picture).with_suffix(".txt")
+    found = re.search(pattern, sidecar.read_text(encoding="utf-8")) if sidecar.exists() else None
+    return found.group(1) if found else fallback
+
+
+_DATES = {
+    "@D0@": _on(), "@D7@": _on(7), "@D15@": _on(15), "@D30@": _on(30), "@D90@": _on(90), "@Y7@": _on(0, 7),
+    "@CE@": _shown("06-dunmore-finds-the-clinic-closed.png", r"The time to cancel ended on ([A-Z][a-z]{2} \d{1,2}, \d{4})", _on()),
+    "@RB@": _shown("12-the-hold-is-in-force.png", r"REVIEW BY\n([A-Z][a-z]{2} \d{1,2}, \d{4})", _on(90)),
+}
 for _step in STEPS:
     for _key in ("text", "note"):
         for _token, _text in _DATES.items():
@@ -342,10 +357,7 @@ PAGE = Page(
     capture_note="Captured live against the <code>harbour</code> organisation by "
                  "<code>web/walkthroughs/closing.spec.ts</code> and built by "
                  "<code>docs/tools/build_closing_walkthrough.py</code>. The days between the stages were skipped "
-                 "by <code>scripts/admin/advance-closing-clock.py</code>, as each part says. What the platform "
-                 "refuses is proved separately by <code>verify/v98_organisation_closing.py</code>, "
-                 "<code>verify/v99_legal_hold.py</code> and <code>verify/v100_purge.py</code>, which also "
-                 "show that nothing outside a due, unheld organisation can be deleted.",
+                 "by a script run by an administrator, as each part says.",
 )
 
 if __name__ == "__main__":

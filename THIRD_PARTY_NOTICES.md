@@ -1,0 +1,34 @@
+# Third-party notices
+
+Code copied into this repository from other projects, with the notice each licence asks to be kept. Packages the project only installs (they are listed with
+their pins in the requirements files, and `verify/v176_licences.py` checks that none of them is under a copyleft licence) are not repeated here.
+
+## worker/pg_saver.py
+
+The agent's checkpointer is LangGraph's `PostgresSaver` (package `langgraph-checkpoint-postgres` 2.0.25) with its database calls moved onto this project's own
+database layer (`pgdb.py`), because the package requires psycopg, which is LGPL 3. The tables, their migrations, the queries and the stored forms are the
+library's, unchanged. The library is licensed as follows.
+
+```
+MIT License
+
+Copyright (c) 2024 LangChain, Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```

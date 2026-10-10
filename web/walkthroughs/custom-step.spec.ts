@@ -19,6 +19,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { bearerFor, loginAs } from "../tests/auth-helpers";
 import { API_BASE } from "../config/ports";
 import { settled } from "./settled";
+import { snap } from "./snap";
 
 const SHOTS = join(process.cwd(), "walkthroughs", "shots", "custom-step");
 const DEVI = "eng-devi";
@@ -29,7 +30,7 @@ let step = 0;
 async function shot(page: Page, name: string): Promise<void> {
   await settled(page);
   step += 1;
-  await page.screenshot({ path: join(SHOTS, `${String(step).padStart(2, "0")}-${name}.png`) });
+  await snap(page, { path: join(SHOTS, `${String(step).padStart(2, "0")}-${name}.png`) });
 }
 
 async function shotAt(page: Page, testid: string, name: string, offset = 90): Promise<void> {
@@ -40,7 +41,7 @@ async function shotAt(page: Page, testid: string, name: string, offset = 90): Pr
   }, offset);
   await page.waitForTimeout(250);
   step += 1;
-  await page.screenshot({ path: join(SHOTS, `${String(step).padStart(2, "0")}-${name}.png`) });
+  await snap(page, { path: join(SHOTS, `${String(step).padStart(2, "0")}-${name}.png`) });
 }
 
 async function headingAt(page: Page, heading: string, name: string, offset = 90): Promise<void> {
@@ -51,7 +52,7 @@ async function headingAt(page: Page, heading: string, name: string, offset = 90)
   }, offset);
   await page.waitForTimeout(250);
   step += 1;
-  await page.screenshot({ path: join(SHOTS, `${String(step).padStart(2, "0")}-${name}.png`) });
+  await snap(page, { path: join(SHOTS, `${String(step).padStart(2, "0")}-${name}.png`) });
 }
 
 function wav(dataBytes: number): Buffer {
@@ -112,7 +113,7 @@ steps:
   - name: silence
     kind: script
     script: steps/silence.py
-    recordings: true
+    reads_files: true
     writes_files: true
   - name: decide
     kind: gate
@@ -131,11 +132,11 @@ import wave
 import munitas_step as step
 
 done = []
-for item in step.list_recordings():
+for item in step.list_files():
     if item["erased"]:
         continue
     record = item["record_id"]
-    with wave.open(io.BytesIO(step.read_recording(record)), "rb") as source:
+    with wave.open(io.BytesIO(step.read_file(record)), "rb") as source:
         params, frames = source.getparams(), source.readframes(source.getnframes())
     quiet = int(params.framerate * 0.5) * params.sampwidth * params.nchannels
     out = io.BytesIO()
@@ -171,18 +172,18 @@ test("capture: let your own code read recordings and write files, with an approv
   await loginAs(page, DEVI);
   await page.goto(`/datasets/${datasetId}/ingest`);
   await page.getByTestId("erase-yes").check();
-  await page.getByTestId("bringing-recordings").check();
-  await page.getByTestId("recordings-kind").fill("hospital chart number");
-  await page.getByTestId("recordings-manifest").setInputFiles({ name: "manifest.csv", mimeType: "text/csv", buffer: Buffer.from(`file,person\nvisit-1.wav,HC-${stamp}-1\nvisit-2.wav,HC-${stamp}-2\n`) });
-  await page.getByTestId("recordings-files").setInputFiles([
+  await page.getByTestId("bringing-files").check();
+  await page.getByTestId("files-kind").fill("hospital chart number");
+  await page.getByTestId("files-manifest").setInputFiles({ name: "manifest.csv", mimeType: "text/csv", buffer: Buffer.from(`file,person\nvisit-1.wav,HC-${stamp}-1\nvisit-2.wav,HC-${stamp}-2\n`) });
+  await page.getByTestId("files-files").setInputFiles([
     { name: "visit-1.wav", mimeType: "audio/wav", buffer: wav(64_000) },
     { name: "visit-2.wav", mimeType: "audio/wav", buffer: wav(48_000) },
   ]);
-  await page.getByTestId("recordings-start").click();
-  await expect(page.getByTestId("recording-visit-2.wav")).toContainText("Locked", { timeout: 90_000 });
-  await page.getByTestId("recordings-seal").click();
-  await expect(page.getByTestId("recordings-sealed")).toContainText("2 recordings about 2 people", { timeout: 60_000 });
-  await page.getByTestId("open-sealed-recordings").click();
+  await page.getByTestId("files-start").click();
+  await expect(page.getByTestId("file-visit-2.wav")).toContainText("Locked", { timeout: 90_000 });
+  await page.getByTestId("files-seal").click();
+  await expect(page.getByTestId("files-sealed")).toContainText("2 files about 2 people", { timeout: 60_000 });
+  await page.getByTestId("open-sealed-files").click();
   await expect(page).toHaveURL(/\/versions\/[0-9a-f-]{36}$/);
   const versionUrl = page.url();
 

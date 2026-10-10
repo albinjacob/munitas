@@ -20,6 +20,8 @@ The page is self-contained and opens from the filesystem. It lives under docs/in
 """
 from __future__ import annotations
 
+import os
+
 import html
 import json
 import re
@@ -32,7 +34,7 @@ DOCS = Path(__file__).resolve().parent.parent
 ROOT = DOCS.parent
 OUT = DOCS / "internal" / "dev" / "api-callers.html"
 CONTAINER = "munitas-munitas-api-1"
-DISTRO = "Ubuntu-20.04"
+DISTRO = os.environ.get("MUNITAS_WSL_DISTRO", "Munitas")
 
 # ---------------------------------------------------------------------------------------------- what the API says about itself
 

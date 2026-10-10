@@ -42,8 +42,7 @@ STEPS = [
                 "replaced by a next version. Every version of a pipeline has a stage, which is where it is in its life: in "
                 "development, which means it runs only on development data, in production, which means it runs on any data the "
                 "department allows, or retired, which means it has ended for good. Development data is recordings declared synthetic, "
-                "which means made up with no real person in them, or a small sample drawn for the person who asks, which the previous "
-                "walkthrough shows. A version with a step like this one starts in development. The line under the pipeline&rsquo;s name "
+                "which means made up with no real person in them, or a small sample drawn by the platform for the person who asks. A version with a step like this one starts in development. The line under the pipeline&rsquo;s name "
                 "explains the three stages. The page lists the two steps and then shows a yellow box. The box says that the first step reads "
                 "the locked recordings and writes files, which become a new version that a reviewer checks before anyone can use it. The "
                 "version runs on any other data only when an approver of the owning department moves it to production, and the approver "
@@ -52,10 +51,10 @@ STEPS = [
         "note": "Under the pipeline&rsquo;s name the page says <strong>A version in development runs only on development data, a "
                 "version in production runs on any data the department allows, and a retired version has ended for good.</strong> Beside "
                 "<strong>v1</strong> a yellow label reads <strong>In development</strong>. Under it the line <strong>silence (script: "
-                "steps/silence.py, reads the recordings, writes files)</strong> and the line <strong>decide (gate) &larr; silence</strong> are "
+                "steps/silence.py, reads the files, writes files)</strong> and the line <strong>decide (gate) waits for silence</strong> are "
                 "listed. A gate is the last step of a pipeline, where a person decides whether the result may be released. The yellow box ends "
-                "<strong>This version is in development, so it runs only on development data: recordings declared synthetic, or a sample "
-                "drawn for you, which you ask for on the page of the recordings. For any other data, an approver of Cardiology other than "
+                "<strong>This version is in development, so it runs only on development data: files declared synthetic, or a sample "
+                "drawn for you, which you ask for on the page of the files. For any other data, an approver of Cardiology other than "
                 "Devi checks it and moves it to production first.</strong> The only button on Devi&rsquo;s screen is <strong>Retire this "
                 "version</strong>; there is no button to move it to production.",
     },
@@ -67,12 +66,12 @@ STEPS = [
                 "run on it. The platform checks the stage of the pipeline version before it starts anything, and refuses because the version "
                 "is in development and these are real recordings. It does not wait until the step reads a recording to find out, and nothing "
                 "is left behind: no run, no file and no record of an attempt to read. Devi could instead run the version on a small sample of "
-                "these recordings, as the previous walkthrough shows.",
+                "these recordings, which the platform draws for the person who asks.",
         "note": "A red box reads <strong>Nothing was started. Fix these first:</strong> and says that <strong>this version is in development, "
-                "so it can be run only on development data</strong>: recordings declared synthetic, or a development sample drawn for you. It "
+                "so it can be run only on development data</strong>: files declared synthetic, or a development sample drawn for you. It "
                 "names the custom step <strong>silence</strong>, says that on any other data an approver of the department that owns the "
                 "pipeline, other than the person who uploaded it, has to check it and move it to production first, and ends <strong>Ask for a "
-                "sample on the page of the recordings</strong>.",
+                "sample on the version&rsquo;s page, under Development samples.</strong>",
     },
     {
         "file": "04-hartley-is-offered-the-move-to-production.png", "actor": "hartley",
@@ -140,7 +139,7 @@ STEPS = [
                 "recordings that the step read, so erasing a patient later lists this version among what was made from their "
                 "recordings.",
         "note": "<strong>Step</strong> reads <strong>custom_step</strong>, <strong>Run by</strong> reads <strong>health-pipeline</strong>, "
-                "and <strong>Code version</strong> starts <strong>78e344ac5074f4</strong>, the same start as the fingerprint of the "
+                "and <strong>Code version</strong> starts with the same characters as the fingerprint of the "
                 "version shown in the second step. <strong>Made from</strong> is a link to the version of recordings.",
     },
     {
@@ -171,7 +170,7 @@ STEPS = [
 
 ACTORS = {
     "devi": ("Devi", "Data engineer in the Health organisation"),
-    "hartley": ("Hartley", "Data custodian and approver for the Cardiology department"),
+    "hartley": ("Hartley", "Data custodian for the Cardiology department"),
 }
 
 PAGE = Page(
@@ -191,8 +190,8 @@ PAGE = Page(
                  "<code>web/walkthroughs/custom-step.spec.ts</code> and built by "
                  "<code>docs/tools/build_custom_step_walkthrough.py</code>. The script really ran in the sandbox worker. The "
                  "recordings are noise and the chart numbers are invented. What the platform refuses is proved separately by "
-                 "<code>verify/v140_custom_steps_and_recordings.py</code>, and what the step can and cannot do from inside its "
-                 "container by <code>verify/v141_custom_step_given_locked_recordings.py</code>.",
+                 "<code>verify/v140_custom_steps_and_files.py</code>, and what the step can and cannot do from inside its "
+                 "container by <code>verify/v141_custom_step_given_locked_files.py</code>.",
 )
 
 if __name__ == "__main__":

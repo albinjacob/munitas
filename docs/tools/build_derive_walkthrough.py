@@ -31,7 +31,7 @@ from __future__ import annotations
 import html
 import json
 
-from walkthrough_kit import SHOTS_ROOT, Page, series_entry, strip_tags, write
+from walkthrough_kit import PUBLIC, SHOTS_ROOT, Page, series_entry, strip_tags, write
 
 # The recorded session of whichever organisation is being built. Set by build_page().
 ORG = "health"
@@ -40,233 +40,299 @@ STEPS: list = []
 
 SESSION = None  # code steps are labelled from the code they show (see code_screen)
 
-HEALTH_STEPS = [
-    # ------------------------------------------------------------------ one --
+# The Health story is two pages (find and ask, then make a dataset), taken from one timeline in which the Python session and the console take turns
+# (scripts/walkthroughs/capture-health-story.py). The session's steps are numbered as the session numbers them: 1 connect, 2 closed, 3 wait for the access to work,
+# 4 look at the rows, 5 the plan, 6 confirm, 7 the new dataset opens, 8 where it came from, 9 a colleague is refused, 10 a query reaching outside is refused,
+# 11 the access is withdrawn.
+FIND_STEPS = [
     {
         "act": ("PART ONE", "A closed table, and a request for access",
-                "The Cardiology department of a hospital group owns a dataset of patient admissions. Every "
-                "record names a patient, so the dataset is closed to most people. A researcher wants to study "
-                "it. This part shows the researcher being stopped, asking for access, and being answered by a "
-                "different person."),
+                "The Cardiology department of a hospital group owns a table of hospital admissions that a data engineer, Devi, brought in and sealed, and nobody can read it yet. "
+                "A researcher wants to study it. This part shows the researcher being stopped, asking for access, and being answered by a different person."),
         "kind": "code", "source": "health", "scenes": [1], "actor": "sam",
         "title": "Sam connects a tool and sees one open table",
         "screen": SESSION,
-        "text": "Sam is a researcher in the Health organisation. To start, Sam asks the platform for a token, "
-                "which is a short-lived password that also says why Sam wants to read, here a readmission "
-                "study. Sam then connects DuckDB, a free tool for analysing tables, to the platform's catalog, "
-                "which is the list of tables the platform offers, and asks what is in it. DuckDB runs inside "
-                "Sam's own Python session and reads the tables from the platform.",
-        "note": "Only one dataset is listed, <code>diagnosis_codes</code>, a public lookup of diagnosis "
-                "names. The admissions dataset does not appear at all, because Sam may not read it.",
+        "text": "Sam is a researcher in the Health organisation and wants to study readmissions, which are patients who come back to hospital soon after "
+                "leaving. To start, Sam asks Munitas for a token, which is a short-lived password that also says why Sam wants to read, here a "
+                "readmission study. Sam then connects DuckDB, a free tool for analysing tables, to the list of tables that Munitas offers, called the "
+                "catalog, and asks what is in it. DuckDB runs inside Sam's own Python session and reads the tables from Munitas.",
+        "note": "Only one dataset is listed, <code>diagnosis_codes</code>, the public lookup that Devi brought in and Hartley agreed to open. The "
+                "admissions dataset does not appear at all, because Sam may not read it.",
     },
     {
         "kind": "shot", "file": "01-sam-finds-the-open-lookup.png", "actor": "sam",
         "title": "The console shows why that table is open",
-        "screen": "Datasets",
-        "text": "The console is the platform's web page for people. Signed in as Sam, the datasets list shows "
-                "<code>diagnosis_codes</code>, the public lookup of diagnosis names, which the Cardiology "
-                "department owns.",
-        "note": "The <strong>You can read</strong> column says <strong>1 of 1</strong>, and the access level is "
-                "<strong>Published</strong>, the most open level. Sam may read this dataset without asking "
-                "anybody.",
+        "screen": "Datasets &middot; /datasets",
+        "text": "In the console, the Munitas web page for people, Sam searches the datasets list for the lookup. The list shows the dataset that "
+                "Devi brought in and that the Cardiology department owns.",
+        "note": "The line for <strong>diagnosis_codes</strong> says <strong>1 of 1 you can read</strong> and gives the access level "
+                "<strong>Published</strong>, the most open level. Sam may read this dataset without asking anybody.",
     },
     {
         "kind": "code", "source": "health", "scenes": [2], "actor": "sam",
         "title": "The restricted table is closed, with a reason",
         "screen": SESSION,
-        "text": "The admissions dataset is at the Raw access level, the most restricted one. Nobody may read it "
-                "without a lease, which is permission from the owning department's custodian to read it for "
-                "one stated purpose and for a limited time. Sam tries to read it anyway.",
-        "note": "The refusal ends with <code>no role reaches class RAW</code>. Sam's role, researcher, reaches "
-                "the Published level and nothing above it. The platform gives the reason instead of a bare "
-                "error. The line also names one lease that was revoked earlier, because this example was "
-                "recorded more than once on the same data and the platform remembers Sam's earlier lease. "
-                "Only the most recent revoked lease is named, however many there have been.",
+        "text": "The admissions dataset is at the Raw access level, the most restricted one. Nobody may read it without a lease, which is permission from "
+                "the owning department's custodian to read it for one stated purpose and for a limited time. Sam tries to read it anyway.",
+        "note": "The refusal ends with <code>no role reaches class RAW</code>. Sam's role, researcher, reaches the Published level and nothing "
+                "above it. Munitas gives the reason instead of a bare error.",
     },
     {
         "kind": "shot", "file": "02-sam-finds-admissions-closed.png", "actor": "sam",
         "title": "The console shows the same closed table",
-        "screen": "Datasets",
-        "text": "The same datasets list in the console now shows the admissions dataset, which the Cardiology "
-                "department owns and which holds the patient records.",
-        "note": "The <strong>You can read</strong> column says <strong>0 of 1</strong>, and the access level "
-                "is <strong>Raw</strong>. The dataset has one version, and Sam may read none of it.",
+        "screen": "Datasets &middot; /datasets",
+        "text": "The same datasets list in the console now shows the admissions dataset, which the Cardiology department owns.",
+        "note": "The line for <strong>admissions</strong> says <strong>0 of 1 you can read</strong>, and the access level is <strong>Raw</strong>. "
+                "The dataset has one version, and Sam may read none of it.",
     },
     {
         "kind": "shot", "file": "03-sam-fills-in-the-request.png", "actor": "sam",
         "title": "Sam asks the Cardiology custodian for access",
-        "screen": "A dataset's page",
-        "text": "On the dataset's page, Sam writes what the data will be used for, why something less "
-                "sensitive would not do, and for how long access is needed. The request goes to Hartley, the "
-                "custodian of the Cardiology department, because Cardiology owns the data.",
-        "note": "The two grey lines above the form are history from earlier recordings of this page: an "
-                "earlier lease that has ended, and an earlier request that was refused. The platform keeps "
-                "that in view whenever somebody asks again.",
+        "screen": "A dataset version &middot; /versions/&lt;id&gt;",
+        "text": "On the page of the dataset version, Sam writes what the data will be used for, why something less sensitive would not do, and for how "
+                "long access is needed. The request goes to Hartley, the custodian of the Cardiology department, because Cardiology owns the data.",
+        "note": "Under <strong>Your access</strong> are the questions <strong>What will you use it for?</strong> and <strong>Why do you need this rather "
+                "than something less sensitive?</strong>, a choice <strong>For how long?</strong> and a button <strong>Ask for access</strong>, with the "
+                "line <strong>Sent under your name, with everything you have written here.</strong>",
     },
     {
         "kind": "shot", "file": "05-hartley-sees-the-request.png", "actor": "hartley",
         "title": "Hartley sees the request in the Cardiology queue",
-        "screen": "The custodian's home page",
-        "text": "Hartley's home page lists the requests to read Cardiology's data. Only an approver of Cardiology "
-                "can decide this one, and Sam cannot approve a request made under Sam's own name.",
-        "note": "The card reads <strong>Sam (Researcher) wants to read admissions v1</strong>, followed by "
-                "Sam's reason and two buttons, <strong>Grant access</strong> and <strong>Refuse</strong>. The "
-                "small text under them says what granting means: a fixed time, this purpose only, and it ends "
-                "by itself.",
+        "screen": "The custodian's home page &middot; /",
+        "text": "Hartley's home page lists the requests to read Cardiology's data. Only an approver of Cardiology can decide this one, and Sam cannot "
+                "approve a request made under Sam's own name.",
+        "note": "The card reads <strong>Sam (Researcher) wants to read admissions v1</strong>, followed by Sam's reason and two buttons, "
+                "<strong>Grant access</strong> and <strong>Refuse</strong>. The small text under them says what granting means: a fixed time, this "
+                "purpose only, and it ends by itself.",
     },
     {
         "kind": "shot", "file": "06-after-granting.png", "actor": "hartley",
         "title": "Hartley grants the request",
-        "screen": "The custodian's home page",
-        "text": "Hartley chooses Grant access. The request leaves the queue, and a lease now exists that lets "
-                "Sam read this one dataset for the stated purpose.",
-        "note": "A notice at the bottom right reads <strong>Access granted to Sam (Researcher)</strong>, and "
-                "the box <strong>Currently granted</strong> is one higher than it was before the click. The newest entry under <strong>What "
-                "you have decided</strong> says <strong>Granted</strong>, shows when the lease runs out, and "
-                "offers a <strong>Revoke</strong> link, which Hartley uses at the end of this walkthrough.",
+        "screen": "The custodian's home page &middot; /",
+        "text": "Hartley chooses Grant access. The request leaves the queue, and a lease now exists that lets Sam read this one dataset for the stated "
+                "purpose.",
+        "note": "A notice at the bottom right reads <strong>Access granted to Sam (Researcher).</strong> The box <strong>Currently granted</strong> now "
+                "shows <strong>1</strong>. The newest entry under <strong>What you have decided</strong> says <strong>Granted</strong>, shows when the "
+                "lease runs out with <strong>Still open until</strong>, and offers a <strong>Revoke</strong> link, which ends the lease early.",
     },
     {
-        "kind": "code", "source": "health", "scenes": [4], "actor": "sam",
+        "kind": "code", "source": "health", "scenes": [3, 4], "actor": "sam",
         "title": "With the lease, the restricted table opens",
         "screen": SESSION,
-        "text": "Back in Sam's Python session, the kind of question that was refused a moment ago now works. "
-                "Every name in the table is invented for this example.",
-        "note": "Real rows come back, including <code>patient_name</code>, which names a person directly. That "
-                "is why the dataset is restricted, and why anything made from it has to stay just as careful.",
+        "text": "Back in Sam's Python session, the kind of question that was refused a moment ago now works. Storage takes a few seconds to learn of new "
+                "access, so the first box asks again until it is answered. The second box looks at three rows.",
+        "note": "The first answer counts <strong>400</strong> admissions, one for each hospital stay. Real rows come back: the admission number, the age "
+                "of the patient, the diagnosis code and the days in hospital. There is no name in the table. It was closed because everything that "
+                "is brought in starts at the safe default, Raw, until the department that owns it decides, whatever the data holds.",
     },
-    # ------------------------------------------------------------------ two --
+]
+
+MAKE_STEPS = [
     {
-        "act": ("PART TWO", "Making a new dataset from a query",
-                "Sam only needs the older patients with a long-term heart condition. Munitas lets a person make "
-                "a new dataset by writing a query over datasets the person may already read. The platform runs "
-                "the query itself, not the person's computer, and holds the new dataset to the same rules as "
-                "the data it came from."),
+        "act": ("PART ONE", "Making a new dataset from a query",
+                "Sam, a researcher, only needs the older patients with a long-term heart condition. Munitas lets a person make a new dataset by writing a query, which is "
+                "a question about tables written in a language called SQL, over datasets the person may already read. Munitas runs the query itself, not "
+                "the person's computer, and holds the new dataset to the same rules as the data it came from. Sam holds a lease, which is permission from the custodian to read one dataset for a stated purpose and a limited time, "
+                "and it is still in force."),
         "kind": "code", "source": "health", "scenes": [5], "actor": "sam",
-        "title": "The platform shows its plan before anything runs",
+        "title": "Munitas shows its plan before anything runs",
         "screen": SESSION,
-        "text": "Sam writes a query that joins the restricted admissions with the public diagnosis lookup and "
-                "keeps patients over 65 with a chronic condition, then asks the platform to plan it. Nothing "
-                "runs yet. The platform replies with the columns the new dataset would have, and the "
-                "sensitivity label each one must carry: <code>none</code> for a column that does not identify "
-                "anybody, <code>quasi</code> for a detail that could help identify a person when combined with "
-                "others, and <code>phi</code> for protected health information.",
-        "note": "<code>description</code>, which comes from the public lookup, is <strong>none</strong>. "
-                "<code>diagnosis_code</code> and <code>readmitted_30d</code>, which come from the admissions, "
-                "are <strong>phi</strong>. The last line says the new dataset would be <strong>RAW</strong>, "
-                "because it takes the strictest level among its inputs.",
+        "text": "Sam writes a query that joins the restricted admissions with the public diagnosis lookup and keeps patients over 65 with a chronic "
+                "condition, then asks Munitas to plan it. Nothing runs yet. Munitas replies with the columns the new dataset would have, and the "
+                "sensitivity label each one carries: <code>none</code> for a column that does not identify anybody on its own, <code>quasi</code> "
+                "for a detail that could help identify a person when combined with others, and <code>phi</code> for protected health information, "
+                "which means facts about a person's health.",
+        "note": "All seven columns are <strong>none</strong>, as the contract that Devi uploaded said for each of them. The last line says the new "
+                "dataset would be <strong>RAW</strong>: a new dataset takes the strictest access level among its inputs, and the admissions are Raw.",
     },
     {
         "kind": "code", "source": "health", "scenes": [6], "actor": "sam",
-        "title": "Data cannot be marked as less sensitive",
+        "title": "Sam confirms, and Munitas runs the query itself",
         "screen": SESSION,
-        "text": "A label can be raised but not lowered. Lowering one would claim that the data is safer than "
-                "the data it came from, and that claim needs somebody other than the person who wrote the "
-                "query. Sam tries to mark the age column as <code>none</code> anyway.",
-        "note": "The platform refuses and explains: age is computed from a field marked <code>quasi</code>, "
-                "so it cannot be marked <code>none</code>.",
-    },
-    {
-        "kind": "code", "source": "health", "scenes": [7], "actor": "sam",
-        "title": "Sam confirms, and the platform runs the query itself",
-        "screen": SESSION,
-        "text": "After Sam confirms, the platform copies the input files into a sandbox, an isolated container "
-                "with no network connection and no passwords. The query runs there, and the platform checks "
-                "every row of the result against the plan. The query never runs on Sam's computer. Sam's "
+        "text": "After Sam confirms, Munitas copies the input files into a sandbox, an isolated container with no network connection and no passwords. "
+                "The query runs there, and Munitas checks every row of the result against the plan. The query never runs on Sam's computer. Sam's "
                 "session only waits for the answer.",
-        "note": "The status is <strong>succeeded</strong>, and the new dataset is <strong>RAW</strong> again. "
-                "Sam did not choose that level: it follows from the datasets the query read.",
+        "note": "The status is <strong>succeeded</strong>, and the new dataset is <strong>RAW</strong> again. Sam did not choose that level: it "
+                "follows from the datasets the query read.",
     },
     {
         "kind": "shot", "file": "07-sam-finds-the-new-dataset.png", "actor": "sam",
         "title": "The new dataset appears, owned by Cardiology",
-        "screen": "Datasets",
-        "text": "The new dataset belongs to the same department as the data it came from, so Hartley is still "
-                "the person who decides who may read it. Sam made it, so Sam can read it straight away without "
-                "asking anybody.",
-        "note": "The <strong>You can read</strong> column says <strong>1 of 1</strong>, and the access level "
-                "is still <strong>Raw</strong>. The name ends in the month, day, hour and minute of the "
-                "recording, so that this example can be recorded again. The notebook half of this page was recorded a few minutes earlier, so the dataset made there carries an earlier time.",
+        "screen": "Datasets &middot; /datasets",
+        "text": "The new dataset belongs to the same department as the data it came from, so Hartley, the custodian of that department, is still the person who decides who may read it. "
+                "Sam made it, so Sam can read it straight away without asking anybody.",
+        "note": "The line for the new dataset says <strong>1 of 1 you can read</strong>, and the access level is still <strong>Raw</strong>. The name "
+                "ends in the month, day, hour and minute when it was made, so that a second run never meets a name that is already taken.",
     },
     {
-        "kind": "code", "source": "health", "scenes": [8], "actor": "sam",
+        "kind": "code", "source": "health", "scenes": [7], "actor": "sam",
         "title": "The new dataset opens like any other table",
         "screen": SESSION,
-        "text": "The platform sealed the result, which means it is finished and closed for good, so it can "
-                "never be edited. It is also an Iceberg table, an open way of storing a table that tools such "
-                "as DuckDB read directly. Sam queries it.",
-        "note": "The second answer counts the patients in the new dataset and gives their average age, which "
-                "is above 65 as the query required.",
+        "text": "Munitas sealed the result, which means it is finished and closed for good, so it can never be edited. It is also an Iceberg table, an "
+                "open way of storing a table that tools such as DuckDB read directly. Sam queries it.",
+        "note": "The second answer counts the patients in the new dataset and gives their average age, which is above 65 as the query required.",
     },
     {
         "kind": "shot", "file": "08-where-it-came-from.png", "actor": "sam",
         "title": "The console records where the new dataset came from",
-        "screen": "A dataset's page",
-        "text": "Every version of a dataset records what produced it: the step, who ran it, and the exact "
-                "versions of the datasets it was made from.",
-        "note": "<strong>Your access</strong> reads <em>You can read this until</em> a date, for the stated "
-                "purpose. <strong>Where this came from</strong> shows the step <strong>derive</strong> and two "
-                "<strong>Made from</strong> versions, one for the admissions and one for the diagnosis lookup.",
+        "screen": "A dataset version &middot; /versions/&lt;id&gt;",
+        "text": "Every version of a dataset records what produced it: the step, who ran it, and the exact versions of the datasets it was made from.",
+        "note": "<strong>Your access</strong> reads <em>You can read this until</em> a date, for the stated purpose. <strong>Where this came from</strong> "
+                "shows the step <strong>derive</strong> and two <strong>Made from</strong> versions, one for the admissions and one for the diagnosis "
+                "lookup.",
     },
     {
-        "kind": "code", "source": "health", "scenes": [9], "actor": "sam",
+        "kind": "code", "source": "health", "scenes": [8], "actor": "sam",
         "title": "The query is kept exactly as written",
         "screen": SESSION,
-        "text": "Anybody auditing the new dataset can follow it back. The platform keeps the purpose, the "
-                "datasets and versions it was made from, and the text of the query.",
-        "note": "The inputs line names <strong>admissions version 1 (RAW)</strong> and "
-                "<strong>diagnosis_codes version 1 (PUBLISHED)</strong>, which are the most restricted and the "
-                "most open access levels. The query appears word for word.",
+        "text": "Anybody auditing the new dataset can follow it back. Munitas keeps the purpose, the datasets and versions it was made from, and the text "
+                "of the query.",
+        "note": "The inputs line names <strong>admissions version 1 (RAW)</strong> and <strong>diagnosis_codes version 1 (PUBLISHED)</strong>, which "
+                "are the most restricted and the most open access levels. The query appears word for word.",
     },
-    # ---------------------------------------------------------------- three --
     {
-        "act": ("PART THREE", "The rules still apply to the new dataset",
-                "A new dataset is only safe if nobody can use it to get around the rules. This part tests that "
-                "with a colleague, with a query that reaches too far, and with the custodian taking the access "
-                "back."),
-        "kind": "code", "source": "health", "scenes": [10], "actor": "devi",
+        "act": ("PART TWO", "The rules still apply to the new dataset",
+                "A new dataset is only safe if nobody can use it to get around the rules. This part tests that with a colleague, with a query that "
+                "reaches too far, and with the custodian taking the access back."),
+        "kind": "code", "source": "health", "scenes": [9], "actor": "devi",
         "title": "A colleague without access is refused",
         "screen": SESSION,
-        "text": "Devi is a pipeline engineer in the same organisation, with no lease on the new dataset. The "
-                "new dataset is as restricted as the data it came from, so Devi cannot open it.",
-        "note": "The reason is the same as before: <code>no role reaches class RAW</code>. Working in the same "
-                "organisation is not enough.",
+        "text": "Devi is a data engineer in the same organisation, with no lease on the new dataset. The new dataset is as restricted as the data it "
+                "came from, so Devi cannot open it.",
+        "note": "The reason is the same as before: <code>no role reaches class RAW</code>. Working in the same organisation is not enough.",
     },
     {
-        "kind": "code", "source": "health", "scenes": [11], "actor": "sam",
+        "kind": "code", "source": "health", "scenes": [10], "actor": "sam",
         "title": "A query that reads outside its inputs is stopped",
         "screen": SESSION,
-        "text": "A query may read the datasets it names and nothing else. Sam tries one that reads a file from "
-                "the machine instead.",
-        "note": "The platform refuses with <strong>that query reaches outside the datasets it "
-                "declared</strong>. Nothing ran.",
+        "text": "A query may read the datasets it names and nothing else. Sam tries one that reads a file from the machine instead.",
+        "note": "Munitas refuses with <strong>that query reaches outside the datasets it declared</strong>. Nothing ran.",
     },
     {
         "kind": "shot", "file": "09-the-decision-log.png", "actor": "hartley",
         "title": "Every refusal is on record, with the reason",
-        "screen": "Who accessed what",
-        "text": "The decision log lists every request to read data. Each request is recorded twice: once for "
-                "whether it was allowed, and once for whether access was actually given. Here the log is "
-                "filtered to the requests that were refused.",
-        "note": "Every row says <strong>no</strong>, and the last column gives the reason, such as <code>no "
-                "role reaches class RAW</code> and the names of the revoked leases. One row shows a researcher "
-                "from a different organisation being refused even a Published dataset.",
+        "screen": "Access decisions &middot; /audit",
+        "text": "The decision log lists every request to read data. Each request is recorded twice: once for whether it was allowed, and once for "
+                "whether access was actually given. Here the log is filtered to the requests that were refused.",
+        "note": "Every row says <strong>no</strong>. The two newest are Devi's attempt, with the stated purpose <strong>curiosity</strong>, and Sam's first "
+                "attempt, <strong>readmission study</strong>. Both give the reason <strong>No role reaches class RAW.</strong>",
     },
     {
-        "kind": "code", "source": "health", "scenes": [12], "actor": "hartley",
+        "kind": "code", "source": "health", "scenes": [11], "actor": "hartley",
         "title": "Hartley withdraws access, and the new dataset closes too",
         "screen": SESSION,
-        "text": "Hartley ends the lease. Sam immediately loses the admissions table, and the new dataset too, "
-                "because Sam's access to the new dataset rested on the same lease.",
+        "text": "Hartley ends the lease. Sam immediately loses the admissions table, and the new dataset too, because Sam's access to the new dataset "
+                "rested on the same lease.",
         "note": "Both tables report <strong>refused</strong>, and the reasons name the revoked leases.",
     },
     {
         "kind": "shot", "file": "10-sam-after-the-lease-is-withdrawn.png", "actor": "sam",
         "title": "The console shows the new dataset closed again",
-        "screen": "Datasets",
-        "text": "The new dataset is still listed, so Sam can still know that it exists, but Sam can no longer "
-                "read it.",
-        "note": "The <strong>You can read</strong> column now says <strong>0 of 1</strong>, where it said "
-                "<strong>1 of 1</strong> earlier.",
+        "screen": "Datasets &middot; /datasets",
+        "text": "The new dataset is still listed, so Sam can still know that it exists, but Sam can no longer read it.",
+        "note": "The line for the new dataset now says <strong>0 of 1 you can read</strong>, where it said <strong>1 of 1</strong> earlier.",
+    },
+]
+
+NOTEBOOK_STEPS = [
+    {
+        "act": ("PART ONE", "Signing a notebook in",
+                "Sam, a researcher, does the readmission work in a Python notebook, which is a document that mixes code with the results of running it. A notebook is "
+                "never given Sam's password or Sam's console sign-in, because either would let it do everything Sam can, including the things Sam "
+                "should only ever do on screen, such as deciding a request. A notebook gets a pass of its own instead, which is a short-lived key "
+                "that stands for one signed-in notebook and reaches much less."),
+        "kind": "code", "source": "notebook", "scenes": [1], "actor": "sam",
+        "title": "Sam starts a sign-in in the notebook",
+        "screen": SESSION,
+        "text": "The notebook asks Munitas for a code, shows it with an address, and waits. Nothing is signed in yet, and nothing has been "
+                "given to the notebook. The notebook gives itself a name, so that Sam can tell it apart from another one later.",
+        "note": "The notebook printed an address to open and a code to type. It also printed <strong>Check that the notebook it names is \"Sam's "
+                "readmission notebook\"</strong>, so that Sam can compare the name, and it says how long it waits: <strong>It waits for you up to 10 "
+                "minutes</strong>.",
+    },
+    {
+        "kind": "shot", "file": "01-sam-types-the-code.png", "actor": "sam",
+        "title": "Sam types the code in the console",
+        "screen": "Sign a notebook in &middot; /notebook-sign-in/code",
+        "text": "Sam opens the address the notebook showed, in the console where Sam is already signed in, and types the code. Typing it proves that "
+                "the person at the console is also the person at the notebook. Somebody who did not just start a sign-in has nothing to do on this "
+                "page.",
+        "note": "The page is headed <strong>Sign a notebook in</strong>, and the box <strong>The code in the notebook</strong> holds the code. Under "
+                "the button it says <strong>If you did not start a sign-in in a notebook just now, close this page: nothing has been given to "
+                "anybody.</strong>",
+    },
+    {
+        "kind": "shot", "file": "02-sam-checks-and-approves.png", "actor": "sam",
+        "title": "Sam checks which notebook it is, and what it will be able to do",
+        "screen": "Approve this notebook &middot; /notebook-sign-in/consent",
+        "text": "Before approving, Sam is told which notebook is asking, from which address, with which program, and for how long the sign-in can "
+                "last. The page lists what the notebook will be able to do as Sam and, just as plainly, what it will not.",
+        "note": "Next to <strong>The notebook calls itself</strong> the page says <strong>Sam's readmission notebook</strong>, and next to "
+                "<strong>Lasts at most</strong> it says <strong>8 hours</strong>. Under <strong>It cannot:</strong> the first line is <strong>decide "
+                "anybody's request, including your own</strong>.",
+    },
+    {
+        "kind": "shot", "file": "03-the-notebook-is-signed-in.png", "actor": "sam",
+        "title": "Sam approves, and the console says the notebook is signed in",
+        "screen": "The notebook is signed in &middot; /notebook-sign-in/done",
+        "text": "Sam presses Approve. The notebook, which has been asking every few seconds whether Sam has answered, now receives its pass. The "
+                "pass lasts 15 minutes and renews itself, up to the 8 hours Sam saw, for as long as nobody ends the sign-in.",
+        "note": "The heading says <strong>The notebook is signed in</strong>, and the line under it says <strong>The notebook is signed in as you and will "
+                "carry on by itself.</strong>",
+    },
+    {
+        "kind": "code", "source": "notebook", "scenes": [2], "actor": "sam",
+        "title": "The notebook now acts as Sam",
+        "screen": SESSION,
+        "text": "The same line of code that was waiting has finished, and the notebook holds its pass. It asks who it is signed in as, and finds "
+                "a dataset by name, which Sam may do.",
+        "note": "The first line says <strong>Signed in as Sam</strong>, and the second finds <strong>diagnosis_codes</strong>, the public lookup. The "
+                "notebook sees what Sam sees, and nothing more.",
+    },
+    {
+        "act": ("PART TWO", "What the pass cannot do, and ending it",
+                "A notebook that could do everything its person can would be a risk if it were copied or left behind. So the pass is limited, and the "
+                "person can end it at any time."),
+        "kind": "code", "source": "notebook", "scenes": [3], "actor": "sam",
+        "title": "The pass cannot decide anything",
+        "screen": SESSION,
+        "text": "A notebook may find datasets, ask for access, open the few files its person was allowed to open, and make a dataset from a query. "
+                "Deciding a request, or changing a role, is done in the console. Sam tries to approve a request from the notebook.",
+        "note": "Munitas answers with the code <strong>403</strong>, which means refused, and says <strong>a notebook sign-in reaches only what the client library does</strong>. The "
+                "refusal comes before Munitas looks at which request it was or who Sam is, so a copied pass could not do it either.",
+    },
+    {
+        "kind": "shot", "file": "04-your-notebooks.png", "actor": "sam",
+        "title": "Your notebooks lists every notebook signed in as Sam",
+        "screen": "Your notebooks &middot; /notebook-sign-ins",
+        "text": "In the console, the page called Your notebooks lists each notebook that signed in as Sam: its name, when it started, until when it "
+                "can last at most, when it was last used and from which address.",
+        "note": "The row for <strong>Sam's readmission notebook</strong> shows the state <strong>In force</strong> and a yellow label <strong>in use "
+                "now</strong>, because the notebook made a request a moment ago. The button <strong>End now</strong> is at the end of the row.",
+    },
+    {
+        "kind": "shot", "file": "05-end-it-asks-first.png", "actor": "sam",
+        "title": "Ending a notebook that is in use asks first",
+        "screen": "Your notebooks &middot; /notebook-sign-ins",
+        "text": "Sam presses End now. Because the notebook was used a moment ago, the page asks before it ends something that may be in the middle "
+                "of work.",
+        "note": "A question appears in the row: <strong>End this notebook's sign-in?</strong> It says the notebook <strong>may be in the middle of work</strong> "
+                "and stops at its next request. The answers are <strong>Yes, end it</strong> and <strong>Keep it</strong>.",
+    },
+    {
+        "kind": "shot", "file": "06-the-sign-in-has-ended.png", "actor": "sam",
+        "title": "The sign-in has ended",
+        "screen": "Your notebooks &middot; /notebook-sign-ins",
+        "text": "Sam answers yes. The pass stops working at the notebook's very next request, and the renewal that would have kept it going stops too.",
+        "note": "The state of the row now reads <strong>Ended by the person</strong>.",
+    },
+    {
+        "kind": "code", "source": "notebook", "scenes": [4], "actor": "sam",
+        "title": "The notebook is refused from then on",
+        "screen": SESSION,
+        "text": "Back in the notebook, the same kind of request that worked a minute ago is refused. To go on, Sam would sign the notebook in "
+                "again, with a new code.",
+        "note": "Munitas answers with the code <strong>401</strong>, which means not signed in: <strong>this notebook sign-in is not in force</strong>.",
     },
 ]
 
@@ -332,9 +398,12 @@ FINANCE_STEPS = [
         "text": "On the dataset's page, Omar writes what the data will be used for, why something less "
                 "sensitive would not do, and for how long access is needed. The request goes to Marcus, the "
                 "custodian of the Fraud Operations department, because Fraud Operations owns the data.",
-        "note": "The line above the form reads <strong>Your access ended</strong>, with the date it was "
-                "withdrawn. It is history from an earlier recording of this page, and the platform keeps it "
-                "in view whenever somebody asks again.",
+        "note": "Under <strong>Your access</strong> the page says that the data is more sensitive than the person&rsquo;s "
+                "role reads and names who decides. It asks <strong>What will you use it for?</strong> and "
+                "<strong>Why do you need this rather than something less sensitive?</strong>, and offers "
+                "<strong>For how long?</strong> as four choices, <strong>4 hours</strong>, <strong>1 day</strong>, "
+                "<strong>3 days</strong> and <strong>7 days</strong>. Under the form, <strong>Access ends by itself. "
+                "Nobody has to remember to take it away.</strong>",
     },
     {
         "kind": "shot", "file": "05-hartley-sees-the-request.png", "actor": "marcus",
@@ -420,8 +489,8 @@ FINANCE_STEPS = [
                 "the person who decides who may read it. Omar made it, so Omar can read it straight away "
                 "without asking anybody.",
         "note": "The <strong>You can read</strong> column says <strong>1 of 1</strong>, and the access level "
-                "is still <strong>Raw</strong>. The name ends in the month, day, hour and minute of the "
-                "recording, so that this example can be recorded again. The notebook half of this page was recorded a few minutes earlier, so the dataset made there carries an earlier time.",
+                "is still <strong>Raw</strong>. The name ends in the month, day, hour and minute when it was "
+                "made, so that a second run never meets a name that is already taken. The notebook half of this page was run a few minutes earlier, so the dataset made there carries an earlier time.",
     },
     {
         "kind": "code", "source": "finance", "scenes": [8], "actor": "omar",
@@ -463,7 +532,7 @@ FINANCE_STEPS = [
         "kind": "code", "source": "finance", "scenes": [10], "actor": "lena",
         "title": "A colleague without access is refused",
         "screen": SESSION,
-        "text": "Lena is a pipeline engineer in the same organisation, with no lease on the new dataset. The "
+        "text": "Lena is a data engineer in the same organisation, with no lease on the new dataset. The "
                 "new dataset is as restricted as the data it came from, so Lena cannot open it.",
         "note": "The reason is the same as before: <code>no role reaches class RAW</code>. Working in the same "
                 "organisation is not enough.",
@@ -480,14 +549,13 @@ FINANCE_STEPS = [
     {
         "kind": "shot", "file": "09-the-decision-log.png", "actor": "marcus",
         "title": "Every refusal is on record, with the reason",
-        "screen": "Who accessed what",
+        "screen": "Access decisions",
         "text": "The decision log lists every request to read data. Each request is recorded twice: once for "
                 "whether it was allowed, and once for whether access was actually given. Here the log is "
                 "filtered to the requests that were refused.",
-        "note": "Every row says <strong>no</strong>, and the last column gives the reason, such as <code>no "
-                "role reaches class RAW</code> and the names of the revoked leases. The rows for Lena, whose "
-                "stated purpose is <strong>curiosity</strong>, show only the role reason, because Lena never "
-                "held a lease.",
+        "note": "The filter reads <strong>Refused</strong>, every row says <strong>no</strong> under "
+                "<strong>Result</strong>, and the last column, <strong>Why</strong>, gives the reason in words, such "
+                "as <strong>No role reaches class RAW.</strong> Each row also says what the request was for.",
     },
     {
         "kind": "code", "source": "finance", "scenes": [12], "actor": "marcus",
@@ -584,14 +652,15 @@ def what_it_does(code: str, typist: str) -> str:
     objects = [o for o in ("me", "custodian", "colleague") if f"{o}." in code]
     parts = []
     if objects:
-        parts.append(f"<code>{objects[0]}</code> is the Munitas client library, signed in as {typist}. Its commands "
-                     "call the control plane, which is Munitas&rsquo;s API and the part that decides who may do what.")
+        parts.append(f"<code>{objects[0]}</code> is the Munitas client library, a small Python package that asks Munitas for things on the "
+                     f"person&rsquo;s behalf, signed in as {typist}.")
+    if "sign_in(" in code:
+        parts.append("<code>Munitas.sign_in</code> is the Munitas client library asking Munitas for a code, and then waiting for the person to approve it in the console.")
     if "confirm(draft)" in code:
-        parts.append("To run the query, the control plane starts a background job. A sandbox worker runs it in an "
-                     "isolated container named <code>munitas-derive-runner</code> and writes the result back to storage.")
+        parts.append("To run the query, Munitas starts it in a sandbox, an isolated container with no network, and writes the result back as a new dataset.")
     if ".sql(" in code or ".execute(" in code:
-        parts.append("DuckDB runs in this Python session. It asks the Munitas catalog for the table. If the catalog "
-                     "allows it, DuckDB receives a short-lived storage key and reads the table files from storage.")
+        parts.append("DuckDB runs in this Python session. It asks Munitas for the table. If Munitas allows it, DuckDB receives a short-lived key and "
+                     "reads the table directly.")
     return " ".join(parts)
 
 
@@ -605,7 +674,7 @@ def code_screen(step: dict) -> str:
             name = transcript["people"][block["who"]].removeprefix("Dr ")
             if name not in typists:
                 typists.append(name)
-            platform |= any(f"{o}." in block["code"] for o in ("me", "custodian", "colleague"))
+            platform |= any(f"{o}." in block["code"] for o in ("me", "custodian", "colleague", "Munitas"))
             duck |= ".sql(" in block["code"] or ".execute(" in block["code"]
     where = (f"{typists[0]}&rsquo;s own computer" if len(typists) == 1
              else " and ".join(f"{n}&rsquo;s" for n in typists) + " own computers")
@@ -655,21 +724,44 @@ def _crops(home_height: int) -> dict:
 
 
 ORGS = {
-    "health": {
-        "title": "A new dataset from a query, under the same rules",
-        "eyebrow": "Health organisation &middot; Governed datasets",
-        "steps": HEALTH_STEPS,
+    "health-find": {
+        "slug": "find-and-ask", "shots": "derive-health", "source": "health",
+        "title": "Find a table, ask to read it, and the custodian decides",
+        "eyebrow": "Health organisation &middot; The numbers",
+        "steps": FIND_STEPS,
         "actors": {
             "sam": ("Sam", "Researcher in the Health organisation"),
             "hartley": ("Hartley", "Data custodian for the Cardiology department"),
-            "devi": ("Devi", "Pipeline engineer in the Health organisation"),
         },
         "crops": _crops(540),
-        "lede": "A researcher in a hospital group is stopped at a restricted table of patient admissions, asks "
-                "for access, and is answered by the custodian of the department that owns it. The researcher "
-                "then makes a new dataset from a query. The platform runs the query itself, checks the result, "
-                "and keeps the new dataset exactly as restricted as the data it came from. When the custodian "
-                "withdraws the access, the new dataset closes too.",
+        "lede": "A researcher in a hospital group is stopped at the table of admissions that a data engineer brought in. The researcher asks for "
+                "access, and the custodian of the department that owns the table decides. Python and the console show the same story from two sides.",
+    },
+    "health-notebook": {
+        "slug": "work-from-a-notebook", "shots": "notebook-health", "source": "notebook",
+        "title": "Sign a notebook in, with a pass that cannot decide anything",
+        "eyebrow": "Health organisation &middot; The numbers",
+        "steps": NOTEBOOK_STEPS,
+        "actors": {"sam": ("Sam", "Researcher in the Health organisation")},
+        "crops": {},
+        "lede": "A researcher signs a Python notebook in as themself. The notebook shows a code, the researcher types it in the console and "
+                "approves, and the notebook receives a short-lived pass that reaches only what a notebook needs. The pass cannot decide a request, "
+                "and the researcher can end it at any time.",
+    },
+    "health-make": {
+        "slug": "make-a-dataset", "shots": "derive-health", "source": "health",
+        "title": "Make a new dataset from a query, under the same rules",
+        "eyebrow": "Health organisation &middot; The numbers",
+        "steps": MAKE_STEPS,
+        "actors": {
+            "sam": ("Sam", "Researcher in the Health organisation"),
+            "hartley": ("Hartley", "Data custodian for the Cardiology department"),
+            "devi": ("Devi", "Data engineer in the Health organisation"),
+        },
+        "crops": _crops(540),
+        "lede": "A researcher who holds a lease makes a new dataset from a query. Munitas runs the query itself, checks the result, and "
+                "keeps the new dataset exactly as restricted as the data it came from. A colleague without access is refused, a query that reaches "
+                "too far is stopped, and when the custodian withdraws the access the new dataset closes too.",
     },
     "finance": {
         "title": "A new dataset from a query, over card transactions",
@@ -678,7 +770,7 @@ ORGS = {
         "actors": {
             "omar": ("Omar", "Analyst in the Finance organisation"),
             "marcus": ("Marcus", "Data custodian for the Fraud Operations department"),
-            "lena": ("Lena", "Pipeline engineer in the Finance organisation"),
+            "lena": ("Lena", "Data engineer in the Finance organisation"),
         },
         "crops": _crops(700),
         "lede": "An analyst in a finance organisation is stopped at a restricted table of card transactions, "
@@ -695,26 +787,47 @@ ORGS["finance"]["crops"]["02-sam-finds-admissions-closed.png"] = (320, 0, 1600, 
 def build_page(org: str) -> Page:
     global ORG, TRANSCRIPTS, STEPS
     config = ORGS[org]
-    shots = SHOTS_ROOT / f"derive-{org}"
-    ORG = org
-    TRANSCRIPTS = {org: json.loads((shots / "transcript.json").read_text(encoding="utf-8"))}
+    slug = config.get("slug", f"derive-{org}")
+    source = config.get("source", org)
+    shots = SHOTS_ROOT / config.get("shots", f"derive-{org}")
+    ORG = source
+    TRANSCRIPTS = {source: json.loads((shots / "transcript.json").read_text(encoding="utf-8"))}
     STEPS = config["steps"]
     for step in STEPS:
         if step["kind"] == "code":
             step["screen"] = code_screen(step)
     return Page(
-        slug=f"derive-{org}", org=org, title=series_entry(f"derive-{org}")["title"], eyebrow=config["eyebrow"], lede=config["lede"],
+        slug=slug, org=org.split("-")[0], title=series_entry(slug)["title"], eyebrow=config["eyebrow"], lede=config["lede"],
         actors=config["actors"], steps=STEPS, has_code=True,
-        parts=["console", "control_plane", "catalog", "storage", "sandbox_worker", "client_library", "duckdb"],
+        parts=[],
         words=["organisation", "department", "dataset", "custodian", "access_level", "lease", "query",
                "sensitivity", "token", "sealed", "iceberg"],
         shots_dir=shots, crops=config["crops"], evidence=terminal,
         capture_note="The Python session steps are the real code and output from one recorded run of "
+                     "<code>scripts/demo/derive-demo.py</code>, and the console screens were captured live between its steps by "
+                     "<code>web/walkthroughs/story-a-derive.spec.ts</code>, both started by <code>scripts/walkthroughs/capture-health-story.py</code>. "
+                     "They are rendered by <code>docs/tools/build_derive_walkthrough.py</code>." if source == "health" else
+                     "The Python session steps are the real code and output from one recorded run of "
                      "<code>scripts/demo/derive-demo.py</code>. The console screens were captured live against "
                      f"the <code>{org}</code> organisation by <code>web/walkthroughs/derive.spec.ts</code>. Both "
                      "are rendered by <code>docs/tools/build_derive_walkthrough.py</code>. Run all three again "
                      "when the flow changes.",
     )
+
+
+STUB = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="refresh" content="0; url=index.html">
+<title>Munitas walkthroughs</title>
+<link rel="canonical" href="index.html">
+</head>
+<body>
+<p>This walkthrough is now two shorter ones. <a href="index.html">Continue to all walkthroughs</a>.</p>
+</body>
+</html>
+"""
 
 
 if __name__ == "__main__":
@@ -723,6 +836,8 @@ if __name__ == "__main__":
         missing = [s["file"] for s in page.steps if "file" in s and not (page.shots_dir / s["file"]).exists()]
         if missing:
             raise SystemExit(f"No screenshot for {org}: " + ", ".join(missing) +
-                             "\nRun the capture first: cd web && npx playwright test "
-                             "--config=walkthroughs/playwright.config.ts derive")
+                             "\nRun the capture first (Health: scripts/walkthroughs/capture-health-story.py; Finance: cd web && npx playwright test "
+                             "--config=walkthroughs/playwright.config.ts derive)")
         write(page)
+    (PUBLIC / "derive-health-walkthrough.html").write_text(STUB, encoding="utf-8")
+    print("wrote derive-health-walkthrough.html (a short page that points at the index)")

@@ -20,6 +20,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { bearerFor, loginAs } from "../tests/auth-helpers";
 import { API_BASE } from "../config/ports";
 import { settled } from "./settled";
+import { snap } from "./snap";
 
 const SHOTS = join(process.cwd(), "walkthroughs", "shots", "development-sample");
 const DEVI = "eng-devi";
@@ -35,7 +36,7 @@ async function shotAt(page: Page, testid: string, name: string, offset = 90): Pr
   }, offset);
   await page.waitForTimeout(250);
   step += 1;
-  await page.screenshot({ path: join(SHOTS, `${String(step).padStart(2, "0")}-${name}.png`) });
+  await snap(page, { path: join(SHOTS, `${String(step).padStart(2, "0")}-${name}.png`) });
 }
 
 function wav(dataBytes: number): Buffer {
@@ -96,7 +97,7 @@ steps:
   - name: silence
     kind: script
     script: steps/silence.py
-    recordings: true
+    reads_files: true
     writes_files: true
   - name: decide
     kind: gate
@@ -113,11 +114,11 @@ import wave
 import munitas_step as step
 
 done = []
-for item in step.list_recordings():
+for item in step.list_files():
     if item["erased"]:
         continue
     record = item["record_id"]
-    with wave.open(io.BytesIO(step.read_recording(record)), "rb") as source:
+    with wave.open(io.BytesIO(step.read_file(record)), "rb") as source:
         params, frames = source.getparams(), source.readframes(source.getnframes())
     quiet = int(params.framerate * 0.5) * params.sampwidth * params.nchannels
     out = io.BytesIO()
@@ -143,17 +144,17 @@ async function lockedRecordings(department: string, name: string, chart: string)
   const dataset = (await registered.json()).id as string;
   for (const [n, p] of [0, 0, 1, 2, 3, 4].entries()) {
     const data = wav(60_000 + n * 40_000);
-    const opened = await fetch(`${API_BASE}/datasets/${dataset}/recording-uploads`, {
+    const opened = await fetch(`${API_BASE}/datasets/${dataset}/file-uploads`, {
       method: "POST",
       headers: { ...headers, "content-type": "application/json" },
       body: JSON.stringify({ file_name: `visit-${n + 1}.wav`, size_bytes: data.length, person_kind: "hospital chart number", person_value: `${chart}-${p}` }),
     });
     expect(opened.status).toBe(201);
     const upload = (await opened.json()).id as string;
-    expect((await fetch(`${API_BASE}/recording-uploads/${upload}/parts/1`, { method: "PUT", headers: { ...headers, "content-type": "application/octet-stream" }, body: data })).status).toBe(200);
-    expect((await fetch(`${API_BASE}/recording-uploads/${upload}/complete`, { method: "POST", headers })).status).toBe(200);
+    expect((await fetch(`${API_BASE}/file-uploads/${upload}/parts/1`, { method: "PUT", headers: { ...headers, "content-type": "application/octet-stream" }, body: data })).status).toBe(200);
+    expect((await fetch(`${API_BASE}/file-uploads/${upload}/complete`, { method: "POST", headers })).status).toBe(200);
   }
-  const sealed = await fetch(`${API_BASE}/datasets/${dataset}/seal-recordings`, { method: "POST", headers });
+  const sealed = await fetch(`${API_BASE}/datasets/${dataset}/seal-files`, { method: "POST", headers });
   expect(sealed.status).toBe(201);
   return { dataset, version: (await sealed.json()).id as string };
 }
@@ -223,7 +224,7 @@ test("capture: build a pipeline version on a development sample of locked record
   await page.goto(`/versions/${real.version}`);
   const hartleyPanel = page.getByTestId("development-samples");
   const waiting = hartleyPanel.locator('[data-testid^="sample-row-"]').first();
-  await expect(waiting).toContainText("asks for 4 recordings for 5 days");
+  await expect(waiting).toContainText("asks for 4 files for 5 days");
   const id = (await waiting.getAttribute("data-testid"))!.replace("sample-row-", "");
   await shotAt(page, "development-samples", "hartley-sees-the-request", 40);
 
@@ -231,7 +232,7 @@ test("capture: build a pipeline version on a development sample of locked record
   await hartleyPanel.getByTestId(`sample-grant-days-${id}`).fill("3");
   await hartleyPanel.getByTestId(`sample-note-${id}`).fill("Three is enough to find the first faults");
   await hartleyPanel.getByTestId(`sample-approve-${id}`).click();
-  await expect(hartleyPanel.getByTestId(`sample-granted-${id}`)).toContainText("3 recordings");
+  await expect(hartleyPanel.getByTestId(`sample-granted-${id}`)).toContainText("3 files");
   await shotAt(page, "development-samples", "hartley-approves-fewer-and-the-platform-draws", 40);
 
   // PART TWO. Devi uses it.

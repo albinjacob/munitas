@@ -19,6 +19,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { bearerFor, loginAs } from "../tests/auth-helpers";
 import { API_BASE } from "../config/ports";
 import { settled } from "./settled";
+import { snap } from "./snap";
 
 const SHOTS = join(process.cwd(), "walkthroughs", "shots", "locked-columns");
 const FIXTURES = join(process.cwd(), "walkthroughs", "fixtures", "locked-appointments");
@@ -37,7 +38,7 @@ let step = 0;
 async function shot(page: Page, name: string): Promise<void> {
   await settled(page);
   step += 1;
-  await page.screenshot({ path: join(SHOTS, `${String(step).padStart(2, "0")}-${name}.png`) });
+  await snap(page, { path: join(SHOTS, `${String(step).padStart(2, "0")}-${name}.png`) });
 }
 
 // Puts the named part of a page at the top of the picture, so the whole of it is in view.
@@ -49,7 +50,7 @@ async function shotAt(page: Page, testid: string, name: string, offset = 90): Pr
   }, offset);
   await page.waitForTimeout(250);
   step += 1;
-  await page.screenshot({ path: join(SHOTS, `${String(step).padStart(2, "0")}-${name}.png`) });
+  await snap(page, { path: join(SHOTS, `${String(step).padStart(2, "0")}-${name}.png`) });
 }
 
 async function headingAt(page: Page, heading: string, name: string, offset = 90): Promise<void> {
@@ -60,7 +61,7 @@ async function headingAt(page: Page, heading: string, name: string, offset = 90)
   }, offset);
   await page.waitForTimeout(250);
   step += 1;
-  await page.screenshot({ path: join(SHOTS, `${String(step).padStart(2, "0")}-${name}.png`) });
+  await snap(page, { path: join(SHOTS, `${String(step).padStart(2, "0")}-${name}.png`) });
 }
 
 test("capture: lock what identifies a person, and read it only with permission", async ({ page }) => {
@@ -137,15 +138,15 @@ test("capture: lock what identifies a person, and read it only with permission",
   await page.getByTestId("lease-purpose").fill(PURPOSE);
   await page.getByTestId("lease-days").fill("3");
   await page.getByTestId("lease-rows").fill("5");
-  await headingAt(page, "Your access to the locked values", "devi-asks-for-five-rows", 60);
+  await headingAt(page, "The locked values", "devi-asks-for-five-rows", 60);
   await page.getByTestId("lease-submit").click();
   await expect(page.getByTestId("locked-access")).toContainText("waiting for an approver");
-  await headingAt(page, "Your access to the locked values", "the-request-waits", 60);
+  await headingAt(page, "The locked values", "the-request-waits", 60);
 
   await loginAs(page, SAM);
   await page.goto(versionUrl);
   await expect(page.getByTestId("locked-access")).toContainText("cannot read the locked values and cannot ask");
-  await headingAt(page, "Your access to the locked values", "sam-has-no-way-to-ask", 60);
+  await headingAt(page, "The locked values", "sam-has-no-way-to-ask", 60);
 
   // PART FOUR. Hartley, who answers for Cardiology, decides, and records what to do about small groups.
   await loginAs(page, HARTLEY);
@@ -172,7 +173,7 @@ test("capture: lock what identifies a person, and read it only with permission",
   await loginAs(page, DEVI);
   await page.goto(versionUrl);
   await expect(page.getByTestId("locked-access")).toContainText("You hold a lease");
-  await headingAt(page, "Your access to the locked values", "devi-holds-a-lease", 60);
+  await headingAt(page, "The locked values", "devi-holds-a-lease", 60);
   await page.getByTestId("read-locked-rows").click();
   await expect(page.getByTestId("locked-rows").locator("tbody tr")).toHaveCount(5);
   await shot(page, "devi-reads-five-rows");
