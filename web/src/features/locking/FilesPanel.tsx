@@ -1,17 +1,17 @@
 /**
- * Bringing in recordings that are each one patient's, locked under that patient's key as they upload.
+ * Bringing in files that are each one patient's, locked under that patient's key as they upload.
  *
- * A manifest names the patient for every recording, and everything wrong with it or with the files chosen is listed before anything is sent. Each
- * recording then goes up in parts: a part that fails because the connection did is sent again, and an upload that cannot go on is paused with the
- * parts already held kept, so asking again carries on from where it stopped. When every recording is locked, one button closes the upload.
+ * A manifest names the patient for every file, and everything wrong with it or with the files chosen is listed before anything is sent. Each
+ * file then goes up in parts: a part that fails because the connection did is sent again, and an upload that cannot go on is paused with the
+ * parts already held kept, so asking again carries on from where it stopped. When every file is locked, one button closes the upload.
  */
 
 import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ApiError } from "../../api/client";
-import { useSealRecordings } from "../../api/recordings";
+import { useSealFiles } from "../../api/files";
 import { Reasons } from "./LockedColumns";
-import { PausedUpload, plan, uploadRecording, type Progress } from "./recordingUpload";
+import { PausedUpload, plan, uploadFile, type Progress } from "./fileUpload";
 
 const STATE_WORDS: Record<Progress["state"], string> = {
   waiting: "Waiting",
@@ -26,8 +26,8 @@ function size(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function RecordingsPanel({ datasetId }: { datasetId: string }) {
-  const seal = useSealRecordings(datasetId);
+export function FilesPanel({ datasetId }: { datasetId: string }) {
+  const seal = useSealFiles(datasetId);
   const [kind, setKind] = useState("");
   const [manifest, setManifest] = useState<File | null>(null);
   const [manifestText, setManifestText] = useState("");
@@ -57,7 +57,7 @@ export function RecordingsPanel({ datasetId }: { datasetId: string }) {
         setProgress((prev) => ({ ...prev, [file.name]: p }));
       };
       try {
-        await uploadRecording({
+        await uploadFile({
           datasetId,
           file,
           personKind: kind.trim(),
@@ -79,13 +79,13 @@ export function RecordingsPanel({ datasetId }: { datasetId: string }) {
 
   if (seal.data) {
     return (
-      <div data-testid="recordings-sealed" className="space-y-2 rounded border border-teal-300 bg-teal-50 p-4 text-sm text-teal-900">
+      <div data-testid="files-sealed" className="space-y-2 rounded border border-teal-300 bg-teal-50 p-4 text-sm text-teal-900">
         <p className="font-medium">
-          Sealed as version {seal.data.version}: {seal.data.records} recording{seal.data.records === 1 ? "" : "s"} about {seal.data.people}{" "}
+          Sealed as version {seal.data.version}: {seal.data.records} file{seal.data.records === 1 ? "" : "s"} about {seal.data.people}{" "}
           {seal.data.people === 1 ? "person" : "people"}.
         </p>
-        <p>Each recording is locked under the key of the person it is about. Nothing about this version can change from here; later recordings become a new version.</p>
-        <Link to={`/versions/${seal.data.id}`} data-testid="open-sealed-recordings" className="inline-block text-sky-700 underline">
+        <p>Each file is locked under the key of the person it is about. Nothing about this version can change from here; later files become a new version.</p>
+        <Link to={`/versions/${seal.data.id}`} data-testid="open-sealed-files" className="inline-block text-sky-700 underline">
           Open this version
         </Link>
       </div>
@@ -93,18 +93,18 @@ export function RecordingsPanel({ datasetId }: { datasetId: string }) {
   }
 
   return (
-    <div className="space-y-3" data-testid="recordings-panel">
+    <div className="space-y-3" data-testid="files-panel">
       <p className="text-sm text-slate-700">
-        Each recording is locked under the key of the person it is about as it uploads. Say which person each recording is about in a manifest: a CSV file (a plain text table) with two columns, <strong>file</strong>{" "}
-        and <strong>person</strong>, and one row for each recording. If you also have an answer key, the correct written text of a recording, which is used later to check how well names were
-        removed from it, name it after its recording (<code>visit-1.truth.json</code> beside <code>visit-1.wav</code>). It belongs to the same person and needs no row of its own.
-        A recording is about one person: if two people speak in it, split it first.
+        Each file is locked under the key of the person it is about as it uploads. Say which person each file is about in a manifest: a CSV file (a plain text table) with two columns, <strong>file</strong>{" "}
+        and <strong>person</strong>, and one row for each file. If you also have an answer key, the correct written text of a file, which is used later to check how well names were
+        removed from it, name it after its file (<code>visit-1.truth.json</code> beside <code>visit-1.wav</code>). It belongs to the same person and needs no row of its own.
+        A file is about one person: if two people speak in it, split it first.
       </p>
       <div className="flex flex-wrap gap-6">
         <label className="text-sm">
           <span className="block text-slate-600">What kind of identifier names a person</span>
           <input
-            data-testid="recordings-kind"
+            data-testid="files-kind"
             value={kind}
             onChange={(e) => setKind(e.target.value)}
             disabled={running || started}
@@ -115,7 +115,7 @@ export function RecordingsPanel({ datasetId }: { datasetId: string }) {
         <label className="text-sm">
           <span className="block text-slate-600">The manifest</span>
           <input
-            data-testid="recordings-manifest"
+            data-testid="files-manifest"
             type="file"
             accept=".csv,text/csv"
             disabled={running || started}
@@ -128,9 +128,9 @@ export function RecordingsPanel({ datasetId }: { datasetId: string }) {
           />
         </label>
         <label className="text-sm">
-          <span className="block text-slate-600">The recordings</span>
+          <span className="block text-slate-600">The files</span>
           <input
-            data-testid="recordings-files"
+            data-testid="files-files"
             type="file"
             multiple
             accept=".wav,.json"
@@ -142,7 +142,7 @@ export function RecordingsPanel({ datasetId }: { datasetId: string }) {
       </div>
 
       {problems.length > 0 && (
-        <div data-testid="recordings-problems" role="alert" className="rounded border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+        <div data-testid="files-problems" role="alert" className="rounded border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
           <p className="font-medium">Fix these before uploading:</p>
           <ul className="mt-1 list-disc space-y-0.5 pl-4">
             {problems.map((p) => (
@@ -155,7 +155,7 @@ export function RecordingsPanel({ datasetId }: { datasetId: string }) {
       {!started && (
         <button
           type="button"
-          data-testid="recordings-start"
+          data-testid="files-start"
           disabled={!manifest || files.length === 0 || problems.length > 0 || running}
           onClick={run}
           className="rounded bg-indigo-500 hover:bg-indigo-800 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
@@ -165,12 +165,12 @@ export function RecordingsPanel({ datasetId }: { datasetId: string }) {
       )}
 
       {started && (
-        <ul data-testid="recordings-progress" className="space-y-2 text-sm">
+        <ul data-testid="files-progress" className="space-y-2 text-sm">
           {files.map((f) => {
             const p = progress[f.name] ?? { state: "waiting", held: 0, parts: 1 };
             const percent = p.state === "locked" ? 100 : Math.round((p.held / Math.max(1, p.parts)) * 100);
             return (
-              <li key={f.name} data-testid={`recording-${f.name}`} className="rounded border border-slate-200 p-2">
+              <li key={f.name} data-testid={`file-${f.name}`} className="rounded border border-slate-200 p-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-medium">{f.name}</span>
                   <span className="text-xs text-slate-500">
@@ -200,7 +200,7 @@ export function RecordingsPanel({ datasetId }: { datasetId: string }) {
       {paused && !running && (
         <button
           type="button"
-          data-testid="recordings-carry-on"
+          data-testid="files-carry-on"
           onClick={run}
           className="rounded border border-slate-700 px-3 py-1.5 text-sm font-medium text-slate-900"
         >
@@ -212,24 +212,24 @@ export function RecordingsPanel({ datasetId }: { datasetId: string }) {
         <div className="space-y-2">
           <button
             type="button"
-            data-testid="recordings-seal"
+            data-testid="files-seal"
             disabled={seal.isPending}
             onClick={() => seal.mutate()}
             className="rounded bg-indigo-500 hover:bg-indigo-800 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
           >
-            {seal.isPending ? "Sealing" : "Seal these recordings"}
+            {seal.isPending ? "Sealing" : "Seal these files"}
           </button>
           <span className="ml-3 text-xs text-slate-500">Closes the upload. Nothing can be added to this version afterwards.</span>
         </div>
       )}
       {refused.length > 0 && !running && (
         <p className="text-xs text-red-800">
-          {refused.length} recording{refused.length === 1 ? " was" : "s were"} refused, so the upload cannot be sealed yet. Reload this page and upload{" "}
+          {refused.length} file{refused.length === 1 ? " was" : "s were"} refused, so the upload cannot be sealed yet. Reload this page and upload{" "}
           {refused.length === 1 ? "it" : "them"} again once fixed.
         </p>
       )}
       {seal.error && (
-        <div data-testid="recordings-seal-refused" role="alert" className="rounded border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+        <div data-testid="files-seal-refused" role="alert" className="rounded border border-red-200 bg-red-50 p-3 text-xs text-red-800">
           <p className="font-medium">Nothing was sealed. Fix these first:</p>
           <Reasons error={seal.error} fallback="Sealing failed." />
         </div>

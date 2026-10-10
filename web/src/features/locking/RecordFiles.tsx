@@ -11,6 +11,7 @@ import { ApiError } from "../../api/client";
 import { streamUrl, useOpenRecord, useRecordList, type OpenedRecord, type RecordFile } from "../../api/recordFiles";
 import { Failure, Section } from "../../components/states";
 import { Reasons } from "./LockedColumns";
+import { when } from "../../lib/when";
 
 function size(bytes: number): string {
   if (bytes < 1024) return `${bytes} bytes`;
@@ -19,6 +20,19 @@ function size(bytes: number): string {
 }
 
 const PREVIEW_BYTES = 8 * 1024;
+/** How much of a file that is neither sound nor text is shown, as bytes. */
+const OTHER_PREVIEW_BYTES = 256;
+
+function hexDump(bytes: Uint8Array): string {
+  const rows: string[] = [];
+  for (let at = 0; at < bytes.length; at += 16) {
+    const row = Array.from(bytes.slice(at, at + 16));
+    const hex = row.map((b) => b.toString(16).padStart(2, "0")).join(" ");
+    const chars = row.map((b) => (b >= 32 && b < 127 ? String.fromCharCode(b) : ".")).join("");
+    rows.push(`${at.toString(16).padStart(4, "0")}  ${hex.padEnd(47, " ")}  ${chars}`);
+  }
+  return rows.join("\n");
+}
 
 /** The platform's reasons are phrases; on the page each reads as a sentence. */
 function sentence(reason: string): string {
@@ -26,13 +40,14 @@ function sentence(reason: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1) + (/[.!?]$/.test(text) ? "" : ".");
 }
 
-function Row({ versionId, file }: { versionId: string; file: RecordFile }) {
+function Row({ versionId, file, mayOpen }: { versionId: string; file: RecordFile; mayOpen: boolean }) {
   const open = useOpenRecord(versionId);
   const [opened, setOpened] = useState<OpenedRecord | null>(null);
   const [text, setText] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const isSound = file.content_type.startsWith("audio/");
   const isText = file.content_type.startsWith("text/") || file.content_type === "application/json";
+  const isOther = !isSound && !isText;
 
   async function start() {
     setFailed(null);
@@ -40,10 +55,11 @@ function Row({ versionId, file }: { versionId: string; file: RecordFile }) {
     try {
       const got = await open.mutateAsync(file.record_id);
       setOpened(got);
-      if (!isSound && isText) {
-        const res = await fetch(streamUrl(got.handle), { headers: { Range: `bytes=0-${PREVIEW_BYTES - 1}` } });
+      if (!isSound) {
+        const size = isText ? PREVIEW_BYTES : OTHER_PREVIEW_BYTES;
+        const res = await fetch(streamUrl(got.handle), { headers: { Range: `bytes=0-${size - 1}` } });
         if (!res.ok && res.status !== 206) throw new Error(`The platform answered ${res.status}.`);
-        setText(await res.text());
+        setText(isText ? await res.text() : hexDump(new Uint8Array(await res.arrayBuffer())));
       }
     } catch (e) {
       setOpened(null);
@@ -58,7 +74,7 @@ function Row({ versionId, file }: { versionId: string; file: RecordFile }) {
         <span className="text-xs text-slate-500">{size(file.bytes)}</span>
         {file.locked && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-700">Locked</span>}
         {file.erased && <span className="rounded bg-red-100 px-1.5 py-0.5 text-xs text-red-900">Person erased</span>}
-        {(isSound || isText) && !file.erased && (
+        {mayOpen && !file.erased && (
           <button
             type="button"
             data-testid={`record-play-${file.record_id}`}
@@ -66,17 +82,29 @@ function Row({ versionId, file }: { versionId: string; file: RecordFile }) {
             disabled={open.isPending}
             className="ml-auto rounded bg-indigo-500 px-2 py-1 text-xs font-medium text-white hover:bg-indigo-800 disabled:opacity-50"
           >
-            {isSound ? "Play" : "Read"}
+            {isSound ? "Play" : isOther ? "Preview" : "Read"}
           </button>
         )}
       </div>
       {opened && isSound && (
         <audio data-testid={`record-player-${file.record_id}`} controls autoPlay controlsList="nodownload" src={streamUrl(opened.handle)} className="w-full" />
       )}
+      {text !== null && isOther && (
+        <p className="text-xs text-slate-600">
+          The first 256 bytes of the file. On the left are the bytes as numbers, written in hexadecimal; on the right the same bytes as characters, with a dot
+          where a byte is not a printable character.
+        </p>
+      )}
       {text !== null && (
-        <pre data-testid={`record-text-${file.record_id}`} className="max-h-48 overflow-auto rounded bg-slate-50 p-2 text-xs whitespace-pre-wrap">
+        <pre data-testid={`record-text-${file.record_id}`} className={`${isOther ? "max-h-72" : "max-h-48"} overflow-auto rounded bg-slate-50 p-2 text-xs whitespace-pre-wrap`}>
           {text}
-          {file.bytes > PREVIEW_BYTES ? "\n\nOnly the first part is shown." : ""}
+          {isOther
+            ? file.bytes > OTHER_PREVIEW_BYTES
+              ? "\n\nOnly the first 256 bytes are shown, as numbers and, beside them, as characters where they can be printed."
+              : ""
+            : file.bytes > PREVIEW_BYTES
+              ? "\n\nOnly the first part is shown."
+              : ""}
         </pre>
       )}
       {failed && (
@@ -93,7 +121,7 @@ function Row({ versionId, file }: { versionId: string; file: RecordFile }) {
   );
 }
 
-export function RecordFilesSection({ versionId }: { versionId: string }) {
+export function RecordFilesSection({ versionId, title, description }: { versionId: string; title?: string; description?: string }) {
   const list = useRecordList(versionId);
   if (list.isLoading) return null;
   if (list.error) return list.error instanceof ApiError && list.error.status === 404 ? null : <Failure error={list.error} what="the files of this version" />;
@@ -102,13 +130,13 @@ export function RecordFilesSection({ versionId }: { versionId: string }) {
   if (!data || (data.total === 0 && !ended)) return null;
   return (
     <Section
-      title="Files"
-      description="The files this version holds. You open one through the platform, which unlocks it with the key of the person it is about. You are never given the key or where the file is stored, and every opening is written down."
+      title={title ?? "Files"}
+      description={description ?? "The files this version holds. You open one through the platform, which unlocks it with the key of the person it is about. You are never given the key or where the file is stored, and every opening is written down."}
     >
       <div data-testid="record-files" className="space-y-3">
         {ended && (
           <p data-testid="record-files-ended" className="rounded border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800">
-            This version was made for development and has ended{data.development?.ends_at ? ` (${new Date(data.development.ends_at).toLocaleString()})` : ""}. Its files are
+            This version was made for development and has ended{data.development?.ends_at ? ` (${when(data.development.ends_at)})` : ""}. Its files are
             deleted. The version itself stays on record.
           </p>
         )}
@@ -120,16 +148,17 @@ export function RecordFilesSection({ versionId }: { versionId: string }) {
         {data.may_open && (
           <p className="text-xs text-slate-600">
             {data.basis === "own_sample" && "These are in a sample drawn for you, so you may open them while the sample is in force."}
-            {data.basis === "synthetic" && "These recordings were declared synthetic: no real person is in them."}
+            {data.basis === "synthetic" && "These files were declared synthetic: no real person is in them."}
             {data.basis === "own_development_output" && "A run you started made these from development data, so you may open them while that data is in force for you."}
+            {data.basis === "review" && data.review && `You have opened ${data.review.opened.length} of the ${data.review.limit} files you may open to judge this result. What you open is kept with your decision.`}
           </p>
         )}
         {data.may_open && data.development?.ends_at && !ended && (
-          <p data-testid="record-files-ends" className="text-xs text-slate-600">These files are deleted on {new Date(data.development.ends_at).toLocaleString()}, or sooner if the sample they came from ends.</p>
+          <p data-testid="record-files-ends" className="text-xs text-slate-600">These files are deleted on {when(data.development.ends_at)}, or sooner if the sample they came from ends.</p>
         )}
         <ul className="space-y-2">
           {data.records.map((f) => (
-            <Row key={f.record_id} versionId={versionId} file={data.may_open ? f : { ...f, content_type: "application/octet-stream" }} />
+            <Row key={f.record_id} versionId={versionId} file={f} mayOpen={data.may_open} />
           ))}
         </ul>
         {data.total > data.records.length && <p className="text-xs text-slate-500">Showing {data.records.length} of {data.total}.</p>}

@@ -42,6 +42,9 @@ export interface Summary {
   versions_by_class: Partial<Record<VisibilityClass, number>>;
 }
 
+/** Where a dataset stands, worked out from its versions. Separate from the access level. */
+export type DatasetState = "registered" | "active" | "deleted";
+
 export interface DatasetRow {
   id: string;
   name: string;
@@ -49,8 +52,22 @@ export interface DatasetRow {
   created_at: string;
   version_count: number;
   latest_version: number | null;
+  /** registered: no version yet. active: some version's data can still be read. deleted: every version's data was deleted; the record is kept. */
+  state: DatasetState;
   widest_class: VisibilityClass | null;
-  modality: string[] | null;
+  /** What its owner said to expect when registering it. Not shown: what the platform found in the files is. */
+  modality?: string[] | null;
+  /** What the platform found in the files: the kinds (audio, image, text, tabular, other), the formats (wav, json, table), the structures. */
+  kinds?: string[];
+  formats?: string[];
+  structures?: string[];
+  /** The one kind, or "multimodal" when there is more than one; null when nothing is in it. */
+  kind?: string | null;
+  /** The one structure, or "mixed"; null when nothing is in it. */
+  structure?: string | null;
+  /** How many files it holds and how many bytes they come to, not counting a table the platform wrote. */
+  files?: number;
+  bytes?: number;
   provenance: string;
   department_id: string | null;
   /** How many versions are also stored as a table, and how many were meant to be and are not. */
@@ -97,8 +114,12 @@ export interface VersionRow {
   class_decided_by: string | null;
   content_hash?: string;
   record_count?: number;
+  /** True when record_count counts the rows of a table; false when it counts files. */
+  holds_rows?: boolean;
   created_at?: string;
   sealed?: boolean;
+  /** The file somebody brought in to make this version, who sent it and when, or null when nothing was brought in (a pipeline made it). */
+  brought_in?: { file_name: string; bytes: number | null; sha256: string | null; who: string | null; at: string | null } | null;
   /**
    * When the stored files were deleted to free space, or null.
    *
@@ -110,6 +131,26 @@ export interface VersionRow {
 }
 
 /** Whether one version is also stored as a table, and if not, why. What `GET /dataset-versions/{id}/table` returns. */
+/** What one version holds: the same facts the datasets list shows for a whole dataset, worked out the same way. */
+export interface VersionHolds {
+  /** audio, image, text, tabular or other. */
+  kinds: string[];
+  formats: string[];
+  /** structured, semi-structured or unstructured. */
+  structures: string[];
+  /** The one kind, or "multimodal" when there is more than one; null when nothing is in the version. */
+  kind: string | null;
+  /** The one structure, or "mixed"; null when nothing is in the version. */
+  structure: string | null;
+  files: number;
+  bytes: number;
+  by_format: { format: string; kind: string; structure: string; files: number; bytes: number }[];
+  /** content: every file was read; name: none was; mixed: some; table: stored as a table; null: no files. */
+  read_from: "content" | "name" | "mixed" | "table" | null;
+  /** Present when the version is stored as a table, or was meant to be. */
+  table: { present: boolean; rows: number | null } | null;
+}
+
 export interface VersionTable {
   projected: boolean;
   /** projected, not_requested (it is files), skipped, failed, or unrecorded (sealed before the platform wrote reasons down). */
@@ -198,6 +239,8 @@ export interface LeaseRequest {
   current_class: VisibilityClass | null;
   purpose: string;
   justification: string;
+  /** What approving this would give, in a sentence, when it is less than the whole version; null when it gives the whole version. Present on requests that wait. */
+  gives?: string | null;
   /** A standing request carries no TTL; see `standing`. */
   requested_ttl_hours: number | null;
   /** Asks for a lease that lasts until revoked, only ever for a workload. */
@@ -271,6 +314,8 @@ export interface VersionAccess {
   ended: "expired" | "revoked" | null;
   ended_at: string | null;
   decider_label: string | null;
+  /** The version is made of locked files: the mark says what the person holds of them, not what a role covers. */
+  locked?: boolean;
 }
 
 export interface AccessPreview {

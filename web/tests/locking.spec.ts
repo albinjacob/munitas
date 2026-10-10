@@ -242,6 +242,10 @@ test.describe("U135: locked columns in the console", () => {
     await expect(page.getByTestId("audit-reads")).toContainText("Refused");
     await expect(page.getByTestId("audit-reads")).toContainText("Read");
     await expect(page.getByTestId("audit-leases")).toContainText(purpose);
+    // Who decided it and who ended it are different people here, and each is shown against its own fact.
+    const lease = page.getByTestId("audit-leases").locator("tr", { hasText: purpose });
+    await expect(lease).toContainText("Approved by Canary custodian on");
+    await expect(lease).toContainText("Ended early by Canary engineer on");
     await expect(page.getByTestId("audit-treatments").first()).toContainText("Locked under the person's key");
     await expect(page.getByTestId("audit-group-sizes")).toContainText("Contract will change");
     await expect(page.getByTestId("audit-keys")).toContainText("A key was opened");

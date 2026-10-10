@@ -10,9 +10,12 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../api/client";
+import { reachWithoutLease } from "../../lib/reach";
+import { when } from "../../lib/when";
 import { ClassBadge } from "../../components/ClassBadge";
 import { Empty, Failure, Loading, Section } from "../../components/states";
 import { SERVICES } from "../../identity/services";
+import { COMPONENTS } from "../home/components";
 
 interface RunRow {
   operator: string;
@@ -54,7 +57,7 @@ export function Services() {
       <Section
         level="page"
         title="Services"
-        description="You cannot act as one of these. This is what they have done, which is a stronger thing to look at than what they are permitted to do."
+        description="Nobody signs in as one of these. Each card shows what the service may read without a lease, and how many of its requests were granted and refused."
       >
         <ul className="grid gap-3 md:grid-cols-2">
           {SERVICES.map((s) => {
@@ -67,11 +70,9 @@ export function Services() {
                 data-testid={`service-${s.id}`}
                 className="rounded border border-slate-200 bg-white p-4"
               >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-medium">{s.label}</span>
-                  <span className="flex items-center gap-1.5 text-xs text-slate-500">
-                    reads down to <ClassBadge value={s.floor} />
-                  </span>
+                <div className="font-medium">{s.label}</div>
+                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+                  Can read without a lease: <ClassBadge value={s.floor} /> <span>{reachWithoutLease(s.floor)}</span>
                 </div>
                 <p className="mt-1.5 text-sm text-slate-600">{s.description}</p>
                 {decisions ? (
@@ -96,7 +97,7 @@ export function Services() {
 
       <Section
         title="Pipeline activity"
-        description="Runs are counted from what the workflow engine recorded, not from what a service reports about itself."
+        description="Counted from the workflow engine's own record of each run."
       >
         {activity.isLoading ? (
           <Loading what="service activity" />
@@ -127,7 +128,7 @@ export function Services() {
                     >
                       {r.failed}
                     </td>
-                    <td className="text-xs text-slate-500">{r.last_run}</td>
+                    <td className="text-xs text-slate-500">{when(r.last_run)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -138,7 +139,7 @@ export function Services() {
 
       <Section
         title="Who owns what"
-        description="Access to an asset is approved by the custodian of the department that owns it, and by nobody else."
+        description="Access to a dataset is approved by the custodian of the department that owns it, and by nobody else."
       >
         {org.isLoading ? (
           <Loading what="the organisation" />
@@ -188,6 +189,29 @@ export function Services() {
             )}
           </>
         ) : null}
+      </Section>
+
+      <Section
+        title="The parts of the system"
+        description="Where a part has an interface of its own, this opens it rather than repeating it."
+      >
+        <ul data-testid="component-map" className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+          {COMPONENTS.map((c) => (
+            <li key={c.service} data-service={c.service} className="rounded border border-slate-200 bg-white p-4">
+              <div className="flex items-start justify-between gap-2">
+                <span className="font-medium">{c.label}</span>
+                {c.url && (
+                  <a href={c.url} target="_blank" rel="noreferrer" className="shrink-0 text-xs text-sky-700 underline">
+                    open
+                  </a>
+                )}
+              </div>
+              <code className="mt-0.5 block font-mono text-[11px] text-slate-400">{c.service}</code>
+              <p className="mt-2 text-sm text-slate-600">{c.purpose}</p>
+              <p className="mt-2 text-xs text-slate-400">If it is down: {c.ifDown}</p>
+            </li>
+          ))}
+        </ul>
       </Section>
     </>
   );

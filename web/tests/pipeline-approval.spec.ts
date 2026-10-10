@@ -1,9 +1,9 @@
 /**
- * U143 in the console: a pipeline version whose custom step is given the recordings, or writes files, starts in development and moves to production
+ * U143 in the console: a pipeline version whose custom step is given the files, or writes files, starts in development and moves to production
  * only when a second person says so. A version is retired for good by its owner's approver or by whoever uploaded it.
  *
  * The claims these tests carry are about what reaches the person, on the live platform:
- *   - the version shows its stage, says which step is given the recordings and which writes files, who uploaded it, and that it runs only on development data until an approver of the owning department moves it to production;
+ *   - the version shows its stage, says which step is given the files and which writes files, who uploaded it, and that it runs only on development data until an approver of the owning department moves it to production;
  *   - the person who uploaded it is not offered the move, and a custodian of another department who tries is told why;
  *   - the owning department's approver moves it to production, the page then says by whom, and returning it puts it back in development;
  *   - retiring asks first, is final, and the page then says who retired it and offers nothing more.
@@ -24,7 +24,7 @@ steps:
   - name: inspect
     kind: script
     script: steps/inspect.py
-    recordings: true
+    reads_files: true
     writes_files: true
     memory_mb: 2048
   - name: decide
@@ -93,7 +93,7 @@ async function pipelineWithVersion(): Promise<string> {
   return id;
 }
 
-test.describe("U143: a version that is given the recordings starts in development", () => {
+test.describe("U143: a version that is given the files starts in development", () => {
   test("the uploader sees it waits and is not offered the move, the approver moves it to production and back, and retiring is final", async ({ page }) => {
     const id = await pipelineWithVersion();
 
@@ -101,9 +101,9 @@ test.describe("U143: a version that is given the recordings starts in developmen
     await page.goto(`/pipelines/${id}`);
     const panel = page.getByTestId("pipeline-lifecycle-1");
     await expect(page.getByTestId("pipeline-stage-1")).toHaveText("In development");
-    await expect(panel).toContainText("Step inspect reads the locked recordings and writes files, which become a new version that a reviewer checks before anyone can use it");
+    await expect(panel).toContainText("Step inspect reads the locked files and writes files, which become a new version that a reviewer checks before anyone can use it");
     await expect(panel).toContainText("an approver of Verification other than");
-    await expect(page.getByTestId("pipeline-version-1")).toContainText("reads the recordings, writes files, 2048 MB of memory");
+    await expect(page.getByTestId("pipeline-version-1")).toContainText("reads the files, writes files, 2048 MB of memory");
     await expect(panel.getByRole("button", { name: "Move to production" })).toHaveCount(0);
 
     await loginAs(page, ELSEWHERE);

@@ -1,0 +1,1265 @@
+/*
+ * The console's layout: a fixed dark sidebar that collapses, a 60px header, a trail above the page, cards, tables, pills, and a light and a dark theme.
+ *
+ * Everything hangs off `.ds`, the wrapper the shell draws around every screen. The fonts are fetched from Google Fonts when the page opens; without a
+ * connection the page falls back to the system fonts and is otherwise unchanged.
+ *
+ * Tailwind's utilities live in a cascade layer, and rules outside any layer always win over them. So the element resets below sit in the base layer: a screen
+ * that still styles its own links and buttons with utilities keeps doing so, and only the classes beginning `ds-` are decided here.
+ */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+
+.ds {
+  --blue: #2563eb;
+  --green: #16a34a;
+  --red: #dc2626;
+  --amber: #f59e0b;
+  --indigo: #6366f1;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.04);
+  --shadow-md: 0 2px 8px -2px rgb(0 0 0 / 0.08);
+  --sw: 260px;
+  font-family: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.ds[data-collapsed="true"] {
+  --sw: 76px;
+}
+.ds[data-theme="light"] {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --text: #0f172a;
+  --text2: #475569;
+  --border: #e5e7eb;
+  --search-bg: #f9fafb;
+  --hover: #f1f5f9;
+  --tint-blue: #eff4ff;
+  --tint-green: #ecfdf3;
+  --tint-amber: #fffbeb;
+  --tint-red: #fef2f2;
+  --tint-indigo: #eef2ff;
+  --tint-orange: #fff4ec;
+  --track: #e5e7eb;
+}
+.ds[data-theme="dark"] {
+  --bg: #0b0e14;
+  --surface: #12151c;
+  --text: #e5e9f0;
+  --text2: #9aa4b2;
+  --border: #232833;
+  --search-bg: #0f131a;
+  --hover: #1a1f2a;
+  --tint-blue: #16233f;
+  --tint-green: #10281b;
+  --tint-amber: #2e2410;
+  --tint-red: #2e1517;
+  --tint-indigo: #1d2040;
+  --tint-orange: #2e1d10;
+  --track: #2a3040;
+}
+.ds *,
+.ds *::before,
+.ds *::after {
+  box-sizing: border-box;
+}
+@layer base {
+  .ds button {
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+  }
+  .ds a {
+    color: inherit;
+    text-decoration: none;
+  }
+}
+.ds .mono {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+}
+.ds svg.i {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* The header and the trail are fixed, so anything scrolled into view (a link to a part of a page, a field that takes focus) stops below them, not under them. */
+html {
+  scroll-padding-top: 112px;
+}
+
+/* ---------------------------------------------------------------- sidebar: always dark */
+.ds-side {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: var(--sw);
+  background: #12151c;
+  color: #aeb8c9;
+  display: flex;
+  flex-direction: column;
+  z-index: 30;
+  transition: width 200ms ease;
+  border-right: 1px solid #1b2030;
+}
+.ds-brand {
+  height: 60px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 20px;
+  flex: none;
+  border-bottom: 1px solid #1b2030;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.ds-logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #2563eb, #6366f1);
+  color: #fff;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.ds-brand b {
+  display: block;
+  color: #fff;
+  font-weight: 600;
+  line-height: 1.1;
+}
+.ds-brand small {
+  display: block;
+  color: #64748b;
+  font-size: 11px;
+}
+.ds-nav {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  scrollbar-width: thin;
+  scrollbar-color: #2a3040 transparent;
+}
+.ds-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+  padding: 14px 12px 6px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.ds-nav a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: var(--radius-md);
+  font-size: 13.5px;
+  color: #aeb8c9;
+  transition: background 120ms ease, color 120ms ease;
+  white-space: nowrap;
+  position: relative;
+}
+.ds-nav a:hover {
+  background: #181d28;
+  color: #fff;
+}
+.ds-nav a[aria-current="page"] {
+  background: #1e2a44;
+  color: #fff;
+  font-weight: 500;
+}
+.ds-nav a svg {
+  width: 18px !important;
+  height: 18px !important;
+}
+.ds-nav .txt {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ds-badge {
+  background: #fef2f2;
+  color: #dc2626;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 4px;
+  padding: 1px 6px;
+  line-height: 16px;
+}
+.ds[data-collapsed="true"] .ds-brand {
+  padding: 0 24px;
+}
+.ds[data-collapsed="true"] .ds-brand div,
+.ds[data-collapsed="true"] .ds-nav .txt,
+.ds[data-collapsed="true"] .ds-nav .ds-badge,
+.ds[data-collapsed="true"] .ds-me .who,
+.ds[data-collapsed="true"] .ds-fold .lbl {
+  display: none;
+}
+.ds[data-collapsed="true"] .ds-label {
+  font-size: 0;
+  padding: 10px 0 0;
+  border-top: 1px solid #1b2030;
+  margin: 10px 8px 0;
+}
+.ds[data-collapsed="true"] .ds-nav a {
+  justify-content: center;
+  padding: 0;
+}
+.ds[data-collapsed="true"] .ds-nav a .ds-pip {
+  position: absolute;
+  top: 7px;
+  right: 14px;
+}
+.ds-foot {
+  flex: none;
+  padding: 12px;
+  border-top: 1px solid #1b2030;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ds-me {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px 8px 8px;
+  border-radius: 16px;
+  background: #181d28;
+  overflow: hidden;
+}
+.ds-me .who {
+  min-width: 0;
+}
+.ds-me .who b {
+  display: block;
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* The role is what the person can do here, so it is written out in full and wraps, never cut off with an ellipsis. */
+.ds-me .who small {
+  display: block;
+  color: #8b97ab;
+  font-size: 11px;
+  line-height: 1.35;
+}
+.ds-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  flex: none;
+  background: linear-gradient(135deg, #2563eb, #7c3aed);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  display: grid;
+  place-items: center;
+}
+.ds-fold {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  border: 1px solid #232833;
+  background: transparent;
+  color: #aeb8c9;
+  font-size: 12.5px;
+  transition: background 120ms ease;
+}
+.ds-fold:hover {
+  background: #181d28;
+  color: #fff;
+}
+.ds[data-collapsed="true"] .ds-fold svg {
+  transform: rotate(180deg);
+}
+
+/* ---------------------------------------------------------------- header and breadcrumb */
+.ds-header {
+  position: fixed;
+  top: 0;
+  right: 0;
+  left: var(--sw);
+  height: 60px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 24px;
+  z-index: 20;
+  transition: left 200ms ease;
+}
+.ds-search {
+  flex: 1;
+  max-width: 576px;
+  position: relative;
+}
+.ds-search svg {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #94a3b8;
+}
+.ds-search input {
+  width: 100%;
+  height: 38px;
+  padding: 0 64px 0 38px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--search-bg);
+  color: var(--text);
+  font: inherit;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.ds-search input:focus {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgb(37 99 235 / 0.15);
+}
+.ds-kbd {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--text2);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 6px;
+  padding: 1px 6px;
+}
+.ds-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.ds-iconbtn {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text2);
+  transition: background 120ms ease;
+}
+.ds-iconbtn:hover {
+  background: var(--hover);
+}
+.ds-reddot {
+  position: absolute;
+  top: 7px;
+  right: 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--red);
+  border: 2px solid var(--surface);
+  box-sizing: content-box;
+}
+/* the theme switch: a 44 x 24 pill, an 18px thumb that slides 20px */
+.ds-switch {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  border-radius: 999px;
+  border: 1px solid #d1d5db;
+  background: var(--surface);
+  padding: 0;
+}
+.ds[data-theme="dark"] .ds-switch {
+  border-color: #3b4254;
+}
+.ds-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--blue);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  transition: transform 200ms ease-in-out;
+}
+.ds[data-theme="dark"] .ds-thumb {
+  transform: translateX(20px);
+}
+.ds-thumb svg {
+  width: 11px;
+  height: 11px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ds-profile {
+  position: relative;
+}
+.ds-profilebtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 8px 0 4px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  transition: background 120ms ease;
+}
+.ds-profilebtn:hover {
+  background: var(--hover);
+}
+.ds-menu {
+  position: absolute;
+  right: 0;
+  top: 46px;
+  min-width: 260px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: 8px;
+  z-index: 40;
+}
+.ds-menu .head {
+  padding: 8px 10px 10px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+.ds-menu .head small {
+  display: block;
+  color: var(--text2);
+  font-size: 12px;
+}
+.ds-menu a,
+.ds-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  font-size: 13.5px;
+}
+.ds-menu a:hover,
+.ds-menu button:hover {
+  background: var(--hover);
+}
+.ds-crumbs {
+  margin-top: 60px;
+  margin-left: var(--sw);
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 24px;
+  font-size: 12.5px;
+  color: var(--text2);
+  transition: margin-left 200ms ease;
+}
+.ds-crumbs svg {
+  width: 14px;
+  height: 14px;
+  color: #94a3b8;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ds-crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.ds-crumbs a:hover {
+  color: var(--blue);
+}
+.ds-crumbs b {
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* ---------------------------------------------------------------- content */
+.ds-main {
+  margin-left: var(--sw);
+  transition: margin-left 200ms ease;
+}
+.ds-content {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 8px 24px 48px;
+}
+.ds-hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.ds-hero h1 {
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.25;
+  margin: 0;
+}
+.ds-hero p {
+  margin: 4px 0 0;
+  color: var(--text2);
+}
+.ds-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.ds-btn {
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 500;
+  font-size: 13.5px;
+  transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+.ds-btn:hover {
+  background: var(--hover);
+}
+.ds-btn.primary {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+.ds-btn.primary:hover {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+}
+.ds-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--tint-amber);
+  border: 1px solid rgb(245 158 11 / 0.35);
+  font-size: 13px;
+  font-weight: 500;
+}
+/* the status pulse dot: 8 x 8, amber, opacity 1.0 to 0.4 over 1.8s */
+.ds-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--amber);
+  animation: pulse-dot 1.8s ease-in-out infinite;
+  flex: none;
+}
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+.ds-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.ds-stats.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+a.ds-card {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+a.ds-card:hover {
+  box-shadow: var(--shadow-md);
+}
+.ds-stat.attention {
+  border-color: rgb(245 158 11 / 0.55);
+  background: var(--tint-amber);
+}
+.ds-stat .hint {
+  color: var(--text2);
+  font-size: 12px;
+  margin-top: 6px;
+}
+/* a panel that sits under the tiles, with its own title and a link to everything */
+.ds-panel {
+  margin-bottom: 16px;
+}
+.ds-panel .ds-cardhead a {
+  font-size: 13px;
+  color: var(--blue);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.ds-panel .ds-cardhead a:hover {
+  text-decoration: underline;
+}
+/* Where a dataset stands: a dot and a word, never a pill, because a pill in this list always means an access level. */
+.ds-state {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 3px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text2);
+}
+.ds-state::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--text2);
+}
+.ds-state.active::before {
+  background: var(--green);
+}
+.ds-state.registered::before {
+  background: var(--amber);
+}
+.ds-table td.act {
+  text-align: right;
+  white-space: nowrap;
+}
+.ds-banner a,
+.ds-panel .ds-pad a {
+  color: var(--blue);
+}
+.ds-table td a.mono:hover {
+  text-decoration: underline;
+}
+.ds-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 150ms ease, transform 150ms ease, border-color 150ms ease;
+}
+button.ds-card {
+  text-align: left;
+  width: 100%;
+}
+.ds-card.live:hover,
+button.ds-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: scale(1.01);
+}
+.ds-card[aria-pressed="true"] {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 1px var(--blue);
+}
+.ds-stat {
+  padding: 16px;
+}
+.ds-stat .top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.ds-ico {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+}
+.ds-ico.blue {
+  background: var(--tint-blue);
+  color: var(--blue);
+}
+.ds-ico.green {
+  background: var(--tint-green);
+  color: var(--green);
+}
+.ds-ico.red {
+  background: var(--tint-red);
+  color: var(--red);
+}
+.ds-ico.indigo {
+  background: var(--tint-indigo);
+  color: var(--indigo);
+}
+.ds-stat .val {
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.2;
+  margin-top: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.ds-stat .name {
+  color: var(--text2);
+  font-size: 13px;
+  margin-top: 2px;
+}
+.ds-trend {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.ds-trend svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ds-trend.up {
+  background: var(--tint-green);
+  color: var(--green);
+}
+.ds-trend.down {
+  background: var(--tint-red);
+  color: var(--red);
+}
+.ds-trend.flat {
+  background: var(--hover);
+  color: var(--text2);
+}
+.ds-pad {
+  padding: 18px;
+}
+.ds-cardhead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.ds-cardhead h2 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
+}
+.ds-cardhead p {
+  margin: 2px 0 0;
+  color: var(--text2);
+  font-size: 12.5px;
+}
+.ds-tablecard {
+  overflow: hidden;
+}
+.ds-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+/* Tight enough that the table fits beside the sidebar on a 1280 pixel laptop without scrolling sideways. */
+.ds-table th:first-child,
+.ds-table td:first-child {
+  padding-left: 16px;
+}
+.ds-table th:last-child,
+.ds-table td:last-child {
+  padding-right: 16px;
+}
+.ds-table td .mono {
+  overflow-wrap: anywhere;
+}
+.ds-table th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text2);
+  background: var(--search-bg);
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.ds-table td {
+  padding: 12px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.ds-table tbody tr {
+  transition: background 120ms ease;
+}
+.ds-table tbody tr:hover {
+  background: var(--hover);
+}
+.ds-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.ds-table .sub {
+  display: block;
+  font-size: 12px;
+  color: var(--text2);
+}
+.ds-pill {
+  display: inline-block;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 2px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+/* The console's own ramp, so a class means the same here as everywhere else: red is Raw and nothing else, then cooler as the data opens. */
+.ds-pill.RAW {
+  background: var(--tint-red);
+  color: var(--red);
+}
+.ds-pill.UNDER_REVIEW {
+  background: var(--tint-orange);
+  color: #c2410c;
+}
+.ds-pill.OPEN_FOR_ANNOTATION {
+  background: var(--tint-amber);
+  color: #b45309;
+}
+.ds-pill.OPEN_FOR_TRAINING {
+  background: var(--tint-blue);
+  color: var(--blue);
+}
+.ds-pill.PUBLISHED {
+  background: var(--tint-green);
+  color: var(--green);
+}
+.ds-pill.none {
+  background: var(--hover);
+  color: var(--text2);
+}
+/* What happened to a request or a result, which is not an access level: green is yes, amber is still waiting, red is no. */
+.ds-pill.ok {
+  background: var(--tint-green);
+  color: var(--green);
+}
+.ds-pill.wait {
+  background: var(--tint-amber);
+  color: #b45309;
+}
+.ds-pill.stop {
+  background: var(--tint-red);
+  color: var(--red);
+}
+.ds-pager {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  color: var(--text2);
+  font-size: 12.5px;
+}
+.ds-pager .btns {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+.ds-pager button {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 12.5px;
+}
+.ds-pager button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.ds-note {
+  padding: 28px 18px;
+  color: var(--text2);
+  text-align: center;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ds *,
+  .ds *::before,
+  .ds *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ---------------------------------------------------------------- the filter row and sortable headings */
+.ds-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--search-bg);
+}
+.ds-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text2);
+}
+.ds-field select {
+  height: 34px;
+  min-width: 130px;
+  padding: 0 8px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.ds-field select:focus {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgb(37 99 235 / 0.15);
+}
+.ds-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  font-size: 13.5px;
+  color: var(--text);
+}
+.ds-link {
+  height: 34px;
+  border: 0;
+  background: transparent;
+  color: var(--blue);
+  font-size: 13.5px;
+  text-decoration: underline;
+}
+.ds-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  font-weight: inherit;
+}
+.ds-sort:hover {
+  color: var(--text);
+}
+.ds-sort span {
+  color: #94a3b8;
+  font-size: 10px;
+}
+.ds-sort span.on {
+  color: var(--blue);
+}
+
+/* ---------------------------------------------------------------- what the current Datasets page shows, in this look */
+.ds-table .sub.warn {
+  color: #b45309;
+}
+.ds-marker {
+  display: block;
+  width: fit-content;
+  margin-top: 4px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--tint-amber);
+  color: #b45309;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.ds-pair {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ds-arrow {
+  color: #94a3b8;
+}
+.ds-expand > td {
+  background: var(--search-bg);
+  padding: 14px 16px 16px !important;
+}
+.ds-expand:hover {
+  background: transparent !important;
+}
+.ds-vtable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.ds-vtable th {
+  text-align: left;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text2);
+  padding: 4px 16px 6px 0;
+  white-space: nowrap;
+}
+.ds-vtable td {
+  padding: 8px 16px 8px 0;
+  border-top: 1px solid var(--border);
+  vertical-align: top;
+  white-space: nowrap;
+}
+.ds-acc.yes {
+  color: var(--green);
+}
+.ds-acc.wait {
+  color: #b45309;
+}
+.ds-acc.no {
+  color: var(--text2);
+}
+.ds-acc .sub {
+  display: block;
+  font-size: 12px;
+  color: var(--text2);
+}
+
+/* ---------------------------------------------------------------- what the old shell showed on every screen */
+.ds-org {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  font-size: 12px;
+  color: #aeb8c9;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.ds[data-collapsed="true"] .ds-org {
+  display: none;
+}
+.ds-purpose {
+  background: #3a2c10;
+  color: #fbbf24;
+  border-radius: 6px;
+  padding: 1px 7px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.ds-banner {
+  margin-bottom: 20px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgb(245 158 11 / 0.4);
+  background: var(--tint-amber);
+  color: var(--text);
+  font-size: 13.5px;
+}
+
+/* ---------------------------------------------------------------- the dark theme, for screens that still use Tailwind's colours
+ *
+ * Tailwind reads its colours from variables, so the light shades (the backgrounds, borders and quiet greys) are remapped once here and every screen
+ * follows. The darker shades are left alone as backgrounds, because a filled button with white text must stay filled; where they are used as text colour
+ * they are lightened by class instead. */
+.ds[data-theme="dark"] {
+  color-scheme: dark;
+  --color-slate-50: #0f131a;
+  --color-slate-100: #1a1f2a;
+  --color-slate-200: #232833;
+  --color-slate-300: #2f3646;
+  --color-slate-400: #7b8596;
+  --color-slate-500: #9aa4b2;
+  --color-slate-600: #aeb8c9;
+  --color-red-50: #2e1517;
+  --color-red-100: #3d1a1d;
+  --color-red-200: #5a2328;
+  --color-red-300: #7a2f35;
+  --color-amber-50: #2e2410;
+  --color-amber-100: #3a2c10;
+  --color-amber-200: #5a4415;
+  --color-amber-300: #7a5a1a;
+  --color-teal-50: #0f2b2a;
+  --color-teal-100: #12403d;
+  --color-teal-200: #1a5a56;
+  --color-teal-300: #237872;
+  --color-green-50: #10281b;
+  --color-green-100: #123423;
+  --color-green-200: #1b4a31;
+  --color-green-300: #246644;
+  --color-sky-50: #0f2536;
+  --color-sky-100: #12324a;
+  --color-sky-200: #1a4a6b;
+  --color-sky-300: #25688f;
+  --color-indigo-50: #1d2040;
+  --color-indigo-100: #25295a;
+  --color-indigo-200: #343a7a;
+  --color-indigo-300: #4a52a0;
+  --color-orange-50: #2e1d10;
+  --color-orange-100: #3d2512;
+  --color-orange-200: #5a3716;
+  --color-orange-300: #7a4b1c;
+  --color-emerald-50: #0f2b22;
+  --color-emerald-100: #123a2d;
+  --color-emerald-200: #1b5442;
+  --color-emerald-300: #247559;
+  --color-violet-50: #1f1a3a;
+  --color-violet-100: #2a2250;
+  --color-violet-200: #3d3270;
+  --color-violet-300: #54469a;
+  --color-lime-50: #1f2a0f;
+  --color-lime-100: #2b3a12;
+  --color-lime-200: #41561b;
+  --color-lime-300: #5c7a24;
+}
+.ds[data-theme="dark"] .bg-white,
+.ds[data-theme="dark"] .data-card {
+  background-color: var(--surface);
+}
+.ds[data-theme="dark"] .text-slate-700 {
+  color: #c3cbd8;
+}
+.ds[data-theme="dark"] .text-slate-800 {
+  color: #dbe0ea;
+}
+.ds[data-theme="dark"] .text-slate-900 {
+  color: #e5e9f0;
+}
+.ds[data-theme="dark"] .text-red-700 {
+  color: #f87171;
+}
+.ds[data-theme="dark"] .text-red-800 {
+  color: #fca5a5;
+}
+.ds[data-theme="dark"] .text-red-900 {
+  color: #fecaca;
+}
+.ds[data-theme="dark"] .text-amber-700 {
+  color: #fbbf24;
+}
+.ds[data-theme="dark"] .text-amber-800 {
+  color: #fcd34d;
+}
+.ds[data-theme="dark"] .text-amber-900 {
+  color: #fde68a;
+}
+.ds[data-theme="dark"] .text-teal-800 {
+  color: #5eead4;
+}
+.ds[data-theme="dark"] .text-teal-900 {
+  color: #99f6e4;
+}
+.ds[data-theme="dark"] .text-green-800 {
+  color: #86efac;
+}
+.ds[data-theme="dark"] .text-green-900 {
+  color: #bbf7d0;
+}
+.ds[data-theme="dark"] .text-sky-700 {
+  color: #38bdf8;
+}
+.ds[data-theme="dark"] .text-sky-900 {
+  color: #bae6fd;
+}
+.ds[data-theme="dark"] .text-blue-700 {
+  color: #60a5fa;
+}
+.ds[data-theme="dark"] .text-indigo-700 {
+  color: #a5b4fc;
+}
+.ds[data-theme="dark"] .text-indigo-800 {
+  color: #a5b4fc;
+}
+.ds[data-theme="dark"] .text-indigo-900 {
+  color: #c7d2fe;
+}
+.ds[data-theme="dark"] .text-orange-800 {
+  color: #fdba74;
+}
+.ds[data-theme="dark"] .text-orange-900 {
+  color: #fed7aa;
+}
+.ds[data-theme="dark"] .text-emerald-700 {
+  color: #34d399;
+}
+.ds[data-theme="dark"] .text-emerald-900 {
+  color: #a7f3d0;
+}
+.ds[data-theme="dark"] .text-violet-900 {
+  color: #ddd6fe;
+}
+.ds[data-theme="dark"] .text-lime-800 {
+  color: #bef264;
+}
+.ds[data-theme="dark"] .text-lime-900 {
+  color: #d9f99d;
+}
+
+/* ---------------------------------------------------------------- the organisation, named in the sidebar */
+.ds-orglabel {
+  color: #64748b;
+}
+
+/* ---------------------------------------------------------------- before anybody is signed in */
+.ds-publicbar {
+  height: 60px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.ds-publicbar b {
+  display: block;
+  font-weight: 600;
+  line-height: 1.1;
+}
+.ds-publicbar small {
+  display: block;
+  color: var(--text2);
+  font-size: 11px;
+}
+.ds-publicmain {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px;
+}

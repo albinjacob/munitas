@@ -107,7 +107,7 @@ export function UploadAgentVersion({ agentId }: { agentId: string }) {
           value={modelId}
           onChange={(e) => setModelId(e.target.value)}
           onBlur={() => setModelTouched(true)}
-          placeholder="e.g. gpt-4.1, or none if this code calls no model"
+          placeholder="For example gpt-4.1, or none if this code calls no model"
           className="mt-1.5 w-full max-w-md rounded border border-slate-300 px-3 py-1.5 text-sm"
         />
         {modelTouched && modelId.trim().length === 0 && (

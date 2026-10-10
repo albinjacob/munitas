@@ -10,7 +10,9 @@
 import { Link, useParams } from "react-router-dom";
 import { Failure, Loading, Section } from "../../components/states";
 import { CopyableHash } from "../../components/CopyableHash";
-import { usePipelineRun, type PipelineStep } from "../../api/pipeline";
+import { usePipelineRun } from "../../api/pipeline";
+import { RunDag, type RunGraphStep } from "../pipelines/RunDag";
+import { when } from "../../lib/when";
 
 /**
  * The steps a run takes, in order, named for the person watching rather than
@@ -28,24 +30,12 @@ import { usePipelineRun, type PipelineStep } from "../../api/pipeline";
  */
 const STEPS_BY_KIND: Record<string, { action: string; label: string }[]> = {
   deidentify: [
-    { action: "transcribe", label: "Transcribe the recordings" },
+    { action: "transcribe", label: "Transcribe the files" },
     { action: "detect", label: "Find the identifiers" },
     { action: "handoff", label: "Hand off for annotation" },
     { action: "redact", label: "Remove the identifiers" },
   ],
   count_records: [],
-};
-
-const STATUS_WORD: Record<PipelineStep["status"], string> = {
-  running: "Working",
-  succeeded: "Done",
-  failed: "Failed",
-};
-
-const STATUS_STYLE: Record<PipelineStep["status"], string> = {
-  running: "bg-sky-100 text-sky-900",
-  succeeded: "bg-green-100 text-green-900",
-  failed: "bg-red-100 text-red-900",
 };
 
 /** What this page calls the run, in its heading. Matches STEPS_BY_KIND's
@@ -55,46 +45,6 @@ const HEADING_BY_KIND: Record<string, string> = {
   deidentify: "De-identifying",
   count_records: "Counting records in",
 };
-
-function took(step: PipelineStep): string {
-  if (!step.ended_at) return "";
-  const seconds =
-    (new Date(step.ended_at).getTime() - new Date(step.started_at).getTime()) / 1000;
-  if (seconds < 90) return `${seconds.toFixed(0)}s`;
-  return `${(seconds / 60).toFixed(1)} min`;
-}
-
-function StepRow({
-  label,
-  step,
-}: {
-  label: string;
-  step: PipelineStep | undefined;
-}) {
-  return (
-    <li
-      className="flex items-center justify-between gap-4 border-b border-slate-100 py-2 last:border-b-0"
-      data-testid={`pipeline-step-${step ? step.action : "waiting"}`}
-    >
-      <span className="text-sm text-slate-800">{label}</span>
-      <span className="flex items-center gap-3">
-        {step && <span className="text-xs text-slate-500">{took(step)}</span>}
-        {step?.output_version && (
-          <Link to={`/versions/${step.output_version}`} data-testid={`pipeline-step-made-${step.action}`} className="text-xs text-sky-700 underline">
-            Open the version it made
-          </Link>
-        )}
-        <span
-          className={`rounded px-2 py-0.5 text-xs font-medium ${
-            step ? STATUS_STYLE[step.status] : "bg-slate-100 text-slate-600"
-          }`}
-        >
-          {step ? STATUS_WORD[step.status] : "Not started"}
-        </span>
-      </span>
-    </li>
-  );
-}
 
 export function PipelineRun() {
   const { pipelineRunId } = useParams();
@@ -117,17 +67,19 @@ export function PipelineRun() {
   // actually reports (already populated for 'dag' by pipeline_step_run)
   // rather than a static lookup, using the step's own name as its label
   // since nothing else knows what to call an operator's own step.
-  const steps =
+  const graph: RunGraphStep[] =
     run.pipeline_kind === "dag"
-      ? run.steps.map((s) => ({ action: s.action, label: s.action }))
-      : (STEPS_BY_KIND[run.pipeline_kind] ?? []);
+      ? run.dag?.length
+        ? run.dag.map((s) => ({ action: s.name, label: s.name, depends_on: s.depends_on }))
+        : run.steps.map((s) => ({ action: s.action, label: s.action, depends_on: [] }))
+      : (STEPS_BY_KIND[run.pipeline_kind] ?? []).map((s, i, all) => ({ ...s, depends_on: i ? [all[i - 1].action] : [] }));
   const heading =
     run.pipeline_kind === "dag" && run.pipeline_name
       ? `Running ${run.pipeline_name} against`
       : (HEADING_BY_KIND[run.pipeline_kind] ?? run.pipeline_kind);
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6">
       <div>
         <h1 className="text-xl font-semibold text-slate-900">
           {heading} {run.dataset}
@@ -162,7 +114,7 @@ export function PipelineRun() {
           <div>
             <dt className="text-slate-500">Started at</dt>
             <dd className="text-slate-900">
-              {new Date(run.started_at).toLocaleString()}
+              {when(run.started_at)}
             </dd>
           </div>
           <div>
@@ -187,13 +139,9 @@ export function PipelineRun() {
         </dl>
       </Section>
 
-      {steps.length > 0 && (
-        <Section title="Steps">
-          <ul>
-            {steps.map((s) => (
-              <StepRow key={s.action} label={s.label} step={byAction.get(s.action)} />
-            ))}
-          </ul>
+      {graph.length > 0 && (
+        <Section title="Steps" description="Each step, and the step it waits for. A step with no record yet has not started.">
+          <RunDag graph={graph} records={byAction} />
         </Section>
       )}
 

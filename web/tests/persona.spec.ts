@@ -30,13 +30,13 @@ test.describe("U11: the persona changes what the console says", () => {
     // A custodian is here to decide. That is the first thing on their page --
     // the section heading, not the stats card that also happens to repeat
     // its wording, which is why this checks the heading role specifically.
-    await loginAs(page, "cust-hartley");
+    await loginAs(page, "canary-custodian");
     await expect(
       page.getByRole("heading", { name: "Waiting for your decision" }),
     ).toBeVisible();
 
     // A researcher is here to get data, and is told how to ask for the rest.
-    await loginAs(page, "sam-researcher");
+    await loginAs(page, "canary-researcher");
     await expect(page.getByText("What you can read")).toBeVisible();
     expect(await page.getByText("Waiting for your decision").count()).toBe(0);
   });
@@ -44,7 +44,7 @@ test.describe("U11: the persona changes what the console says", () => {
 
 test.describe("U13: the administrator sees everything and reads nothing extra", () => {
   test("the services view lists every workload", async ({ page }) => {
-    await loginAs(page, "ops-priya");
+    await loginAs(page, "canary-admin");
     await page.goto("/services");
     for (const id of ["health-pipeline", "svc-trainer", "agent-triage-1"]) {
       await expect(page.getByTestId(`service-${id}`)).toBeVisible();
@@ -52,21 +52,21 @@ test.describe("U13: the administrator sees everything and reads nothing extra", 
   });
 
   test("the administrator is refused raw data by the policy engine", async () => {
-    // In Priya's own organisation. Any raw version would do for the class rule,
+    // In the administrator's own organisation. Any raw version would do for the class rule,
     // but one belonging to somebody else is refused for the tenant instead, and
     // the assertion below is specifically about the class.
-    const priya = await bearerFor("ops-priya");
+    const admin = await bearerFor("canary-admin");
     const versions = await fetch(
-      `${API}/dataset-versions?current_class=RAW&limit=1&tenant_id=health`,
-      { headers: priya },
+      `${API}/dataset-versions?current_class=RAW&limit=1&tenant_id=canary`,
+      { headers: admin },
     ).then((r) => r.json());
-    test.skip(!versions.length, "no RAW version exists in health");
+    test.skip(!versions.length, "no RAW version exists in canary");
 
     const response = await fetch(`${API}/credentials`, {
       method: "POST",
-      headers: { "content-type": "application/json", ...priya },
+      headers: { "content-type": "application/json", ...admin },
       body: JSON.stringify({
-        principal: "ops-priya",
+        principal: "canary-admin",
         principal_kind: "human",
         roles: ["platform_admin"],
         tenant_id: versions[0].tenant_id,
@@ -82,7 +82,7 @@ test.describe("U13: the administrator sees everything and reads nothing extra", 
 });
 
 test.describe("U14: the component map is complete", () => {
-  test("every Compose service appears on the home page", async ({ page }) => {
+  test("every Compose service appears on the Services page", async ({ page }) => {
     const compose = readFileSync(
       join(process.cwd(), "..", "docker-compose.yml"),
       "utf8",
@@ -99,13 +99,16 @@ test.describe("U14: the component map is complete", () => {
     );
     expect(declared.length).toBeGreaterThan(5);
 
-    await loginAs(page, "ops-priya");
+    await loginAs(page, "canary-admin");
+    // The map draws after the page loads, so wait for it before reading what it names.
+    await page.goto("/services");
+    await expect(page.getByTestId("component-map")).toBeVisible({ timeout: 20_000 });
     const mapped = await page
       .getByTestId("component-map")
       .locator("[data-service]")
       .evaluateAll((nodes) => nodes.map((n) => n.getAttribute("data-service")));
 
     const missing = declared.filter((s) => !mapped.includes(s));
-    expect(missing, `not on the home page: ${missing.join(", ")}`).toEqual([]);
+    expect(missing, `not on the Services page: ${missing.join(", ")}`).toEqual([]);
   });
 });

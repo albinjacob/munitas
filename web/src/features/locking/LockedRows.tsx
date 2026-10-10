@@ -5,6 +5,7 @@
  * as erased, and everything else about their row still reads: erasure removed a key, not a row.
  */
 
+import { useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useLocking, usePersonRows } from "../../api/locking";
 import { Failure, Loading, Section } from "../../components/states";
@@ -29,12 +30,15 @@ function Cell({ value }: { value: unknown }) {
 export function LockedRows() {
   const { versionId } = useParams();
   const locking = useLocking(versionId);
-  const rows = usePersonRows(versionId);
+  // The place each page started, so a person can go back as well as on: the first is the start of the table.
+  const [places, setPlaces] = useState<(string | null)[]>([null]);
+  const pageSize = useRef(0);
+  const rows = usePersonRows(versionId, places[places.length - 1]);
 
   if (rows.isLoading || locking.isLoading) return <Loading what="the rows" />;
   if (rows.error) {
     return (
-      <div className="p-6">
+      <div>
         <Link className="text-sm text-blue-700 hover:underline" to={`/versions/${versionId}`}>
           Back to this version
         </Link>
@@ -53,10 +57,14 @@ export function LockedRows() {
     (k) => !(k === "person_code" && replaced.length > 0),
   );
   const columns = [...names.filter((n) => data.rows.length === 0 || n in data.rows[0]), ...extra];
-  const total = locking.data?.records ?? data.count;
+  const total = data.total ?? locking.data?.records ?? data.count;
+  const page = places.length;
+  if (page === 1 && data.count) pageSize.current = data.count;
+  const firstRow = (page - 1) * pageSize.current + 1;
+  const paged = data.next !== null || page > 1;
 
   return (
-    <div className="p-6">
+    <div>
       <Link className="text-sm text-blue-700 hover:underline" to={`/versions/${versionId}`}>
         Back to this version
       </Link>
@@ -72,12 +80,39 @@ export function LockedRows() {
           }`}
         >
           {data.mode === "full"
-            ? `You answer for this data, so all ${data.count} row${data.count === 1 ? "" : "s"} are shown.`
+            ? paged
+              ? `You answer for this data, so you can read all ${total.toLocaleString()} rows, ${data.count.toLocaleString()} at a time. Page ${page}.`
+              : `You answer for this data, so all ${data.count} row${data.count === 1 ? "" : "s"} are shown.`
             : `Your lease opens ${data.count} of ${total} rows. They are the same rows every time, and a later lease opens the same ones.`}
         </p>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm" data-testid="locked-rows">
-            <thead className="border-b border-slate-200 text-left text-slate-500">
+        {paged && (
+          <div className="mb-3 flex items-center gap-3 text-sm" data-testid="locked-rows-pager">
+            <button
+              type="button"
+              data-testid="locked-rows-previous"
+              disabled={page === 1}
+              onClick={() => setPlaces((p) => p.slice(0, -1))}
+              className="rounded border border-slate-300 px-3 py-1 disabled:opacity-40"
+            >
+              Previous page
+            </button>
+            <span>
+              Rows {firstRow.toLocaleString()} to {(firstRow + data.count - 1).toLocaleString()} of {total.toLocaleString()}
+            </span>
+            <button
+              type="button"
+              data-testid="locked-rows-next"
+              disabled={!data.next}
+              onClick={() => data.next && setPlaces((p) => [...p, data.next])}
+              className="rounded border border-slate-300 px-3 py-1 disabled:opacity-40"
+            >
+              Next page
+            </button>
+          </div>
+        )}
+        <div className="data-card">
+          <table className="data-table" data-testid="locked-rows">
+            <thead>
               <tr>
                 {columns.map((c) => (
                   <th key={c} className="py-2 pr-4 font-medium">

@@ -1,5 +1,5 @@
 /**
- * Sending one recording to the platform in parts, so a poor connection costs one part and not the whole file.
+ * Sending one file to the platform in parts, so a poor connection costs one part and not the whole file.
  *
  * The file is opened as an upload (named, sized and given to a patient), sent a part at a time, and completed. A part that fails because the
  * connection did is sent again a few times with a growing wait, and when it still fails the upload is paused, not lost: asking again carries on from
@@ -9,13 +9,13 @@
 
 import { ApiError } from "../../api/client";
 import {
-  completeRecordingUpload,
-  openRecordingUpload,
-  recordingUploadStatus,
-  sendRecordingPart,
+  completeFileUpload,
+  openFileUpload,
+  fileUploadStatus,
+  sendFilePart,
   type FinishedUpload,
   type UploadSession,
-} from "../../api/recordings";
+} from "../../api/files";
 
 export interface Progress {
   state: "waiting" | "sending" | "paused" | "locked" | "refused";
@@ -38,7 +38,7 @@ export interface UploadJob {
 const DEFAULT_WAITS = [1000, 2000, 4000, 8000];
 
 function slot(datasetId: string, file: File): string {
-  return `munitas-recording-upload:${datasetId}:${file.name}:${file.size}`;
+  return `munitas-file-upload:${datasetId}:${file.name}:${file.size}`;
 }
 
 function remembered(key: string): string | null {
@@ -70,13 +70,13 @@ async function session(job: UploadJob, key: string): Promise<UploadSession> {
   const known = remembered(key);
   if (known) {
     try {
-      const existing = await recordingUploadStatus(known);
+      const existing = await fileUploadStatus(known);
       if (existing.status === "open" && existing.size_bytes === job.file.size) return existing;
     } catch {
       // Gone, or not this person's: open a new one.
     }
   }
-  const opened = await openRecordingUpload(job.datasetId, {
+  const opened = await openFileUpload(job.datasetId, {
     file_name: job.file.name,
     size_bytes: job.file.size,
     person_kind: job.personKind,
@@ -87,7 +87,7 @@ async function session(job: UploadJob, key: string): Promise<UploadSession> {
 }
 
 /** Sends the file and returns what the platform kept. Throws a PausedUpload when only the connection is to blame. */
-export async function uploadRecording(job: UploadJob): Promise<FinishedUpload> {
+export async function uploadFile(job: UploadJob): Promise<FinishedUpload> {
   const waits = job.waits ?? DEFAULT_WAITS;
   const key = slot(job.datasetId, job.file);
   let up: UploadSession;
@@ -104,7 +104,7 @@ export async function uploadRecording(job: UploadJob): Promise<FinishedUpload> {
     const bytes = job.file.slice((n - 1) * up.part_bytes, Math.min(job.file.size, n * up.part_bytes));
     for (let attempt = 0; ; attempt += 1) {
       try {
-        await sendRecordingPart(up.id, n, bytes);
+        await sendFilePart(up.id, n, bytes);
         break;
       } catch (error) {
         if (!worthRetrying(error)) throw error;
@@ -118,13 +118,13 @@ export async function uploadRecording(job: UploadJob): Promise<FinishedUpload> {
 
   for (let attempt = 0; ; attempt += 1) {
     try {
-      const done = await completeRecordingUpload(up.id);
+      const done = await completeFileUpload(up.id);
       remember(key, null);
       return done;
     } catch (error) {
       // A completion that reached the platform but whose answer was lost: ask, and take what it kept.
       try {
-        const now = await recordingUploadStatus(up.id);
+        const now = await fileUploadStatus(up.id);
         if (now.status === "complete") {
           remember(key, null);
           return { id: up.id, source_id: "", file_name: up.file_name, stored_bytes: 0, facts: {} };
@@ -141,7 +141,7 @@ export async function uploadRecording(job: UploadJob): Promise<FinishedUpload> {
 
 export class PausedUpload extends Error {}
 
-// The manifest: which patient each recording is about ---------------------------------------------------------------------------------------
+// The manifest: which patient each file is about ---------------------------------------------------------------------------------------
 
 /** Splits one line of a CSV into its fields, honouring double quotes. */
 function fields(line: string): string[] {
@@ -170,7 +170,7 @@ export const AUDIO = ".wav";
 export const ANSWER_KEY = ".truth.json";
 
 export interface Plan {
-  /** The patient identifier for each file to send, by file name. An answer key takes the person of the recording it is named after. */
+  /** The person identifier for each file to send, by file name. An answer key takes the person of the file it is named after. */
   people: Map<string, string>;
   problems: string[];
 }
@@ -186,7 +186,7 @@ export function plan(manifestText: string, files: { name: string; size: number }
   const fileAt = header.indexOf("file");
   const personAt = header.indexOf("person");
   const rows = new Map<string, string>();
-  if (!lines.length) problems.push("The manifest is empty. It needs a header row with the columns file and person, then one row for each recording.");
+  if (!lines.length) problems.push("The manifest is empty. It needs a header row with the columns file and person, then one row for each file.");
   else if (fileAt < 0 || personAt < 0) problems.push("The manifest's first row must name two columns: file and person.");
   else {
     lines.slice(1).forEach((line, i) => {
@@ -194,7 +194,7 @@ export function plan(manifestText: string, files: { name: string; size: number }
       const name = cells[fileAt] ?? "";
       const person = cells[personAt] ?? "";
       if (!name) problems.push(`Manifest row ${i + 2} names no file.`);
-      else if (!person) problems.push(`${name} names no person in the manifest, and a recording is locked to one person.`);
+      else if (!person) problems.push(`${name} names no person in the manifest, and a file is locked to one person.`);
       else if (rows.has(name)) problems.push(`${name} appears more than once in the manifest.`);
       else rows.set(name, person);
     });
@@ -208,11 +208,11 @@ export function plan(manifestText: string, files: { name: string; size: number }
       if (person) people.set(f.name, person);
       else if (lines.length) problems.push(`${f.name} is not in the manifest, so nobody is named as the person it is about.`);
     } else if (f.name.endsWith(ANSWER_KEY)) {
-      const recording = f.name.slice(0, -ANSWER_KEY.length) + AUDIO;
-      const person = rows.get(recording);
-      if (person && chosen.has(recording)) people.set(f.name, person);
-      else problems.push(`${f.name} is an answer key, and its recording ${recording} is not among the files chosen or not in the manifest.`);
-    } else problems.push(`${f.name} is neither a recording (${AUDIO}) nor an answer key (${ANSWER_KEY}).`);
+      const file = f.name.slice(0, -ANSWER_KEY.length) + AUDIO;
+      const person = rows.get(file);
+      if (person && chosen.has(file)) people.set(f.name, person);
+      else problems.push(`${f.name} is an answer key, and its file ${file} is not among the files chosen or not in the manifest.`);
+    } else problems.push(`${f.name} is neither a file (${AUDIO}) nor an answer key (${ANSWER_KEY}).`);
   }
   for (const name of rows.keys()) {
     if (!chosen.has(name)) problems.push(`${name} is in the manifest, and the file was not chosen.`);

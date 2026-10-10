@@ -363,7 +363,7 @@ function AskForm({ holdId, done }: { holdId: string; done: () => void }) {
           disabled={!ready || ask.isPending}
           className="rounded bg-slate-800 px-3 py-1.5 text-sm font-medium text-white disabled:bg-slate-300"
         >
-          {ask.isPending ? "Recording" : "Record the request"}
+          {ask.isPending ? "File" : "Record the request"}
         </button>
         <button type="button" onClick={done} className="text-sm text-slate-600 underline">Cancel</button>
       </div>

@@ -12,7 +12,7 @@
  */
 
 import { expect, test } from "@playwright/test";
-import { actingHeaders, bearerFor, loginAs } from "./auth-helpers";
+import { EMAIL_BY_DIRECTORY_ID, actingHeaders, bearerFor, loginAs } from "./auth-helpers";
 import { CLASS_LABEL } from "../src/api/types";
 import { API_BASE } from "../config/ports";
 
@@ -26,7 +26,7 @@ const API = API_BASE;
  * questions. It used to pass only because there was one tenant, and it started
  * failing the moment verification moved into its own, which is the test working.
  */
-const TENANT = "health";
+const TENANT = "canary";
 
 /**
  * Every route is behind a real login now, so each test signs in first. The
@@ -35,7 +35,7 @@ const TENANT = "health";
  * look at all of it.
  */
 test.beforeEach(async ({ page }) => {
-  await loginAs(page, "ops-priya");
+  await loginAs(page, "canary-admin");
 });
 
 // Every read endpoint now requires a real session and answers only for the
@@ -45,10 +45,10 @@ test.beforeEach(async ({ page }) => {
 // tenant it is reading. Cached rather than logged in on every call, since a
 // fresh Kratos login per assertion would make this suite far slower for no
 // benefit -- the identity is fixed for the whole file.
-let healthAuthPromise: Promise<Record<string, string>> | null = null;
-function healthAuth(): Promise<Record<string, string>> {
-  healthAuthPromise ??= bearerFor("ops-priya");
-  return healthAuthPromise;
+let adminAuthPromise: Promise<Record<string, string>> | null = null;
+function adminAuth(): Promise<Record<string, string>> {
+  adminAuthPromise ??= bearerFor("canary-admin");
+  return adminAuthPromise;
 }
 let canaryAuthPromise: Promise<Record<string, string>> | null = null;
 function canaryAuth(): Promise<Record<string, string>> {
@@ -57,9 +57,22 @@ function canaryAuth(): Promise<Record<string, string>> {
 }
 
 async function api<T>(path: string, headers?: Record<string, string>): Promise<T> {
-  const response = await fetch(API + path, { headers: headers ?? (await healthAuth()) });
+  const response = await fetch(API + path, { headers: headers ?? (await adminAuth()) });
   if (!response.ok) throw new Error(`${path} returned ${response.status}`);
   return response.json() as Promise<T>;
+}
+
+/**
+ * The first of these versions that has nothing locked in it, so asking to read the whole of it is worth something: the platform's own answer
+ * (`/readability`) says so. A version of locked files has no such way of asking, by design, and a test that took whichever version happened to be newest
+ * would meet one the day the suite before it made one.
+ */
+async function firstPlain<T extends { dataset_version_id: string }>(versions: T[]): Promise<T | undefined> {
+  for (const v of versions) {
+    const response = await fetch(`${API}/dataset-versions/${v.dataset_version_id}/readability`, { headers: await adminAuth() });
+    if (response.ok && ((await response.json()) as { shape: string }).shape === "plain") return v;
+  }
+  return undefined;
 }
 
 /**
@@ -92,9 +105,11 @@ interface VersionRow {
 
 test.describe("U1: the console renders real platform state", () => {
   test("overview counts match the API", async ({ page }) => {
-    const summary = await api<{ datasets: number; versions: number; denials: number }>(
+    const summary = await api<{ versions: number; denials: number }>(
       `/summary?tenant_id=${TENANT}`,
     );
+    // The datasets tile counts what the Datasets page lists by default, which leaves deleted datasets out and names how many there are.
+    const datasets = await api<{ total: number; deleted: number }>(`/datasets?limit=1&tenant_id=${TENANT}`, await canaryAuth());
     await page.goto("/");
 
     // Wait for content that only exists once the data has loaded. An earlier
@@ -106,9 +121,10 @@ test.describe("U1: the console renders real platform state", () => {
     // Compare the rendered figures with a fresh call, so a cached or invented
     // number fails rather than looking plausible.
     const body = await page.textContent("main");
-    expect(body).toContain(String(summary.datasets));
-    expect(body).toContain(String(summary.versions));
-    expect(body).toContain(String(summary.denials));
+    expect(body).toContain(datasets.total.toLocaleString("en-US"));
+    if (datasets.deleted > 0) expect(body).toContain(`${datasets.deleted} deleted, record kept`);
+    expect(body).toContain(summary.versions.toLocaleString("en-US"));
+    expect(body).toContain(summary.denials.toLocaleString("en-US"));
   });
 
   test("version detail matches the API for the same version", async ({ page }) => {
@@ -173,10 +189,14 @@ test.describe("U3: denials are visible by default", () => {
     // view would not be the one this test happens to check for -- the
     // newest-first sort both this fetch and the page itself use means the
     // single most recent denial is always on page 1, filtered or not.
+    // Makes up its own denial, newest of all: a researcher asks for the audit evidence, which only the privacy auditor and the data protection officer may
+    // read, so the platform refuses and records it. Without this the test depends on whatever happened to be the newest decisions.
+    const refused = await fetch(`${API}/audit/locked-columns`, { headers: await bearerFor("canary-researcher") });
+    expect(refused.status).toBe(403);
     const { decisions } = await api<{ decisions: { allowed: boolean; reasons: string[] }[] }>(
       `/access-decisions?limit=1&allowed=false`,
     );
-    test.skip(!decisions.length, "no denials recorded yet; run verify/v4_class_enforced.py");
+    expect(decisions.length).toBeGreaterThan(0);
     const denial = decisions[0];
 
     await page.goto("/audit");
@@ -209,9 +229,9 @@ test.describe("U6: identity is honestly labelled", () => {
     // Choosing and switching are covered by U10. This asserts the narrower
     // thing: whichever route you are on, the console says whose name your
     // requests would carry.
-    await expect(page.getByTestId("current-persona")).toContainText("Priya");
+    await expect(page.getByTestId("current-persona")).toContainText("Canary administrator");
     await page.goto("/audit");
-    await expect(page.getByTestId("current-persona")).toContainText("Priya");
+    await expect(page.getByTestId("current-persona")).toContainText("Canary administrator");
   });
 
   test("and which organisation you are seeing, on every route", async ({ page }) => {
@@ -230,7 +250,7 @@ test.describe("U6: identity is honestly labelled", () => {
     page,
   }) => {
     await page.goto("/");
-    // Priya holds two. Both are named rather than the first one standing in for
+    // The administrator holds two. Both are named rather than the first one standing in for
     // the rest, because the second is why the platform screens are reachable.
     await expect(page.getByTestId("current-roles")).toContainText(
       "Platform administrator",
@@ -254,11 +274,11 @@ test.describe("U34: a decision does not disappear once it is made", () => {
     // exactly: the console now paginates this list, so only page 1 is on
     // screen at once, not every decision Cardiology has ever made.
     const { lease_requests: decided } = await api<{ lease_requests: { state: string; decided_by: string | null }[] }>(
-      `/lease-requests?custodian=cust-hartley&tenant_id=${TENANT}&exclude_pending=true&limit=15`,
+      `/lease-requests?custodian=canary-custodian&tenant_id=${TENANT}&exclude_pending=true&limit=15`,
     );
     test.skip(!decided.length, "nothing has been decided in Cardiology yet");
 
-    await loginAs(page, "cust-hartley");
+    await loginAs(page, "canary-custodian");
 
     const list = page.getByTestId("decided-requests");
     await expect(list).toBeVisible();
@@ -280,18 +300,20 @@ test.describe("U28: a deep link cannot cross organisations", () => {
     // on the way past, so they showed a version's dataset name, class and
     // release history regardless of who owned it, on a screen that tells you on
     // every route that you see only your own organisation's data.
-    const canary = await api<{ dataset_version_id: string; dataset_name: string }[]>(
-      "/dataset-versions?limit=1&tenant_id=canary",
-      await canaryAuth(),
+    // The one place a test needs an organisation other than the test one: the person looking is in canary, and the version is somebody else's. It is read
+    // (never written) from health, which every install has, with the health administrator's own session.
+    const foreign = await api<{ dataset_version_id: string; dataset_name: string }[]>(
+      "/dataset-versions?limit=1&tenant_id=health",
+      await bearerFor("ops-priya"),
     );
-    test.skip(!canary.length, "the canary organisation holds no versions");
+    expect(foreign.length, "another organisation (health) holds a version to point a link at").toBeGreaterThan(0);
 
-    await page.goto(`/versions/${canary[0].dataset_version_id}`);
+    await page.goto(`/versions/${foreign[0].dataset_version_id}`);
 
     await expect(page.getByTestId("failure")).toBeVisible();
     // And specifically, nothing about the version leaked onto the page first.
     await expect(page.getByTestId("sealed-class")).toHaveCount(0);
-    await expect(page.locator("main")).not.toContainText(canary[0].dataset_name);
+    await expect(page.locator("main")).not.toContainText(foreign[0].dataset_name);
   });
 });
 
@@ -340,7 +362,7 @@ test.describe("U35: a grant names the version, not just the dataset", () => {
   test("the custodian's queue says which version and how sensitive", async ({
     page,
   }) => {
-    // Access is leased against one version. Two versions of the same recordings
+    // Access is leased against one version. Two versions of the same files
     // can sit at different sensitivities, because one went through
     // de-identification and the other did not, so a queue row naming only the
     // dataset asked a custodian to approve something whose shape was off screen.
@@ -354,20 +376,19 @@ test.describe("U35: a grant names the version, not just the dataset", () => {
     const versions = await api<
       { dataset_version_id: string; dataset_name: string }[]
     >(`/dataset-versions?tenant_id=${TENANT}&limit=200`);
-    const audio = versions.find((v) => v.dataset_name === "consultation-audio");
-    test.skip(!audio, "the health organisation holds no consultation-audio");
+    // The newest version with nothing locked in it, which the checks that fill the organisation make all the time.
+    const audio = await firstPlain(versions);
+    expect(audio, "the organisation holds a version with nothing locked in it to ask for").toBeTruthy();
 
-    // A workload asking for raw audio, which is what the pipeline's trainer
-    // legitimately does, so the row reads as real work rather than as fixture.
-    // Deliberately not the version U36 asks for, so the two do not collide.
+    // A training job asking for it, which is what the pipeline's trainer legitimately does, so the row reads as real work rather than as fixture.
     const created = await post<{ id: string }>("/leases/requests", {
       tenant_id: TENANT,
-      principal: "svc-trainer",
+      principal: "canary-trainer",
       dataset_version_id: audio!.dataset_version_id,
       purpose: `queue rendering check ${Date.now()}`,
       justification: "asserting the queue names the version and its sensitivity",
       ttl_hours: 4,
-    }, await bearerFor("eng-devi"));
+    }, await bearerFor("canary-engineer"));
 
     const { lease_requests: pending } = await api<{
       lease_requests: {
@@ -403,11 +424,11 @@ test.describe("U35: a grant names the version, not just the dataset", () => {
     page,
   }) => {
     const { leases } = await api<{ leases: { version: number | null }[] }>(
-      `/leases?principal=sam-researcher&tenant_id=${TENANT}`,
+      `/leases?principal=canary-researcher&tenant_id=${TENANT}`,
     );
     test.skip(!leases.length, "Sam holds no access");
 
-    await loginAs(page, "sam-researcher");
+    await loginAs(page, "canary-researcher");
 
     const list = page.getByTestId("my-access");
     await expect(list).toBeVisible();
@@ -433,17 +454,12 @@ test.describe("U36: a researcher can ask, and the ask reaches a custodian", () =
     // they hold a lease on shows what they were granted instead of the form,
     // correctly, and a test aimed at it would be asserting the wrong screen.
     const held = await api<{ leases: { dataset_version_id: string; active: boolean }[] }>(
-      `/leases?principal=sam-researcher&tenant_id=${TENANT}`,
+      `/leases?principal=canary-researcher&tenant_id=${TENANT}`,
     ).then(({ leases }) =>
       new Set(leases.filter((r) => r.active).map((r) => r.dataset_version_id)),
     );
-    const target = versions.find(
-      (v) => v.current_class !== "PUBLISHED" && !held.has(v.dataset_version_id),
-    );
-    test.skip(
-      !target,
-      "nothing in the health organisation is both restricted and unheld by Sam",
-    );
+    const target = await firstPlain(versions.filter((v) => v.current_class !== "PUBLISHED" && !held.has(v.dataset_version_id)));
+    expect(target, "the organisation holds a restricted version with nothing locked in it that the researcher does not hold").toBeTruthy();
 
     const { lease_requests: before } = await api<{
       lease_requests: { principal: string; dataset_version_id: string }[];
@@ -451,7 +467,7 @@ test.describe("U36: a researcher can ask, and the ask reaches a custodian", () =
     const already = before.some(
       (r) =>
         r.dataset_version_id === target!.dataset_version_id &&
-        r.principal === "sam-researcher",
+        r.principal === "canary-researcher",
     );
     // Declared as a skip rather than passing on a shorter path.
     //
@@ -466,7 +482,7 @@ test.describe("U36: a researcher can ask, and the ask reaches a custodian", () =
       "Sam already has a request waiting on this version; clear it to run the submit path again",
     );
 
-    await loginAs(page, "sam-researcher");
+    await loginAs(page, "canary-researcher");
     await page.goto(`/versions/${target!.dataset_version_id}`);
 
     await expect(page.getByTestId("request-access")).toBeVisible();
@@ -489,7 +505,7 @@ test.describe("U36: a researcher can ask, and the ask reaches a custodian", () =
     }>(`/lease-requests?tenant_id=${TENANT}&state=pending`);
     const created = after.find((r) => r.purpose === purpose);
     expect(created, "the request was recorded").toBeTruthy();
-    expect(created!.principal).toBe("sam-researcher");
+    expect(created!.principal).toBe("canary-researcher");
 
     // And it landed in the queue of whoever owns that data, which is the whole
     // point. A request filed against nobody is indistinguishable from a request
@@ -683,7 +699,7 @@ test.describe("U37: bringing data in through the console", () => {
       { person: "canary-custodian", datasets: true, agents: false, pipelines: false },
       { person: "canary-researcher", datasets: false, agents: false, pipelines: false },
       { person: "canary-dpo", datasets: false, agents: false, pipelines: false },
-      { person: "ops-priya", datasets: false, agents: false, pipelines: false },
+      { person: "canary-admin", datasets: false, agents: false, pipelines: false },
     ];
     for (const c of cases) {
       await loginAs(page, c.person);
@@ -1197,7 +1213,9 @@ async function pendingGate(): Promise<GateRow | null> {
   const page = await api<{ gate_decisions: GateRow[] }>(
     `/gate-decisions?tenant_id=${TENANT}`,
   );
-  return page.gate_decisions.find((r) => r.state === "pending") ?? null;
+  // Waiting for a decision, and started by somebody who can sign in: the checks that fill the organisation also make up people who have no login, and a
+  // test cannot act as one of them.
+  return page.gate_decisions.find((r) => r.state === "pending" && (r.triggered_by === null || r.triggered_by in EMAIL_BY_DIRECTORY_ID)) ?? null;
 }
 
 interface ActionRunRow {
@@ -1249,7 +1267,7 @@ test.describe("U4: whoever started a run cannot clear it", () => {
     const gate = await pendingGate();
     test.skip(
       gate === null,
-      "no de-identification result is waiting on a decision in the health tenant",
+      "no de-identification result is waiting on a decision in the test organisation",
     );
     test.skip(
       gate!.triggered_by === null,
@@ -1274,7 +1292,7 @@ test.describe("U5: a gate refusal explains itself", () => {
     const gate = await pendingGate();
     test.skip(
       gate === null,
-      "no de-identification result is waiting on a decision in the health tenant",
+      "no de-identification result is waiting on a decision in the test organisation",
     );
 
     await page.goto(`/gates/${gate!.id}`);
@@ -1282,7 +1300,7 @@ test.describe("U5: a gate refusal explains itself", () => {
     // The verdict alone is not an explanation. Whatever the machine concluded,
     // its own words for why have to be visible.
     await expect(page.getByTestId("gate-recommendation")).toContainText(
-      gate!.recommendation_reason,
+      new RegExp(gate!.recommendation_reason.trim().replace(/[.!?]$/, "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"),
     );
   });
 });

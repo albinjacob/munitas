@@ -21,6 +21,8 @@ export interface RoleHeld {
   label: string;
   role: string;
   approved_by: string;
+  /** When it was approved, as a date and a time: a decision on a screen says when it was made. */
+  created_at: string;
   expires_at: string;
   /** Null until somebody has confirmed it is still needed. */
   attested_at: string | null;

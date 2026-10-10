@@ -87,13 +87,13 @@ test.describe("U17: the roles page matches the policy", () => {
 
 test.describe("U19: custodian scope is visible", () => {
   test("two custodians exist in different departments", async () => {
-    // /directory requires a real session (platform/api/app/read_models.py's
-    // list_directory), but is not scoped to the caller's own tenant, so any
-    // seeded identity can read it -- canary-engineer is just a valid login,
-    // not a claim about who this data belongs to.
+    // /directory requires a real session and gives a person their own organisation
+    // only. The platform administrator runs the platform across organisations, so
+    // canary-admin is offered the live organisations' people, which is where two
+    // custodians of different departments are to be found.
     const directory = await get<DirectoryEntry[]>(
       "/directory?kind=human",
-      await bearerFor("canary-engineer"),
+      await bearerFor("canary-admin"),
     );
     const departments = directory
       .filter((d) => d.roles.includes("data_custodian") && d.department_name)

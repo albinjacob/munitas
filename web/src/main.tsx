@@ -5,6 +5,7 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App.tsx";
 import { IdentityProvider } from "./identity/IdentityContext";
 import "./index.css";
+import { loadRoleLabels } from "./api/roles";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -21,14 +22,17 @@ const queryClient = new QueryClient({
   },
 });
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <IdentityProvider>
-        <BrowserRouter>
-          <App />
-        </BrowserRouter>
-      </IdentityProvider>
-    </QueryClientProvider>
-  </StrictMode>,
+// The role names come from the platform's policy, so they are read before anything is drawn.
+void loadRoleLabels().then(() =>
+  createRoot(document.getElementById("root")!).render(
+    <StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <IdentityProvider>
+          <BrowserRouter>
+            <App />
+          </BrowserRouter>
+        </IdentityProvider>
+      </QueryClientProvider>
+    </StrictMode>,
+  ),
 );

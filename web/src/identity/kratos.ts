@@ -37,7 +37,7 @@ export interface LoginFlow {
 export class LoginFailed extends Error {
   readonly flow: LoginFlow;
   constructor(flow: LoginFlow) {
-    const messages = allMessages(flow).join("; ") || "sign-in failed";
+    const messages = allMessages(flow).join(" ") || "Sign-in failed. Check your details and try again.";
     super(messages);
     this.flow = flow;
   }

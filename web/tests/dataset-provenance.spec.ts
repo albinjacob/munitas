@@ -33,7 +33,7 @@ test.describe("U80: where a dataset came from, on the list", () => {
     const row = page.locator(`[data-dataset="${corrected!.name}"]`);
 
     await expect(row.getByTestId("dataset-provenance")).toHaveText(
-      "Collected here, regulated. Licence cc-by-nc-sa-3.0: may not be shared outside.",
+      "Collected by this organisation, regulated. Licence cc-by-nc-sa-3.0: may not be shared outside.",
     );
     await expect(row.getByTestId("dataset-provenance-corrected")).toHaveText(
       /^Registered as "Already public"\. Changed on .+, when its licence was read\.$/,
@@ -52,7 +52,7 @@ test.describe("U80: where a dataset came from, on the list", () => {
     await page.getByTestId("dataset-search").fill(plain!.name);
     const row = page.locator(`[data-dataset="${plain!.name}"]`);
 
-    await expect(row.getByTestId("dataset-provenance")).toHaveText("Collected here, regulated.");
+    await expect(row.getByTestId("dataset-provenance")).toHaveText("Collected by this organisation, regulated.");
     await expect(row.getByTestId("dataset-provenance-corrected")).toHaveCount(0);
   });
 });

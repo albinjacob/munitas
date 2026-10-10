@@ -5,7 +5,7 @@
  * read them, and says how many. Everything else is counts, column names, people and dates.
  */
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
 
 export type Classification = "none" | "quasi" | "direct" | "phi";
@@ -22,6 +22,9 @@ export interface LockedLease {
   principal: string;
   principal_label: string;
   dataset_version_id: string;
+  /** The table this lease is about, by name and version number. */
+  dataset_name?: string | null;
+  dataset_version?: number | null;
   purpose: string;
   days: number;
   row_limit: number;
@@ -57,9 +60,14 @@ export interface LeaseLists {
 
 export interface PersonRows {
   rows: Record<string, unknown>[];
+  /** How many rows are on this page. */
   count: number;
   mode: "full" | "sample";
   lease_id: string | null;
+  /** Where the next page starts, or null at the end of the table. */
+  next: string | null;
+  /** How many rows the whole table holds. */
+  total: number;
 }
 
 export interface GroupSizeReport {
@@ -85,8 +93,11 @@ export interface SealedTable {
   id: string;
   version: number;
   records: number;
-  people: number;
-  group_size_report: GroupSizeReport;
+  /** How many people the rows are about; null for an ordinary table, which is about nobody. */
+  people: number | null;
+  group_size_report: GroupSizeReport | null;
+  /** True for an ordinary table: nothing in it is locked. */
+  plain?: boolean;
 }
 
 export interface AuditEvidence {
@@ -96,27 +107,65 @@ export interface AuditEvidence {
     principal_label: string;
     principal_roles: string[];
     dataset_version_id: string | null;
+    table: string | null;
     purpose: string;
     allowed: boolean;
     reasons: string[];
     locked_column_lease_id: string | null;
   }[];
-  key_uses: { at: string; person_code: string | null; action: string; actor: string; actor_label: string; purpose: string | null }[];
+  /** `reason` says in words why a key was opened, and `table` which table when that can be found. The platform's own text is never passed on, because it can name a file. */
+  key_uses: { at: string; person_code: string | null; action: string; actor: string; actor_label: string; reason: string | null; table: string | null; file: string | null }[];
   leases: LockedLease[];
   contracts: {
     name: string;
     version: string;
     schema_id: string;
+    /** The latest tables sealed under this contract, by name and version, and how many there are in all. */
+    tables: string[];
+    table_count: number;
     sealed_under_since: string;
     treatments: LockedColumn[];
   }[];
   erasures: { at: string; record_id: string; requested_by: string; requested_by_label: string }[];
   group_sizes: GroupSizeEvidence[];
+  /** Every opening of a locked file, and every refusal to open a file of a version that holds locked files. Never a file name or identifier. */
+  file_reads: {
+    at: string;
+    principal_label: string;
+    table: string | null;
+    allowed: boolean;
+    basis: string | null;
+    via: string | null;
+    lease_id: string | null;
+    reason: string | null;
+    /** The file, by name, for the privacy auditor and the data protection officer. Null for a refusal recorded before refusals named the file. */
+    file: string | null;
+  }[];
+  file_leases: {
+    id: string;
+    requested_at: string;
+    principal_label: string;
+    kind: "console" | "notebook";
+    purpose: string;
+    requested_count: number;
+    hours: number;
+    status: "requested" | "approved" | "declined" | "ended";
+    granted_count: number | null;
+    granted_hours: number | null;
+    decided_by_label: string | null;
+    decided_at: string | null;
+    ended_by_label: string | null;
+    ended_at: string | null;
+    expires_at: string | null;
+    dataset_name: string | null;
+    dataset_version: number | string | null;
+  }[];
 }
 
 /** What the audit evidence says about one table's group sizes: counts and column names, never a value. */
 export interface GroupSizeEvidence {
   dataset_version_id: string;
+  table: string | null;
   threshold: number;
   columns: string[];
   people: number;
@@ -182,12 +231,14 @@ export function useRevokeLease() {
   });
 }
 
-export function usePersonRows(versionId: string | undefined) {
+/** One page of a table's locked rows. `cursor` is where the page starts: null for the first, and the previous page's `next` for each after it. */
+export function usePersonRows(versionId: string | undefined, cursor: string | null = null) {
   return useQuery({
-    queryKey: ["person-rows", versionId],
-    queryFn: () => api.get<PersonRows>(`/dataset-versions/${versionId}/person-rows`),
+    queryKey: ["person-rows", versionId, cursor],
+    queryFn: () => api.get<PersonRows>(`/dataset-versions/${versionId}/person-rows`, cursor ? { cursor } : undefined),
     enabled: Boolean(versionId),
     retry: false,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -212,6 +263,43 @@ export function useDecideGroupSize(versionId: string) {
   });
 }
 
+/** One list of the locked data audit, a page at a time. */
+export type AuditSection = "reads" | "column_leases" | "file_reads" | "file_leases" | "keys" | "erasures" | "small_groups" | "contracts";
+
+export interface AuditPage<T> {
+  section: AuditSection;
+  rows: T[];
+  /** How many lines match the filters, not only the ones on this page. */
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+  /** The filters this list takes (person, table, date, result, q). The others are ignored for it. */
+  can_filter: string[];
+  results: string[];
+}
+
+export interface AuditQuery {
+  person?: string;
+  table?: string;
+  file?: string;
+  date_from?: string;
+  date_to?: string;
+  result?: string;
+  q?: string;
+  page: number;
+  page_size?: number;
+}
+
+export function useAuditPage<T>(section: AuditSection, query: AuditQuery) {
+  return useQuery({
+    queryKey: ["locked-data-audit", section, query],
+    queryFn: () => api.get<AuditPage<T>>("/audit/locked-columns", { section, ...query }),
+    placeholderData: keepPreviousData,
+    retry: false,
+  });
+}
+
 export function useLockingAudit(enabled: boolean) {
   return useQuery({
     queryKey: ["locking-audit"],
@@ -225,10 +313,14 @@ export function useLockingAudit(enabled: boolean) {
 export function useSealTableFiles(datasetId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ contract, rows }: { contract: File; rows: File }) => {
+    mutationFn: ({ contract, rows, options }: { contract: File; rows: File; options?: { delimiter?: string; encoding?: string; header?: boolean; null_values?: string[] } }) => {
       const form = new FormData();
       form.append("contract", contract);
       form.append("rows", rows);
+      if (options?.delimiter) form.append("delimiter", options.delimiter);
+      if (options?.encoding) form.append("encoding", options.encoding);
+      if (options?.header === false) form.append("header", "false");
+      if (options?.null_values?.length) form.append("null_values", options.null_values.join(","));
       return api.postForm<SealedTable>(`/datasets/${datasetId}/seal-table-files`, form);
     },
     onSuccess: () => {

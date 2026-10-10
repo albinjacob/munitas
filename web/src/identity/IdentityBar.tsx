@@ -4,7 +4,7 @@
  * It is not dismissible. A warning you can close is a warning that is closed,
  * and this one has to survive the whole time nobody is resolved: anyone
  * looking at this console before then is looking at access decisions about
- * clinical recordings, and they need to know at a glance that the name that
+ * clinical files, and they need to know at a glance that the name that
  * is about to appear in the sidebar will be proved by a real login, not
  * picked.
  */

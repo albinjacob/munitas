@@ -7,7 +7,7 @@
  * in access.rego rather than by this console, and that a refusal arrives as a
  * reason somebody can act on instead of a blank screen.
  *
- * The navigation is deliberately not the subject. AppShell hides the link
+ * The navigation is deliberately not the subject. The sidebar hides the link
  * from a researcher, but hiding a link enforces nothing, so these tests go
  * straight to the URL the way somebody typing it would.
  */
@@ -19,7 +19,7 @@ test.describe("U71: storage housekeeping is scoped by role", () => {
   test("the administrator sees every organisation and the volume pool", async ({
     page,
   }) => {
-    await loginAs(page, "ops-priya");
+    await loginAs(page, "canary-admin");
     await page.goto("/housekeeping");
 
     // The number that was invisible until this screen existed, and whose
@@ -30,13 +30,14 @@ test.describe("U71: storage housekeeping is scoped by role", () => {
     const tenants = page.getByTestId("tenant-storage");
     await expect(tenants).toBeVisible();
     // Two organisations that are not this person's own, which is the whole
-    // point of the platform-wide scope.
-    await expect(tenants).toContainText("canary");
+    // point of the platform-wide scope, and the person's own.
+    await expect(tenants).toContainText("health");
     await expect(tenants).toContainText("finance");
+    await expect(tenants).toContainText("canary");
   });
 
   test("real organisations are grouped above the test ones", async ({ page }) => {
-    await loginAs(page, "ops-priya");
+    await loginAs(page, "canary-admin");
     await page.goto("/housekeeping");
 
     // Lowercased before comparing: the group headings are uppercased by
@@ -63,7 +64,7 @@ test.describe("U71: storage housekeeping is scoped by role", () => {
   });
 
   test("each organisation says why it exists", async ({ page }) => {
-    await loginAs(page, "ops-priya");
+    await loginAs(page, "canary-admin");
     await page.goto("/housekeeping");
 
     const tenants = page.getByTestId("tenant-storage");
@@ -73,18 +74,18 @@ test.describe("U71: storage housekeeping is scoped by role", () => {
     // each verification run.
     await expect(tenants).toContainText("A hospital");
     await expect(tenants).toContainText("Where the verification suite writes");
-    // And where its files actually are, by backend rather than bucket alone.
-    await expect(tenants).toContainText("Cloudflare R2");
+    // And where its files actually are, by backend rather than bucket alone. An organisation kept on Cloudflare R2 says "Cloudflare R2"; none is on
+    // this install, so what is shown is the platform's own storage.
     await expect(tenants).toContainText("SeaweedFS");
   });
 
   test("a custodian sees their own organisation's deletions and nothing wider", async ({
     page,
   }) => {
-    await loginAs(page, "cust-hartley");
+    await loginAs(page, "canary-custodian");
     await page.goto("/housekeeping");
 
-    await expect(page.getByRole("heading", { name: /freed from health/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /freed from canary/i })).toBeVisible();
 
     // Not merely absent from the navigation: absent from the page.
     await expect(page.getByTestId("tenant-storage")).toHaveCount(0);
@@ -95,7 +96,7 @@ test.describe("U71: storage housekeeping is scoped by role", () => {
   test("a researcher is refused, and told why rather than shown nothing", async ({
     page,
   }) => {
-    await loginAs(page, "sam-researcher");
+    await loginAs(page, "canary-researcher");
     await page.goto("/housekeeping");
 
     const refusal = page.getByTestId("failure");
@@ -107,7 +108,7 @@ test.describe("U71: storage housekeeping is scoped by role", () => {
   });
 
   test("freeing storage cannot be asked for without a reason", async ({ page }) => {
-    await loginAs(page, "ops-priya");
+    await loginAs(page, "canary-admin");
     await page.goto("/housekeeping");
 
     const rehearse = page.getByTestId("reclaim-rehearse");
@@ -120,7 +121,7 @@ test.describe("U71: storage housekeeping is scoped by role", () => {
   test("the screen rehearses before it offers to destroy anything", async ({
     page,
   }) => {
-    await loginAs(page, "ops-priya");
+    await loginAs(page, "canary-admin");
     await page.goto("/housekeeping");
 
     // No confirm button exists until the platform has said what would go.

@@ -16,12 +16,11 @@ import { useParams } from "react-router-dom";
 import { useDecidePipelineVersion, usePipeline, type PipelineVersion } from "../../api/dag_pipelines";
 import { Empty, Failure, Loading, Section } from "../../components/states";
 import { UploadPipelineVersion } from "./UploadPipelineVersion";
+import { when } from "../../lib/when";
+import { PipelineDag } from "./PipelineDag";
 
 const APPROVER_ROLES = ["data_custodian"];
 
-function when(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "";
-}
 
 const STAGE_LABEL: Record<PipelineVersion["stage"], string> = { development: "In development", production: "In production", retired: "Retired" };
 const STAGE_STYLE: Record<PipelineVersion["stage"], string> = {
@@ -30,7 +29,7 @@ const STAGE_STYLE: Record<PipelineVersion["stage"], string> = {
   retired: "bg-slate-200 text-slate-700",
 };
 
-/** Where a version is in its life, and what moves it on. Moving it to production is a second person's decision when its steps read the recordings or write files. */
+/** Where a version is in its life, and what moves it on. Moving it to production is a second person's decision when its steps read the files or write files. */
 function Lifecycle({ pipelineId, department, version }: { pipelineId: string; department: string | null; version: PipelineVersion }) {
   const mayDecide = useHoldsRole(APPROVER_ROLES);
   const mayRetire = useHoldsRole([...APPROVER_ROLES, ...CODE_ROLES]);
@@ -39,16 +38,16 @@ function Lifecycle({ pipelineId, department, version }: { pipelineId: string; de
   const retire = useDecidePipelineVersion(pipelineId, "retire");
   const [sure, setSure] = useState(false);
   const failed = [promote.error, demote.error, retire.error].find(Boolean);
-  const reading = version.steps_given_recordings;
+  const reading = version.steps_given_files;
   const writing = version.steps_writing_files;
   const named = (steps: string[]) => `${steps.length > 1 ? "Steps" : "Step"} ${steps.join(", ")}`;
   // What the version's steps do, in the words of the person who decides whether it may be used: what they read and what they make.
   const made = "which become a new version that a reviewer checks before anyone can use it.";
   const same = reading.length > 0 && reading.join() === writing.join();
   const what = same
-    ? `${named(reading)} ${reading.length > 1 ? "read the locked recordings and write" : "reads the locked recordings and writes"} files, ${made}`
+    ? `${named(reading)} ${reading.length > 1 ? "read the locked files and write" : "reads the locked files and writes"} files, ${made}`
     : [
-        reading.length ? `${named(reading)} ${reading.length > 1 ? "read" : "reads"} the locked recordings.` : "",
+        reading.length ? `${named(reading)} ${reading.length > 1 ? "read" : "reads"} the locked files.` : "",
         writing.length ? `${named(writing)} ${writing.length > 1 ? "write" : "writes"} files, ${made}` : "",
       ].filter(Boolean).join(" ");
   const box = version.stage === "development" ? "border-amber-200 bg-amber-50" : version.stage === "retired" ? "border-slate-200 bg-slate-50" : "border-green-200 bg-green-50";
@@ -63,8 +62,8 @@ function Lifecycle({ pipelineId, department, version }: { pipelineId: string; de
       ) : version.stage === "development" ? (
         <>
           <p>
-            {what} This version is in development, so it runs only on development data: recordings declared synthetic, or a sample drawn for you, which you ask for on the
-            page of the recordings. For any other data, an approver of {department ?? "the owning department"} other than{" "}
+            {what} This version is in development, so it runs only on development data: files declared synthetic, or a sample drawn for you, which you ask for on the
+            page of the files. For any other data, an approver of {department ?? "the owning department"} other than{" "}
             {version.uploaded_by_label ?? "the person who uploaded it"} checks it and moves it to production first.
           </p>
           {mayDecide && (
@@ -162,30 +161,9 @@ export function PipelineDetail() {
                   <span data-testid={`pipeline-stage-${v.version}`} className={`rounded px-2 py-0.5 text-xs font-medium ${STAGE_STYLE[v.stage]}`}>
                     {STAGE_LABEL[v.stage]}
                   </span>
-                  {v.uploaded_by_label && <span className="text-xs text-slate-500">uploaded by {v.uploaded_by_label}</span>}
+                  {v.uploaded_by_label && <span className="text-xs text-slate-500">uploaded by {v.uploaded_by_label}{v.created_at ? ` on ${when(v.created_at)}` : ""}</span>}
                 </div>
-                <ol className="mt-2 space-y-1 text-xs text-slate-600">
-                  {v.dag_config.steps.map((step) => (
-                    <li key={step.name}>
-                      <span className="font-medium text-slate-800">{step.name}</span>{" "}
-                      <span className="text-slate-500">
-                        ({step.kind}
-                        {step.block ? `: ${step.block}` : ""}
-                        {step.script ? `: ${step.script}` : ""}
-                        {step.recordings ? ", reads the recordings" : ""}
-                        {step.writes_files ? ", writes files" : ""}
-                        {step.memory_mb ? `, ${step.memory_mb} MB of memory` : ""}
-                        {step.scratch_mb ? `, ${step.scratch_mb} MB of scratch space` : ""})
-                      </span>
-                      {step.depends_on?.length ? (
-                        <span className="text-slate-400">
-                          {" "}
-                          &larr; {step.depends_on.join(", ")}
-                        </span>
-                      ) : null}
-                    </li>
-                  ))}
-                </ol>
+                <PipelineDag steps={v.dag_config.steps} />
                 <Lifecycle pipelineId={p.id} department={p.department_name} version={v} />
               </li>
             ))}

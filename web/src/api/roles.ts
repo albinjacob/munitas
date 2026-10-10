@@ -1,5 +1,5 @@
 /**
- * Human-readable names for policy roles.
+ * What the console calls each role.
  *
  * Deliberately outside `src/identity/`. That directory is the identity seam,
  * and U7 forbids anything outside it from importing its internals so that
@@ -10,29 +10,28 @@
  * exactly its job: the rule is worth more than the convenience of leaving it
  * where it first landed.
  *
- * The authoritative list of roles is the policy engine, reachable through
- * `GET /policy/roles`. This only decides what to call them on screen, so a role
- * missing from this table renders as its identifier rather than as nothing.
+ * The names are not written here. They come from the policy's role table (platform/policy/role_words.rego) through `GET /policy/roles`, which needs no
+ * session, and are read once before the console draws anything. A role the table does not know, or a platform that cannot be reached, shows the role's
+ * identifier rather than nothing.
  */
 
-const ROLE_LABEL: Record<string, string> = {
-  data_custodian: "Data custodian",
-  dpo: "Data protection officer",
-  notebook_explore: "Researcher",
-  pipeline_operator: "Data engineer",
-  platform_admin: "Platform administrator",
-  hybridops: "Support and reliability",
-  pipeline_action: "Pipeline action",
-  annotation_tool: "Annotation tool",
-  training_job: "Training job",
-  model_eval: "Model evaluation",
-  agent_runtime: "Agent runtime",
-  analyst: "Analyst",
-  deid_reviewer: "De-identification reviewer",
-  network_architect: "Network architect",
-  privacy_auditor: "Privacy auditor",
-};
+import { api } from "./client";
+
+interface RoleWords {
+  role_words: Record<string, { label: string }>;
+}
+
+let labels: Record<string, string> = {};
+
+export async function loadRoleLabels(): Promise<void> {
+  try {
+    const roles = await api.get<RoleWords>("/policy/roles");
+    labels = Object.fromEntries(Object.entries(roles.role_words).map(([role, words]) => [role, words.label]));
+  } catch {
+    labels = {};
+  }
+}
 
 export function roleLabel(role: string): string {
-  return ROLE_LABEL[role] ?? role;
+  return labels[role] ?? role;
 }

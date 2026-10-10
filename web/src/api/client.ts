@@ -19,6 +19,7 @@
  */
 
 import { API_BASE } from "../config/ports";
+import { sentence } from "../lib/text";
 
 const BASE = API_BASE;
 
@@ -27,12 +28,17 @@ export class ApiError extends Error {
   readonly body: unknown;
   /** Reasons from the policy engine, when the failure was a policy decision. */
   readonly reasons: string[];
+  /** The reference the platform gave for an error it did not expect, which whoever runs it can find in its log. */
+  readonly requestId: string | null;
 
   constructor(status: number, body: unknown) {
     super(ApiError.describe(status, body));
     this.status = status;
     this.body = body;
     this.reasons = ApiError.extractReasons(body);
+    const detail = typeof body === "object" && body !== null ? (body as { detail?: unknown }).detail : null;
+    const id = typeof detail === "object" && detail !== null ? (detail as { request_id?: unknown }).request_id : null;
+    this.requestId = typeof id === "string" ? id : null;
   }
 
   private static extractReasons(body: unknown): string[] {
@@ -40,19 +46,43 @@ export class ApiError extends Error {
     const detail = (body as { detail?: unknown }).detail;
     if (typeof detail === "object" && detail !== null) {
       const reasons = (detail as { reasons?: unknown }).reasons;
-      if (Array.isArray(reasons)) return reasons.map(String);
+      if (Array.isArray(reasons)) return reasons.map((r) => sentence(String(r)));
     }
     return [];
   }
 
   private static describe(status: number, body: unknown): string {
     const reasons = ApiError.extractReasons(body);
-    if (reasons.length) return reasons.join("; ");
+    if (reasons.length) return reasons.join(" ");
     if (typeof body === "object" && body !== null) {
       const detail = (body as { detail?: unknown }).detail;
-      if (typeof detail === "string") return detail;
+      if (typeof detail === "string" && detail.trim()) return sentence(detail);
     }
-    return `request failed with ${status}`;
+    return ApiError.say(status);
+  }
+
+  /** What a status means to somebody who did not ask for a status: a sentence that says what to do next. */
+  static say(status: number): string {
+    switch (status) {
+      case 401:
+        return "Your sign-in has ended. Sign in again to continue.";
+      case 403:
+        return "You are not allowed to do this.";
+      case 404:
+        return "That could not be found. It may not exist, or it may belong to another organisation.";
+      case 409:
+        return "That conflicts with the current state of the platform. Reload the page and try again.";
+      case 413:
+        return "That is too large to send.";
+      case 422:
+        return "The platform did not accept what was sent.";
+      case 429:
+        return "There have been too many requests. Wait a moment and try again.";
+      default:
+        return status >= 500
+          ? "The platform ran into a problem it did not expect."
+          : `The platform could not complete the request (code ${status}).`;
+    }
   }
 }
 
@@ -96,7 +126,7 @@ export const api = {
   post: <T,>(path: string, body?: unknown) =>
     request<T>(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body) }),
   postForm: <T,>(path: string, form: FormData) => request<T>(path, { method: "POST", body: form }),
-  /** A part of a recording, as the raw body of the request: the platform locks it as it arrives and never writes a plain copy. */
+  /** A part of a file, as the raw body of the request: the platform locks it as it arrives and never writes a plain copy. */
   putBytes: <T,>(path: string, bytes: Blob) =>
     request<T>(path, { method: "PUT", body: bytes, headers: { "content-type": "application/octet-stream" } }),
   delete: <T,>(path: string) => request<T>(path, { method: "DELETE" }),

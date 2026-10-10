@@ -2,7 +2,7 @@
  * What a grant is actually about: one version of one dataset.
  *
  * Access is leased against a `dataset_version_id`, never a dataset. Two versions
- * of the same recordings can sit at different sensitivities, because the second
+ * of the same files can sit at different sensitivities, because the second
  * one went through de-identification and the first did not. So a request that
  * said only "Sam wants to read consultation-audio" asked the custodian to
  * approve something whose sensitivity was not on screen, and the answer to

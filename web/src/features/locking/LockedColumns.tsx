@@ -24,6 +24,7 @@ import {
   type Treatment,
 } from "../../api/locking";
 import { Failure, Section } from "../../components/states";
+import { when } from "../../lib/when";
 
 export const CLASSIFICATION_WORDS: Record<Classification, string> = {
   direct: "Names a person",
@@ -39,10 +40,6 @@ export const TREATMENT_WORDS: Record<Treatment, string> = {
   "replaced by the person code": "Replaced by a person code",
 };
 
-function when(iso: string | null | undefined): string {
-  if (!iso) return "";
-  return new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-}
 
 export function Reasons({ error, fallback }: { error: unknown; fallback: string }) {
   const reasons = error instanceof ApiError && error.reasons.length ? error.reasons : [error instanceof Error ? error.message : fallback];
@@ -157,7 +154,7 @@ function YourAccess({ locking }: { locking: Locking }) {
           You hold a lease: {lease.row_limit} row{lease.row_limit === 1 ? "" : "s"} of {locking.records}, until {when(lease.expires_at)}.
         </p>
         <p className="mt-1">
-          Approved by {lease.decided_by_label ?? "an approver"} for: {lease.purpose}
+          Approved by {lease.decided_by_label ?? "an approver"}{lease.decided_at ? ` on ${when(lease.decided_at)}` : ""} for: {lease.purpose}
         </p>
         <div className="mt-2 flex flex-wrap items-center gap-4">
           <Link to={rowsLink} data-testid="read-locked-rows" className="text-sky-700 underline">
@@ -247,7 +244,7 @@ function DecideGroupSize({ versionId }: { versionId: string }) {
         disabled={!note.trim() || decide.isPending}
         className="rounded bg-indigo-500 hover:bg-indigo-800 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
       >
-        {decide.isPending ? "Recording" : "Record this decision"}
+        {decide.isPending ? "File" : "Record this decision"}
       </button>
       {decide.error && (
         <div role="alert" className="text-xs text-red-800">
@@ -309,6 +306,15 @@ function GroupSizes({ versionId, mayDecide }: { versionId: string; mayDecide: bo
   );
 }
 
+/** What this person may do about the locked values of a table: read them, hold a permission, wait for one, or ask. Shown with the rest of the person's access on the version's page. */
+export function LockedValuesAccess({ versionId }: { versionId: string }) {
+  const locking = useLocking(versionId);
+  if (locking.isLoading) return null;
+  if (locking.error instanceof ApiError && locking.error.status === 404) return null;
+  if (locking.error) return <Failure error={locking.error} what="what you may do about the locked values" />;
+  return <YourAccess locking={locking.data!} />;
+}
+
 export function LockedColumnsSection({ versionId }: { versionId: string }) {
   const locking = useLocking(versionId);
   // Most tables were not sealed under a privacy contract and have no locked columns: nothing to show, and nothing to explain.
@@ -322,20 +328,20 @@ export function LockedColumnsSection({ versionId }: { versionId: string }) {
       title="Locked columns"
       description="Each person's identifying values in this table are scrambled under a key made for that person. Destroying that key later makes them unreadable for good, and the sealed table never changes."
     >
-      <table className="w-full max-w-3xl text-sm" data-testid="locked-columns">
-        <thead className="border-b border-slate-200 text-left text-slate-500">
+      <div className="data-card"><table className="data-table" data-testid="locked-columns">
+        <thead>
           <tr>
-            <th className="py-2 font-medium">Column</th>
-            <th className="py-2 font-medium">What it is</th>
-            <th className="py-2 font-medium">What was done to it</th>
+            <th>Column</th>
+            <th>What it is</th>
+            <th>What was done to it</th>
           </tr>
         </thead>
         <tbody>
           {l.columns.map((c) => (
             <tr key={c.name} className="border-b border-slate-100">
-              <td className="py-2 font-mono text-xs">{c.name}</td>
-              <td className="py-2">{CLASSIFICATION_WORDS[c.classification]}</td>
-              <td className="py-2">
+              <td className="font-mono text-xs">{c.name}</td>
+              <td>{CLASSIFICATION_WORDS[c.classification]}</td>
+              <td>
                 <span
                   className={`rounded px-1.5 py-0.5 text-xs font-medium ${
                     c.treatment === "readable" ? "bg-slate-100 text-slate-800" : "bg-indigo-100 text-indigo-900"
@@ -347,15 +353,10 @@ export function LockedColumnsSection({ versionId }: { versionId: string }) {
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
       <p className="mt-2 text-xs text-slate-500">
         {l.records} row{l.records === 1 ? "" : "s"}. A person code is a label that stands for one person and means nothing on its own.
       </p>
-
-      <div className="mt-6">
-        <h3 className="mb-2 text-base font-semibold text-slate-900">Your access to the locked values</h3>
-        <YourAccess locking={l} />
-      </div>
 
       <GroupSizes versionId={versionId} mayDecide={l.mode === "full"} />
     </Section>

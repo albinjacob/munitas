@@ -7,12 +7,12 @@
  * ends or a patient who is erased stops what is playing.
  */
 
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { API_BASE, api } from "./client";
 
 export interface RecordFile {
   record_id: string;
-  kind: "recording" | "file";
+  kind: "file";
   content_type: string;
   locked: boolean;
   erased: boolean;
@@ -21,14 +21,18 @@ export interface RecordFile {
 
 export interface RecordList {
   version_id: string;
-  /** Why the platform finds this person may open the files: their own sample, synthetic recordings, what they made from either, or none. */
-  basis: "own_sample" | "synthetic" | "own_development_output" | "expired" | "none";
+  /** Why the platform finds this person may open the files: their own sample, synthetic files, what they made from either, or none. */
+  basis: "own_sample" | "synthetic" | "own_development_output" | "review" | "lease" | "expired" | "none";
   may_open: boolean;
   reasons: string[];
   total: number;
   records: RecordFile[];
   /** Present for a version made for development: when it ends, and when it ended and its files were deleted. */
   development: { kind: "sample" | "output"; ends_at: string; expired_at: string | null } | null;
+  /** Present when the person may open these files to judge a result waiting for their decision: which they have opened, and the most they may. */
+  review?: { opened: string[]; limit: number };
+  /** Present when an approver has allowed this person to open some of these files: which lease, and until when. */
+  lease?: { id: string; expires_at: string | null } | null;
 }
 
 export interface OpenedRecord {
@@ -50,8 +54,14 @@ export function useRecordList(versionId: string | undefined) {
 }
 
 export function useOpenRecord(versionId: string) {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (recordId: string) => api.post<OpenedRecord>(`/dataset-versions/${versionId}/records/${encodeURIComponent(recordId)}/open`),
+    // What a reviewer has opened counts toward their limit and toward whether a release may go ahead, so both are read again.
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["record-files", versionId] });
+      queryClient.invalidateQueries({ queryKey: ["gate-review"] });
+    },
   });
 }
 

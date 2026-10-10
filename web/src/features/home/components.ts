@@ -83,6 +83,13 @@ export const COMPONENTS: Component[] = [
     ifDown: "Traces stop reaching Jaeger.",
   },
   {
+    service: "step-gateway",
+    label: "Step gateway",
+    purpose:
+      "The only address a custom pipeline step can reach. It passes the step's requests to the platform and to nothing else, so a step cannot reach storage, the database or the network.",
+    ifDown: "Custom pipeline steps cannot ask the platform for files or send results back. Built-in steps are not affected.",
+  },
+  {
     service: "label-studio",
     label: "Annotation tool",
     purpose:
@@ -111,6 +118,20 @@ export const COMPONENTS: Component[] = [
     purpose:
       "Applies Kratos's own schema to its database, once, before Kratos starts. Not a running service: it exits as soon as it succeeds, the same shape as a database migration in any other stack.",
     ifDown: "Already ran. Only matters again on a fresh database, where Kratos itself will not start until it has.",
+  },
+  {
+    service: "hydra",
+    label: "Notebook sign-in",
+    purpose:
+      "Gives a notebook a short-lived pass after the person has typed the notebook's code in the console and approved it, renews the pass, and ends it. It holds no people: the console's own sign-in says who the person is, and the platform decides what the pass may do.",
+    ifDown: "A notebook cannot sign in or renew its pass. Notebooks already signed in stop at their next renewal, within minutes. The console itself is not affected.",
+  },
+  {
+    service: "hydra-migrate",
+    label: "Notebook sign-in database setup",
+    purpose:
+      "Applies the notebook sign-in service's own schema to its database, once, before it starts. Not a running service: it exits as soon as it succeeds.",
+    ifDown: "Already ran. Only matters again on a fresh database, where the notebook sign-in service itself will not start until it has.",
   },
   {
     service: "worker-lite",

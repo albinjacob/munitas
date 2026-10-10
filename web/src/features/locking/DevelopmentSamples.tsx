@@ -1,9 +1,9 @@
 /**
- * Development samples, on the page of a version of locked recordings.
+ * Development samples, on the page of a version of locked files.
  *
- * A pipeline version in development runs only on development data. For recordings that means a sample the platform draws for the person who asks, after an
- * approver of the department that owns them agrees, or recordings declared synthetic. A sample names the same locked recordings and copies none of them.
- * Nothing here shows a recording or says who a patient is: counts by length, the people who asked and decided, and dates.
+ * A pipeline version in development runs only on development data. For files that means a sample the platform draws for the person who asks, after an
+ * approver of the department that owns them agrees, or files declared synthetic. A sample names the same locked files and copies none of them.
+ * Nothing here shows a file or says who a patient is: counts by length, the people who asked and decided, and dates.
  */
 
 import { useEffect, useState } from "react";
@@ -20,10 +20,8 @@ import {
 } from "../../api/developmentSamples";
 import { Failure, Section } from "../../components/states";
 import { Reasons } from "./LockedColumns";
+import { when } from "../../lib/when";
 
-function when(iso: string | null | undefined): string {
-  return iso ? new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "";
-}
 
 const STATUS_WORDS: Record<DevelopmentSample["status"], string> = {
   requested: "Waiting for an approver",
@@ -40,7 +38,7 @@ function StatusChip({ sample }: { sample: DevelopmentSample }) {
   return <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${tone}`}>{word}</span>;
 }
 
-/** "7 short, 7 medium and 6 long": how many recordings came from each length. A debug sample names its recordings, so it has one band. */
+/** "7 short, 7 medium and 6 long": how many files came from each length. A debug sample names its files, so it has one band. */
 function bands(strata: Strata[] | null): string {
   if (!strata?.length) return "";
   const parts = strata.map((s) => `${s.chosen} ${s.band}`);
@@ -48,7 +46,7 @@ function bands(strata: Strata[] | null): string {
 }
 
 function kindWords(kind: DevelopmentSample["kind"]): string {
-  return kind === "debug" ? "to find a fault in the recordings named" : "to build and test with";
+  return kind === "debug" ? "to find a fault in the files named" : "to build and test with";
 }
 
 function EndButton({ sample }: { sample: DevelopmentSample }) {
@@ -81,20 +79,21 @@ function MySample({ sample }: { sample: DevelopmentSample }) {
         <StatusChip sample={sample} />
         <span>
           {sample.status === "approved" || sample.status === "ended"
-            ? `${sample.granted_count ?? sample.requested_count} recordings, ${kindWords(sample.kind)}`
-            : `Asked for ${sample.requested_count} recordings for ${sample.days} days, ${kindWords(sample.kind)}`}
+            ? `${sample.granted_count ?? sample.requested_count} files, ${kindWords(sample.kind)}`
+            : `Asked for ${sample.requested_count} files for ${sample.days} days, ${kindWords(sample.kind)}`}
         </span>
       </div>
       <div className="text-xs text-slate-600">{sample.purpose}</div>
       {sample.status === "approved" && sample.expires_at ? (
         <div className="text-xs text-slate-600">
-          {sample.granted_count} recordings: {bands(sample.strata)}. {new Date(sample.expires_at) > new Date() ? "Ends" : "Ended"} {when(sample.expires_at)}. Approved by{" "}
-          {sample.decided_by_label}.
+          {sample.granted_count} files: {bands(sample.strata)}. {new Date(sample.expires_at) > new Date() ? "Ends" : "Ended"} {when(sample.expires_at)}. Approved by{" "}
+          {sample.decided_by_label}{sample.decided_at ? ` on ${when(sample.decided_at)}` : ""}.
         </div>
       ) : null}
       {sample.status === "declined" ? (
         <div className="text-xs text-slate-600">
           Declined by {sample.decided_by_label}
+          {sample.decided_at ? ` on ${when(sample.decided_at)}` : ""}
           {sample.decision_note ? `: ${sample.decision_note}` : "."}
         </div>
       ) : null}
@@ -131,7 +130,7 @@ function Ask({ versionId, data }: { versionId: string; data: DevelopmentSamples 
             <input type="radio" name="sample-kind" data-testid="sample-kind-develop" checked={kind === "develop"} onChange={() => setKind("develop")} className="mt-1" />
             <span>
               <span className="font-medium">Draw a sample for me.</span>
-              <span className="block text-xs text-slate-600">The platform picks recordings about different people, spread across short, medium and long ones.</span>
+              <span className="block text-xs text-slate-600">The platform picks files about different people, spread across short, medium and long ones.</span>
             </span>
           </label>
         )}
@@ -139,15 +138,15 @@ function Ask({ versionId, data }: { versionId: string; data: DevelopmentSamples 
           <label className="flex items-start gap-2">
             <input type="radio" name="sample-kind" data-testid="sample-kind-debug" checked={kind === "debug"} onChange={() => setKind("debug")} className="mt-1" />
             <span>
-              <span className="font-medium">Name the recordings that went wrong.</span>
-              <span className="block text-xs text-slate-600">For finding a fault that appeared in production. You give the identifier of each recording.</span>
+              <span className="font-medium">Name the files that went wrong.</span>
+              <span className="block text-xs text-slate-600">For finding a fault that appeared in production. You give the identifier of each file.</span>
             </span>
           </label>
         )}
       </fieldset>
       <div className="flex flex-wrap gap-6">
         <label className="block">
-          <span className="block text-slate-600">How many recordings (at most {data.limits.records})</span>
+          <span className="block text-slate-600">How many files (at most {data.limits.records})</span>
           <input
             data-testid="sample-records"
             type="number"
@@ -173,7 +172,7 @@ function Ask({ versionId, data }: { versionId: string; data: DevelopmentSamples 
       </div>
       {kind === "debug" && (
         <label className="block">
-          <span className="block text-slate-600">The recordings, one identifier on each line</span>
+          <span className="block text-slate-600">The files, one identifier on each line</span>
           <textarea data-testid="sample-named" rows={3} value={named} onChange={(e) => setNamed(e.target.value)} className="w-full max-w-xl rounded border border-slate-300 px-2 py-1 font-mono text-xs" />
         </label>
       )}
@@ -214,7 +213,7 @@ function Ask({ versionId, data }: { versionId: string; data: DevelopmentSamples 
         >
           Ask for a sample
         </button>
-        <span className="text-xs text-slate-600">An approver of the department that owns these recordings, other than you, decides. They may lower the number or the days.</span>
+        <span className="text-xs text-slate-600">An approver of the department that owns these files, other than you, decides. They may lower the number or the days.</span>
       </div>
       {ask.error ? (
         <div role="alert" className="rounded border border-red-200 bg-red-50 p-2 text-xs text-red-900">
@@ -233,13 +232,13 @@ function Decide({ sample }: { sample: DevelopmentSample }) {
   return (
     <li data-testid={`sample-row-${sample.id}`} className="space-y-2 rounded border border-amber-200 bg-amber-50 p-3 text-sm">
       <div>
-        <span className="font-medium">{sample.principal_label}</span> asks for {sample.requested_count} recordings for {sample.days} days, {kindWords(sample.kind)}.
+        <span className="font-medium">{sample.principal_label}</span> asks for {sample.requested_count} files for {sample.days} days, {kindWords(sample.kind)}.
       </div>
       <div className="text-xs text-slate-700">{sample.purpose}</div>
       {sample.kind === "debug" && sample.named_records ? <div className="font-mono text-xs text-slate-700">{sample.named_records.join(", ")}</div> : null}
       <div className="flex flex-wrap items-end gap-4 text-xs">
         <label className="block">
-          <span className="block text-slate-600">Recordings (you may lower this)</span>
+          <span className="block text-slate-600">Files (you may lower this)</span>
           <input
             data-testid={`sample-grant-records-${sample.id}`}
             type="number"
@@ -270,7 +269,7 @@ function Decide({ sample }: { sample: DevelopmentSample }) {
           className="w-64 rounded border border-slate-300 px-2 py-1"
         />
       </div>
-      <p className="text-xs text-slate-600">{sample.kind === "debug" ? "You cannot choose recordings: the ones named are the ones given." : "You cannot choose the recordings: the platform draws them."}</p>
+      <p className="text-xs text-slate-600">{sample.kind === "debug" ? "You cannot choose files: the ones named are the ones given." : "You cannot choose the files: the platform draws them."}</p>
       <div className="flex gap-2">
         <button
           type="button"
@@ -310,14 +309,14 @@ function Synthetic({ versionId, data }: { versionId: string; data: DevelopmentSa
           Declared synthetic by {data.synthetic.declared_by_label} on {when(data.synthetic.declared_at)}.
         </p>
         <p>Reason given: {data.synthetic.note}</p>
-        <p>No real person is in these recordings, so a pipeline version in development may run on them.</p>
+        <p>No real person is in these files, so a pipeline version in development may run on them.</p>
       </div>
     );
   }
   if (!data.may_declare_synthetic) return null;
   return (
     <div className="space-y-2 rounded border border-slate-200 bg-white p-3 text-sm">
-      <p>If these recordings hold no real person, declare them synthetic. Then any pipeline version in development may run on them, and nobody needs a sample.</p>
+      <p>If these files hold no real person, declare them synthetic. Then any pipeline version in development may run on them, and nobody needs a sample.</p>
       <div className="flex flex-wrap items-center gap-2">
         <input
           data-testid="sample-synthetic-note"
@@ -333,7 +332,7 @@ function Synthetic({ versionId, data }: { versionId: string; data: DevelopmentSa
           onClick={() => declare.mutate(note)}
           className="rounded border border-slate-300 bg-white px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-50"
         >
-          Declare these recordings synthetic
+          Declare these files synthetic
         </button>
       </div>
       {declare.error ? (
@@ -358,10 +357,10 @@ export function DevelopmentSamplesSection({ versionId }: { versionId: string }) 
       <Section title="Development sample">
         <div data-testid="sample-banner" className="space-y-1 rounded border border-teal-200 bg-teal-50 p-3 text-sm">
           <p>
-            This is a development sample of {s.records} recordings, {s.mine ? "drawn for you" : "drawn for somebody else"}.{" "}
-            {s.status === "approved" && s.expires_at && new Date(s.expires_at) > new Date() ? `It ends ${when(s.expires_at)}.` : "It has ended."} It names the same locked recordings as{" "}
+            This is a development sample of {s.records} files, {s.mine ? "drawn for you" : "drawn for somebody else"}.{" "}
+            {s.status === "approved" && s.expires_at && new Date(s.expires_at) > new Date() ? `It ends ${when(s.expires_at)}.` : "It has ended."} It names the same locked files as{" "}
             <Link to={`/versions/${s.source_version_id}`} className="text-sky-700 underline">
-              the recordings it was drawn from
+              the files it was drawn from
             </Link>{" "}
             and copies none of them.
           </p>
@@ -377,7 +376,7 @@ export function DevelopmentSamplesSection({ versionId }: { versionId: string }) 
   return (
     <Section
       title="Development samples"
-      description="A pipeline version in development runs only on development data. A sample is a few of these recordings, drawn by the platform to build and test it on. It names the same locked recordings and copies none. It is for the person it was drawn for, and it ends on its own."
+      description="A pipeline version in development runs only on development data. A sample is a few of these files, drawn by the platform to build and test it on. It names the same locked files and copies none. It is for the person it was drawn for, and it ends on its own."
     >
       <div data-testid="development-samples" className="space-y-4">
         <Synthetic versionId={versionId} data={data} />
@@ -404,12 +403,12 @@ export function DevelopmentSamplesSection({ versionId }: { versionId: string }) 
         )}
         {data.granted.length > 0 && (
           <div className="space-y-2">
-            <h3 className="text-sm font-medium">In force for these recordings</h3>
+            <h3 className="text-sm font-medium">In force for these files</h3>
             <ul className="space-y-1 text-sm">
               {data.granted.map((s) => (
                 <li key={s.id} data-testid={`sample-granted-${s.id}`} className="flex flex-wrap items-center gap-2">
                   <span>
-                    {s.principal_label}: {s.granted_count} recordings ({bands(s.strata)}), ends {when(s.expires_at)}.
+                    {s.principal_label}: {s.granted_count} files ({bands(s.strata)}), ends {when(s.expires_at)}.
                   </span>
                   <EndButton sample={s} />
                 </li>

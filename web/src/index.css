@@ -85,3 +85,34 @@ input[type="radio"] {
   opacity: 1;
 }
 
+
+/*
+ * One look for a table of records, so every list in the console reads the same: a bordered card, a shaded heading row in small capitals, and a
+ * row that lights up under the pointer. The Datasets list was the first with it; a table that wants this look says `data-card` on its wrapper
+ * and `data-table` on the table, and sets no padding, border or hover colour of its own. A cell that must differ (right-aligned numbers, a
+ * column that must not wrap) adds only that one utility, which wins over these defaults.
+ */
+@layer components {
+  .data-card {
+    @apply overflow-x-auto rounded border border-slate-200 bg-white;
+  }
+  .data-table {
+    @apply w-full text-sm;
+  }
+  .data-table thead {
+    @apply whitespace-nowrap bg-slate-50 text-left text-xs uppercase text-slate-500;
+  }
+  .data-table th {
+    @apply px-3 py-2 font-medium;
+  }
+  .data-table td {
+    @apply px-3 py-2 align-top;
+  }
+  .data-table th:first-child,
+  .data-table td:first-child {
+    @apply pl-4;
+  }
+  .data-table tbody tr {
+    @apply border-t border-slate-100 transition-colors hover:bg-slate-50;
+  }
+}

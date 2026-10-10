@@ -1,8 +1,8 @@
 /**
- * Development samples: the few recordings a pipeline version in development may run on.
+ * Development samples: the few files a pipeline version in development may run on.
  *
- * A person asks for a sample of a version of locked recordings, an approver of the department that owns them decides, and the platform draws it.
- * A sample names the same stored recordings as the original and copies none. Nothing here returns a recording or says who a patient is: only
+ * A person asks for a sample of a version of locked files, an approver of the department that owns them decides, and the platform draws it.
+ * A sample names the same stored files as the original and copies none. Nothing here returns a file or says who a patient is: only
  * counts, band by band, people who asked and decided, and dates.
  */
 

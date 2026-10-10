@@ -74,7 +74,7 @@ test.describe("U21: no internal vocabulary on any screen", () => {
 
   for (const route of ["/", "/datasets"]) {
     test(`nothing internal on ${route} as a researcher`, async ({ page }) => {
-      await loginAs(page, "sam-researcher");
+      await loginAs(page, "canary-researcher");
       await page.goto(route);
       const text = (await page.textContent("body")) ?? "";
 
@@ -87,7 +87,7 @@ test.describe("U21: no internal vocabulary on any screen", () => {
   }
 
   test("a researcher is not shown the list of services", async ({ page }) => {
-    await loginAs(page, "sam-researcher");
+    await loginAs(page, "canary-researcher");
     await page.goto("/");
     // The map of components is for the people who run the platform. A
     // researcher deciding whether to ask for data has no use for it.
@@ -95,18 +95,20 @@ test.describe("U21: no internal vocabulary on any screen", () => {
   });
 
   test("the navigation names no build stage", async ({ page }) => {
-    await loginAs(page, "ops-priya");
-    const nav = (await page.locator("nav").textContent()) ?? "";
+    await loginAs(page, "canary-admin");
+    const nav = (await page.getByRole("navigation", { name: "Main" }).textContent()) ?? "";
     expect(findAny(nav, NEVER)).toEqual([]);
   });
 
   test("the platform administrator still gets the detail they need", async ({
     page,
   }) => {
-    await loginAs(page, "ops-priya");
+    await loginAs(page, "canary-admin");
     await page.goto("/");
     // The exemption is real, not a loophole: this persona exists to run the
-    // system, so naming its parts is the point of their landing page.
+    // system, so naming its parts is the point of their Services page. Their home does not carry the map.
+    await expect(page.getByTestId("component-map")).toHaveCount(0);
+    await page.goto("/services");
     await expect(page.getByTestId("component-map")).toBeVisible();
   });
 });

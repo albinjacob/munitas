@@ -14,6 +14,7 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Empty, Failure, Loading, Section } from "../../components/states";
+import { byOn, when } from "../../lib/when";
 import { Pagination } from "../../components/Pagination";
 import { notify } from "../../components/toast";
 import { useIdentity } from "../../identity/IdentityContext";
@@ -71,7 +72,7 @@ export function EgressApprovalQueue() {
   const waiting = pendingCount.data?.total ?? 0;
 
   return (
-    <div className="p-6">
+    <div>
       <Section
         level="page"
         title="Egress approvals"
@@ -80,7 +81,7 @@ export function EgressApprovalQueue() {
         {rows.length === 0 ? (
           <Empty
             what="requests to review"
-            hint="A request appears here the moment an agent version declares hosts it may call. A version that declares none files nothing."
+            hint="A request appears here the moment an agent version declares hosts it may call. A version that declares no hosts files no request."
           />
         ) : (
           <>
@@ -89,19 +90,20 @@ export function EgressApprovalQueue() {
                 ? "Nothing is waiting on you. Earlier decisions are kept below."
                 : `${waiting} waiting on a decision.`}
             </p>
-            <table className="w-full text-sm" data-testid="egress-queue">
-              <thead className="border-b border-slate-200 text-left text-slate-500">
+            <div className="data-card"><table className="data-table" data-testid="egress-queue">
+              <thead>
                 <tr>
-                  <th className="py-2 font-medium">Agent</th>
-                  <th className="py-2 font-medium">Requested hosts</th>
-                  <th className="py-2 font-medium">State</th>
-                  <th className="py-2 font-medium">Submitted by</th>
+                  <th>Agent</th>
+                  <th>Requested hosts</th>
+                  <th>State</th>
+                  <th>Submitted by</th>
+                  <th>Decided</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row) => (
                   <tr key={row.id} className="border-b border-slate-100">
-                    <td className="py-2">
+                    <td>
                       <Link
                         className="font-medium text-blue-700 hover:underline"
                         to={`/egress-approvals/${row.id}`}
@@ -109,19 +111,21 @@ export function EgressApprovalQueue() {
                         {row.agent_name} v{row.version}
                       </Link>
                     </td>
-                    <td className="py-2 font-mono text-xs">
+                    <td className="font-mono text-xs">
                       {row.requested_hosts.join(", ")}
                     </td>
-                    <td className="py-2">
+                    <td>
                       <StateBadge state={row.state} />
                     </td>
-                    <td className="py-2 text-slate-600">
+                    <td className="text-slate-600">
                       {row.submitted_by_label ?? row.submitted_by}
+                      <div className="text-xs text-slate-500">{when(row.created_at)}</div>
                     </td>
+                    <td className="text-slate-600">{row.decided_at ? when(row.decided_at) : ""}</td>
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
             <Pagination
               page={page}
               pageSize={PAGE_SIZE}
@@ -152,8 +156,8 @@ function Decide({ detail }: { detail: EgressApprovalDetail }) {
     return (
       <div className="rounded border border-slate-200 bg-slate-50 p-4 text-sm">
         <p className="font-medium text-slate-900">
-          {detail.state === "approved" ? "Approved by " : "Refused by "}
-          {detail.decided_by_label ?? detail.decided_by}.
+          {detail.state === "approved" ? "Approved " : "Refused "}
+          {byOn(detail.decided_by_label ?? detail.decided_by, detail.decided_at)}.
         </p>
         {detail.decision_reason && (
           <p className="mt-1 text-slate-700">{detail.decision_reason}</p>
@@ -232,7 +236,7 @@ export function EgressApprovalDetailScreen() {
   const d = detail.data;
 
   return (
-    <div className="p-6">
+    <div>
       <Link className="text-sm text-blue-700 hover:underline" to="/egress-approvals">
         Back to requests
       </Link>
@@ -270,6 +274,7 @@ export function EgressApprovalDetailScreen() {
             <dd className="mt-0.5 font-medium">
               {d.submitted_by_label ?? d.submitted_by}
             </dd>
+            <dd className="text-slate-500">{when(d.created_at)}</dd>
           </div>
         </dl>
       </Section>

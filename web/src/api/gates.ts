@@ -23,7 +23,7 @@ export interface GateLeak {
   /** Postgres numeric arrives as a string. */
   coverage: string | number;
   direct: boolean;
-  /** Found by a practice run on recordings with known contents, not in the batch this decision is about. */
+  /** Found by a practice run on files with known contents, not in the batch this decision is about. */
   practice: boolean;
 }
 
@@ -34,6 +34,27 @@ export interface GateStep {
   started_at: string;
   ended_at: string | null;
   action_name: string;
+  /** The step's own name in the pipeline, when it has one. */
+  step_name: string | null;
+}
+
+/** The run that made a result, and what it was made with. A built-in pipeline has no uploaded version, so those parts are null. */
+export interface GateRun {
+  id: string;
+  trigger_kind: string | null;
+  started_at: string;
+  ended_at: string | null;
+  triggered_by_label: string | null;
+  pipeline_id: string | null;
+  pipeline_name: string | null;
+  pipeline_version: number | null;
+  uploaded_at: string | null;
+  uploaded_by_label: string | null;
+  approved_at: string | null;
+  approved_by_label: string | null;
+  source_version_id: string | null;
+  source_dataset_name: string | null;
+  source_version: number | null;
 }
 
 export interface GateRow {
@@ -53,16 +74,54 @@ export interface GateRow {
   triggered_by_label: string | null;
   decided_by: string | null;
   decided_by_label: string | null;
+  /** When it was decided, or null while it waits. */
+  decided_at: string | null;
   decision_reason: string | null;
   created_at: string;
   pipeline_run_id: string | null;
   leak_count: number;
+  /** Who may decide this now, other than whoever started the run. Empty once it is decided. */
+  waiting_on: { id: string; label: string }[];
+  /** Whether the person asking may decide it. */
+  can_decide: boolean;
 }
 
 export interface GateDetail extends Omit<GateRow, "leak_count"> {
   storage_prefix: string;
+  run: GateRun | null;
   leaks: GateLeak[];
   steps: GateStep[];
+}
+
+/** One check the platform ran on a file before anyone looked. A blocking check that fails stops a release. */
+export interface ReviewCheck {
+  check: string;
+  ok: boolean;
+  blocking: boolean;
+  detail: string;
+}
+
+export interface ReviewFile {
+  record_id: string;
+  bytes: number;
+  locked: boolean;
+  content_type: string;
+  checks: ReviewCheck[];
+}
+
+/** The files a result holds, the checks on each, what the caller has opened and what stops them releasing it now. */
+export interface ReviewEvidence {
+  decision_id: string;
+  version_id: string;
+  state: GateRow["state"];
+  files: ReviewFile[];
+  checks_failed: number;
+  opened: string[];
+  limit: number;
+  may_review: boolean;
+  blockers: string[];
+  not_allowed: string[];
+  recorded: { outcome: string; files: number; checks_failed: number; opened: string[]; limit: number } | null;
 }
 
 export interface GateDecisionPage {
@@ -79,11 +138,14 @@ export function useGateDecisions(
   limit = 15,
   offset = 0,
   state?: string,
+  startedBy?: string,
 ) {
   return useQuery({
-    queryKey: ["gate-decisions", tenantId, reviewer, limit, offset, state],
+    queryKey: ["gate-decisions", tenantId, reviewer, limit, offset, state, startedBy],
     queryFn: () =>
-      api.get<GateDecisionPage>("/gate-decisions", { reviewer, limit, offset, state }),
+      api.get<GateDecisionPage>("/gate-decisions", { reviewer, started_by: startedBy, limit, offset, state }),
+    // Who a result waits on changes when roles change, so it is looked at again, not remembered.
+    refetchInterval: 30_000,
     // Scoped server-side to the caller's own tenant now; `tenantId` still
     // gates the query itself (nothing to fetch before identity resolves),
     // it just no longer travels as a query parameter nothing reads.
@@ -99,6 +161,15 @@ export function useGateDecision(decisionId: string | undefined) {
   });
 }
 
+export function useReview(decisionId: string | undefined) {
+  return useQuery({
+    queryKey: ["gate-review", decisionId],
+    queryFn: () => api.get<ReviewEvidence>(`/gate-decisions/${decisionId}/review`),
+    enabled: Boolean(decisionId),
+    retry: false,
+  });
+}
+
 export function useDecideGate(decisionId: string) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -109,6 +180,7 @@ export function useDecideGate(decisionId: string) {
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["gate-decision", decisionId] });
+      queryClient.invalidateQueries({ queryKey: ["gate-review", decisionId] });
       queryClient.invalidateQueries({ queryKey: ["gate-decisions"] });
       // The class it moves to is shown on the version screen too.
       queryClient.invalidateQueries({ queryKey: ["versions"] });

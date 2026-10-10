@@ -18,21 +18,24 @@
 
 import { expect, test } from "@playwright/test";
 import { loginAs } from "./auth-helpers";
-import { ADMIN, ASKER, CUSTODIAN, WANTED, clearTheRole } from "./role-fixtures";
-import { roleLabel } from "../src/api/roles";
+import { ADMIN, API, ASKER, CUSTODIAN, WANTED, clearTheRole } from "./role-fixtures";
 
-// The console shows a role by its human-readable label (RolesHeld.tsx),
-// never the raw slug WANTED itself carries for API/fixture matching. Text
+// The console shows a role by its label from the policy's role table (RolesHeld.tsx), never the raw slug WANTED itself carries for API/fixture matching. Text
 // assertions against what a person actually sees check for this instead.
-const WANTED_LABEL = roleLabel(WANTED);
+let WANTED_LABEL = WANTED;
+
+test.beforeAll(async () => {
+  const roles = await fetch(`${API}/policy/roles`).then((r) => r.json());
+  WANTED_LABEL = roles.role_words[WANTED].label;
+});
 
 test.describe.configure({ mode: "serial" });
 
 const WHY = "covering de-identification reviews for a fortnight";
 
 test.describe("U72: roles are asked for and granted by different people", () => {
-  test.beforeAll(clearTheRole);
-  test.afterAll(clearTheRole);
+  test.beforeAll(() => clearTheRole());
+  test.afterAll(() => clearTheRole());
 
   test("a person asks for a role, and cannot decide their own ask", async ({
     page,
@@ -40,7 +43,7 @@ test.describe("U72: roles are asked for and granted by different people", () => 
     await loginAs(page, ASKER);
     await page.goto("/directory");
 
-    await page.getByTestId("ask-role").fill(WANTED);
+    await page.getByTestId("ask-role").selectOption(WANTED);
     await page.getByTestId("ask-reason").fill(WHY);
     await page.getByTestId("ask-submit").click();
 
@@ -83,9 +86,9 @@ test.describe("U72: roles are asked for and granted by different people", () => 
 
     const held = page.getByTestId("roles-held");
     await expect(held).toContainText(WANTED_LABEL);
-    // Hartley, not cust-hartley. Every other table on this console shows a
+    // Canary custodian, not canary-custodian. Every other table on this console shows a
     // person rather than the id stored against the row.
-    await expect(held).toContainText("Hartley");
+    await expect(held).toContainText("Canary custodian");
     // The part every platform skips: granted is not reviewed, and the
     // screen says so instead of leaving the column blank.
     await expect(held).toContainText("never checked");

@@ -24,6 +24,7 @@ export interface Ports {
   munitas_api_https: number;
   kratos_public: number;
   kratos_admin: number;
+  hydra_public: number;
   console_dev: number;
   console_preview: number;
 }

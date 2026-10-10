@@ -13,6 +13,7 @@ import { Link } from "react-router-dom";
 import { useAgents } from "../../api/agents";
 import { Empty, Failure, Loading, Section } from "../../components/states";
 import { Pagination } from "../../components/Pagination";
+import { useHeaderSearch } from "../../components/HeaderSearch";
 
 const PAGE_SIZE = 15;
 
@@ -20,6 +21,15 @@ export function Agents() {
   const mayRegister = useHoldsRole(CODE_ROLES);
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
+  useHeaderSearch({
+    value: q,
+    onChange: (value) => {
+      setQ(value);
+      setPage(1);
+    },
+    placeholder: "Search agents by name",
+    testid: "agent-search",
+  });
   const agents = useAgents({
     q: q || undefined,
     limit: PAGE_SIZE,
@@ -30,47 +40,19 @@ export function Agents() {
     <Section
       level="page"
       title="Agents"
-      description="Registered by end users, the same way a dataset is. Versioned and content-addressed, not asserted."
+      description="Programs that people in the organisation register here, the same way they register datasets. Each version is sealed on registration and cannot be changed afterwards, so what ran is always exactly what was registered."
       actions={
         mayRegister ? (
           <Link
             to="/agents/register"
             data-testid="agents-register-link"
-            className="rounded bg-indigo-500 hover:bg-indigo-800 px-3 py-1.5 text-sm font-medium text-white"
+            className="shrink-0 whitespace-nowrap rounded bg-indigo-500 hover:bg-indigo-800 px-3 py-1.5 text-sm font-medium text-white"
           >
             Register an agent
           </Link>
         ) : undefined
       }
     >
-      <div className="mb-4 flex flex-wrap items-end gap-3 rounded border border-slate-200 bg-white p-3">
-        <label className="flex flex-col gap-1 text-xs text-slate-500">
-          Search by name
-          <input
-            data-testid="agent-search"
-            value={q}
-            onChange={(e) => {
-              setQ(e.target.value);
-              setPage(1);
-            }}
-            placeholder="triage-agent"
-            className="w-56 rounded border border-slate-300 px-2 py-1 text-sm text-slate-900"
-          />
-        </label>
-        {q && (
-          <button
-            type="button"
-            onClick={() => {
-              setQ("");
-              setPage(1);
-            }}
-            className="pb-1 text-sm text-sky-700 underline"
-          >
-            Clear
-          </button>
-        )}
-      </div>
-
       {agents.isLoading ? (
         <Loading what="agents" />
       ) : agents.error ? (

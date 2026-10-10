@@ -7,23 +7,22 @@
  * a deliberately wrong password in one test, which the shared helper (built
  * for "sign in as this seeded identity, no exceptions") does not support.
  *
- * Uses `cust-hartley`, seeded by infra/kratos/seed-identities.py, the same
- * identity verify/v53_real_authentication.py exercises against the API
- * directly. This is the same claim, driven through the real browser instead.
+ * Uses `canary-custodian`, seeded by infra/kratos/seed-identities.py.
+ * verify/v53_real_authentication.py makes the same claim against the API
+ * directly; this drives it through the real browser instead.
  */
 
 import { expect, test, type Page } from "@playwright/test";
 import { bearerFor } from "./auth-helpers";
 import { API_BASE } from "../config/ports";
 
-const EMAIL = "hartley@health.example";
+const EMAIL = "custodian@canary.example";
 const PASSWORD = "dev-password-not-for-production";
 
 // Shared with the lease- and agent-run-decision tests below: every seeded
 // identity uses this one password (infra/kratos/seed-identities.py).
-const RESEARCHER_EMAIL = "sam@health.example";
-const DEVI_EMAIL = "devi@health.example";
-// canary-engineer holds the same pipeline_operator role Devi does, in the
+const RESEARCHER_EMAIL = "researcher@canary.example";
+// canary-engineer holds the pipeline_operator role, in the
 // tenant that exists for exactly this: infra/postgres/seed-canary.sql's own
 // header records that every verify script used to write into the same
 // tenant the demonstration organisation lives in, "so a console listing
@@ -88,7 +87,7 @@ test.describe("U53: the front door is a real login", () => {
     await page.getByTestId("login-identifier").fill(EMAIL);
     await page.getByTestId("login-password").fill(PASSWORD);
     await page.getByTestId("login-submit").click();
-    await expect(page.getByTestId("current-persona")).toContainText("Hartley");
+    await expect(page.getByTestId("current-persona")).toContainText("Canary custodian");
   });
 
   test("the right password resolves a real identity and lands on Home", async ({
@@ -100,8 +99,8 @@ test.describe("U53: the front door is a real login", () => {
     await page.getByTestId("login-submit").click();
 
     await expect(page).toHaveURL(/\/$/);
-    await expect(page.getByTestId("current-persona")).toContainText("Hartley");
-    await expect(page.getByTestId("current-tenant")).toContainText("health");
+    await expect(page.getByTestId("current-persona")).toContainText("Canary custodian");
+    await expect(page.getByTestId("current-tenant")).toContainText("canary");
     // Once resolved, the banner is gone; U6's "present on every route"
     // claim is specifically about the unresolved state, not every state.
     await expect(page.getByTestId("unauthenticated-banner")).toHaveCount(0);
@@ -114,10 +113,10 @@ test.describe("U53: the front door is a real login", () => {
     await page.getByTestId("login-identifier").fill(EMAIL);
     await page.getByTestId("login-password").fill(PASSWORD);
     await page.getByTestId("login-submit").click();
-    await expect(page.getByTestId("current-persona")).toContainText("Hartley");
+    await expect(page.getByTestId("current-persona")).toContainText("Canary custodian");
 
     await page.reload();
-    await expect(page.getByTestId("current-persona")).toContainText("Hartley");
+    await expect(page.getByTestId("current-persona")).toContainText("Canary custodian");
   });
 
   test("signing out ends the real session, not just the local state", async ({
@@ -127,8 +126,9 @@ test.describe("U53: the front door is a real login", () => {
     await page.getByTestId("login-identifier").fill(EMAIL);
     await page.getByTestId("login-password").fill(PASSWORD);
     await page.getByTestId("login-submit").click();
-    await expect(page.getByTestId("current-persona")).toContainText("Hartley");
+    await expect(page.getByTestId("current-persona")).toContainText("Canary custodian");
 
+    await page.getByTestId("ds-profile").click();
     await page.getByTestId("switch-persona").click();
     await expect(page).toHaveURL(/\/auth\/login$/);
 
@@ -163,26 +163,25 @@ async function apiGet<T>(path: string, headers: Record<string, string>): Promise
 async function ownedVersion(custodianId: string): Promise<string> {
   const auth = await bearerFor(custodianId);
   const org = await apiGet<{ departments: { id: string; custodian: string }[] }>(
-    "/organisation?tenant_id=health",
+    "/organisation?tenant_id=canary",
     auth,
   );
   const dept = org.departments.find((d) => d.custodian === custodianId);
-  if (!dept) throw new Error(`${custodianId} owns no department in health`);
+  if (!dept) throw new Error(`${custodianId} owns no department in canary`);
 
+  // Oldest first, so the plain datasets the test organisation was seeded with come before the locked ones that other tests make as they run. A version
+  // is only worth asking for when something in it can be read: the platform refuses a request for a version whose every file is locked, rightly.
   const datasets = await apiGet<{
     datasets: { id: string; department_id: string | null; version_count: number }[];
-  }>("/datasets?tenant_id=health", auth);
-  const owned = datasets.datasets.find(
-    (d) => d.department_id === dept.id && d.version_count > 0,
-  );
-  if (!owned) throw new Error(`${custodianId}'s department has no sealed dataset`);
-
-  const versions = await apiGet<{ dataset_version_id: string }[]>(
-    `/datasets/${owned.id}/versions`,
-    auth,
-  );
-  if (!versions.length) throw new Error(`dataset ${owned.id} has no versions`);
-  return versions[0].dataset_version_id;
+  }>("/datasets?tenant_id=canary&limit=1000&sort=registered&direction=asc", auth);
+  for (const owned of datasets.datasets.filter((d) => d.department_id === dept.id && d.version_count > 0)) {
+    const versions = await apiGet<{ dataset_version_id: string }[]>(`/datasets/${owned.id}/versions`, auth);
+    for (const v of versions) {
+      const found = await apiGet<{ reads: string }>(`/dataset-versions/${v.dataset_version_id}/readability`, auth);
+      if (found.reads !== "nothing") return v.dataset_version_id;
+    }
+  }
+  throw new Error(`${custodianId}'s department has no sealed dataset that something can be read from`);
 }
 
 test.describe("U56: the lease decision endpoints require a real session", () => {
@@ -190,7 +189,7 @@ test.describe("U56: the lease decision endpoints require a real session", () => 
     page,
     browser,
   }) => {
-    const versionId = await ownedVersion("cust-hartley");
+    const versionId = await ownedVersion("canary-custodian");
 
     // The researcher's session files the request. A separate browser context,
     // not just a second page, because each needs its own cookie jar.
@@ -199,19 +198,19 @@ test.describe("U56: the lease decision endpoints require a real session", () => 
     await loginAs(researcherPage, RESEARCHER_EMAIL);
     const filed = await researcherPage.request.post(`${API}/leases/requests`, {
       data: {
-        tenant_id: "health",
-        principal: "sam-researcher",
+        tenant_id: "canary",
+        principal: "canary-researcher",
         dataset_version_id: versionId,
         purpose: "U56 real-session check",
         justification: "proving the migrated endpoint works end to end",
         ttl_hours: 4,
       },
     });
-    expect(filed.ok()).toBe(true);
+    expect(filed.ok(), `filing the request answered ${filed.status()}: ${await filed.text()}`).toBe(true);
     const { id: requestId } = await filed.json();
     await researcherContext.close();
 
-    // Hartley, signed in for real, grants it through the console UI.
+    // The custodian, signed in for real, grants it through the console UI.
     await loginAs(page, EMAIL);
     await page.goto("/");
     await expect(page.getByTestId("pending-requests")).toBeVisible();
@@ -220,11 +219,11 @@ test.describe("U56: the lease decision endpoints require a real session", () => 
   });
 
   test("granting is refused without a real session", async ({ request }) => {
-    const versionId = await ownedVersion("cust-hartley");
+    const versionId = await ownedVersion("canary-custodian");
     const filed = await request.post(`${API}/leases/requests`, {
       data: {
-        tenant_id: "health",
-        principal: "cust-hartley",
+        tenant_id: "canary",
+        principal: "canary-custodian",
         dataset_version_id: versionId,
         purpose: "U56 unauthenticated check",
         justification: "should be refused before this even matters",
@@ -239,21 +238,33 @@ test.describe("U56: agent deploy/start-run/approve-run require a real session", 
   test("deploying and starting a run works end to end, signed in for real", async ({
     page,
   }) => {
-    await loginAs(page, DEVI_EMAIL);
-    const { agents } = await page.request
-      .get(`${API}/agents?tenant_id=health`)
-      .then((r) => r.json());
-    test.skip(!agents.length, "no agent registered in health to deploy a version of");
-    const agent = agents[0];
+    await loginAs(page, CANARY_ENGINEER_EMAIL);
+    // Makes up the agent it deploys: one registered here with a version that is not active, so the test never depends on what an earlier run left.
+    const setup = { ...(await bearerFor("canary-engineer")), "content-type": "application/json" };
+    const org = await fetch(`${API}/organisation?tenant_id=canary`, { headers: setup }).then((r) => r.json());
+    const department = org.departments.find((d: { name: string }) => d.name === "Verification").id;
+    const registered = await fetch(`${API}/agents/register`, {
+      method: "POST",
+      headers: setup,
+      body: JSON.stringify({ tenant_id: "canary", name: `deploy-agent-${Date.now()}`, department_id: department, registered_by: "canary-engineer", purpose: "rank the files" }),
+    });
+    expect(registered.status).toBe(201);
+    const agent = { id: (await registered.json()).id as string };
+    const made = await fetch(`${API}/agents/${agent.id}/versions`, {
+      method: "POST",
+      headers: setup,
+      body: JSON.stringify({ code_hash: `git:${Date.now()}`, source_path: "/checkout/agent", model_id: "qwen2.5:7b", tool_scope: ["list_review_queue"], registered_by: "canary-engineer" }),
+    });
+    expect(made.status).toBe(201);
 
     const detail = await page.request
-      .get(`${API}/agents/${agent.id}?tenant_id=health`)
+      .get(`${API}/agents/${agent.id}?tenant_id=canary`)
       .then((r) => r.json());
     // The Deploy button only renders for a version that is not already
     // active (AgentDetail.tsx), so the test needs one that genuinely isn't.
     const activeId = detail.active_version?.agent_version_id;
     const version = (detail.versions ?? []).find((v: { id: string }) => v.id !== activeId);
-    test.skip(!version, "this agent has no non-active version to deploy");
+    expect(version, "the agent made here has a version that is not active").toBeTruthy();
 
     await page.goto(`/agents/${agent.id}`);
     await page.getByTestId(`deploy-version-${version.version}`).click();
@@ -267,7 +278,7 @@ test.describe("U56: agent deploy/start-run/approve-run require a real session", 
 });
 
 /**
- * U60 (console): recordings can be brought in and sealed as recordings.
+ * U60 (console): files can be brought in and sealed as files.
  *
  * The API half is proved by verify/v60_audio_prepare.py. This is the same
  * claim driven through the browser, which is the only way to find out whether
@@ -316,12 +327,13 @@ async function registerAudioDataset(page: Page, name: string): Promise<void> {
   await page.getByTestId("register-name").fill(name);
   const departments = page.getByTestId("register-department");
   await expect(departments.locator("option")).not.toHaveCount(1);
-  await departments.selectOption({ index: 1 });
+  // By name: the list also holds departments other checks made up, and their order is not this test's to depend on.
+  await departments.selectOption({ label: "Verification" });
   await page.getByTestId("register-submit").click();
   await expect(page.getByTestId("upload-step")).toBeVisible();
 }
 
-test.describe("U60: recordings are read on the way in, and sealed as recordings", () => {
+test.describe("U60: files are read on the way in, and sealed as files", () => {
   test("the platform's reading of each file comes back to the screen", async ({
     page,
   }) => {
@@ -405,7 +417,7 @@ test.describe("U60: recordings are read on the way in, and sealed as recordings"
     await page.getByTestId("seal-audio-submit").click();
 
     const done = page.getByTestId("seal-done");
-    await expect(done).toContainText("1 recording");
+    await expect(done).toContainText("1 file");
     await expect(done).toContainText("de-identification pipeline can read");
   });
 

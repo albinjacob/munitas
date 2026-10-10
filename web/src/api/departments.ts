@@ -56,6 +56,9 @@ function useRefreshApprovers() {
     queryClient.invalidateQueries({ queryKey: ["organisation"] });
     queryClient.invalidateQueries({ queryKey: ["department-approvers"] });
     queryClient.invalidateQueries({ queryKey: ["awaiting-confirmation"] });
+    // The sign-in panel says which departments a person approves for, so it is read again.
+    queryClient.invalidateQueries({ queryKey: ["directory"] });
+    queryClient.invalidateQueries({ queryKey: ["auth", "whoami"] });
   };
 }
 

@@ -11,8 +11,8 @@
  * identities mean is backwards.
  *
  * The Internal section is hidden once a customer persona is confirmed
- * acting, the same mechanism (and the same non-guarantee) `AppShell.tsx`'s
- * nav already uses: `roles` decides relevance, not permission. There is no
+ * acting, the same mechanism (and the same non-guarantee) the shell's
+ * nav (`nav.tsx`) already uses: `roles` decides relevance, not permission. There is no
  * authentication in this console (`IdentityContext.tsx`'s `authenticated` is
  * always `false`), so this cannot be a real access boundary, only a default
  * that follows whichever persona is currently chosen. Anyone can switch
@@ -30,6 +30,7 @@ import { ClassBadge } from "../../components/ClassBadge";
 import { Failure, Loading, Section } from "../../components/states";
 import { roleLabel } from "../../api/roles";
 import { SERVICES } from "../../identity/services";
+import { reachWithoutLease } from "../../lib/reach";
 import { useIdentity } from "../../identity/IdentityContext";
 
 interface PolicyRoles {
@@ -53,10 +54,18 @@ const CUSTOMER_ROLES = new Set([
   "notebook_explore",
   "pipeline_operator",
   "analyst",
+  "deid_reviewer",
+  "network_architect",
+  "privacy_auditor",
 ]);
 
 /** Which roles belong to people. Everything else is a workload. */
 const HUMAN_ROLES = new Set([...CUSTOMER_ROLES, ...INTERNAL_ROLES]);
+
+/** What a service role does, for the ones that have no running service of their own to describe it. */
+const SERVICE_ROLE_NOTES: Record<string, string> = {
+  model_eval: "Measures how well a model performs on data it is allowed to read.",
+};
 
 function floorClass(
   floor: number,
@@ -82,7 +91,7 @@ function RoleTable({
         <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
           <tr>
             <th className="px-4 py-2">Role</th>
-            <th>Reads down to</th>
+            <th>Can read without a lease</th>
             <th>May approve access</th>
           </tr>
         </thead>
@@ -103,8 +112,9 @@ function RoleTable({
                     {role}
                   </code>
                 </td>
-                <td>
-                  <ClassBadge value={klass} />
+                <td className="pr-4">
+                  <span className="mr-2 inline-block align-middle"><ClassBadge value={klass} /></span>
+                  <span className="text-xs text-slate-600">{reachWithoutLease(klass)}</span>
                 </td>
                 <td>
                   {approves ? (
@@ -148,62 +158,61 @@ export function Roles() {
     Boolean(principal) && !principal!.roles.some((r) => INTERNAL_ROLES.has(r));
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-10" data-testid="roles-page">
+    <div data-testid="roles-page">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">Application roles</h1>
-          <p className="mt-2 max-w-2xl text-slate-600">
-            What each role may read without asking, and who may grant the rest.
-            This page is generated from the rules themselves, so it cannot say
-            one thing while the system does another.
-          </p>
+          <h1 className="text-2xl font-semibold">What each role can do</h1>
         </div>
-        {principal ? (
-          <Link to="/" className="shrink-0 text-sm text-sky-700 underline">
-            Back to the console
-          </Link>
-        ) : (
+        {!principal && (
           <Link to="/auth/login" className="shrink-0 text-sm text-sky-700 underline">
             Back to sign in
           </Link>
         )}
       </div>
+      <p className="mt-2 text-slate-600">
+        What each role may read without asking, and who may approve access beyond that. This is the same in every organisation.
+      </p>
+      {principal && (
+        <p className="mt-1 text-slate-600" data-testid="roles-to-rules">
+          How much a person may ask for, and for how long, is set for each organisation on the <Link to="/access-rules" className="text-sky-700 underline">Access rules</Link> page.
+        </p>
+      )}
 
       <div className="mt-8">
         <Section
-          title="Customer"
-          description="Every human role reads only published data without a lease. That is the design: people reach data through a workspace holding a credential for them, and anything more sensitive is approved by somebody else."
+          title="People"
+          description="Every role held by a person reads only published data without a lease. Anything more sensitive is requested through a lease and approved by somebody else."
         >
-          <RoleTable roles={customer} data={data} caption="Customer-facing roles" />
+          <RoleTable roles={customer} data={data} caption="Roles held by people" />
         </Section>
 
         {!confirmedCustomer && (
           <Section
-            title="Internal"
-            description="Runs and supports the platform itself, not the data it governs on a customer's behalf. Holds no more standing access to customer data than any other role. Hidden once you are acting as a customer persona, the same way the sidebar's own links vary by persona rather than by any real permission check."
+            title="Platform staff"
+            description="People who run and support the platform itself. They hold no more standing access to an organisation's data than any other role."
           >
-            <RoleTable roles={internal} data={data} caption="Internal roles" />
+            <RoleTable roles={internal} data={data} caption="Roles held by platform staff" />
           </Section>
         )}
 
         <Section
           title="Services"
-          description="You cannot act as one of these. Only services reach below published without a lease, because they run inside the boundary and produce the thing everyone else waits for. Also called a principal in the policy engine and the audit log."
+          description="These are not people, and nobody signs in as one. They are the platform's own programs. Only they can read below published data without a lease, because they run inside the platform and produce the data everyone else waits for."
         >
-          <RoleTable roles={workload} data={data} caption="Workload roles" />
+          <RoleTable roles={workload} data={data} caption="Roles held by services" />
           <ul className="mt-4 space-y-2">
-            {SERVICES.map((s) => (
-              <li key={s.id} className="text-sm text-slate-600">
-                <span className="font-medium text-slate-800">{s.label}</span>{" "}
-                {s.description}
+            {workload.map((role) => (
+              <li key={role} className="text-sm text-slate-600">
+                <span className="font-medium text-slate-800">{roleLabel(role)}:</span>{" "}
+                {SERVICES.find((s) => s.role === role)?.description ?? SERVICE_ROLE_NOTES[role]}
               </li>
             ))}
           </ul>
         </Section>
 
         <Section
-          title="How access below your floor is granted"
-          description="A lease, and only a lease."
+          title="How access beyond your role is granted"
+          description="Through a lease: time-limited access that a second person approves."
         >
           <ol className="list-decimal space-y-2 rounded border border-slate-200 bg-white p-4 pl-8 text-sm text-slate-700">
             <li>

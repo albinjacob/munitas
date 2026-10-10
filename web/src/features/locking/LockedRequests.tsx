@@ -1,5 +1,6 @@
 /**
- * Locked-column access: the requests waiting for you to decide, the leases in force in the departments you answer for, and your own.
+ * Locked data requests: the requests waiting for you to decide, what is allowed now in the departments you answer for, and your own, for the locked
+ * rows of a table and, below them, for its real files.
  *
  * A lease lets somebody who is not the owning department's approver read a few rows of a table's locked columns for a few days, for a stated
  * purpose. It is decided by an approver of the department that owns the data, never by the person who asked, and ended early by either.
@@ -9,11 +10,10 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useDecideLease, useLeases, useRevokeLease, type LockedLease } from "../../api/locking";
 import { Empty, Failure, Loading, Section } from "../../components/states";
+import { FileLeaseSections } from "./FileLeaseSections";
 import { Reasons } from "./LockedColumns";
+import { when } from "../../lib/when";
 
-function when(iso: string | null | undefined): string {
-  return iso ? new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "";
-}
 
 const STATUS_WORDS: Record<LockedLease["status"], string> = {
   requested: "Waiting for an approver",
@@ -102,84 +102,90 @@ function LeaseTable({
   leases,
   who,
   action,
+  actionLabel,
   testid,
 }: {
   leases: LockedLease[];
   who: "asker" | "decider";
   action?: (lease: LockedLease) => React.ReactNode;
+  actionLabel?: string;
   testid: string;
 }) {
   return (
-    <table className="w-full text-sm" data-testid={testid}>
-      <thead className="border-b border-slate-200 text-left text-slate-500">
-        <tr>
-          <th className="py-2 font-medium">{who === "asker" ? "Table" : "Who asked"}</th>
-          <th className="py-2 font-medium">What for</th>
-          <th className="py-2 font-medium">Rows and days</th>
-          <th className="py-2 font-medium">State</th>
-          <th className="py-2 font-medium" />
-        </tr>
-      </thead>
-      <tbody>
-        {leases.map((l) => (
-          <tr key={l.id} className="border-b border-slate-100 align-top">
-            <td className="py-2">
-              {who === "decider" ? <span className="font-medium">{l.principal_label}</span> : null}
-              <div>
-                <Link className="text-sky-700 underline" to={`/versions/${l.dataset_version_id}`}>
-                  Open the table
-                </Link>
-              </div>
-            </td>
-            <td className="py-2 max-w-xs">{l.purpose}</td>
-            <td className="py-2">
-              {l.row_limit} row{l.row_limit === 1 ? "" : "s"}, {l.days} day{l.days === 1 ? "" : "s"}
-              <div className="text-xs text-slate-500">Asked {when(l.requested_at)}</div>
-            </td>
-            <td className="py-2">
-              <StatusChip lease={l} />
-              {l.expires_at && l.status === "approved" && <div className="mt-1 text-xs text-slate-500">Until {when(l.expires_at)}</div>}
-              {l.decided_by_label && l.status !== "requested" && (
-                <div className="mt-1 text-xs text-slate-500">
-                  {l.status === "declined" ? "Declined" : "Approved"} by {l.decided_by_label}
-                  {l.decision_note ? `: ${l.decision_note}` : ""}
-                </div>
-              )}
-            </td>
-            <td className="py-2">{action?.(l)}</td>
+    <div className="overflow-x-auto rounded border border-slate-200 bg-white">
+      <table className="w-full text-sm" data-testid={testid}>
+        <thead className="whitespace-nowrap bg-slate-50 text-left text-xs uppercase text-slate-500">
+          <tr>
+            <th className="px-4 py-2">Table</th>
+            {who === "decider" && <th className="px-2">Who asked</th>}
+            <th className="px-2">What for</th>
+            <th className="px-2">Rows and days</th>
+            <th className="px-2">State</th>
+            <th className="px-2">{action ? actionLabel ?? "Action" : ""}</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {leases.map((l) => (
+            <tr key={l.id} className="border-t border-slate-100 align-top transition-colors hover:bg-slate-50">
+              <td className="px-4 py-2">
+                <Link className="font-medium text-sky-700 underline" to={`/versions/${l.dataset_version_id}`}>
+                  {l.dataset_name ?? "Open the table"}
+                </Link>
+                {l.dataset_version != null && <span className="ml-1 text-slate-500">v{l.dataset_version}</span>}
+              </td>
+              {who === "decider" && <td className="px-2 py-2 font-medium">{l.principal_label}</td>}
+              <td className="max-w-xs px-2 py-2">{l.purpose}</td>
+              <td className="whitespace-nowrap px-2 py-2">
+                {l.row_limit} row{l.row_limit === 1 ? "" : "s"}, {l.days} day{l.days === 1 ? "" : "s"}
+                <div className="text-xs text-slate-500">Asked {when(l.requested_at)}</div>
+              </td>
+              <td className="px-2 py-2">
+                <StatusChip lease={l} />
+                {l.expires_at && l.status === "approved" && <div className="mt-1 text-xs text-slate-500">Until {when(l.expires_at)}</div>}
+                {l.decided_by_label && l.status !== "requested" && (
+                  <div className="mt-1 text-xs text-slate-500">
+                    {l.status === "declined" ? "Declined" : "Approved"} by {l.decided_by_label}
+                    {l.decided_at ? ` on ${when(l.decided_at)}` : ""}
+                    {l.decision_note ? `: ${l.decision_note}` : ""}
+                  </div>
+                )}
+              </td>
+              <td className="px-2 py-2">{action?.(l)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
 export function LockedRequests() {
   const leases = useLeases();
-  if (leases.isLoading) return <Loading what="locked-column access" />;
-  if (leases.error) return <Failure error={leases.error} what="locked-column access" />;
+  if (leases.isLoading) return <Loading what="locked data requests" />;
+  if (leases.error) return <Failure error={leases.error} what="locked data requests" />;
   const d = leases.data!;
   const inForce = (l: LockedLease) => l.status === "approved" && l.expires_at !== null && new Date(l.expires_at) > new Date();
 
   return (
-    <div className="p-6">
+    <div>
       <Section
         level="page"
-        title="Locked-column access"
-        description="A lease lets somebody who does not answer for a table read a few of its locked rows for a few days, for a stated purpose. An approver of the department that owns the data decides it, never the person who asked."
+        title="Locked data requests"
+        description="Somebody who does not answer for a table can ask to read a few of its locked rows, or to open a few of its real files, for a stated purpose and a limited time. An approver of the department that owns the data decides, never the person who asked."
       >
+        <h2 className="mb-3 text-xl font-semibold text-slate-900">Locked rows</h2>
         {d.to_decide.length > 0 || d.granted.length > 0 ? (
           <>
             <h2 className="mb-2 text-lg font-semibold text-slate-900">Waiting for you to decide</h2>
             {d.to_decide.length ? (
-              <LeaseTable leases={d.to_decide} who="decider" testid="leases-to-decide" action={(l) => <Decide lease={l} />} />
+              <LeaseTable leases={d.to_decide} who="decider" testid="leases-to-decide" actionLabel="Your decision" action={(l) => <Decide lease={l} />} />
             ) : (
               <Empty what="requests waiting for you" />
             )}
 
             <h2 className="mb-2 mt-8 text-lg font-semibold text-slate-900">In force in your departments</h2>
             {d.granted.length ? (
-              <LeaseTable leases={d.granted} who="decider" testid="leases-granted" action={(l) => <End lease={l} />} />
+              <LeaseTable leases={d.granted} who="decider" testid="leases-granted" actionLabel="Action" action={(l) => <End lease={l} />} />
             ) : (
               <Empty what="leases in force" />
             )}
@@ -197,6 +203,9 @@ export function LockedRequests() {
         ) : (
           <Empty what="requests of your own" hint="To ask for access, open a table that has locked columns and use the form there." />
         )}
+
+        <h2 className="mb-3 mt-12 border-t border-slate-200 pt-8 text-xl font-semibold text-slate-900">Files</h2>
+        <FileLeaseSections />
       </Section>
     </div>
   );

@@ -1,12 +1,12 @@
 /**
- * U139 in the console: the first question when bringing data in, and recordings locked per patient as they upload.
+ * U139 in the console: the first question when bringing data in, and files locked per patient as they upload.
  *
  * The claims these tests carry are about what reaches the person, on the live platform:
  *   - the question comes first, "No" is the ordinary upload and is unchanged, and "Yes" replaces the ordinary upload with the way in that locks;
  *   - everything wrong with the manifest and the files chosen is listed together, before a single byte is sent;
- *   - a recording goes up in parts, a part that fails is sent again without the person doing anything, and a connection that stays down pauses the
+ *   - a file goes up in parts, a part that fails is sent again without the person doing anything, and a connection that stays down pauses the
  *     upload with what was sent kept, and carrying on finishes it;
- *   - the sealed version says how many recordings and patients it holds, and the example contract offered on the page really seals a table.
+ *   - the sealed version says how many files and people it holds, and the example contract offered on the page really seals a table.
  */
 
 import { randomBytes } from "node:crypto";
@@ -63,7 +63,7 @@ function wav(dataBytes: number): Buffer {
 const csv = (text: string) => ({ name: "manifest.csv", mimeType: "text/csv", buffer: Buffer.from(text) });
 const audio = (name: string, buffer: Buffer) => ({ name, mimeType: "audio/wav", buffer });
 
-async function openLocking(page: Page, datasetId: string, what: "table" | "recordings") {
+async function openLocking(page: Page, datasetId: string, what: "table" | "files") {
   await loginAs(page, ENGINEER);
   await page.goto(`/datasets/${datasetId}/ingest`);
   await page.getByTestId("erase-yes").check();
@@ -91,8 +91,8 @@ test.describe("U139: locking what identifies a person, from the first question",
     await expect(page.getByTestId("seal-table-contract")).toBeVisible();
     await expect(page.getByTestId("example-contract")).toHaveAttribute("href", "/privacy-contract-example.yaml");
 
-    await page.getByTestId("bringing-recordings").check();
-    await expect(page.getByTestId("recordings-panel")).toBeVisible();
+    await page.getByTestId("bringing-files").check();
+    await expect(page.getByTestId("files-panel")).toBeVisible();
     await expect(page.getByTestId("seal-table-contract")).toHaveCount(0);
 
     await page.getByTestId("erase-no").check();
@@ -120,77 +120,77 @@ test.describe("U139: locking what identifies a person, from the first question",
     await expect(page.getByTestId("table-sealed")).toContainText("3 rows about 2 people", { timeout: 30_000 });
     await page.getByTestId("open-sealed-table").click();
     await expect(page.getByRole("heading", { name: "Locked columns" })).toBeVisible();
-    await expect(page.getByTestId("locked-recordings")).toHaveCount(0);
+    await expect(page.getByTestId("locked-files")).toHaveCount(0);
   });
 
   test("everything wrong with the manifest and the files is listed before anything is sent", async ({ page }) => {
     const datasetId = await registerDataset(`console-manifest-${Date.now()}`);
     const sent: string[] = [];
     page.on("request", (r) => {
-      if (r.url().includes("/recording-uploads")) sent.push(r.url());
+      if (r.url().includes("/file-uploads")) sent.push(r.url());
     });
-    await openLocking(page, datasetId, "recordings");
+    await openLocking(page, datasetId, "files");
 
-    await page.getByTestId("recordings-kind").fill("hospital chart number");
-    await page.getByTestId("recordings-manifest").setInputFiles(csv("file,person\nvisit-1.wav,HC-1\nvisit-2.wav,\nvisit-3.wav,HC-3\nvisit-3.wav,HC-4\n"));
-    await page.getByTestId("recordings-files").setInputFiles([
+    await page.getByTestId("files-kind").fill("hospital chart number");
+    await page.getByTestId("files-manifest").setInputFiles(csv("file,person\nvisit-1.wav,HC-1\nvisit-2.wav,\nvisit-3.wav,HC-3\nvisit-3.wav,HC-4\n"));
+    await page.getByTestId("files-files").setInputFiles([
       audio("visit-1.wav", wav(1000)),
       audio("visit-5.wav", wav(1000)),
       { name: "visit-9.truth.json", mimeType: "application/json", buffer: Buffer.from("{}") },
       { name: "notes.mp3", mimeType: "audio/mpeg", buffer: Buffer.from("x") },
     ]);
 
-    const problems = page.getByTestId("recordings-problems");
+    const problems = page.getByTestId("files-problems");
     await expect(problems).toContainText("visit-2.wav names no person");
     await expect(problems).toContainText("visit-3.wav appears more than once");
     await expect(problems).toContainText("visit-5.wav is not in the manifest");
-    await expect(problems).toContainText("visit-9.truth.json is an answer key, and its recording visit-9.wav");
-    await expect(problems).toContainText("notes.mp3 is neither a recording");
+    await expect(problems).toContainText("visit-9.truth.json is an answer key, and its file visit-9.wav");
+    await expect(problems).toContainText("notes.mp3 is neither a file");
     await expect(problems).toContainText("visit-3.wav is in the manifest, and the file was not chosen");
-    await expect(page.getByTestId("recordings-start")).toBeDisabled();
+    await expect(page.getByTestId("files-start")).toBeDisabled();
     expect(sent).toEqual([]);
   });
 
-  test("a recording goes up in parts, a failed part is sent again by itself, and the version says what it holds", async ({ page }) => {
+  test("a file goes up in parts, a failed part is sent again by itself, and the version says what it holds", async ({ page }) => {
     const datasetId = await registerDataset(`console-parts-${Date.now()}`);
-    await openLocking(page, datasetId, "recordings");
+    await openLocking(page, datasetId, "files");
     const patientA = `A-${Date.now()}`;
     const patientB = `B-${Date.now()}`;
 
     // The second part fails once, as a dropped connection would, and then goes through.
     let dropped = 0;
-    await page.route("**/recording-uploads/*/parts/2", async (route) => {
+    await page.route("**/file-uploads/*/parts/2", async (route) => {
       if (dropped === 0) {
         dropped += 1;
         await route.abort("connectionreset");
       } else await route.continue();
     });
 
-    await page.getByTestId("recordings-kind").fill("hospital chart number");
-    await page.getByTestId("recordings-manifest").setInputFiles(csv(`file,person\nbig.wav,${patientA}\nsmall.wav,${patientB}\n`));
-    await page.getByTestId("recordings-files").setInputFiles([
+    await page.getByTestId("files-kind").fill("hospital chart number");
+    await page.getByTestId("files-manifest").setInputFiles(csv(`file,person\nbig.wav,${patientA}\nsmall.wav,${patientB}\n`));
+    await page.getByTestId("files-files").setInputFiles([
       audio("big.wav", wav(PART * 2 + 12_345)),
       audio("small.wav", wav(50_000)),
       { name: "big.truth.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify({ reference_transcript: "invented words", spans: [] })) },
     ]);
-    await expect(page.getByTestId("recordings-problems")).toHaveCount(0);
-    await page.getByTestId("recordings-start").click();
+    await expect(page.getByTestId("files-problems")).toHaveCount(0);
+    await page.getByTestId("files-start").click();
 
-    const big = page.getByTestId("recording-big.wav");
+    const big = page.getByTestId("file-big.wav");
     await expect(big).toContainText("Sending");
     await expect(big).toContainText("Locked", { timeout: 90_000 });
-    await expect(page.getByTestId("recording-small.wav")).toContainText("Locked");
-    await expect(page.getByTestId("recording-big.truth.json")).toContainText("Locked");
+    await expect(page.getByTestId("file-small.wav")).toContainText("Locked");
+    await expect(page.getByTestId("file-big.truth.json")).toContainText("Locked");
     expect(dropped).toBe(1);
 
-    await page.getByTestId("recordings-seal").click();
-    await expect(page.getByTestId("recordings-sealed")).toContainText("2 recordings about 2 people", { timeout: 60_000 });
-    await page.getByTestId("open-sealed-recordings").click();
-    const held = page.getByTestId("locked-recordings");
+    await page.getByTestId("files-seal").click();
+    await expect(page.getByTestId("files-sealed")).toContainText("2 files about 2 people", { timeout: 60_000 });
+    await page.getByTestId("open-sealed-files").click();
+    const held = page.getByTestId("locked-files");
     await expect(held).toBeVisible();
-    await expect(held).toContainText("Recordings");
+    await expect(held).toContainText("Files");
     await expect(held).toContainText("2");
-    await expect(page.getByTestId("locked-recordings-erased")).toHaveText("0");
+    await expect(page.getByTestId("locked-files-erased")).toHaveText("0");
     // Neither the patient's identifier nor anything of the file's name beyond what the platform lists is on the page.
     await expect(page.locator("body")).not.toContainText(patientA);
   });
@@ -198,29 +198,29 @@ test.describe("U139: locking what identifies a person, from the first question",
   test("a connection that stays down pauses the upload, keeps what was sent, and carrying on finishes it", async ({ page }) => {
     test.setTimeout(120_000);
     const datasetId = await registerDataset(`console-pause-${Date.now()}`);
-    await openLocking(page, datasetId, "recordings");
+    await openLocking(page, datasetId, "files");
 
     let down = true;
-    await page.route("**/recording-uploads/*/parts/2", async (route) => {
+    await page.route("**/file-uploads/*/parts/2", async (route) => {
       if (down) await route.abort("connectionreset");
       else await route.continue();
     });
-    await page.getByTestId("recordings-kind").fill("hospital chart number");
-    await page.getByTestId("recordings-manifest").setInputFiles(csv(`file,person\nlong.wav,P-${Date.now()}\n`));
-    await page.getByTestId("recordings-files").setInputFiles([audio("long.wav", wav(PART + 20_000))]);
-    await page.getByTestId("recordings-start").click();
+    await page.getByTestId("files-kind").fill("hospital chart number");
+    await page.getByTestId("files-manifest").setInputFiles(csv(`file,person\nlong.wav,P-${Date.now()}\n`));
+    await page.getByTestId("files-files").setInputFiles([audio("long.wav", wav(PART + 20_000))]);
+    await page.getByTestId("files-start").click();
 
-    const row = page.getByTestId("recording-long.wav");
+    const row = page.getByTestId("file-long.wav");
     // Four waits of 1, 2, 4 and 8 seconds, then it stops trying.
     await expect(row).toContainText("Paused", { timeout: 60_000 });
     await expect(row).toContainText("1 of 2 parts held");
     await expect(row).toContainText("The parts already sent are kept");
     await expect(row).not.toContainText("Failed to fetch");
-    await expect(page.getByTestId("recordings-seal")).toHaveCount(0);
+    await expect(page.getByTestId("files-seal")).toHaveCount(0);
 
     down = false;
-    await page.getByTestId("recordings-carry-on").click();
+    await page.getByTestId("files-carry-on").click();
     await expect(row).toContainText("Locked", { timeout: 60_000 });
-    await expect(page.getByTestId("recordings-seal")).toBeVisible();
+    await expect(page.getByTestId("files-seal")).toBeVisible();
   });
 });
