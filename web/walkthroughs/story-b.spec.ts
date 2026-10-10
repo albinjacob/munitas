@@ -15,7 +15,7 @@
  * Parts: recordings, table, rows, files, remove-names, evidence.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { loginAs } from "../tests/auth-helpers";
@@ -380,15 +380,18 @@ test("part evidence: Marlow and Nakamura read how locked data was used", async (
   test.skip(PART !== "evidence");
   test.setTimeout(240_000);
   const dir = "evidence-without-names";
+  // The four pictures belong together: they show one moment of the audit. They are taken into a holding folder and moved into place only when every check has
+  // passed, so a run that fails (and this one fails by design when other activity has pushed the story's key lines off the first page) leaves the earlier set whole.
+  const holding = `${dir}/.pending`;
+  rmSync(join(process.cwd(), "walkthroughs", "shots", holding), { recursive: true, force: true });
 
   await loginAs(page, MARLOW);
   await page.goto("/locking-audit");
   await expect(page.getByTestId("audit-reads")).toBeVisible();
-  await shot(page, dir, "01", "marlow-reads-the-audit");
-  await headingAt(page, dir, "02", "How each table's columns were treated", "marlow-sees-how-columns-were-treated");
-  await headingAt(page, dir, "03", "Keys", "marlow-sees-the-keys");
+  await expect(page.getByRole("heading", { name: "Keys", exact: true }).first()).toBeVisible();
 
-  // One person, one key: a person code that the table's rows were read under is also the code the pipeline opened a recording under.
+  // One person, one key: a person code that the table's rows were read under is also the code the pipeline opened a recording under. Checked first, before any
+  // picture is taken.
   const lines: { code: string; text: string }[] = await page.evaluate(() =>
     [...document.querySelectorAll("a, button, span, code")]
       .filter((a) => a.children.length === 0 && /^T-[0-9a-f]+$/.test((a.textContent ?? "").trim()))
@@ -400,13 +403,23 @@ test("part evidence: Marlow and Nakamura read how locked data was used", async (
   console.log("KEYLINES", lines.length, JSON.stringify(lines.map((l) => [l.code.slice(0, 8), /clinic-appointments/.test(l.text), /pipeline_run|action_run|consultation-recordings/.test(l.text)])));
   const inTable = new Set(lines.filter((l) => l.text.includes("clinic-appointments")).map((l) => l.code));
   const inRecordings = new Set(lines.filter((l) => /pipeline_run|action_run|consultation-recordings/.test(l.text)).map((l) => l.code));
-  expect([...inTable].filter((c) => inRecordings.has(c)).length, "no person code is shared by the table and the recordings").toBeGreaterThan(0);
+  expect([...inTable].filter((c) => inRecordings.has(c)).length, "no person code is shared by the table and the recordings: run this part straight after the rest of the story, before other captures add activity").toBeGreaterThan(0);
+
+  await shot(page, holding, "01", "marlow-reads-the-audit");
+  await headingAt(page, holding, "02", "How each table's columns were treated", "marlow-sees-how-columns-were-treated");
+  await headingAt(page, holding, "03", "Keys", "marlow-sees-the-keys");
 
   await loginAs(page, NAKAMURA);
   await page.goto("/locking-audit");
   await expect(page.getByTestId("audit-reads")).toBeVisible();
-  await shot(page, dir, "04", "nakamura-reads-the-same-audit");
+  await shot(page, holding, "04", "nakamura-reads-the-same-audit");
   await expect(page.locator("body")).not.toContainText("Arjun");
   await expect(page.locator("body")).not.toContainText("Priya");
   await expect(page.locator("body")).not.toContainText("Rahul");
+
+  // Everything passed: the set replaces the earlier one in one go.
+  const from = join(process.cwd(), "walkthroughs", "shots", holding);
+  const to = join(process.cwd(), "walkthroughs", "shots", dir);
+  for (const file of readdirSync(from)) renameSync(join(from, file), join(to, file));
+  rmSync(from, { recursive: true, force: true });
 });
