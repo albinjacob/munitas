@@ -61,7 +61,8 @@ jobs:
 
       - name: Bring up the backend stack
         # table-worker writes large tables in a job (U109 needs it); locally a plain `docker compose up -d` starts it.
-        run: docker compose up -d postgres seaweedfs temporal opa kratos-migrate kratos munitas-api table-worker
+        # hydra is the notebook's device sign-in (U167 asks it for a code); hydra-migrate makes its tables first.
+        run: docker compose up -d postgres seaweedfs temporal opa kratos-migrate kratos hydra-migrate hydra munitas-api table-worker
 
       - name: Wait for munitas-api to be healthy
         # docker-compose.yml only defines a healthcheck for postgres, not for
