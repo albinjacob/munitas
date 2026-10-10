@@ -203,7 +203,8 @@ SERIES = [
 
 
 # Pages that newer ones have replaced. They are not on the index, not in the Previous and Next chain and not in the tour's list. Each is
-# still built, into docs/archive/walkthroughs/, and its old address in docs/public/walkthroughs/ is a short page that goes to the index.
+# still built, into docs/archive/walkthroughs/, and its old address in docs/public/walkthroughs/ is a short page that goes to the index. The archive folder is
+# kept on this machine and is not tracked by git (see .gitignore).
 ARCHIVED = [
     {"slug": "bring-in-a-recording", "org": "health", "title": "Bring a recording in, and seal it",
      "summary": "A data engineer registers a dataset for a recording of a cardiology consultation, names the "
