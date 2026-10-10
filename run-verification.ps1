@@ -23,7 +23,7 @@
 # removes what is older than -TidyCanaryOlderThanHours (2), so the run just made is still there to look at. -NoTidyCanary skips it.
 
 param(
-    [string]$WslDistro = "Ubuntu-20.04",
+    [string]$WslDistro = "Munitas",
     [int]$ReclaimOlderThanDays = 1,
     [switch]$NoReclaim,
     [int]$TidyCanaryOlderThanHours = 2,
@@ -51,6 +51,11 @@ if ($apiContainers.Count -ne 1) {
     throw ("Expected exactly one munitas-api container and found $($apiContainers.Count): " + ($apiContainers -join ", ") +
         ". A second one is usually left by `docker compose run munitas-api ...`. Remove the extra with `docker rm -f <name>`, then run this again.")
 }
+
+# A photograph of the tree as the suite starts, kept only if the whole run passes (see verify/affects.py and quick-verify.ps1). Taken here and not
+# at the end, so a file edited while the suite runs counts as not yet checked.
+$treeSnapshot = Join-Path ([System.IO.Path]::GetTempPath()) "munitas-tree-snapshot.json"
+& $venvPython (Join-Path $PSScriptRoot "verify\affects.py") --snapshot $treeSnapshot
 
 Write-Host "Running the verification suite inside the munitas-api container..."
 Write-Host ""
@@ -178,6 +183,8 @@ if ($suiteExit -eq 0 -and (-not $leakOk -or -not $afterRecorded)) {
 }
 if ($suiteExit -eq 0) {
     Write-Host "Suite passed." -ForegroundColor Green
+    # The whole suite passed, recorded, with nothing left behind: this is now what the quick loop measures change against.
+    & $venvPython (Join-Path $PSScriptRoot "verify\affects.py") --accept $treeSnapshot
 } else {
     Write-Host "Suite reported failures. The page above shows which, and when each last failed." -ForegroundColor Yellow
 }

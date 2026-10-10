@@ -29,10 +29,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _canary_purge as canary  # noqa: E402
 
 # Where the platform's own reprint runs. The permissions document in storage still holds the grants of the datasets just deleted until
-# it is printed again, and a print that removes most of them is refused by the platform's safety guard (which also leaves new keys
-# unable to activate, shown as 503s). So the document is reprinted after EVERY batch by _canary_reprint.py, which relaxes that guard
-# only when it can prove that everything the print removes is a grant of a canary dataset that no longer exists.
-DISTRO = os.environ.get("MUNITAS_WSL_DISTRO", "Ubuntu-20.04")
+# it is printed again, and nothing else would print it soon. So the document is reprinted after EVERY batch by _canary_reprint.py. An update
+# is always written; anything odd about one is raised as an alert (see grants.py), so the tidy never has to prove anything first.
+DISTRO = os.environ.get("MUNITAS_WSL_DISTRO", "Munitas")
 CONTAINER = os.environ.get("MUNITAS_API_CONTAINER", "munitas-munitas-api-1")
 
 

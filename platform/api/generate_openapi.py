@@ -49,7 +49,7 @@ import sys
 from pathlib import Path
 
 os.environ.setdefault("MUNITAS_MASTER_KEY", "openapi-generation-only-not-a-real-key")
-os.environ.setdefault("PG_DSN", "postgresql://unused:unused@localhost:5432/unused")
+os.environ.setdefault("MUNITAS_PG_DSN", "postgresql://unused:unused@localhost:5432/unused")
 
 api_dir = Path(__file__).resolve().parent
 sys.path.insert(0, str(api_dir))

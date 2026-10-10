@@ -5,7 +5,7 @@ this machine's Docker daemon for the sandboxed script steps.
 
     .venv\\Scripts\\python.exe verify\\v66_pipeline_dag.py
 
-Needs PG_DSN, VERIFY_KRATOS and VERIFY_API pointing at the published localhost
+Needs MUNITAS_PG_DSN, VERIFY_KRATOS and VERIFY_API pointing at the published localhost
 ports, the same as v63.
 """
 
@@ -165,7 +165,7 @@ steps:
 
     check("BUILTIN_BLOCKS names the platform's real steps",
           BUILTIN_BLOCKS == {"adopt_version", "transcribe", "detect", "handoff",
-                             "redact", "verify"})
+                             "redact", "verify", "practice_run"})
 
     try:
         parse_dag_config("not: [valid, yaml: at all")

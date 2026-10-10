@@ -56,6 +56,35 @@ class Api:
         r.raise_for_status()
         return r.json()
 
+    def progress(self, body: dict) -> bool:
+        """Say how far the work has got. The answer is whether to carry on: false once the job has ended (it was cancelled, or ran out of time)."""
+        r = self.http.post(self._url("progress"), json=body)
+        if r.status_code == 409:
+            return False
+        r.raise_for_status()
+        return bool(r.json().get("continue", True))
+
+    def lock(self, subjects: list[str], record_ids: list[str], columns: dict[str, list]) -> tuple[list[str], dict[str, list[str]]]:
+        """Send rows of a table about people to be locked. The answer is each row's person code and its locked cells; the keys stay with the platform.
+        A call that fails for a reason that may pass (the network, the platform restarting) is tried again a few times: locking a batch twice finds the same
+        people and gives different locked cells, and only one of the two answers is ever written."""
+        last: Exception | None = None
+        for attempt in range(4):
+            try:
+                r = self.http.post(self._url("lock"), json={"subjects": subjects, "record_ids": record_ids, "columns": columns}, timeout=300.0)
+            except httpx.TransportError as exc:
+                last = exc
+            else:
+                if r.status_code == 409 and "status" in (r.json() if r.content else {}):
+                    raise ApplicationError("this job has already ended", type="JobEnded", non_retryable=True)
+                if r.status_code < 500 and r.status_code != 429:
+                    r.raise_for_status()
+                    body = r.json()
+                    return body["codes"], body["columns"]
+                last = RuntimeError(f"the platform answered {r.status_code}")
+            time.sleep(2 * (attempt + 1))
+        raise last or RuntimeError("the platform did not lock the batch")
+
     def finish(self, **body) -> dict:
         # The control plane lists and hashes every file of the table before it answers, which takes minutes for a table of
         # gigabytes, so this one call is given an hour where the others are given two minutes.
@@ -89,12 +118,23 @@ async def _storage_key(api: Api, records_key: str) -> dict:
         await asyncio.sleep(3)
 
 
-def _write(work: dict, creds: dict, cancel: threading.Event) -> tablewriter.Projection:
+def _lock_spec(work: dict, api: Api):
+    """For a table about people: what the writer sends to the platform to be locked, and how. None for any other table."""
+    plan = work.get("lock")
+    if not plan:
+        return None
+    return tablewriter.peoplerows.LockSpec(
+        read_fields=plan["read_fields"], subject_column=plan["subject_column"], key_column=plan["key_column"], locked=plan["locked"],
+        replaced=plan["replaced"], counted=plan["counted"], threshold=plan["threshold"], lock=api.lock, batch_rows=plan["batch_rows"])
+
+
+def _write(work: dict, creds: dict, cancel: threading.Event, progress: dict, api: Api) -> tablewriter.Projection:
     props = tablewriter.s3_properties(creds["endpoint"], creds["access_key"], creds["secret_key"])
     return tablewriter.write_table(
         props=props, client=tablewriter.s3_client(props), bucket=work["bucket"], prefix=work["storage_prefix"],
         location=work["location"], namespace=work["dataset_name"], table_name=work["table_name"], contract=work["contract"],
         records_key=work["records_key"], summary_base=work["summary_base"], cfg=tablewriter.Settings(**work["settings"]), cancel=cancel,
+        records_options=work.get("records_options"), progress=progress.update, lock=_lock_spec(work, api),
         # The key opens one folder and cannot list it. The control plane lists and hashes the files itself, and clears the folder
         # when a write does not finish, so this neither builds a manifest nor tries to remove what a failed attempt wrote.
         manifest=False, cleanup=False)
@@ -114,18 +154,29 @@ async def write_table_job(params: dict) -> dict:
     work = await asyncio.to_thread(api.work)
     creds = await _storage_key(api, work["records_key"])
 
-    cancel = threading.Event()
-    writing = asyncio.create_task(asyncio.to_thread(_write, work, creds, cancel))
+    cancel, progress, told = threading.Event(), {"phase": "starting", "rows": 0}, {}
+    writing = asyncio.create_task(asyncio.to_thread(_write, work, creds, cancel, progress, api))
     try:
         while not writing.done():
             activity.heartbeat()
             await asyncio.wait({writing}, timeout=15)
+            if not writing.done() and dict(progress) != told:
+                told = dict(progress)
+                if not await asyncio.to_thread(api.progress, told):
+                    # The job has ended while the table was being written (it was cancelled or its time ran out): stop, and let the writer remove what it wrote.
+                    cancel.set()
+                    await asyncio.wait({writing}, timeout=60)
+                    raise ApplicationError("this job has already ended", type="JobEnded", non_retryable=True)
         projection = writing.result()
     except asyncio.CancelledError:
         # The activity was cancelled: tell the writer to stop, and give it time to remove what it wrote.
         cancel.set()
         await asyncio.wait({writing}, timeout=60)
         raise
+    except tablewriter.Refused as refused:
+        # The rows do not fit the contract: reported with every problem found, and not tried again, because the same file gives the same answer.
+        return await asyncio.to_thread(api.finish, outcome="refused", problems=refused.problems, blocking=True,
+                                       reason=f"The rows were not accepted: {refused.total:,} problem{'s' if refused.total != 1 else ''} found.")
     except tablewriter.Skipped as why:
         return await asyncio.to_thread(api.finish, outcome="skipped", reason=f"The table was not written: {why}.", blocking=why.blocking)
     except Exception as exc:  # noqa: BLE001 - what the library raised is reported by kind, never by message
@@ -135,7 +186,7 @@ async def write_table_job(params: dict) -> dict:
 
     return await asyncio.to_thread(
         api.finish, outcome="written", metadata_location=projection.metadata_location, snapshot_id=projection.snapshot_id,
-        record_count=projection.record_count, records_sha256=projection.records_sha256)
+        record_count=projection.record_count, records_sha256=projection.records_sha256, group_report=projection.group_report)
 
 
 @activity.defn(name="report_table_job_failure")

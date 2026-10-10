@@ -25,6 +25,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { API_BASE } from "../config/ports";
 import { bearerFor, loginAs } from "../tests/auth-helpers";
 import { settled } from "./settled";
+import { snap } from "./snap";
 
 const SHOTS = join(process.cwd(), "walkthroughs", "shots", "closing");
 const PYTHON = join(process.cwd(), "..", ".venv", "Scripts", "python.exe");
@@ -45,7 +46,7 @@ async function shot(page: Page, name: string, height?: number): Promise<void> {
   await settled(page);
   step += 1;
   const n = String(step).padStart(2, "0");
-  await page.screenshot({
+  await snap(page, {
     path: join(SHOTS, `${n}-${name}.png`),
     ...(height ? { clip: { x: 0, y: 0, width: 1920, height } } : {}),
   });

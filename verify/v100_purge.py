@@ -41,7 +41,7 @@ def scalar(sql: str, params: tuple = ()):
 def deletion_attempt(org_id: str, naming: str) -> int:
     """Delete one organisation's sealed versions while a purge of `naming` is declared. Returns
     how many rows went. Always rolled back, so a check never changes what it is checking."""
-    import psycopg
+    import pgdb
     with db() as conn:
         try:
             with conn.transaction():
@@ -51,7 +51,7 @@ def deletion_attempt(org_id: str, naming: str) -> int:
                 raise _Undo(n)
         except _Undo as undo:
             return undo.n
-        except psycopg.Error:
+        except pgdb.Error:
             return 0
 
 

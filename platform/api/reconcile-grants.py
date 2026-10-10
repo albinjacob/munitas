@@ -13,12 +13,10 @@ mechanisms doing one job can only be trusted when they are literally the same
 code, and this file is thirty lines because that is all it should be.
 
     docker compose exec -T munitas-api python /app/reconcile-grants.py
-    docker compose exec -T munitas-api python /app/reconcile-grants.py --allow-shrink
 
-The safety guard refuses a print that would remove more than 40% of the prefix grants, which is what a mistake looks like. A deliberate
-change can look the same: when a role stops holding standing access (as the pipeline and agent roles did when every task was given a key
-of its own), the first print removes a large share at once. `--allow-shrink` is the one way to print it. Read the numbers in the refusal
-first; this does not ask again.
+An update is always written. What is odd about one (a list with no bucket-wide permission, many removals that nothing explains, a permission
+that traces to no version) is raised as an alert, recorded on the update and written to the alerts file, and this script prints how many were
+raised. Nothing needs overriding.
 
 What this cannot do
 -------------------
@@ -39,16 +37,16 @@ from app import db, grants  # noqa: E402
 
 def main() -> int:
     db.pool.open()
-    allow_shrink = "--allow-shrink" in sys.argv[1:]
     try:
-        result = grants.reconcile(armed=not allow_shrink, trigger="manual")
+        result = grants.reconcile(trigger="manual")
     except grants.UnsafeProjection as exc:
-        print(f"refused: {exc}")
+        print(f"nothing written, because the list could not be computed: {exc}")
         return 1
     print(
         f"reconciled {result['identities']} identities: "
         f"{result['actions_before']} actions before, "
         f"{result['actions_after']} after, {result['removed']} removed"
+        + (f"; {len(result['alerts'])} alert(s) raised" if result.get("alerts") else "")
     )
     return 0
 

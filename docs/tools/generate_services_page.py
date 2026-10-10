@@ -30,11 +30,13 @@ import html
 import json
 import os
 import re
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 DOCS = Path(__file__).resolve().parent.parent
 ROOT = DOCS.parent
+sys.path.insert(0, str(ROOT))          # for pgdb, which the repository root offers
 SERVICES_OUT = DOCS / "internal" / "dev" / "services.html"
 LOGINS_OUT = DOCS / "internal" / "dev" / "logins.html"
 
@@ -129,7 +131,7 @@ SERVICES = [
         "group": "The platform",
         "what": "Open Policy Agent. Decides every access question. A rule can be tested directly by posting to /v1/data/munitas/access.",
         "who": "Whoever is working on a rule, or asking why somebody was refused.",
-        "signin": "None.",
+        "signin": "The platform's policy token (MUNITAS_OPA_TOKEN), sent as a bearer token. It answers decisions and nothing else: policies cannot be read or changed over HTTP.",
     },
     {
         "name": "Temporal console",
@@ -163,28 +165,6 @@ SERVICES = [
         "signin": "An S3 key the platform mints per lease, never a shared one.",
     },
     {
-        "name": "Object storage, file browser",
-        "service": "seaweedfs",
-        "port": 8888,
-        "path": "/buckets/",
-        "runs": "Compose",
-        "group": "Storage",
-        "what": "Browse the raw stored files. One bucket per organisation, which is the isolation claim made visible.",
-        "who": "Whoever wants to confirm with their own eyes that a file landed where it should.",
-        "signin": "None, so treat it as a local debugging tool rather than part of the platform.",
-    },
-    {
-        "name": "Object storage, master",
-        "service": "seaweedfs",
-        "port": 9333,
-        "path": "/dir/status",
-        "runs": "Compose",
-        "group": "Storage",
-        "what": "Volume allocation. This is where the volume pool figure on the housekeeping screen comes from.",
-        "who": "Whoever is investigating storage running out, though the housekeeping screen says it in plainer words.",
-        "signin": "None.",
-    },
-    {
         "name": "Database",
         "service": "postgres",
         "port": 5432,
@@ -193,7 +173,7 @@ SERVICES = [
         "group": "Storage",
         "what": "Postgres. The platform's own database is `platform`; Temporal, Kratos, MLflow and Label Studio each have their own beside it.",
         "who": "Whoever needs to see a row rather than a screen. Writing to it by hand is how the governance rules get bypassed, so read rather than write.",
-        "signin": "User `munitas`, password `munitas`, unless PG_USER and PG_PASSWORD were set.",
+        "signin": "User `munitas`, password `munitas`, unless MUNITAS_PG_USER and MUNITAS_PG_PASSWORD were set.",
     },
     {
         "name": "Experiment tracking",
@@ -229,17 +209,15 @@ SERVICES = [
 
 GROUP_ORDER = ["The platform", "Running work", "Storage", "Only with --profile full"]
 
-ROLE_LABEL = {
-    "data_custodian": "Data custodian",
-    "dpo": "Data protection officer",
-    "notebook_explore": "Researcher",
-    "pipeline_operator": "Data engineer",
-    "platform_admin": "Platform administrator",
-    "hybridops": "Support and reliability",
-    "deid_reviewer": "De-identification reviewer",
-    "analyst": "Analyst",
-    "network_architect": "Network architect",
-}
+ROLE_TABLE = ROOT / "platform" / "policy" / "role_words.rego"
+
+
+def role_labels() -> dict[str, str]:
+    """What the console calls each role, read from the policy's role table (the one place a role is named), never copied here."""
+    return dict(re.findall(r'^\t"(\w+)": \{"label": "([^"]+)"', ROLE_TABLE.read_text(encoding="utf-8"), re.M))
+
+
+ROLE_LABEL = role_labels()
 
 # What somebody testing would actually use each person for. Keyed on role, so
 # a new person with a known role gets a sensible line without an edit here.
@@ -278,8 +256,8 @@ def published_ports() -> dict[str, list[int]]:
 
     A small parse rather than a YAML dependency: this is the only thing read
     out of that file, and its shape here is a service key and a
-    `- "${PORT_X:-8000}:8000"` list under it -- host ports are
-    config.json-driven (see PORT_* substitution in docker-compose.yml and
+    `- "${MUNITAS_PORT_X:-8000}:8000"` list under it -- host ports are
+    config.json-driven (see MUNITAS_PORT_* substitution in docker-compose.yml and
     scripts/render_ports_env.py), so what's actually extracted here is each
     mapping's default, which is what this stack runs on unless .env
     overrides it. A plain `- "8000:8000"` literal (nothing left in
@@ -288,7 +266,7 @@ def published_ports() -> dict[str, list[int]]:
     ports: dict[str, list[int]] = {}
     service = None
     pattern = re.compile(
-        r'^\s+- "(?:\$\{PORT_[A-Z0-9_]+:-(\d+)\}|(\d+)):(\d+)"'
+        r'^\s+- "(?:\$\{MUNITAS_PORT_[A-Z0-9_]+:-(\d+)\}|(\d+)):(\d+)"'
     )
     for line in COMPOSE.read_text(encoding="utf-8").splitlines():
         top = re.match(r"^  ([a-z0-9][a-z0-9_-]*):\s*$", line)
@@ -310,12 +288,12 @@ def people_from_database() -> tuple[dict, dict, str | None]:
     having when the thing those logins are for is not running.
     """
     try:
-        import psycopg
+        import pgdb
     except ImportError:
-        return {}, {}, "psycopg is not installed in the Python running this script"
+        return {}, {}, "the database driver (pg8000) is not installed in the Python running this script"
 
     try:
-        with psycopg.connect(DSN, connect_timeout=5) as conn:
+        with pgdb.connect(DSN, connect_timeout=5) as conn:
             directory = {
                 row[0]: {
                     "tenant": row[1],

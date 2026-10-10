@@ -15,6 +15,8 @@ import { useActionRuns } from "../../api/queries";
 import { ClassBadge } from "../../components/ClassBadge";
 import { Pagination } from "../../components/Pagination";
 import { Empty, Failure, Loading, Section } from "../../components/states";
+import { words } from "../../lib/text";
+import { when } from "../../lib/when";
 
 const STATUS_STYLE: Record<string, string> = {
   running: "bg-sky-100 text-sky-900",
@@ -35,10 +37,10 @@ export function ActionRuns() {
     <Section
       level="page"
       title="Action runs"
-      description="Every action a pipeline executed, and how it started: run by hand, or fired by a schedule. Distinct from a whole pipeline run, which is a sequence of these."
+      description="Each step that a pipeline carried out, and how it was started: by a person, or by a schedule. A whole pipeline run is made of several of these."
     >
       {!data?.action_runs.length ? (
-        <Empty what="action runs" hint="Nothing has run yet." />
+        <Empty what="steps that have run" hint="No pipeline step has run yet." />
       ) : (
         <>
         <p data-testid="action-run-count" className="mb-2 text-sm text-slate-500">
@@ -48,38 +50,38 @@ export function ActionRuns() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
               <tr>
-                <th className="px-4 py-2">Action</th>
-                <th>Status</th>
-                <th>Started</th>
-                <th>Started by</th>
-                <th>Output</th>
+                <th className="px-4 py-2">Step</th>
+                <th className="pr-4">Result</th>
+                <th className="pr-4">Started</th>
+                <th className="pr-4">Started by</th>
+                <th>What it made</th>
               </tr>
             </thead>
             <tbody data-testid="action-run-rows">
               {data.action_runs.map((run) => (
                 <tr key={run.id} className="border-t border-slate-100 transition-colors hover:bg-slate-50" data-testid={`action-run-${run.id}`}>
                   <td className="px-4 py-2 font-medium text-slate-900">
-                    {run.action_name}
+                    {words(run.action_name)}
                   </td>
-                  <td>
+                  <td className="pr-4">
                     <span
                       data-testid={`action-run-status-${run.id}`}
-                      className={`rounded px-2 py-0.5 text-xs font-medium ${STATUS_STYLE[run.status] ?? "bg-slate-100 text-slate-600"}`}
+                      className={`rounded px-2 py-0.5 text-xs font-medium capitalize ${STATUS_STYLE[run.status] ?? "bg-slate-100 text-slate-600"}`}
                     >
                       {run.status}
                     </span>
                   </td>
-                  <td className="text-xs text-slate-500">
-                    {new Date(run.started_at).toLocaleString()}
+                  <td className="pr-4 text-xs text-slate-500">
+                    {when(run.started_at)}
                   </td>
-                  <td className="text-xs text-slate-600">
+                  <td className="pr-4 text-xs text-slate-600">
                     {run.trigger_kind === "scheduled" ? (
                       <span data-testid={`action-run-trigger-${run.id}`}>
-                        a schedule ({run.schedule_id})
+                        On a schedule ({run.schedule_id})
                       </span>
                     ) : (
                       <span data-testid={`action-run-trigger-${run.id}`}>
-                        {run.triggered_by_label ?? run.triggered_by ?? "not recorded"}, by hand
+                        {run.triggered_by_label ?? run.triggered_by ?? "Nobody recorded"}, by hand
                       </span>
                     )}
                   </td>
@@ -90,12 +92,12 @@ export function ActionRuns() {
                           className="text-sky-700 underline"
                           to={`/versions/${run.output_version}`}
                         >
-                          the version it produced
+                          Open the version it made
                         </Link>
                         {run.output_class && <ClassBadge value={run.output_class} />}
                       </span>
                     ) : (
-                      <span className="text-xs text-slate-400">none yet</span>
+                      <span className="text-xs text-slate-500">Nothing yet</span>
                     )}
                   </td>
                 </tr>

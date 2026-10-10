@@ -18,7 +18,7 @@ The customer organisation is the **data controller**. Munitas is a
 **processor**. That distinction is not paperwork, it has a direct consequence for
 the design:
 
-> Any arrangement where platform staff approve access to patient data has put the
+> Any arrangement where platform staff approve access to personal data has put the
 > processor in the controller's chair.
 
 So the platform's job is to make somebody else's decision **explicit, enforced
@@ -107,16 +107,19 @@ made it.
 
 ## 3. Roles
 
-Six personas, each with a reason to open the console.
+Each role a person can hold, each with a reason to open the console.
 
 | Persona | Role | What they do | May approve |
 | --- | --- | --- | --- |
 | Data custodian | `data_custodian` | Approves access to the departments they are an approver for, confirms sensitivity claims, and may bring data in | **Yes**, access to the departments they are an approver for, and no others |
 | De-identification reviewer | `deid_reviewer` | Reads what a de-identification run left behind, and decides whether it may be promoted | **Yes**, the gate only, and never a run they triggered |
-| Data protection officer | `dpo` | Reads everything including every denial, evidences compliance, handles erasure requests | No |
+| Data protection officer | `dpo` | Reads every decision including every denial, and the locked data audit, and evidences compliance | No |
 | Researcher | `notebook_explore` | Requests access under a project, consumes de-identified data | No |
 | Data engineer | `pipeline_operator` | Runs pipelines, brings data in, registers agents and pipelines, diagnoses failures | No |
 | Platform administrator | `platform_admin` | Keeps services running | No |
+| Privacy auditor | `privacy_auditor` | Reads the locked data audit: who read locked columns and opened locked files, who was refused, the leases and the erasures. It contains no name, value, file name or identifier, and real values are read only through a lease somebody else approved | No |
+| Network architect | `network_architect` | Approves which hosts an agent version may call, and reads no data by holding the role | **Yes**, the hosts an agent may call, and nothing else |
+| Support and reliability | `hybridops` | Looks at service health, workflow history, traces and queue depths, and never at records | No |
 
 The two approvals are different questions and are deliberately held by different
 people. A custodian decides **who may read** a dataset. A reviewer decides
@@ -126,6 +129,24 @@ requester. Giving both to the custodian would let the owner of a dataset clear
 their own department's output for wider use and then approve the requests to
 read it.
 
+### Every decision that needs a second person
+
+Each of these is a different question, held by different people. Wherever a
+person asks for something, that person never decides their own request.
+
+| Decision | Who decides | Who may not |
+| --- | --- | --- |
+| Access to a dataset version | An approver of the department that owns it | The person asking, or anyone acting on that person's behalf |
+| A role for a person | A different data custodian | The person asking, and the platform administrator |
+| A sensitivity claim | Another approver of the department that owns the data | The person who made the claim |
+| Release of what a pipeline produced | A de-identification reviewer | The person who started the run |
+| A few locked rows | An approver of the department that owns the table | The person asking |
+| A few locked files | An approver of the department that owns the files, who may grant less than was asked, never more | The person asking |
+| A development sample | An approver of the department that owns the files, who may allow fewer files than were asked for | The person asking |
+| A pipeline step that runs an organisation's own code | An approver of the department that owns the data | The person who uploaded the version |
+| A legal hold over an organisation | Two different platform administrators | One administrator alone |
+| Records handed over for a legal matter | One administrator asks, a different one approves, and the custodian the hold names confirms | Any one of them alone |
+
 ### Who brings data in, and who registers code
 
 Bringing data in is the work of two roles: registering a dataset, putting files
@@ -133,8 +154,9 @@ into it, fetching it from outside, sealing it and withdrawing an upload. The
 **data engineer** does it because it is their job, and the **data custodian**
 may do it because they own the data. Registering an agent or a pipeline, or a
 version of either, belongs to the **data engineer** alone. Researchers, data
-protection officers, reviewers, network architects and the platform
-administrator do none of these, and the platform refuses them and says why.
+protection officers, privacy auditors, reviewers, network architects, support
+and reliability staff and the platform administrator do none of these, and the
+platform refuses them and says why.
 
 The person who makes a sensitivity claim is never the one who confirms it. Any
 one approver of the department that owns the data confirms a claim made by
@@ -157,7 +179,7 @@ approved by a different custodian, and confirmed from time to time. A **departme
 approver** is a position: it says whose data a person answers for. A person is
 an approver of a department when they hold the data custodian role and are
 listed for that department, and not otherwise. Hartley can be an approver for
-Cardiology and not for Oncology, even though he holds the same role as the
+Cardiology and not for Oncology, even though Hartley holds the same role as the
 approver for Oncology.
 
 A department has any number of approvers, and any one of them may approve access
@@ -209,11 +231,11 @@ Support engineers and site reliability work need service health, workflow
 history, traces, failure reasons and queue depths. They do not need transcripts,
 audio or detected spans.
 
-Those are separable here because the discipline is already built. Spans carry
-identifiers, counts and classes and never content, and the collector marks
-anything arriving without a class as `UNDECLARED` so it shows up rather than
-passing silently. Logs and traces are where PHI leaks in real platforms, and that
-surface is already constrained.
+Those are separable here because the discipline is already built. Every span
+records the class of the data it touched and carries identifiers, counts and
+classes and never content, and every log line carries identifiers and never
+contents. Logs and traces are where personal data leaks in real platforms, and
+that surface is already constrained.
 
 So HybridOps has **no data-plane access at all** and **no new grant type**. When
 an engineer genuinely needs record content, they request an ordinary lease from
@@ -242,22 +264,22 @@ without exception, it has a failure mode of its own. A workload doing the same
 recognisable job for the same custodian, day after day, produces a queue of
 requests that differ only in wording. A queue like that stops being read
 closely and starts being approved by habit, which is a worse guarantee than
-having no queue at all -- the control still exists on paper, but the judgment
+having no queue at all: the control still exists on paper, but the judgment
 behind it has quietly stopped happening.
 
 So a lease carries a `pattern`. `strict` is purpose limitation as above,
 the default shape. `simple` is the custodian's
 own choice, made once at the moment they approve, that a specific principal
-may read a specific dataset version for any purpose while the lease lasts --
-not a platform setting, and not something the requester can ask for on their
-own behalf. It is refused outright against raw, unreviewed data no matter how
+may read a specific dataset version for any purpose while the lease lasts. It
+is not a platform setting, and not something the requester can ask for on
+their own behalf. It is refused outright against raw, unreviewed data no matter how
 long a principal has held the platform's trust, enforced by a database
 constraint as well as by policy, the same two-layer guarantee this document
 already asks of self-approval. Below that floor the choice is real: a
 custodian who has seen a workload's behaviour and already reviewed the data it
 touches can extend it the same latitude a resource owner already extends a
 trusted service elsewhere, without that trust becoming a standing grant nobody
-ever has to reconsider -- the lease still expires either way. The mechanics of
+ever has to reconsider, because the lease still expires either way. The mechanics of
 how this is enforced are in the schema (`access_lease`) and in policy
 (`platform/policy/access.rego`) directly.
 
@@ -312,11 +334,11 @@ dataset_version_id`, or `action_run.input_versions` for a pipeline step's
 several inputs, checked by membership), the same authority-comes-from-the-
 row rule applied to `tenant` and `roles` above.
 
-`annotation_tool` and any future notebook workspace are standing services
-mediating many human sessions over time rather than spawning a single
-task, so what needs proving there is which human's session a read is for:
-a delegation problem, addressed separately from the spawn-time credential
-above.
+`annotation_tool` is a standing service mediating many human sessions over
+time rather than spawning a single task, so what needs proving there is
+which human's session a read is for: a delegation problem, addressed
+separately from the spawn-time credential above. A notebook is the same
+kind of problem, and is answered in the next part.
 
 Every step of the de-identification pipeline proves itself the same way.
 Each step opens its own run, which names the versions it reads (the redact
@@ -332,6 +354,25 @@ That scope resolves from the run's own declared input: its
 `input_versions` array a DAG engine's own runs can declare several of,
 together with the versions its own steps sealed, which the scoring step
 reads.
+
+### A notebook acts for one person, with a pass the person approved
+
+A notebook signs in on behalf of one person without pasting a session. The
+notebook shows a code, the person types it in the console, which asks the
+person to approve what the notebook will be able to do, and the notebook
+receives a short-lived pass. The pass is issued, renewed and revoked by Ory
+Hydra, an OAuth 2.0 server that holds no people: the console's own session
+is the sign-in, so Kratos still answers who somebody is, and the platform
+decides what a pass may do. The notebook never talks to Hydra, only to the
+platform's own routes.
+
+The platform asks Hydra whether the pass is live on every request, and lets
+it reach only a short list of routes. Anything else, such as approving a
+request or changing a role, is refused with a reason, even for a person who
+may do it in the console. Every sign-in is a row that records who, what the
+notebook called itself, from which address, when, until when and when it was
+last used. The person sees the list under "Your notebooks" and can end
+sign-ins from it.
 
 ### Writes are justified the same way reads are
 
@@ -366,6 +407,15 @@ key again.
 | `dataset.department_id` | Which department owns the asset |
 | `lease_request.project_id` | Which approved purpose the request is made under (nullable) |
 | Foreign key on `access_lease.approved_by` | An unregistered name is refused by the database |
+| `role_request` and `role_grant` tables | A role asked for, decided and lapsing; `platform_admin` can be neither asked for nor granted |
+| `privacy_contract`, `locked_column_lease` and `file_lease` tables | The locked columns of a table, and the leases that open real values or real files |
+| `subject_lookup`, `subject_key`, `key_use_log` and `tombstone` tables | The key made for each person, found without storing the person's identifier, each use of a key, and the record that an erasure happened |
+| `development_sample`, `development_data_declaration` and `development_output` tables | The samples the platform draws, the files declared to hold no real person, and what is made from them, which ends with them |
+| `pipeline_version_approval` table | An approver's approval of a pipeline version that runs an organisation's own code |
+| `agent_egress_approval` table | The hosts an agent version may call, approved by a network architect |
+| `legal_hold`, `legal_export`, `lifecycle_event` and `tenant_deletion_record` tables | Closing an organisation, holding its records, handing them over, and the short record of what was deleted |
+| `access_rule_version` table | Every limit an organisation has set on what people may ask for, never edited, with who set it, when and why |
+| `notebook_sign_in` table | One row per notebook sign-in: who, what the notebook called itself, from where, when, until when and when it was last used |
 
 The foreign key on `approved_by` matters most because it moves the
 guarantee into the schema, alongside dataset immutability and the

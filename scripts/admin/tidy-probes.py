@@ -45,9 +45,9 @@ from datetime import timedelta
 from pathlib import Path
 
 import boto3
-import psycopg
+import pgdb
 from botocore.config import Config
-from psycopg.rows import dict_row
+from pgdb import dict_row
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from ports_config import PORTS  # noqa: E402
@@ -64,11 +64,11 @@ from ports_config import PORTS  # noqa: E402
 NEVER_TOUCH = {"health", "finance", "canary"}
 
 PG_DSN = os.environ.get(
-    "PG_DSN", f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform"
+    "MUNITAS_PG_DSN", f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform"
 )
-S3_ENDPOINT = os.environ.get("S3_ENDPOINT", f"http://localhost:{PORTS['seaweedfs_s3']}")
-ADMIN_KEY = os.environ.get("S3_ADMIN_KEY", "munitas-admin")
-ADMIN_SECRET = os.environ.get("S3_ADMIN_SECRET", "munitas-admin-secret")
+S3_ENDPOINT = os.environ.get("MUNITAS_S3_ENDPOINT", f"http://localhost:{PORTS['seaweedfs_s3']}")
+ADMIN_KEY = os.environ.get("MUNITAS_S3_ADMIN_KEY", "munitas-admin")
+ADMIN_SECRET = os.environ.get("MUNITAS_S3_ADMIN_SECRET", "munitas-admin-secret")
 
 # The deletion machinery lives in scripts/admin/nuke-tenant.py, whose filename is not an
 # importable module name. Loaded by path rather than reimplemented: that
@@ -210,7 +210,7 @@ def run_sweep(min_age_hours: int = 0, apply: bool = False) -> dict:
     failed: list[dict] = []
     freed_objects = 0
 
-    with psycopg.connect(PG_DSN, row_factory=dict_row) as conn:
+    with pgdb.connect(PG_DSN, row_factory=dict_row) as conn:
         sweep = probe_tenants(conn, min_age_hours=min_age_hours)
         for c in sweep:
             buckets = [r["bucket"] for r in conn.execute(

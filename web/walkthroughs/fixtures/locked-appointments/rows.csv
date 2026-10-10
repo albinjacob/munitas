@@ -1,0 +1,24 @@
+appointment_id,patient_number,patient_name,reason_for_visit,postcode,age_band,clinic,seen_on
+A-1001,HC-4100,Maeve Doyle,annual health check,H91,30-39,Cardiology outpatients,2026-09-03
+A-1002,HC-4101,Tomas Byrne,knee pain,H91,30-39,Cardiology outpatients,2026-09-05
+A-1003,HC-4102,Aoife Walsh,repeat prescription,H91,30-39,Cardiology outpatients,2026-09-07
+A-1004,HC-4103,Ciaran Kearney,repeat prescription,H91,30-39,Cardiology outpatients,2026-09-09
+A-1005,HC-4103,Ciaran Kearney,skin rash,H91,30-39,Cardiology outpatients,2026-09-11
+A-1006,HC-4104,Niamh Nolan,skin rash,H91,30-39,Cardiology outpatients,2026-09-13
+A-1007,HC-4105,Declan Quinn,asthma review,H91,30-39,Cardiology outpatients,2026-09-15
+A-1008,HC-4106,Saoirse Gallagher,knee pain,H91,30-39,Cardiology outpatients,2026-09-17
+A-1009,HC-4107,Fionn Hanlon,asthma review,H91,30-39,Cardiology outpatients,2026-09-19
+A-1010,HC-4108,Orla Brady,skin rash,H92,30-39,Cardiology outpatients,2026-09-21
+A-1011,HC-4109,Eamon Costello,knee pain,H92,30-39,Cardiology outpatients,2026-09-23
+A-1012,HC-4110,Grainne Dunne,knee pain,H92,40-49,Cardiology outpatients,2026-09-25
+A-1013,HC-4111,Padraig Fitzgerald,repeat prescription,H92,40-49,Cardiology outpatients,2026-09-27
+A-1014,HC-4111,Padraig Fitzgerald,annual health check,H92,40-49,Cardiology outpatients,2026-09-01
+A-1015,HC-4112,Roisin Hickey,sleep problems,H92,40-49,Cardiology outpatients,2026-09-03
+A-1016,HC-4113,Cathal Lynch,back pain,H92,40-49,Cardiology outpatients,2026-09-05
+A-1017,HC-4114,Sinead Moran,skin rash,H93,40-49,Cardiology outpatients,2026-09-07
+A-1018,HC-4115,Lorcan Naughton,asthma review,H93,40-49,Cardiology outpatients,2026-09-09
+A-1019,HC-4116,Aisling Rafferty,knee pain,H93,50-59,Cardiology outpatients,2026-09-11
+A-1020,HC-4117,Donal Sheridan,blood pressure check,H94,50-59,Cardiology outpatients,2026-09-13
+A-1021,HC-4117,Donal Sheridan,annual health check,H94,50-59,Cardiology outpatients,2026-09-15
+A-1022,HC-4118,Brigid Tierney,blood pressure check,H95,60-69,Cardiology outpatients,2026-09-17
+A-1023,HC-4119,Ronan Whelan,skin rash,H95,60-69,Cardiology outpatients,2026-09-19

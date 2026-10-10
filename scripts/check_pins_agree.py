@@ -3,7 +3,7 @@
 The worker, the lite worker, the sandbox worker and the API each have their own
 requirements file, and .github/workflows/verify.yml repeats some of those pins
 for the runner. Each file says its pins match the others, and a comment cannot
-enforce that: psycopg sat at 3.2.1 in all of them after the host worker had
+enforce that: the database driver sat at 3.2.1 in all of them after the host worker had
 moved to 3.3.4, and the file stopped installing on Python 3.13 without anyone
 being told. This is the enforcement.
 
@@ -102,7 +102,13 @@ def main() -> int:
                 print(f"            {version:<12} {rel}")
 
     print(f"\n{len(compared)} packages pinned in more than one place, {len(disagree)} disagree")
-    return 1 if disagree else 0
+
+    # The database layer ships twice, because the API image and the worker's images are built from different folders. The two files must be the same file.
+    copies = [root / "platform" / "pgdb.py", root / "worker" / "pgdb.py"]
+    different = all(c.exists() for c in copies) and copies[0].read_bytes() != copies[1].read_bytes()
+    if different:
+        print("platform/pgdb.py and worker/pgdb.py differ: change one and copy it over the other")
+    return 1 if (disagree or different) else 0
 
 
 if __name__ == "__main__":

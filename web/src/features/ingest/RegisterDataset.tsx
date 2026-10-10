@@ -34,8 +34,11 @@ import { ApiError } from "../../api/client";
 import { PROVENANCE } from "../../api/provenance";
 import { CLASS_LABEL, CLASS_ORDER, type VisibilityClass } from "../../api/types";
 import { Failure, Loading, Section } from "../../components/states";
+import { EraseChoice, type Bringing, type Erasure, type Plain } from "../locking/EraseChoice";
+import { FilesPanel } from "../locking/FilesPanel";
+import { SealTablePanel } from "../locking/SealTable";
+import { INTAKE_ROLES, useHoldsRole } from "../../identity/mayDo";
 
-const MODALITIES = ["audio", "text", "image", "tabular"];
 
 const MOST_RESTRICTIVE: VisibilityClass = "RAW";
 
@@ -62,7 +65,6 @@ function RegisterForm({
   const [provenance, setProvenance] = useState(PROVENANCE[2].value);
   const [declaredClass, setDeclaredClass] =
     useState<VisibilityClass>(MOST_RESTRICTIVE);
-  const [modality, setModality] = useState<string[]>([]);
 
   const claiming = declaredClass !== MOST_RESTRICTIVE;
   const ready = name.trim().length > 0 && departmentId.length > 0;
@@ -83,7 +85,6 @@ function RegisterForm({
               | "external_licensed"
               | "internal_regulated",
             declared_class: declaredClass,
-            modality,
           },
           { onSuccess: (result) => onRegistered(result, name.trim(), provenance) },
         );
@@ -100,7 +101,7 @@ function RegisterForm({
           value={name}
           onChange={(e) => setName(e.target.value)}
           onBlur={() => setNameTouched(true)}
-          placeholder="triage-call-recordings"
+          placeholder="triage-call-files"
           className="mt-1.5 w-full max-w-md rounded border border-slate-300 px-3 py-1.5 text-sm"
         />
         {nameTouched && name.trim().length === 0 && (
@@ -146,7 +147,7 @@ function RegisterForm({
         </legend>
         <p className="mt-0.5 text-xs text-slate-500">
           Decides whether this may ever leave the platform. Separate from how
-          sensitive it is: de-identified clinical data can be low sensitivity
+          sensitive it is: de-identified data about people can be low sensitivity
           and still not be redistributable.
         </p>
         <div className="mt-1.5 space-y-2">
@@ -179,13 +180,14 @@ function RegisterForm({
             here rather than left to be discovered from a later refusal.
             Asking for more restriction than the default costs nothing to be
             wrong about. Asking for less is a claim, attributed to whoever
-            makes it, and the owning custodian has to agree before this can
-            be released beyond it.
+            makes it, and the owning custodian has to agree before the data
+            opens to the level claimed. Until then it stays at the default.
           */}
           Leaving this at the most restrictive setting makes no claim about the
           data. Choosing anything else is a claim, recorded against your name,
           and {organisation.data ? "the department's custodian" : "a custodian"}{" "}
-          must agree with it before the data can be released beyond it.
+          must agree with it. Until they do, the data stays at the most
+          restrictive setting, and it opens to the level you chose once they do.
         </p>
         <select
           id="class"
@@ -206,39 +208,13 @@ function RegisterForm({
             data-testid="register-claim-notice"
             className="mt-1.5 rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900"
           >
-            You are claiming this is {CLASS_LABEL[declaredClass]}. That claim
-            will be recorded under your name and must be confirmed by the
-            owning custodian before anyone can be granted more than the
-            default allows.
+            You are claiming this is {CLASS_LABEL[declaredClass]}. The claim is
+            recorded under your name. Until the owning custodian agrees, the
+            data stays at the most restrictive setting. Once they agree, it
+            opens to {CLASS_LABEL[declaredClass]}.
           </p>
         )}
       </div>
-
-      <fieldset>
-        <legend className="text-sm font-medium text-slate-700">
-          What kind of data is it?
-        </legend>
-        <p className="mt-0.5 text-xs text-slate-500">
-          Declared, not guessed from file names. Optional.
-        </p>
-        <div className="mt-1.5 flex flex-wrap gap-3">
-          {MODALITIES.map((m) => (
-            <label key={m} className="flex items-center gap-1.5 text-sm">
-              <input
-                type="checkbox"
-                data-testid={`modality-${m}`}
-                checked={modality.includes(m)}
-                onChange={(e) =>
-                  setModality((prev) =>
-                    e.target.checked ? [...prev, m] : prev.filter((x) => x !== m),
-                  )
-                }
-              />
-              {m}
-            </label>
-          ))}
-        </div>
-      </fieldset>
 
       <div className="flex flex-wrap items-center gap-3">
         <button
@@ -249,8 +225,10 @@ function RegisterForm({
         >
           {register.isPending ? "Registering" : "Register"}
         </button>
-        <span className="text-xs text-slate-500">
-          Nothing is readable yet. This only creates the record and its owner.
+        <span className="text-xs text-slate-500" data-testid="register-why-disabled">
+          {ready
+            ? "Nothing is readable yet. This only creates the record and its owner."
+            : "Enter a name and choose a department to register."}
         </span>
       </div>
 
@@ -388,7 +366,7 @@ function HuggingFaceAccountPanel({
       {connect.error && (
         <p className="text-xs text-red-800" role="alert">
           {connect.error instanceof ApiError && connect.error.reasons.length
-            ? connect.error.reasons.join("; ")
+            ? connect.error.reasons.join(" ")
             : "That token did not work."}
         </p>
       )}
@@ -457,14 +435,14 @@ function HuggingFaceFetch({
         </label>
         <p className="mt-0.5 text-xs text-slate-500">
           The part of the URL after huggingface.co/datasets/, e.g.{" "}
-          <code className="font-mono">xhluca/publichealth-qa</code>.
+          <code className="font-mono">owner/dataset-name</code>.
         </p>
         <input
           id="hf-repo"
           data-testid="hf-repo-id"
           value={repoId}
           onChange={(e) => setRepoId(e.target.value)}
-          placeholder="xhluca/publichealth-qa"
+          placeholder="owner/dataset-name"
           className="mt-1.5 w-full max-w-md rounded border border-slate-300 px-3 py-1.5 text-sm"
         />
       </div>
@@ -644,12 +622,21 @@ export function UploadStep({
   >([]);
 
   const sealed = seal.isSuccess || sealAudio.isSuccess;
+  const mayBringIn = useHoldsRole(INTAKE_ROLES);
+  // Whether one person will ever need to be erased from this data, which has to be answered before anything is sent: an upload stored as it
+  // was cannot be locked afterwards. "No" is the ordinary upload.
+  const [erasure, setErasure] = useState<Erasure>("no");
+  const [bringing, setBringing] = useState<Bringing>("table");
+  const [plain, setPlain] = useState<Plain>("files");
+  const locking = erasure === "yes" && mayBringIn && !sealed;
+  // An ordinary table: not about people, so nothing is locked, and it is sealed as a table that can be queried.
+  const plainTable = erasure === "no" && plain === "table" && mayBringIn && !sealed;
   // Whose job it is to start a run. The console hides the button from anyone
   // else as a courtesy; POST .../deidentify asks the policy engine and is what
   // actually refuses them.
   const maySeal = principal?.roles.includes("pipeline_operator") ?? false;
   const pending = uploaded.filter((f) => !f.withdrawn);
-  // Offered only once a recording is actually present, so the choice appears
+  // Offered only once a file is actually present, so the choice appears
   // when it means something rather than sitting greyed out on every dataset.
   const hasAudio = pending.some((f) => f.filename.endsWith(".wav"));
 
@@ -681,6 +668,20 @@ export function UploadStep({
         owned by the department you chose. {note}
       </p>
 
+      {mayBringIn && !sealed && (
+        <EraseChoice erasure={erasure} onErasure={setErasure} bringing={bringing} onBringing={setBringing} plain={plain} onPlain={setPlain} />
+      )}
+
+      {plainTable ? (
+        <div data-testid="plain-table-section">
+          <SealTablePanel datasetId={datasetId} plain />
+        </div>
+      ) : locking ? (
+        <div data-testid="locking-section">
+          {bringing === "table" ? <SealTablePanel datasetId={datasetId} /> : <FilesPanel datasetId={datasetId} />}
+        </div>
+      ) : (
+      <>
       <div className="flex gap-4 border-b border-slate-200 pb-3 text-sm">
         {(
           [
@@ -782,7 +783,7 @@ export function UploadStep({
               <span className={f.withdrawn ? "line-through" : ""}>{f.filename}</span>
               <span className="text-xs text-slate-400">{f.bytes} bytes</span>
               {/* What the platform read out of the file itself, so it is
-                  visible that the recording was read and not only stored. */}
+                  visible that the file was read and not only stored. */}
               {f.sampleRate ? (
                 <span className="text-xs text-slate-500">
                   {f.seconds?.toFixed(1)}s at {f.sampleRate} Hz
@@ -848,7 +849,7 @@ export function UploadStep({
             className="rounded border border-teal-300 bg-teal-50 p-3 text-sm text-teal-900"
           >
             {sealAudio.isSuccess
-              ? `Sealed as version 1, ${sealAudio.data?.records} recording${sealAudio.data?.records === 1 ? "" : "s"} the de-identification pipeline can read.`
+              ? `Sealed as version 1, ${sealAudio.data?.records} file${sealAudio.data?.records === 1 ? "" : "s"} the de-identification pipeline can read.`
               : `Sealed as version 1, ${seal.data?.files} file${seal.data?.files === 1 ? "" : "s"}.`}{" "}
             Nothing about it can change from here; a later upload becomes a new
             version.
@@ -911,10 +912,10 @@ export function UploadStep({
                 }
                 className="rounded border border-slate-900 px-3 py-1.5 text-sm font-medium text-slate-900 disabled:opacity-50"
               >
-                {sealAudio.isPending ? "Sealing" : "Seal as recordings"}
+                {sealAudio.isPending ? "Sealing" : "Seal as files"}
               </button>
               <span className="text-xs text-slate-500">
-                Use this if these are recordings to be de-identified. Each
+                Use this if these are files to be de-identified. Each
                 <code className="mx-1">.wav</code> becomes one record, and a
                 matching <code className="mx-1">.truth.json</code> is its answer
                 key.
@@ -953,6 +954,8 @@ export function UploadStep({
           </ul>
         </div>
       )}
+      </>
+      )}
     </div>
   );
 }
@@ -966,7 +969,7 @@ export function RegisterDataset() {
     <Section
       level="page"
       title="Bring a dataset in"
-      description="Registering names an owner and where the data came from. Nothing is readable until it is sealed, and, if you claimed less sensitivity than the default, until the owner agrees."
+      description="Registering names an owner and where the data came from. Nothing is readable until it is sealed. If you claimed less sensitivity than the default, it stays at the most restrictive setting until the owner agrees."
     >
       <RegisterForm
         onRegistered={(result, name, provenance) =>

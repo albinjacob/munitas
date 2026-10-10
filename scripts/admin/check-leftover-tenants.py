@@ -24,12 +24,13 @@ from __future__ import annotations
 import os
 import sys
 
-import psycopg
-from psycopg.rows import dict_row
+import pgdb
+from pgdb import dict_row
 
 # The tenants that are meant to be there: the three organisations the platform is demonstrated with, the suite's own `canary` tenant, and the two
-# that prove storage on real Cloudflare R2 (U57, which keeps them between runs).
-STANDING = frozenset({"health", "finance", "harbour", "canary", "r2-probe-a", "r2-probe-b"})
+# that prove storage on real Cloudflare R2 (U57, which keeps them between runs), and `neighbour`, the second test organisation the isolation checks
+# act from.
+STANDING = frozenset({"health", "finance", "harbour", "canary", "neighbour", "r2-probe-a", "r2-probe-b"})
 
 # The names the suite gives tenants it makes. A tenant with one of these is a fixture, not somebody's organisation.
 TEST_PREFIXES = (
@@ -57,8 +58,8 @@ def leftovers(tenants: list[dict]) -> list[tuple[dict, str]]:
 
 
 def dsn() -> str:
-    if os.environ.get("PG_DSN"):
-        return os.environ["PG_DSN"]
+    if os.environ.get("MUNITAS_PG_DSN"):
+        return os.environ["MUNITAS_PG_DSN"]
     from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
@@ -78,7 +79,7 @@ def read_tenants(conn) -> list[dict]:
 
 def main() -> int:
     try:
-        with psycopg.connect(dsn(), row_factory=dict_row, connect_timeout=10) as conn:
+        with pgdb.connect(dsn(), row_factory=dict_row, connect_timeout=10) as conn:
             tenants = read_tenants(conn)
     except Exception as exc:  # noqa: BLE001 - reported with the exit code; not knowing is not a pass
         print(f"Could not look for leftover tenants ({type(exc).__name__}: {str(exc).splitlines()[0] if str(exc) else ''}). Nothing is known.")

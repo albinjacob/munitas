@@ -60,20 +60,20 @@ import sys
 from pathlib import Path
 
 import boto3
-import psycopg
+import pgdb
 from botocore.config import Config
-from psycopg.rows import dict_row
+from pgdb import dict_row
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from ports_config import PORTS  # noqa: E402
 
 PG_DSN = os.environ.get(
-    "PG_DSN", f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform"
+    "MUNITAS_PG_DSN", f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform"
 )
-S3_ENDPOINT = os.environ.get("S3_ENDPOINT", f"http://localhost:{PORTS['seaweedfs_s3']}")
+S3_ENDPOINT = os.environ.get("MUNITAS_S3_ENDPOINT", f"http://localhost:{PORTS['seaweedfs_s3']}")
 
-ADMIN_KEY = os.environ.get("S3_ADMIN_KEY", "munitas-admin")
-ADMIN_SECRET = os.environ.get("S3_ADMIN_SECRET", "munitas-admin-secret")
+ADMIN_KEY = os.environ.get("MUNITAS_S3_ADMIN_KEY", "munitas-admin")
+ADMIN_SECRET = os.environ.get("MUNITAS_S3_ADMIN_SECRET", "munitas-admin-secret")
 
 
 def s3():
@@ -173,7 +173,7 @@ def main() -> int:
                         help="skip the typed confirmation, for scripted use")
     args = parser.parse_args()
 
-    with psycopg.connect(PG_DSN, row_factory=dict_row, autocommit=True) as conn:
+    with pgdb.connect(PG_DSN, row_factory=dict_row, autocommit=True) as conn:
         dataset = resolve_dataset(conn, args.dataset_id, args.tenant, args.name)
         check_unsealed(conn, dataset["id"])
 

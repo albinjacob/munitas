@@ -31,14 +31,14 @@ import uuid
 from pathlib import Path
 
 import httpx
-import psycopg
-from psycopg.rows import dict_row
+import pgdb
+from pgdb import dict_row
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from ports_config import PORTS  # noqa: E402
 
 PG_DSN = os.environ.get(
-    "PG_DSN", f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform"
+    "MUNITAS_PG_DSN", f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform"
 )
 API = os.environ.get("MUNITAS_VERIFY_API", f"http://localhost:{PORTS['munitas_api_http']}")
 
@@ -91,7 +91,7 @@ def main() -> int:
             print(f"  {p}")
         return 1
 
-    with psycopg.connect(PG_DSN, row_factory=dict_row) as conn:
+    with pgdb.connect(PG_DSN, row_factory=dict_row) as conn:
         existing = conn.execute(
             "select purpose from tenant where id = %s", (args.tenant,)
         ).fetchone()

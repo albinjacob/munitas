@@ -11,7 +11,7 @@ dependencies without ever giving code that is about to hold a real dataset
 credential a route off the machine.
 
 No credential of this platform's own is ever handed to either container:
-not `PG_DSN`, not an S3 admin key, nothing from this module's own
+not `MUNITAS_PG_DSN`, not an S3 admin key, nothing from this module's own
 `config.py`. Everything the run container can do is limited to the same
 `POST /credentials` request any other workload identity can make
 (`agent/tools.py`'s pattern, proven against arbitrary out-of-process code
@@ -182,6 +182,9 @@ def _run_and_wait(
     security_opt: list[str] | None = None,
     read_only: bool = False,
     tmpfs: dict[str, str] | None = None,
+    memory_limit: str | None = None,
+    pids_limit: int | None = None,
+    working_dir: str | None = None,
 ) -> tuple[int | None, bytes, bool]:
     """Launch one container, wait up to `timeout`, force-kill on hang.
 
@@ -220,13 +223,17 @@ def _run_and_wait(
         run_kwargs["read_only"] = read_only
     if tmpfs is not None:
         run_kwargs["tmpfs"] = tmpfs
+    if pids_limit is not None:
+        run_kwargs["pids_limit"] = pids_limit
+    if working_dir is not None:
+        run_kwargs["working_dir"] = working_dir
     container = client.containers.create(
         image,
         command=command,
         environment=environment,
         volumes=volumes,
         network=network,
-        mem_limit=MEMORY_LIMIT,
+        mem_limit=memory_limit or MEMORY_LIMIT,
         nano_cpus=CPU_LIMIT_NANO,
         labels={"munitas.sandbox": "true", "munitas.run_id": run_id},
         **run_kwargs,

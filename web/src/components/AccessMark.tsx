@@ -11,40 +11,41 @@ function day(iso: string): string {
   return new Date(iso).toLocaleDateString();
 }
 
-const TONE = {
+export const TONE = {
   yes: "text-teal-800",
   wait: "text-amber-800",
   no: "text-slate-600",
 } as const;
 
-interface Wording {
+export interface Wording {
   label: string;
   detail: string | null;
   sentence: string;
   tone: string;
 }
 
-function wording(access: VersionAccess): Wording {
+/** `of` names what the mark is about when it is only part of the version, for example "the readable columns". */
+export function wording(access: VersionAccess, of?: string): Wording {
+  const what = of ?? "this";
   const decider = access.decider_label ?? "the person answerable for it";
   switch (access.mark) {
     case "removed":
       return {
-        label: "Its files were removed",
+        label: "Its data was deleted",
         detail: null,
-        sentence: "Its files were removed, so there is nothing left to read.",
+        sentence: "Its data was deleted, so there is nothing left to read.",
         tone: TONE.no,
       };
     case "role":
       return {
-        label: "You can read this",
+        label: of ? `You can read ${of}` : "You can read this",
         detail: null,
-        sentence: "You can read this. Your role covers it.",
+        sentence: of ? `You can read ${of}. Your role covers them.` : "You can read this. Your role covers it.",
         tone: TONE.yes,
       };
     case "lease": {
-      const until = access.until
-        ? `You can read this until ${day(access.until)}`
-        : "You can read this until somebody withdraws it";
+      const reads = access.locked ? "open some of these files" : `read ${what}`;
+      const until = access.until ? `You can ${reads} until ${day(access.until)}` : `You can ${reads} until somebody withdraws it`;
       const purpose = access.purpose ? `for ${access.purpose}` : null;
       return {
         label: until,
@@ -74,6 +75,14 @@ function wording(access: VersionAccess): Wording {
       };
     }
     case "ask":
+      if (access.locked) {
+        return {
+          label: "Ask to open a few files",
+          detail: null,
+          sentence: `These files are locked. A role does not open them, so ask to open a few, and ${decider} decides.`,
+          tone: TONE.no,
+        };
+      }
       return {
         label: "Needs a request",
         detail: null,
@@ -95,10 +104,12 @@ export function AccessMark({
   access,
   failed,
   detailed = false,
+  of,
 }: {
   access: VersionAccess | undefined;
   failed: boolean;
   detailed?: boolean;
+  of?: string;
 }) {
   if (failed) {
     return (
@@ -111,7 +122,7 @@ export function AccessMark({
   }
   if (!access) return <span className="text-slate-400">Checking</span>;
 
-  const w = wording(access);
+  const w = wording(access, of);
   return (
     <span data-testid="access-mark" data-mark={access.mark} className={w.tone}>
       {detailed ? w.sentence : w.label}

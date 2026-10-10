@@ -34,8 +34,10 @@ from pathlib import Path
 HERE = Path(__file__).parent
 # MUNITAS_VERIFY_HISTORY_DIR exists so a check can exercise this against a folder of its own, not this machine's real record.
 HISTORY_DIR = Path(os.environ["MUNITAS_VERIFY_HISTORY_DIR"]) if os.environ.get("MUNITAS_VERIFY_HISTORY_DIR") else HERE / "history"
-RUNS_PATH = HISTORY_DIR / "runs.jsonl"
-PAGE_PATH = HISTORY_DIR / "index.html"
+# The large tier (verify/run_large.py) keeps its own record and its own page, so a run of hours is never mixed into the ordinary history.
+LARGE = os.environ.get("MUNITAS_VERIFY_TIER") == "large"
+RUNS_PATH = HISTORY_DIR / ("large-runs.jsonl" if LARGE else "runs.jsonl")
+PAGE_PATH = HISTORY_DIR / ("large.html" if LARGE else "index.html")
 
 
 def load_runs() -> list[dict]:
@@ -158,7 +160,10 @@ def render(runs: list[dict]) -> str:
         separators=(",", ":"),
     ).replace("</", "<\\/")
     generated = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M %Z")
-    return PAGE_TEMPLATE.replace("__PAYLOAD__", payload).replace("__GENERATED__", generated)
+    title = "Munitas large-tier history" if LARGE else "Munitas verification history"
+    lead = ("Every run of <code>verify\\run_large.py</code>, newest first: the checks that need millions of rows, gigabytes of files or a killed worker, run on demand."
+            if LARGE else "Every run of <code>run-verification.ps1</code>, newest first.")
+    return PAGE_TEMPLATE.replace("__PAYLOAD__", payload).replace("__GENERATED__", generated).replace("__TITLE__", title).replace("__LEAD__", lead)
 
 
 PAGE_TEMPLATE = """<!doctype html>
@@ -166,7 +171,7 @@ PAGE_TEMPLATE = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Munitas verification history</title>
+<title>__TITLE__</title>
 <style>
   :root {
     --bg: #ffffff; --fg: #14171a; --muted: #5b6570; --line: #e2e6ea;
@@ -225,8 +230,8 @@ PAGE_TEMPLATE = """<!doctype html>
 </style>
 </head>
 <body>
-<h1>Munitas verification history</h1>
-<p class="sub">Every run of <code>run-verification.ps1</code>, newest first. Times are this machine's local time. Generated __GENERATED__.</p>
+<h1>__TITLE__</h1>
+<p class="sub">__LEAD__ Times are this machine's local time. Generated __GENERATED__.</p>
 
 <div class="cards" id="cards"></div>
 

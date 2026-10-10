@@ -246,21 +246,30 @@ def main() -> int:
     check("both prefixes survive in the document, so neither write lost the other",
           present == 2, f"{present} of 2 prefixes present")
 
-    # --- U64d: the guard refuses an empty document -------------------------
-    heading("U64d: the guard refuses a document that would grant nothing")
-    before = app_seaweed.load_identities()
-    original = app_grants.desired_document
-    app_grants.desired_document = lambda: {"identities": []}
-    raised = False
+    # --- U64d: a document that would grant nothing is written, and raised as an alert -
+    heading("U64d: a document that would grant nothing is not refused: it is handed to storage as computed, and raises an alert")
+    handed = {}
+    from app import config as app_config
+    real_alerts_file, app_config.ALERTS_FILE = app_config.ALERTS_FILE, ""   # this alert is a test's, so it must not be written to the real alerts file
+    original_desired, original_save = app_grants.desired_document, app_seaweed.save_identities
+    app_grants.desired_document = lambda **_: {"identities": []}
+    app_seaweed.save_identities = lambda doc: handed.update(doc=doc)
+    result, error = None, None
     try:
-        app_grants.reconcile()
-    except app_grants.UnsafeProjection:
-        raised = True
+        result = app_grants.reconcile()
+    except Exception as exc:  # noqa: BLE001
+        error = exc
     finally:
-        app_grants.desired_document = original
-    after = app_seaweed.load_identities()
-    check("an empty projection raises UnsafeProjection", raised)
-    check("and nothing was written", before == after)
+        app_grants.desired_document, app_seaweed.save_identities = original_desired, original_save
+        app_config.ALERTS_FILE = real_alerts_file
+    check("an empty projection is not refused", error is None, repr(error))
+    check("it was handed to storage exactly as computed (here a stand-in, so the live list was not touched)", handed.get("doc") == {"identities": []}, str(handed))
+    check("and it raised the alert that nothing can read or write",
+          bool(result) and any(a["event"] == "no-bucket-wide-permissions" for a in result["alerts"]), str(result))
+    with db() as conn:   # the stand-in update above was a real row: its made-up alert must not stay for the console to show
+        conn.execute("update storage_permission_print set alerts = null where trigger = 'manual' and alerts @> '[{\"event\": \"no-bucket-wide-permissions\"}]'::jsonb "
+                     "and started_at > now() - interval '5 minutes'")
+    app_grants.reconcile()   # the real list again, so what follows starts from the real one
 
     # --- U64e: structural grants survive -----------------------------------
     heading("U64e: bucket-wide and admin grants are never dropped")

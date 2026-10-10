@@ -2,8 +2,10 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
+import type { DatasetState } from "./types";
 import { useIdentity } from "../identity/IdentityContext";
 import type {
+  VersionHolds,
   VersionTable,
   AccessDecision,
   AccessPreview,
@@ -37,6 +39,8 @@ export interface PolicyRoles {
   class_order: Record<string, number>;
   role_floor: Record<string, number>;
   approver_roles: string[];
+  /** What each role is called: its console label, and for the roles people hold, one and many of them with their article. */
+  role_words: Record<string, { label: string; one?: string; many?: string; person: boolean }>;
 }
 
 /**
@@ -68,8 +72,16 @@ export function useSummary() {
 export interface DatasetFilters {
   q?: string;
   widest_class?: string;
-  modality?: string;
+  kind?: string;
+  format?: string;
+  structure?: string;
+  department_id?: string;
   has_versions?: boolean;
+  /** registered, active or deleted. Without it, deleted datasets are left out unless `include_deleted` is true. */
+  state?: DatasetState;
+  include_deleted?: boolean;
+  sort?: string;
+  direction?: "asc" | "desc";
   limit?: number;
   offset?: number;
 }
@@ -78,6 +90,8 @@ export interface DatasetPage {
   datasets: DatasetRow[];
   shown: number;
   total: number;
+  /** How many deleted datasets match the other filters, whether or not they are in this list. */
+  deleted: number;
   limit: number;
   offset: number;
 }
@@ -155,11 +169,38 @@ export function useVersion(versionId: string | undefined) {
   });
 }
 
+export function useVersionHolds(versionId: string | undefined) {
+  return useQuery({
+    queryKey: ["version-holds", versionId],
+    queryFn: () => api.get<VersionHolds>(`/dataset-versions/${versionId}/holds`),
+    enabled: Boolean(versionId),
+  });
+}
+
 export function useVersionTable(versionId: string | undefined) {
   return useQuery({
     queryKey: ["version-table", versionId],
     queryFn: () => api.get<VersionTable>(`/dataset-versions/${versionId}/table`),
     enabled: Boolean(versionId),
+  });
+}
+
+export interface VersionPreview {
+  columns: { name: string; type: string }[];
+  rows: Record<string, unknown>[];
+  shown: number;
+  rows_total: number | null;
+  limit: number;
+}
+
+/** The first rows of a version's table. Asked for only when the person presses the button, because looking at rows is a read that is recorded. */
+export function useVersionPreview(versionId: string | undefined, asked: boolean) {
+  return useQuery({
+    queryKey: ["version-preview", versionId],
+    queryFn: () => api.get<VersionPreview>(`/dataset-versions/${versionId}/preview`, { limit: 20 }),
+    enabled: Boolean(versionId) && asked,
+    retry: false,
+    staleTime: 0,
   });
 }
 

@@ -369,7 +369,7 @@
   </p>
   <div class="seal-row">
     <span class="seal"><span class="dot"></span> Every capability below is checked by a script that runs against the live system</span>
-    <span class="seal"><span class="dot"></span> Permissive open-source licences throughout</span>
+    <span class="seal"><span class="dot"></span> Platform and services under open-source licences that allow commercial use</span>
     <span class="seal"><span class="dot"></span> Real sign-in for every human role, and two automated ones</span>
   </div>
 </header>
@@ -433,6 +433,11 @@
       <li>Change who holds which role only through two people: one asks and says why, another decides, and the role lapses rather than lasting because nobody looked. The administrator who runs the platform is not one of the people who may decide.</li>
       <li>Let a department have several approvers, any one of whom may decide, with every change to the list recorded alongside who made it and why.</li>
       <li>Make a new dataset from a query over an existing one. The new dataset is kept as restricted as its source, and withdrawing access to the source closes it too.</li>
+      <li>Lock the columns of a table that identify a person, so the values stay unreadable until an approver of the owning department decides a specific request to read a few rows. A privacy auditor can see how the locked columns were used in a report that contains no names.</li>
+      <li>Lock files as they arrive, each under a key made for one person, so that one person's files can be erased later without touching anyone else's. A mistake in the list of people is caught before anything is sent.</li>
+      <li>Keep a pipeline version that is still being built away from real data. It may run only on a development sample that the platform draws, after an approver of the owning department has chosen how much to allow, or on files declared to hold no real person. A sample ends on its own.</li>
+      <li>Let an organisation's own code run as one step of a pipeline, reading files and writing files, but only after an approver of the owning department who did not upload it has approved it. The step runs in a container with no route to the internet, and what it writes is sealed as a new version that waits for a review.</li>
+      <li>Sign a notebook in without pasting a session: the notebook shows a code, the person approves it in the console, and the notebook receives a short-lived pass that the person can end.</li>
       <li>Close down a customer account in two stages, hold it back while a legal matter is open, and produce its records as an encrypted, signed package that no single administrator can request and approve alone.</li>
       <li>Show what storage each organisation is using, on which backend, and free what is no longer needed, rehearsing exactly what would be removed before removing it.</li>
       <li>Write one line of log per event carrying identifiers and never contents, with anything resembling a secret redacted before it is written.</li>
@@ -448,7 +453,7 @@
   </p>
   <div class="card">
     <span class="tag">BUILT</span>
-    <p>Registering, versioning and locking datasets. A built-in seven-step pipeline that removes personal information from speech recordings, and the ability for an organisation to register its own pipelines. Widening who may read a dataset. Requesting and approving access. Keeping separate customers' data apart, and closing down an account in two stages, with legal holds and a signed package of records for a legal matter. Several approvers per department, any one of whom may decide. Making a new dataset from a query, kept as restricted as its source. Registering, versioning, deploying and running AI agents, including a human approval step and, for sandboxed agents, a scoped copy of the real dataset they were granted. Permanent deletion of a person's records. A full audit trail. Importing datasets from HuggingFace in the background, using each person's own account, with export rules read from the dataset's licence. Real sign-in through Ory Kratos for every human role. A choice of storage backend per organisation, SeaweedFS or Cloudflare R2, each isolated per customer.</p>
+    <p>Registering, versioning and locking datasets. A built-in seven-step pipeline that removes personal information from speech recordings, and the ability for an organisation to register its own pipelines. Widening who may read a dataset. Requesting and approving access. Keeping separate customers' data apart, and closing down an account in two stages, with legal holds and a signed package of records for a legal matter. Several approvers per department, any one of whom may decide. Making a new dataset from a query, kept as restricted as its source. Registering, versioning, deploying and running AI agents, including a human approval step and, for sandboxed agents, a scoped copy of the real dataset they were granted. Permanent deletion of a person's records. A full audit trail. Importing datasets from HuggingFace in the background, using each person's own account, with export rules read from the dataset's licence. Real sign-in through Ory Kratos for every human role. A choice of storage backend per organisation, SeaweedFS or Cloudflare R2, each isolated per customer. Locking the columns of a table that identify a person, with reading only by an approved request. Locking files per person so that one person can be erased later. A development stage for a pipeline version, with samples the platform draws. Letting an organisation's own code run as a pipeline step, with an approver. Signing a notebook in with a short-lived pass.</p>
   </div>
   <p class="measure">
     The goal is the one a title document serves for a property: proof of what is
@@ -574,7 +579,7 @@
     <div class="item"><span class="swatch" style="background:var(--accent);"></span> agent network, no internet access</div>
   </div>
   <p class="measure" style="font-size:0.88rem; color:var(--ink-faint);">
-    This diagram is simplified. The runner that executes the query for a new dataset, the worker that writes large tables, the catalog that lets tools such as DuckDB open tables, tracing (Jaeger and OpenTelemetry), MLflow, Label Studio, the Temporal web interface and Ory Kratos (which sits in front of the
+    This diagram is simplified. The runner that executes the query for a new dataset, the worker that writes large tables, the catalog that lets tools such as DuckDB open tables, tracing (Jaeger and OpenTelemetry), MLflow, Label Studio, the Temporal web interface, the step gateway, Ory Hydra (which signs notebooks in) and Ory Kratos (which sits in front of the
     console and issues the session every request carries) are left out here.
     Ollama, which runs the agent's AI model on the machine's own graphics card,
     is also left out because it holds no data and enforces no rules.
@@ -742,7 +747,7 @@
   <div class="grid grid-2">
     <div class="card">
       <h4>Software licences: nothing</h4>
-      <p>Every component is under a permissive open-source licence, so there are no per-seat charges, no per-machine governance fees and no renewals to negotiate. Replacing any one component, such as the file storage or the workflow engine, costs the effort of the integration and nothing else.</p>
+      <p>The platform and every service it runs are under open-source licences that allow commercial use, almost all of them MIT, BSD or Apache. Three small libraries are under the Mozilla Public Licence 2.0, which applies file by file and asks for nothing unless you change those files. Speech recognition on a graphics card also uses NVIDIA's CUDA libraries and the FFmpeg audio library, which you install on that machine under their own licences: NVIDIA's are free to use commercially but are not open source. So there are no per-seat charges, no per-machine governance fees and no renewals to negotiate. Replacing any one component, such as the file storage or the workflow engine, costs the effort of the integration and nothing else.</p>
     </div>
     <div class="card">
       <h4>Running an agent: hardware, not usage fees</h4>
@@ -1022,9 +1027,14 @@
   <p class="eyebrow">11 &middot; Components, and why</p>
   <h2 class="measure">What each component does, and why it was chosen over the alternatives</h2>
   <p class="measure">
-    Everything here is under a permissive open-source licence, meaning it can be
-    used commercially without obligation. That was a hard requirement, and it ruled
-    out several otherwise strong options.
+    The platform and every service it runs are under open-source licences that allow
+    commercial use, almost all of them MIT, BSD or Apache. Three small libraries are
+    under the Mozilla Public Licence 2.0, which applies file by file and asks for
+    nothing unless you change those files. Speech recognition on a graphics card also
+    uses NVIDIA's CUDA libraries and the FFmpeg audio library, which you install on
+    that machine under their own licences: NVIDIA's are free to use commercially but
+    are not open source. Permissive licences for the platform itself were a hard
+    requirement, and they ruled out several otherwise strong options.
   </p>
 
   <div class="toolgrid">
@@ -1040,10 +1050,12 @@
           <tr><td class="mono">Temporal</td><td>Runs long jobs: the pipeline, imports and agent runs</td><td>It records the state of a job durably, so retries, timeouts and resuming after a crash are provable behaviour, not a description of intent. This is what lets an agent pause for days awaiting approval.</td></tr>
           <tr><td class="mono">Open Policy Agent</td><td>Decides every access, approval and publication question</td><td>Keeping the rules in one testable place means access policy can be unit-tested like code. It returns a reason with every decision, which is what makes the audit trail meaningful rather than a list of yes and no.</td></tr>
           <tr><td class="mono">Ory Kratos</td><td>Handles real sign-in for every human role</td><td>Chosen over Keycloak for its lower memory ceiling on a single machine. An identity always comes from a session Kratos issued, never from a name the caller supplies.</td></tr>
+          <tr><td class="mono">Ory Hydra</td><td>Signs a notebook in on a person's behalf</td><td>It issues, renews and revokes a short-lived pass, and holds nothing about who people are: Kratos still answers that, and the platform's own API decides what a pass may do on every request. A pass is opaque and not signed, so it can be revoked at once.</td></tr>
           <tr><td class="mono">FastAPI</td><td>The single interface everything else goes through</td><td>It validates incoming data against a declared shape automatically, so malformed requests are rejected before reaching any logic. Keeping this layer thin was deliberate: rules belong in the policy engine and the database, not scattered here.</td></tr>
           <tr><td class="mono">Munitas console</td><td>The web app people open in a browser</td><td>It asks the API for everything it shows, so what a person sees comes from the same decisions as everything else.</td></tr>
           <tr><td class="mono">Munitas client library</td><td>Lets a person work from Python or a notebook</td><td>It sends requests to the API, so the same access decisions apply as in the console.</td></tr>
           <tr><td class="mono">Derivation runner</td><td>Runs the query that makes a new dataset</td><td>It runs in a container with no network connection and no passwords, so a query cannot send data anywhere or reach anything it was not handed.</td></tr>
+          <tr><td class="mono">Step gateway</td><td>The one way a custom pipeline step reaches the platform</td><td>A step runs on a network with no route to the internet, and the gateway is the only other thing on it. It forwards only the platform's step routes to the API and answers 404 to everything else.</td></tr>
           <tr><td class="mono">cryptography (Python)</td><td>Encrypts records and stored credentials</td><td>It is the standard, well-reviewed Python library for this, and keeping the key for a record apart from the record is what allows permanent deletion without altering any locked dataset.</td></tr>
         </tbody>
       </table>
@@ -1170,24 +1182,37 @@
   <!-- walkthrough-list:start -->
   <div class="walk-list">
     <div>
-      <h3>Health organisation</h3>
+      <h3><a href="health_walkthrough.html">Health organisation</a></h3>
       <ul>
-      <li><a href="healthcare-walkthrough.html">Remove names from a patient recording and release it</a></li>
+      <li><a href="before-any-data-walkthrough.html">Before the programme starts: who owns what, and who may do what</a></li>
+      <li><a href="a-table-arrives-walkthrough.html">Bring in a table, and see that nobody can read it yet</a></li>
+      <li><a href="find-and-ask-walkthrough.html">Find a table, ask to read it, and the custodian decides</a></li>
+      <li><a href="work-from-a-notebook-walkthrough.html">Sign a notebook in, with a pass that cannot decide anything</a></li>
+      <li><a href="make-a-dataset-walkthrough.html">Make a new dataset from a query, under the same rules</a></li>
+      <li><a href="people-arrive-walkthrough.html">Bring in patient data, locked under a key for each patient</a></li>
+      <li><a href="read-a-few-rows-walkthrough.html">Read five locked rows, with an approver's say</a></li>
+      <li><a href="open-a-few-files-walkthrough.html">Open two of the recordings, with an approver's say</a></li>
+      <li><a href="de-identify-and-release-walkthrough.html">Remove names from the recordings, and a reviewer decides</a></li>
+      <li><a href="evidence-without-names-walkthrough.html">See how locked data was used, without seeing a name</a></li>
       <li><a href="people-administration-walkthrough.html">Ask for a role, and see who may grant it</a></li>
-      <li><a href="custom-pipeline-walkthrough.html">Run a pipeline that you wrote yourself</a></li>
-      <li><a href="derive-health-walkthrough.html">Make a new dataset from patient admissions</a></li>
       <li><a href="department-approvers-walkthrough.html">Cover a department while its custodian is away</a></li>
+      <li><a href="agent-asks-walkthrough.html">Grant an AI agent permission to read a dataset</a></li>
+      <li><a href="agent-egress-walkthrough.html">Grant an AI agent permission to call an external host</a></li>
+      <li><a href="custom-pipeline-walkthrough.html">Register a custom pipeline, and run it</a></li>
+      <li><a href="development-sample-walkthrough.html">Test a new pipeline version on a development sample</a></li>
+      <li><a href="custom-step-walkthrough.html">Approve a custom step before it runs</a></li>
+      <li><a href="audit-decisions-walkthrough.html">Read every access decision, including every refusal</a></li>
       </ul>
     </div>
     <div>
-      <h3>Finance organisation</h3>
+      <h3><a href="finance_walkthrough.html">Finance organisation</a></h3>
       <ul>
       <li><a href="finance-walkthrough.html">Score card transactions for fraud, with permission</a></li>
       <li><a href="derive-finance-walkthrough.html">Make a new dataset from card transactions</a></li>
       </ul>
     </div>
     <div>
-      <h3>Harbour Clinic</h3>
+      <h3><a href="harbour_walkthrough.html">Harbour Clinic</a></h3>
       <ul>
       <li><a href="closing-an-organisation-walkthrough.html">Close down an organisation, and keep its records for a legal case</a></li>
       <li><a href="legal-export-walkthrough.html">Hand over a closed clinic's records for a legal case</a></li>

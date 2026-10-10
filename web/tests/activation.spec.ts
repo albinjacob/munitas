@@ -14,12 +14,22 @@
 import { expect, test, type Page } from "@playwright/test";
 import { loginAs } from "./auth-helpers";
 
-/** Rewrite one JSON response on its way to the page. */
+/**
+ * Rewrite one JSON response on its way to the page.
+ *
+ * The screen asks for the same address more than once (the whole platform and one organisation), so a request can still be on its way when the
+ * test has seen what it came for and ends. That request is let go quietly: it is not what the test is about, and reporting it as an error made a
+ * passing test fail depending on which answer came back last.
+ */
 async function rewrite(page: Page, pattern: string, change: (body: any) => any) {
   await page.route(pattern, async (route) => {
-    const response = await route.fetch();
-    const body = await response.json();
-    await route.fulfill({ response, json: change(body) });
+    try {
+      const response = await route.fetch();
+      const body = await response.json();
+      await route.fulfill({ response, json: change(body) });
+    } catch (error) {
+      if (!/Test ended|Target page, context or browser has been closed|has been closed/i.test(String(error))) throw error;
+    }
   });
 }
 
@@ -30,7 +40,7 @@ function minutesAgo(n: number): string {
 
 test.describe("U75: the housekeeping screen raises an outage, not individual runs", () => {
   test("an outage the platform is retrying says so, and how many runs wait", async ({ page }) => {
-    await loginAs(page, "ops-priya");
+    await loginAs(page, "canary-admin");
     await rewrite(page, "**/housekeeping/storage", (body) =>
       body.scope !== "platform" ? body : {
         ...body,
@@ -52,7 +62,7 @@ test.describe("U75: the housekeeping screen raises an outage, not individual run
   });
 
   test("a failure retrying cannot fix says what to do, and one run reads as one", async ({ page }) => {
-    await loginAs(page, "ops-priya");
+    await loginAs(page, "canary-admin");
     await rewrite(page, "**/housekeeping/storage", (body) =>
       body.scope !== "platform" ? body : {
         ...body,
@@ -60,7 +70,7 @@ test.describe("U75: the housekeeping screen raises an outage, not individual run
           ...body.storage_permissions,
           failing: true, alert: true, retryable: false,
           failing_since: minutesAgo(1),
-          reason: "the safety guard refused a print that would remove too much access",
+          reason: "the policy's storage roles could not be read, so the list of permissions cannot be computed",
           parked_runs: 1,
         },
       });
@@ -72,8 +82,48 @@ test.describe("U75: the housekeeping screen raises an outage, not individual run
     await expect(alert).toContainText("1 run is waiting and will continue by itself.");
   });
 
+  test("an update that noticed something and carried on says when, and what, without calling it a failure", async ({ page }) => {
+    await loginAs(page, "canary-admin");
+    await rewrite(page, "**/housekeeping/storage", (body) =>
+      body.scope !== "platform" ? body : {
+        ...body,
+        storage_permissions: {
+          ...body.storage_permissions,
+          failing: false, alert: false,
+          latest_alerts: {
+            at: minutesAgo(5),
+            trigger: "request",
+            alerts: [
+              { event: "unexplained-removal", severity: "warning", message: "The update removed 6 folder permissions that nothing in the register explains." },
+              { event: "unjustified-permission", severity: "critical", message: "The new list holds 2 permissions that name a folder belonging to no dataset version in the register." },
+            ],
+          },
+        },
+      });
+    await page.goto("/housekeeping");
+    const notice = page.getByTestId("permission-notice");
+    await expect(notice).toContainText("noticed something to look at");
+    await expect(notice).toContainText(/[A-Z][a-z]{2} \d{1,2}, \d{4}.*\d{1,2}:\d{2}/);
+    await expect(notice).toContainText("The update removed 6 folder permissions that nothing in the register explains.");
+    await expect(notice).toContainText("The new list holds 2 permissions");
+    await expect(notice).toContainText("The update was applied.");
+    await expect(page.getByTestId("activation-alert")).toHaveCount(0);
+  });
+
+  test("with no alerts there is no notice", async ({ page }) => {
+    await loginAs(page, "canary-admin");
+    await rewrite(page, "**/housekeeping/storage", (body) =>
+      body.scope !== "platform" ? body : {
+        ...body,
+        storage_permissions: { ...body.storage_permissions, failing: false, alert: false, latest_alerts: null },
+      });
+    await page.goto("/housekeeping");
+    await expect(page.getByRole("heading", { name: "Storage housekeeping" })).toBeVisible();
+    await expect(page.getByTestId("permission-notice")).toHaveCount(0);
+  });
+
   test("with nothing failing there is no banner", async ({ page }) => {
-    await loginAs(page, "ops-priya");
+    await loginAs(page, "canary-admin");
     await rewrite(page, "**/housekeeping/storage", (body) =>
       body.scope !== "platform" ? body : {
         ...body,
@@ -86,7 +136,7 @@ test.describe("U75: the housekeeping screen raises an outage, not individual run
   });
 
   test("a failure that is failing but not yet alerting shows no banner", async ({ page }) => {
-    await loginAs(page, "ops-priya");
+    await loginAs(page, "canary-admin");
     await rewrite(page, "**/housekeeping/storage", (body) =>
       body.scope !== "platform" ? body : {
         ...body,
@@ -144,7 +194,7 @@ test.describe("U75: a parked run says it is waiting for access, not stuck", () =
     await page.route(`**/agents/${agentId}?**`, (route) => route.fulfill({ json: agent }));
     await page.goto(`/agents/${agentId}`);
 
-    const row = page.getByTestId("agent-runs").locator("li").first();
+    const row = page.getByTestId("agent-run").first();
     await expect(row).toContainText("access taking effect");
     await expect(page.getByTestId(`run-activation-${runId}`)).toHaveText(
       "Approved; waiting for storage access to take effect. The run continues on its own once it has.",
@@ -179,7 +229,7 @@ function auditPage(waiting: number[]) {
 test.describe("U75: the audit log says when given access is not in effect yet", () => {
   // The rows are made up, so these tests never depend on the organisation having a grant to mark, and never skip.
   test("one allowed grant not yet active reads 'yes, taking effect', the rest 'yes'", async ({ page }) => {
-    await loginAs(page, "canary-engineer");
+    await loginAs(page, "canary-admin");
     await page.route("**/access-decisions**", (route) => route.fulfill({ json: auditPage([2]) }));
     await page.goto("/audit");
     await expect(page.getByTestId("audit-rows")).toBeVisible();
@@ -190,7 +240,7 @@ test.describe("U75: the audit log says when given access is not in effect yet", 
   });
 
   test("with everything in effect nothing reads 'taking effect'", async ({ page }) => {
-    await loginAs(page, "canary-engineer");
+    await loginAs(page, "canary-admin");
     await page.route("**/access-decisions**", (route) => route.fulfill({ json: auditPage([]) }));
     await page.goto("/audit");
     await expect(page.getByTestId("audit-rows")).toBeVisible();

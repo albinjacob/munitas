@@ -1,0 +1,82 @@
+mcc,description,grp,median_amount,weight
+0742,Veterinary services,Services,85,1
+4111,Local and suburban commuter transport,Transport,6,6
+4121,Taxicabs and limousines,Transport,18,4
+4511,Airlines and air carriers,Travel,310,2
+4722,Travel agencies and tour operators,Travel,540,1
+4784,Tolls and bridge fees,Transport,4,2
+4814,Telecommunication services,Utilities,35,5
+4899,"Cable, satellite and other pay television services",Utilities,40,3
+4900,"Utilities: electric, gas, water and sanitary",Utilities,95,5
+5200,Home supply warehouse stores,Retail,60,2
+5211,Lumber and building materials stores,Retail,75,2
+5251,Hardware stores,Retail,28,2
+5261,"Nurseries, lawn and garden supply stores",Retail,32,1
+5311,Department stores,Retail,48,5
+5331,Variety stores,Retail,14,3
+5399,Miscellaneous general merchandise,Retail,22,3
+5411,Grocery stores and supermarkets,Food,38,30
+5441,"Candy, nut and confectionery stores",Food,9,1
+5451,Dairy products stores,Food,11,1
+5462,Bakeries,Food,7,3
+5499,Miscellaneous food stores,Food,12,5
+5511,Car and truck dealers (new and used),Automotive,9000,1
+5532,Automotive tyre stores,Automotive,210,1
+5541,Service stations,Automotive,52,12
+5542,Automated fuel dispensers,Automotive,48,6
+5611,Men's and boys' clothing stores,Retail,55,1
+5621,Women's ready-to-wear stores,Retail,60,3
+5641,Children's and infants' wear stores,Retail,35,1
+5651,Family clothing stores,Retail,45,5
+5661,Shoe stores,Retail,70,2
+5691,Men's and women's clothing stores,Retail,50,3
+5712,Furniture and home furnishings,Retail,320,1
+5722,Household appliance stores,Retail,260,1
+5732,Electronics stores,Retail,120,3
+5734,Computer software stores,Retail,45,1
+5812,Eating places and restaurants,Food,24,18
+5813,Bars and taverns,Food,19,6
+5814,Fast food restaurants,Food,9,16
+5912,Drug stores and pharmacies,Health,16,10
+5921,"Package stores: beer, wine and liquor",Food,22,3
+5941,Sporting goods stores,Retail,60,2
+5942,Book stores,Retail,17,2
+5943,Stationery stores,Retail,14,1
+5944,Jewellery stores,Retail,150,1
+5945,"Hobby, toy and game shops",Retail,28,1
+5947,"Gift, card and souvenir shops",Retail,16,2
+5977,Cosmetic stores,Retail,26,3
+5992,Florists,Retail,32,1
+5995,Pet shops and pet food,Retail,29,2
+5999,Miscellaneous and specialty retail shops,Retail,25,6
+6011,Automated cash disbursements,Financial,80,4
+6012,Financial institutions: merchandise and services,Financial,140,1
+6300,Insurance sales and underwriting,Financial,95,2
+7011,"Hotels, motels and resorts",Travel,190,2
+7230,Beauty and barber shops,Services,30,2
+7298,Health and beauty spas,Services,70,1
+7311,Advertising services,Services,220,1
+7399,"Business services, not elsewhere classified",Services,110,2
+7512,Car rental agencies,Travel,160,1
+7523,Parking lots and garages,Transport,8,4
+7538,Automotive service shops,Automotive,190,2
+7832,Motion picture theatres,Entertainment,13,2
+7922,Theatrical producers and ticket agencies,Entertainment,55,1
+7941,Commercial sports and athletic fields,Entertainment,30,1
+7991,Tourist attractions and exhibits,Entertainment,28,1
+7997,"Membership clubs: sports and recreation",Entertainment,42,2
+7999,Recreation services,Entertainment,26,1
+8011,Doctors and physicians,Health,75,2
+8021,Dentists and orthodontists,Health,95,1
+8043,Opticians and optical goods,Health,120,1
+8062,Hospitals,Health,210,1
+8099,Medical services and health practitioners,Health,70,2
+8211,Elementary and secondary schools,Education,60,1
+8220,Colleges and universities,Education,900,1
+8299,Schools and educational services,Education,85,1
+8398,Charitable and social service organisations,Giving,20,2
+8661,Religious organisations,Giving,25,1
+8931,"Accounting, auditing and bookkeeping services",Services,300,1
+9311,Tax payments,Government,420,1
+9399,Government services,Government,60,1
+9402,Postal services,Government,7,2

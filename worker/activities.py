@@ -399,7 +399,7 @@ def transcribe(params: dict) -> dict:
     if done:
         activity.logger.info("resuming with %d records already transcribed", len(done))
 
-    out_rows, manifest = [], []
+    out_rows, manifest, left_out = [], [], []
     started = time.time()
     backend = None
     for row in rows:
@@ -417,15 +417,22 @@ def transcribe(params: dict) -> dict:
                 config.WHISPER_COMPUTE,
             )
 
-        local = config.WORK / row["audio_key"].replace("/", "_")
-        local.parent.mkdir(parents=True, exist_ok=True)
-        reader.download_file(params["bucket"], row["audio_key"], str(local))
-
-        segments = backend.transcribe(local)
-        words, pieces = [], []
-        for segment in segments:
-            pieces.append(segment["text"])
-            words.extend(segment["words"])
+        # The recording is read where it is stored, a range at a time, and is never a file on this machine: there is no plain copy to remove,
+        # so destroying a patient's key is not undone by anything left on this disk.
+        try:
+            with cp.open_file(reader, params["bucket"], row["audio_key"], version_id=params["input_version"], record_id=row["record_id"],
+                                   tenant_id=_tenant(params), principal=_pipeline_principal(_tenant(params)),
+                                   task_credential=run["task_credential"], purpose=f"transcribe {row['record_id']}") as audio:
+                segments = backend.transcribe(audio)
+            words, pieces = [], []
+            for segment in segments:
+                pieces.append(segment["text"])
+                words.extend(segment["words"])
+        except cp.FileErased:
+            # The patient was erased, so their recording is left out of what this run makes, not read as noise and not failed over.
+            left_out.append(row["record_id"])
+            activity.heartbeat(row["record_id"])
+            continue
 
         transcript = "".join(pieces).strip()
         result = {
@@ -454,9 +461,11 @@ def transcribe(params: dict) -> dict:
         "transcribed %d records in %.1fs (%d resumed from checkpoint)",
         len(out_rows), time.time() - started, len(done),
     )
+    if left_out:
+        activity.logger.info("left out %d audio %s of erased people: %s", len(left_out), "file" if len(left_out) == 1 else "files", ", ".join(left_out))
     return {"version_id": version["id"],
             "records_key": _key(params["prefix"], "transcribed.json"),
-            "record_count": len(out_rows), "run_id": run_id}
+            "record_count": len(out_rows), "run_id": run_id, "left_out_erased": left_out}
 
 
 @activity.defn
@@ -622,8 +631,8 @@ def redact(params: dict) -> dict:
     it is the first that produces UNDER_REVIEW rather than RAW.
     """
     import numpy as np
-    import soundfile as sf
 
+    from . import wavio
     from .redact import redact_audio, redact_text
 
     # The recording the audio is read from. The fixed pipeline names it (`source_version`); a DAG that does not name it starts from
@@ -659,7 +668,7 @@ def redact(params: dict) -> dict:
     threshold = params.get("confidence_threshold", 0.4)
     run_salt = params["idempotency_key"]
 
-    out_rows, manifest = [], []
+    out_rows, manifest, left_out = [], [], []
     for row in rows:
         accepted = [c for c in row["candidates"] if c["confidence"] >= threshold]
         redacted, substitutions = redact_text(
@@ -674,15 +683,21 @@ def redact(params: dict) -> dict:
 
         redacted_key = None
         if source_key:
-            local = config.WORK / source_key.replace("/", "_")
-            local.parent.mkdir(parents=True, exist_ok=True)
-            reader.download_file(params["bucket"], source_key, str(local))
-            audio, rate = sf.read(str(local), dtype="int16")
+            # As in transcribe: the recording is read where it is stored and never written here, and the redacted audio goes from memory to storage.
+            try:
+                with cp.open_file(reader, params["bucket"], source_key, version_id=source_version, record_id=row["record_id"],
+                                       tenant_id=_tenant(params), principal=_pipeline_principal(_tenant(params)),
+                                       task_credential=run["task_credential"], purpose=f"redact {row['record_id']}") as source:
+                    audio, rate = wavio.read_int16(source)
+            except cp.FileErased:
+                # Erased between the steps: nothing of this patient is carried into what the run makes.
+                left_out.append(row["record_id"])
+                activity.heartbeat(row["record_id"])
+                continue
             masked = redact_audio(np.asarray(audio), rate, time_spans)
-            out_path = config.WORK / f"redacted_{row['record_id']}.wav"
-            sf.write(str(out_path), masked, rate)
+            wav_bytes = wavio.write_int16(masked, rate)
             redacted_key = _key(params["prefix"], f"{row['record_id']}.redacted.wav")
-            manifest.append(cp.put_file(write_client, redacted_key, out_path, params["bucket"]))
+            manifest.append(cp.put_bytes(write_client, redacted_key, wav_bytes, params["bucket"]))
 
         out_rows.append({
             "record_id": row["record_id"],
@@ -708,7 +723,7 @@ def redact(params: dict) -> dict:
             "records_key": _key(params["prefix"], "redacted.json"),
             "record_count": len(out_rows),
             "substitutions": sum(r["substitutions"] for r in out_rows),
-            "run_id": run_id}
+            "run_id": run_id, "left_out_erased": left_out}
 
 
 def score_store_problem() -> str | None:
@@ -779,7 +794,12 @@ def verify(params: dict) -> dict:
     similarities: list[float] = []
 
     for row in detected:
-        truth = cp.read_json(reader, params["bucket"], f"{truth_prefix}/{row['record_id']}.truth.json")
+        try:
+            truth = cp.read_answer_key(reader, params["bucket"], f"{truth_prefix}/{row['record_id']}.truth.json", version_id=params["versions"][1],
+                                       record_id=row["record_id"], tenant_id=_tenant(params), principal=_pipeline_principal(_tenant(params)),
+                                       task_credential=params["task_credential"], purpose="verify: read the answer key to score the redaction")
+        except cp.FileErased:
+            continue  # the patient was erased: nothing of theirs is scored, as nothing of theirs was transcribed
         reference = truth["reference_transcript"]
         similarities.append(Alignment(reference, row["transcript"]).similarity())
         score_record(card, reference, row["transcript"], truth["spans"],
@@ -824,6 +844,85 @@ def verify(params: dict) -> dict:
         # not to MLflow: see scoring.pseudonymised.
         "leak_detail": card.leak_detail,
     }
+
+
+PRACTICE_RECORDS = 4
+
+
+def _practice_records(corpus: Path, wanted: int) -> list[Path]:
+    """Recordings with known contents, spread evenly across the corpus so every kind of conversation in it is likely to be among them."""
+    available = [p for p in sorted(corpus.glob("synth-*.json")) if (corpus / "audio" / f"{p.stem}.wav").exists()]
+    if wanted <= 0 or not available:
+        return []
+    wanted = min(wanted, len(available))
+    return [available[(i * len(available)) // wanted] for i in range(wanted)]
+
+
+@activity.defn
+def practice_run(params: dict) -> dict:
+    """A practice run: this pipeline's own transcription and detection, on recordings whose contents are known, scored as the verify step scores.
+
+    For a batch with no answer key nothing can be measured, so nothing can be said about whether the redaction worked on it. What can be
+    measured is whether the method works: the same models, the same code, run on recordings made for the purpose, whose every name and number
+    was invented and is therefore known. What it catches there says what the method does. It says nothing about this batch, and its result
+    says so, which is why a gate fed by it still recommends `not_measured`.
+
+    Writes nothing into any organisation: no dataset, no version, no object in any bucket, and no action run. It reads the corpus, runs
+    two models and returns a result. The recordings are the platform's own and hold no real person.
+
+    A corpus that is not there does not fail the run, which used to be a run with no practice at all. The result says so plainly instead.
+    """
+    from .align import Alignment
+    from .scoring import GATE_DIRECT_LEAKS, GATE_RECALL, ScoreCard, evaluate_gate, score_record
+
+    wanted = int(params.get("practice_records", PRACTICE_RECORDS))
+    try:
+        corpus = config.require_corpus_dir()
+    except Exception as exc:  # noqa: BLE001 - whatever it says about the corpus is the reason
+        return _practice_unavailable(f"the practice files are not available on this machine ({type(exc).__name__})")
+    chosen = _practice_records(corpus, wanted)
+    if not chosen:
+        return _practice_unavailable("there are no practice files to run")
+
+    from .detect import Ensemble
+
+    backend = transcribe_backend.load_backend(config.WHISPER_MODEL, config.WHISPER_DEVICE, config.WHISPER_COMPUTE)
+    ensemble = Ensemble()
+    ensemble.load()
+    card, similarities = ScoreCard(), []
+    for path in chosen:
+        record = json.loads(path.read_text(encoding="utf-8"))
+        segments = backend.transcribe(corpus / "audio" / f"{record['record_id']}.wav")
+        transcript = "".join(segment["text"] for segment in segments).strip()
+        candidates = [c.as_dict() for c in ensemble.detect(transcript)]
+        similarities.append(Alignment(record["transcript"], transcript).similarity())
+        score_record(card, record["transcript"], transcript, record["spans"], candidates, record_id=record["record_id"])
+        activity.heartbeat(record["record_id"])
+    del backend
+    ensemble.release()
+    _free_vram()
+    card.similarity = sum(similarities) / len(similarities)
+
+    cleared, _ = evaluate_gate(card)
+    caught = card.survived - card.leaked
+    reason = (
+        "not measured: there is no ground truth for this file, so nothing here checked whether the redaction worked on it. "
+        f"A practice run of the same models on {len(chosen)} files whose contents are known caught {caught} of the {card.survived} "
+        f"identifiers that survived transcription ({card.recall_effective:.0%}) and left {card.direct_leaks} naming a person directly; "
+        + ("that meets" if cleared else "that does not meet")
+        + f" the bar of {GATE_RECALL:.0%} with {GATE_DIRECT_LEAKS} direct leaks. "
+        "That describes the method and says nothing about this batch, which needs full human review before any release."
+    )
+    metrics = {"practice_ran": 1, "practice_records": len(chosen), "practice_cleared_bar": int(cleared)}
+    metrics.update({f"practice_{k}": v for k, v in card.as_metrics().items()})
+    return {"ran": True, "reason": reason, "metrics": metrics, "cleared_bar": cleared,
+            "leak_detail": [{**leak, "practice": True} for leak in card.leak_detail], "code_hash": cp.code_hash()}
+
+
+def _practice_unavailable(why: str) -> dict:
+    return {"ran": False, "cleared_bar": False, "leak_detail": [], "metrics": {"practice_ran": 0},
+            "reason": (f"not measured: there is no ground truth for this file, so nothing here checked whether the redaction worked on it, "
+                       f"and a practice run on files with known contents could not be made: {why}. It needs full human review before any release.")}
 
 
 @activity.defn
@@ -1009,6 +1108,12 @@ def record_simple_gate_decision(params: dict) -> dict:
 
     from .db import _db
 
+    # `not_measured` is for a run nothing measured: neither a pass nor a fail. The database accepts these three and refuses anything else, and
+    # a refusal there would be retried, so it is refused here once and for good.
+    if params["recommendation"] not in ("pass", "fail", "not_measured"):
+        raise ApplicationError(
+            f"a gate recommends pass, fail or not_measured, and not {params['recommendation']!r}", non_retryable=True)
+
     decision_id = str(uuid.uuid4())
     with _db() as conn:
         owner = conn.execute(
@@ -1018,38 +1123,69 @@ def record_simple_gate_decision(params: dict) -> dict:
         if not owner:
             raise RuntimeError(f"no such dataset version: {params['version_id']}")
 
-        conn.execute(
-            """insert into gate_decision
-                 (id, tenant_id, pipeline_run_id, dataset_version_id, to_class,
-                  score_card_id, metrics, recommendation, recommendation_reason,
-                  state, triggered_by, handoff)
-               values (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending', %s, %s)""",
-            (decision_id, owner[0], params.get("pipeline_run_id"),
-             params["version_id"], params["to_class"],
-             params.get("score_card_id", "no-scoring"),
-             json.dumps(params.get("metrics", {})),
-             params["recommendation"], params["recommendation_reason"],
-             params.get("triggered_by"), json.dumps(params.get("handoff", {}))),
-        )
+        # A run on development data (a development sample, or files declared synthetic) is never released: a sample only points at real files and
+        # ends within days, and what a development run makes is deleted with it. A decision to release it would have nothing to clear and nobody
+        # able to judge it, so none is made, and the step says why.
+        development = conn.execute(
+            """select exists (select 1 from development_sample where sample_version_id = %s)
+                   or exists (select 1 from development_output where version_id = %s and kind = 'sample')
+                   or exists (select 1 from development_data_declaration where version_id = %s) as dev""",
+            (params["version_id"], params["version_id"], params["version_id"])).fetchone()
+        if development and development[0]:
+            return {
+                "gate_decision_id": None,
+                "recommendation": params["recommendation"],
+                "reason": "this run was on development data, which is never released, so no decision was made",
+                "promoted": False,
+                "not_applicable": True,
+            }
 
-        # Optional: a reviewer sees the same per-identifier detail on a DAG's
-        # gate decision that they already see on the built-in pipeline's,
-        # regardless of which step actually found the leaks. Mirrors
-        # record_gate_decision's own insert loop above, exactly.
-        for leak in params.get("leak_detail") or []:
+        # What is put in front of a reviewer is what the run MADE. A step that wrote files sealed them as a version of their own, "under review",
+        # and that version is what a release widens. Releasing the version the run was given would widen the original files, which nobody
+        # reviewed and which a run's output may never be more open than. A run that made nothing (it only measured its source) releases its source,
+        # as before. A run that made several versions has a decision for each, since each is a separate release.
+        made = []
+        if params.get("pipeline_run_id"):
+            made = [str(r[0]) for r in conn.execute(
+                """select distinct o.version_id from step_output o join dataset_version v on v.id = o.version_id
+                    where o.pipeline_run_id = %s and o.status = 'sealed' order by o.version_id""", (params["pipeline_run_id"],)).fetchall()]
+        decision_ids = []
+        for number, version_id in enumerate(made or [params["version_id"]]):
+            decision_id = str(uuid.uuid4()) if number else decision_id
             conn.execute(
-                """insert into gate_leak
-                     (id, gate_decision_id, record_id, span_start, span_end,
-                      entity, identifier, left_in_the_clear, coverage, direct)
-                   values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-                (str(uuid.uuid4()), decision_id, leak["record_id"],
-                 leak["span_start"], leak["span_end"], leak["entity"],
-                 leak["identifier"], leak["left_in_the_clear"],
-                 leak["coverage"], leak["direct"]),
+                """insert into gate_decision
+                     (id, tenant_id, pipeline_run_id, dataset_version_id, to_class,
+                      score_card_id, metrics, recommendation, recommendation_reason,
+                      state, triggered_by, handoff)
+                   values (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending', %s, %s)""",
+                (decision_id, owner[0], params.get("pipeline_run_id"),
+                 version_id, params["to_class"],
+                 params.get("score_card_id", "no-scoring"),
+                 json.dumps(params.get("metrics", {})),
+                 params["recommendation"], params["recommendation_reason"],
+                 params.get("triggered_by"), json.dumps(params.get("handoff", {}))),
             )
+            decision_ids.append(decision_id)
+
+            # Optional: a reviewer sees the same per-identifier detail on a DAG's gate decision that they already see on the built-in pipeline's,
+            # regardless of which step actually found the leaks. Mirrors record_gate_decision's own insert loop above, exactly.
+            for leak in (params.get("leak_detail") or []) if number == 0 else []:
+                conn.execute(
+                    """insert into gate_leak
+                         (id, gate_decision_id, record_id, span_start, span_end,
+                          entity, identifier, left_in_the_clear, coverage, direct, practice)
+                       values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                    (str(uuid.uuid4()), decision_id, leak["record_id"],
+                     leak["span_start"], leak["span_end"], leak["entity"],
+                     leak["identifier"], leak["left_in_the_clear"],
+                     leak["coverage"], leak["direct"], bool(leak.get("practice", False))),
+                )
+        decision_id = decision_ids[0]
 
     return {
         "gate_decision_id": decision_id,
+        "gate_decision_ids": decision_ids,
+        "released_version_ids": made or [params["version_id"]],
         "recommendation": params["recommendation"],
         "reason": params["recommendation_reason"],
         "promoted": False,

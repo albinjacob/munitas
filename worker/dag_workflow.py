@@ -22,7 +22,7 @@ with workflow.unsafe.imports_passed_through():
     from .activities import (adopt_version, check_score_store, close_pipeline_run,
                              describe_failure,
                              detect, handoff,
-                             open_pipeline_run, redact,
+                             open_pipeline_run, practice_run, redact,
                              record_simple_gate_decision, resolve_actions,
                              transcribe, verify)
     from .dag_activities import (close_step_run, open_step_run,
@@ -31,6 +31,7 @@ with workflow.unsafe.imports_passed_through():
 BUILTIN_ACTIVITY = {
     "adopt_version": adopt_version, "transcribe": transcribe,
     "detect": detect, "handoff": handoff, "redact": redact, "verify": verify,
+    "practice_run": practice_run,
 }
 
 # adopt_version does not open an action_run -- reading an already-sealed
@@ -39,7 +40,7 @@ BUILTIN_ACTIVITY = {
 # dataset_action registered for it. Kept as its own set rather than
 # inferred, so a future block that also skips action_run stays a one-line,
 # explicit choice instead of a special case buried in the dispatch code.
-BLOCKS_WITHOUT_ACTION = {"adopt_version"}
+BLOCKS_WITHOUT_ACTION = {"adopt_version", "practice_run"}
 
 REF_PATTERN = re.compile(r"^\$\{steps\.([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)\}$")
 
@@ -48,6 +49,14 @@ CONTROL = RetryPolicy(
     maximum_interval=timedelta(seconds=30),
     maximum_attempts=5,
 )
+
+# A script step is the customer's own code, run in a container. How long Temporal waits to hear from it, and whether it is tried again when it is lost.
+# It sends a heartbeat every 15 seconds while it runs, so a result lost on its way back, or a worker that died, is noticed within this.
+STEP_HEARTBEAT = timedelta(seconds=90)
+# A step that only reads can be run again without harm. A step that writes files must not be: a second run would meet the first one's half-finished
+# files, and the files of a step are sealed once. It fails at once and says so, and the person runs it again.
+STEP_READS_ONLY = RetryPolicy(initial_interval=timedelta(seconds=2), maximum_interval=timedelta(seconds=30), maximum_attempts=3)
+STEP_WRITES = RetryPolicy(maximum_attempts=1)
 
 
 def _idem(*parts: str) -> str:
@@ -243,10 +252,18 @@ class PipelineDagWorkflow:
                 {"pipeline_id": params["pipeline_id"],
                  "pipeline_version_id": params["pipeline_version_id"],
                  "script": step["script"], "inputs": inputs,
-                 "run_id": pipeline_run_id},
-                start_to_close_timeout=timedelta(minutes=10),
+                 "run_id": pipeline_run_id,
+                 "memory_mb": step.get("memory_mb"), "scratch_mb": step.get("scratch_mb"),
+                 # A step that declared `recordings: true` or `writes_files: true` is given a pass, with which it reads its recordings and writes its
+                 # files through the platform, which refuses unless this version of the pipeline was approved for it.
+                 **({"step_access": {"tenant": params["tenant"], "task_credential": params.get("pipeline_task_credential"), "step": step["name"],
+                                     "writes_files": step.get("writes_files") is True}}
+                    if step.get("reads_files") is True or step.get("writes_files") is True else {})},
+                # Fetching the recordings is part of the step, so a step given them has longer.
+                start_to_close_timeout=timedelta(minutes=30 if step.get("reads_files") is True or step.get("writes_files") is True else 10),
+                heartbeat_timeout=STEP_HEARTBEAT,
                 task_queue=worker_config.DAG_SCRIPT_TASK_QUEUE,
-                retry_policy=CONTROL,
+                retry_policy=STEP_WRITES if step.get("writes_files") is True else STEP_READS_ONLY,
             )
             if raw.get("status") != "succeeded":
                 raise ApplicationError(
@@ -260,6 +277,7 @@ class PipelineDagWorkflow:
                  "recommendation": inputs.get("recommendation"),
                  "recommendation_reason": inputs.get("recommendation_reason"),
                  "leak_detail": inputs.get("leak_detail"),
+                 "metrics": inputs.get("metrics") or {},
                  "triggered_by": params.get("triggered_by"),
                  "pipeline_run_id": pipeline_run_id},
                 start_to_close_timeout=timedelta(minutes=2),

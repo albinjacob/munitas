@@ -4,7 +4,7 @@
  * The audit log, the custodian's queue and the lease list all store ids:
  * `sam-researcher`, `cust-hartley`, `health-pipeline`. Those read as identifiers
  * because that is what they are, and a screen showing one to a custodian
- * deciding whether to release recordings is asking them to translate.
+ * deciding whether to release files is asking them to translate.
  *
  * The id looking like a name and a role is a coincidence of how the
  * demonstration organisation was seeded. A real deployment might register

@@ -54,9 +54,15 @@ jobs:
         # /etc/config/kratos/kratos.yml: no such file or directory".
         run: python3 scripts/render_ports_env.py
 
+      - name: Make the key service master key
+        # A file the API container mounts and never part of the repository. Locally start-dev.ps1 makes it. The checks on a person's
+        # keys (U128) read it through the API, so it must exist before the stack comes up.
+        run: head -c 32 /dev/urandom > infra/secrets/key_service_master
+
       - name: Bring up the backend stack
         # table-worker writes large tables in a job (U109 needs it); locally a plain `docker compose up -d` starts it.
-        run: docker compose up -d postgres seaweedfs temporal opa kratos-migrate kratos munitas-api table-worker
+        # hydra is the notebook's device sign-in (U167 asks it for a code); hydra-migrate makes its tables first.
+        run: docker compose up -d postgres seaweedfs temporal opa kratos-migrate kratos hydra-migrate hydra munitas-api table-worker
 
       - name: Wait for munitas-api to be healthy
         # docker-compose.yml only defines a healthcheck for postgres, not for
@@ -111,13 +117,13 @@ jobs:
         # huggingface_hub (imported inside hf_ingest_activities.py's fetch,
         # so an import test cannot see it; found by scanning every import in
         # worker/ and agent/) is installed. The speech and detection stack
-        # (faster_whisper, gliner, spacy, presidio, torch, soundfile, numpy,
+        # (faster_whisper, gliner, spacy, presidio, torch, numpy,
         # mlflow) is not: nothing in this suite runs a real
         # de-identification, U61 stops its run at once.
         run: |
-          pip install --quiet httpx==0.27.2 "psycopg[binary]==3.3.4" \
+          pip install --quiet httpx==0.27.2 pg8000==1.31.5 \
             temporalio==1.7.0 boto3==1.35.24 docker==7.1.0 "huggingface_hub>=0.34" \
-            langgraph==0.2.39 langgraph-checkpoint-postgres==2.0.25 \
+            langgraph==0.2.39 langgraph-checkpoint==2.1.2 \
             opentelemetry-api==1.44.0 opentelemetry-sdk==1.44.0 \
             opentelemetry-exporter-otlp-proto-grpc==1.44.0
 

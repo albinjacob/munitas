@@ -24,6 +24,8 @@ export interface EgressApprovalRow {
   decided_by: string | null;
   decided_by_label: string | null;
   decision_reason: string | null;
+  /** When it was decided, or null while it waits. */
+  decided_at: string | null;
   created_at: string;
 }
 

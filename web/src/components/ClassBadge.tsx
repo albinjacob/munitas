@@ -10,7 +10,7 @@
  * means the data is safe to see, not that a process succeeded.
  *
  * The badge carries the reader's words, not the stored value: a custodian
- * deciding whether to release a recording should not have to read
+ * deciding whether to release a file should not have to read
  * OPEN_FOR_ANNOTATION off a table cell. The exact value is still reachable,
  * on the tooltip and in the data-testid, which is what the console suite
  * compares against the API.

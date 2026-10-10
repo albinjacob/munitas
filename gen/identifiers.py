@@ -92,7 +92,7 @@ class Faker:
         """An MRN as a person actually says it.
 
         Three styles, because a detector tuned to one of them will miss the
-        other two, and the real recordings contain all three.
+        other two, and the real files contain all three.
         """
         style = self.rng.choice(["digits", "pairs", "grouped"])
         if style == "digits":

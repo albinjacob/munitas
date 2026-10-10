@@ -17,13 +17,12 @@ import {
   useRemoveApprover,
 } from "../../api/departments";
 import { Empty, Failure, Loading, Section } from "../../components/states";
+import { when } from "../../lib/when";
 import { notify } from "../../components/toast";
 
 type Department = NonNullable<ReturnType<typeof useOrganisation>["data"]>["departments"][number];
 
 // "20 Oct 2026", never "10/5/2026": that reads as 10 May to some people and 5 October to others.
-const day = (iso: string | null | undefined) =>
-  iso ? new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "";
 
 // The platform's reasons are short lower-case clauses; on screen they read as sentences.
 const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
@@ -93,7 +92,7 @@ function DepartmentCard({ department }: { department: Department }) {
             <span>
               <span className="font-medium">{a.label}</span>{" "}
               <span className="text-slate-500">
-                {a.valid_until ? `covering until ${day(a.valid_until)}` : "permanent"}, since {day(a.added_at)}
+                {a.valid_until ? `covering until ${when(a.valid_until)}` : "permanent"}, since {when(a.added_at)}
                 {!a.holds_role && (
                   <span data-testid={`dormant-${a.person_id}`} className="text-amber-800">
                     . Does not hold the Data custodian role now, so cannot act until it is held again
@@ -280,14 +279,14 @@ function DepartmentCard({ department }: { department: Department }) {
                     <tr key={`${h.person_id}-${i}`} className="border-t border-slate-100 align-top">
                       <td className="py-1 font-medium">{h.label}</td>
                       <td>
-                        {day(h.added_at)} by {h.added_by_label ?? h.added_by}: {h.reason}
-                        {h.valid_until ? `, covering until ${day(h.valid_until)}` : ""}
+                        {when(h.added_at)} by {h.added_by_label ?? h.added_by}: {h.reason}
+                        {h.valid_until ? `, covering until ${when(h.valid_until)}` : ""}
                       </td>
                       <td>
                         {h.removed_at
-                          ? `${day(h.removed_at)} by ${h.removed_by_label ?? h.removed_by}: ${h.removal_reason ?? ""}`
+                          ? `${when(h.removed_at)} by ${h.removed_by_label ?? h.removed_by}: ${h.removal_reason ?? ""}`
                           : h.valid_until && new Date(h.valid_until) < new Date()
-                            ? `${day(h.valid_until)}, cover ended`
+                            ? `${when(h.valid_until)}, cover ended`
                             : ""}
                       </td>
                     </tr>

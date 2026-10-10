@@ -82,8 +82,8 @@ def connect_huggingface(
         raise HTTPException(
             400,
             {"reasons": [
-                "a workload acts through its own registered identity and "
-                "standing leases, not a personal HuggingFace account"
+                "A service acts through its own registered identity and its standing leases, "
+                "not through a personal HuggingFace account."
             ]},
         )
 
@@ -164,15 +164,8 @@ def huggingface_secret(
 ) -> dict:
     """The plaintext token, for the worker to use while building a fetch.
 
-    The one place in this codebase a token round-trips out of this module.
-    Called only by `worker/hf_ingest_activities.py`, a process with no
-    Kratos session to present, so it is gated the same way the two
-    `download_code` endpoints (`agent_upload.py`, `dag_pipelines.py`) gate
-    their own worker-only reads: a shared secret, not a directory identity.
-    Previously not gated at all, which meant anyone who could reach this API
-    could read any connected person's live HuggingFace token by guessing
-    their directory id -- a real credential, usable on HuggingFace itself,
-    not just platform data.
+    This is the one place a token leaves this module. It is called only by the HuggingFace import worker, which has no sign-in session to
+    present, so it is gated with a shared secret and not a directory identity, as the other worker-only reads are.
     """
     if not config.WORKER_TOKEN or x_worker_token != config.WORKER_TOKEN:
         raise HTTPException(403, {"reasons": ["missing or wrong worker token"]})

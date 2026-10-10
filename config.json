@@ -3,8 +3,6 @@
 
   "postgres": 5432,
   "seaweedfs_s3": 8333,
-  "seaweedfs_filer": 8888,
-  "seaweedfs_master": 9333,
   "temporal": 7233,
   "temporal_ui": 8080,
   "opa": 8181,
@@ -18,6 +16,7 @@
   "munitas_api_https": 8443,
   "kratos_public": 4433,
   "kratos_admin": 4434,
+  "hydra_public": 4444,
   "console_dev": 5173,
   "console_preview": 3000
 }

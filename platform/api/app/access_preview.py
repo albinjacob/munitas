@@ -29,6 +29,23 @@ _READABLE = ("role", "lease")
 _EARLIEST = datetime.min.replace(tzinfo=timezone.utc)
 
 
+def locked_files_mark(mark: dict, file_lease: dict | None, custodian: dict) -> dict:
+    """The mark of a version of locked files: what the person holds of it, not what their role or a lease on the whole version would cover.
+
+    A role opens nothing of locked files and a lease on the whole version reads bytes nobody can use, so neither is mentioned. What counts is an
+    approver's permission to open a few of the files: in force, waiting, or not yet asked for.
+    """
+    decider = custodian.get("labels") or ", ".join(custodian.get("approvers") or []) or None
+    if file_lease and file_lease["status"] == "approved":
+        until = file_lease["expires_at"].astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        return {"mark": "lease", "purpose": file_lease["purpose"], "until": until, "locked": True}
+    if file_lease:
+        return {"mark": "pending", "decider_label": decider, "locked": True}
+    if not custodian.get("approvers"):
+        return {"mark": "no_approver", "locked": True}
+    return {"mark": "ask", "decider_label": decider, "locked": True}
+
+
 def choose_mark(*, reclaimed: bool, answer: dict, pending: bool,
                 lease_rows: dict[str, dict], decider_label: str | None,
                 has_custodian: bool) -> dict:
@@ -92,6 +109,16 @@ def access_preview(body: models.AccessPreviewIn,
         return {"versions": {}, "datasets": {}}
 
     ids = [str(v["dataset_version_id"]) for v in versions]
+    # Versions of locked files: what a role covers does not open them, so their mark comes from the permission to open a few files instead.
+    locked_ids = {str(r["dataset_version_id"]) for r in db.all_rows(
+        "select distinct dataset_version_id from file_person where dataset_version_id = any(%s::uuid[])", (ids,))}
+    file_leases_of = {str(r["dataset_version_id"]): r for r in db.all_rows(
+        """select distinct on (dataset_version_id) dataset_version_id, status, purpose, expires_at
+             from file_lease
+            where principal = %s and dataset_version_id = any(%s::uuid[])
+              and (status = 'requested' or (status = 'approved' and expires_at > now()))
+            order by dataset_version_id, (status = 'approved') desc, expires_at desc nulls last""",
+        (identity["id"], list(locked_ids)))} if locked_ids else {}
     lease_rows = db.all_rows(
         """select id, dataset_version_id, purpose, pattern, approved_by, revoked, expires_at, revoked_at
              from access_lease
@@ -145,6 +172,8 @@ def access_preview(body: models.AccessPreviewIn,
             decider_label=custodian.get("labels") or ", ".join(custodian.get("approvers") or []) or None,
             has_custodian=bool(custodian.get("approvers")),
         )
+        if vid in locked_ids and mark["mark"] != "removed":
+            mark = locked_files_mark(mark, file_leases_of.get(vid), custodian)
         marks[vid] = mark
         count = datasets.setdefault(str(v["dataset_id"]), {"readable": 0, "total": 0})
         count["total"] += 1

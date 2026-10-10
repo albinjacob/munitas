@@ -9,11 +9,117 @@
  * dataset version's own page, not from here.
  */
 
+import { useState } from "react";
+import { ApiError } from "../../api/client";
 import { CODE_ROLES, useHoldsRole } from "../../identity/mayDo";
 import { useParams } from "react-router-dom";
-import { usePipeline } from "../../api/dag_pipelines";
+import { useDecidePipelineVersion, usePipeline, type PipelineVersion } from "../../api/dag_pipelines";
 import { Empty, Failure, Loading, Section } from "../../components/states";
 import { UploadPipelineVersion } from "./UploadPipelineVersion";
+import { when } from "../../lib/when";
+import { PipelineDag } from "./PipelineDag";
+
+const APPROVER_ROLES = ["data_custodian"];
+
+
+const STAGE_LABEL: Record<PipelineVersion["stage"], string> = { development: "In development", production: "In production", retired: "Retired" };
+const STAGE_STYLE: Record<PipelineVersion["stage"], string> = {
+  development: "bg-amber-100 text-amber-900",
+  production: "bg-green-100 text-green-900",
+  retired: "bg-slate-200 text-slate-700",
+};
+
+/** Where a version is in its life, and what moves it on. Moving it to production is a second person's decision when its steps read the files or write files. */
+function Lifecycle({ pipelineId, department, version }: { pipelineId: string; department: string | null; version: PipelineVersion }) {
+  const mayDecide = useHoldsRole(APPROVER_ROLES);
+  const mayRetire = useHoldsRole([...APPROVER_ROLES, ...CODE_ROLES]);
+  const promote = useDecidePipelineVersion(pipelineId, "promote");
+  const demote = useDecidePipelineVersion(pipelineId, "demote");
+  const retire = useDecidePipelineVersion(pipelineId, "retire");
+  const [sure, setSure] = useState(false);
+  const failed = [promote.error, demote.error, retire.error].find(Boolean);
+  const reading = version.steps_given_files;
+  const writing = version.steps_writing_files;
+  const named = (steps: string[]) => `${steps.length > 1 ? "Steps" : "Step"} ${steps.join(", ")}`;
+  // What the version's steps do, in the words of the person who decides whether it may be used: what they read and what they make.
+  const made = "which become a new version that a reviewer checks before anyone can use it.";
+  const same = reading.length > 0 && reading.join() === writing.join();
+  const what = same
+    ? `${named(reading)} ${reading.length > 1 ? "read the locked files and write" : "reads the locked files and writes"} files, ${made}`
+    : [
+        reading.length ? `${named(reading)} ${reading.length > 1 ? "read" : "reads"} the locked files.` : "",
+        writing.length ? `${named(writing)} ${writing.length > 1 ? "write" : "writes"} files, ${made}` : "",
+      ].filter(Boolean).join(" ");
+  const box = version.stage === "development" ? "border-amber-200 bg-amber-50" : version.stage === "retired" ? "border-slate-200 bg-slate-50" : "border-green-200 bg-green-50";
+  const secondary = "mt-2 rounded border border-slate-300 bg-white px-3 py-1 text-xs hover:bg-slate-50";
+  return (
+    <div data-testid={`pipeline-lifecycle-${version.version}`} className={`mt-3 rounded border p-3 text-sm text-slate-800 ${box}`}>
+      {version.stage === "retired" ? (
+        <p>
+          Retired by {version.retired_by_label ?? "a person"} on {when(version.retired_at)}
+          {version.retired_note ? `: ${version.retired_note}` : "."} This version can no longer be run. Run a later version.
+        </p>
+      ) : version.stage === "development" ? (
+        <>
+          <p>
+            {what} This version is in development, so it runs only on development data: files declared synthetic, or a sample drawn for you, which you ask for on the
+            page of the files. For any other data, an approver of {department ?? "the owning department"} other than{" "}
+            {version.uploaded_by_label ?? "the person who uploaded it"} checks it and moves it to production first.
+          </p>
+          {mayDecide && (
+            <button
+              type="button"
+              className="mr-2 mt-2 rounded bg-slate-900 px-3 py-1 text-xs text-white hover:bg-slate-700"
+              disabled={promote.isPending}
+              onClick={() => promote.mutate({ versionId: version.id, note: "" })}
+            >
+              Move to production
+            </button>
+          )}
+        </>
+      ) : (
+        <>
+          <p>
+            {version.needs_promotion
+              ? `Moved to production by ${version.promoted_by_label ?? "an approver"} on ${when(version.promoted_at)}. ${what}`
+              : "Every step of this version is one the platform provides, so it is in production."}
+          </p>
+          {version.needs_promotion && mayDecide && (
+            <button type="button" className={`${secondary} mr-2`} disabled={demote.isPending} onClick={() => demote.mutate({ versionId: version.id, note: "" })}>
+              Return to development
+            </button>
+          )}
+        </>
+      )}
+      {version.stage !== "retired" && mayRetire && !sure && (
+        <button type="button" className={secondary} onClick={() => setSure(true)}>
+          Retire this version
+        </button>
+      )}
+      {version.stage !== "retired" && mayRetire && sure && (
+        <span className="mt-2 inline-flex items-center gap-2 text-xs">
+          Retiring is final. A retired version is replaced by a later one, never brought back.
+          <button
+            type="button"
+            className="rounded bg-red-700 px-3 py-1 text-white hover:bg-red-800"
+            disabled={retire.isPending}
+            onClick={() => retire.mutate({ versionId: version.id, note: "" }, { onSettled: () => setSure(false) })}
+          >
+            Retire v{version.version}
+          </button>
+          <button type="button" className="rounded border border-slate-300 bg-white px-3 py-1 hover:bg-slate-50" onClick={() => setSure(false)}>
+            Cancel
+          </button>
+        </span>
+      )}
+      {failed instanceof ApiError && (
+        <p role="alert" className="mt-2 text-xs text-red-800">
+          {failed.reasons.join(" ") || "That was not accepted."}
+        </p>
+      )}
+    </div>
+  );
+}
 
 export function PipelineDetail() {
   const { pipelineId } = useParams();
@@ -31,7 +137,7 @@ export function PipelineDetail() {
       <Section
         level="page"
         title={p.name}
-        description={`Owned by ${p.department_name ?? "no department"}. Registered by ${p.registered_by_label ?? "unknown"}.`}
+        description={`Owned by ${p.department_name ?? "no department"}. Registered by ${p.registered_by_label ?? "unknown"}. A version in development runs only on development data, a version in production runs on any data the department allows, and a retired version has ended for good.`}
       >
         {!p.versions.length ? (
           <Empty
@@ -52,25 +158,13 @@ export function PipelineDetail() {
                   <code className="font-mono text-xs text-slate-500">
                     {v.config_hash.slice(0, 12)}
                   </code>
+                  <span data-testid={`pipeline-stage-${v.version}`} className={`rounded px-2 py-0.5 text-xs font-medium ${STAGE_STYLE[v.stage]}`}>
+                    {STAGE_LABEL[v.stage]}
+                  </span>
+                  {v.uploaded_by_label && <span className="text-xs text-slate-500">uploaded by {v.uploaded_by_label}{v.created_at ? ` on ${when(v.created_at)}` : ""}</span>}
                 </div>
-                <ol className="mt-2 space-y-1 text-xs text-slate-600">
-                  {v.dag_config.steps.map((step) => (
-                    <li key={step.name}>
-                      <span className="font-medium text-slate-800">{step.name}</span>{" "}
-                      <span className="text-slate-500">
-                        ({step.kind}
-                        {step.block ? `: ${step.block}` : ""}
-                        {step.script ? `: ${step.script}` : ""})
-                      </span>
-                      {step.depends_on?.length ? (
-                        <span className="text-slate-400">
-                          {" "}
-                          &larr; {step.depends_on.join(", ")}
-                        </span>
-                      ) : null}
-                    </li>
-                  ))}
-                </ol>
+                <PipelineDag steps={v.dag_config.steps} />
+                <Lifecycle pipelineId={p.id} department={p.department_name} version={v} />
               </li>
             ))}
           </ul>

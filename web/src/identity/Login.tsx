@@ -7,13 +7,16 @@
  */
 
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useIdentity } from "./IdentityContext";
 import { LoginFailed, startLoginFlow, submitLogin, type LoginFlow } from "./kratos";
 
 export function Login() {
   const { refreshSession } = useIdentity();
   const navigate = useNavigate();
+  // Where the person was going when the gate sent them here (App.tsx keeps it), so a link that needs a sign-in, such as the page a notebook's sign-in opens,
+  // brings them back to it. Only a place inside this console is ever used.
+  const going = (useLocation().state as { from?: { pathname: string; search?: string } } | null)?.from;
 
   const [flow, setFlow] = useState<LoginFlow | null>(null);
   const [identifier, setIdentifier] = useState("");
@@ -35,7 +38,7 @@ export function Login() {
     try {
       await submitLogin(flow, identifier, password);
       refreshSession();
-      navigate("/");
+      navigate(going && going.pathname.startsWith("/") && !going.pathname.startsWith("//") ? `${going.pathname}${going.search ?? ""}` : "/");
     } catch (e) {
       setError(e instanceof LoginFailed ? e.message : (e as Error).message);
       setSubmitting(false);
@@ -47,10 +50,10 @@ export function Login() {
   }
 
   return (
-    <div className="mx-auto max-w-md px-4 py-10">
+    <div className="mx-auto mt-10 max-w-md rounded-lg border border-slate-200 bg-white p-8 shadow-sm">
       <h1 className="text-2xl font-semibold">Sign in</h1>
       <p className="mt-2 text-sm text-slate-600">
-        Munitas holds recordings and the record of who may read them. What
+        Munitas holds files and the record of who may read them. What
         you can do here depends on who you are, and you will see only what
         your organisation owns.
       </p>

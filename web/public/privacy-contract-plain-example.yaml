@@ -1,0 +1,47 @@
+# An example contract for an ordinary table: one that is not about people. Every name and number is invented.
+# Change the columns to match your own table, then upload it beside your rows (a CSV, TSV, JSON or JSONL file).
+#
+# Each column says what type it holds. The types are: string, integer, number, boolean, date (written 2026-03-31) and timestamp
+# (written 2026-03-31T09:30:00). Exactly one column is the primary key: its value must be different in every row.
+# Nothing in an ordinary table is locked, so each column is left readable. The contract also says that the table cannot be erased,
+# and why, because an ordinary table is not about people.
+apiVersion: v3.2.0
+kind: DataContract
+id: ward-counts
+name: ward-counts
+version: 1.0.0
+status: active
+customProperties:
+  - {property: erasable, vendor: munitas, value: false}
+  - {property: notErasableReason, vendor: munitas, value: "Counts about wards, not about people."}
+schema:
+  - id: ward_counts_obj
+    name: ward_counts
+    logicalType: object
+    properties:
+      - id: ward_prop
+        name: ward
+        logicalType: string
+        primaryKey: true
+        required: true
+        classification: none
+        customProperties:
+          - {property: treatment, vendor: munitas, value: readable}
+      - id: admissions_prop
+        name: admissions
+        logicalType: integer
+        classification: none
+        customProperties:
+          - {property: treatment, vendor: munitas, value: readable}
+      - id: occupancy_prop
+        name: occupancy
+        logicalType: number
+        classification: none
+        customProperties:
+          - {property: treatment, vendor: munitas, value: readable}
+      - id: counted_on_prop
+        name: counted_on
+        logicalType: date
+        classification: none
+        customProperties:
+          - {property: treatment, vendor: munitas, value: readable}

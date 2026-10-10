@@ -90,8 +90,8 @@ export function Closing() {
         title="Closing down the organisation"
         description={
           isAdmin
-            ? "Closing down an organisation takes two stages, and ends with everything inside it being deleted."
-            : `Closing down ${status.tenant_id} takes two stages, and ends with everything inside it being deleted.`
+            ? "Closing down an organisation takes two waiting periods, and ends with everything inside it being deleted."
+            : `Closing down ${status.tenant_id} takes two waiting periods, and ends with everything inside it being deleted.`
         }
       >
         <ol data-testid="closing-stages" className="grid gap-3 text-sm md:grid-cols-3">
@@ -180,15 +180,15 @@ export function Closing() {
           ) : (all.data?.organisations.length ?? 0) === 0 ? (
             <Empty what="organisations" />
           ) : (
-            <div className="overflow-x-auto rounded border border-slate-200 bg-white">
-              <table className="w-full text-sm" data-testid="all-organisations">
+            <div className="data-card">
+              <table className="data-table" data-testid="all-organisations">
                 <thead>
                   <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
-                    <th className="p-3">Organisation</th>
-                    <th className="p-3">Standing</th>
-                    <th className="p-3">Next date</th>
-                    <th className="p-3">Legal hold</th>
-                    <th className="p-3"></th>
+                    <th>Organisation</th>
+                    <th>Standing</th>
+                    <th>Next date</th>
+                    <th>Legal hold</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>

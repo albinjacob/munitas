@@ -136,7 +136,7 @@ def main() -> int:
         check("the configured S3 secret is the hash of the configured API token, "
               "so both came from one token",
               r2.s3_secret_for(config.R2_API_TOKEN) == config.R2_SECRET_ACCESS_KEY,
-              "a mismatch here means R2_SECRET_ACCESS_KEY and R2_API_TOKEN "
+              "a mismatch here means MUNITAS_R2_SECRET_ACCESS_KEY and MUNITAS_R2_API_TOKEN "
               "came from two different tokens")
 
         heading("U57: a fresh tenant provisions its own R2 bucket on first write")

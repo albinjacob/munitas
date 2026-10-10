@@ -27,7 +27,7 @@ into the API image, and the pipeline worker on the machine with the GPU.
 
     .venv\\Scripts\\python.exe verify\\v63_pipeline_tenant.py
 
-Needs PG_DSN, VERIFY_KRATOS and S3_ENDPOINT pointing at the published localhost
+Needs MUNITAS_PG_DSN, VERIFY_KRATOS and MUNITAS_S3_ENDPOINT pointing at the published localhost
 ports. Expect several minutes: Whisper loads before it transcribes.
 """
 
@@ -48,10 +48,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ports_config import PORTS  # noqa: E402
 
 # Run from the host, so the services are on localhost. Anything already set wins.
-os.environ.setdefault("PG_DSN", f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform")
+os.environ.setdefault("MUNITAS_PG_DSN", f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform")
 os.environ.setdefault("MUNITAS_VERIFY_KRATOS", f"http://localhost:{PORTS['kratos_public']}")
 os.environ.setdefault("MUNITAS_VERIFY_KRATOS_ADMIN", f"http://localhost:{PORTS['kratos_admin']}")
-os.environ.setdefault("S3_ENDPOINT", f"http://localhost:{PORTS['seaweedfs_s3']}")
+os.environ.setdefault("MUNITAS_S3_ENDPOINT", f"http://localhost:{PORTS['seaweedfs_s3']}")
 
 import httpx  # noqa: E402
 
@@ -197,7 +197,7 @@ async def start_run(tenant: str, bucket: str, dataset_id: str, version_id: str,
     run_id = str(uuid.uuid4())
     workflow_id = f"deid-tenant-{run_id[:8]}"
     client = await Client.connect(
-        os.environ.get("TEMPORAL_ADDRESS", f"localhost:{PORTS['temporal']}"))
+        os.environ.get("MUNITAS_TEMPORAL_ADDRESS", f"localhost:{PORTS['temporal']}"))
 
     with db() as conn:
         conn.execute(
@@ -254,7 +254,7 @@ async def latest_console_run_input() -> tuple[dict, str, str] | None:
         return None
 
     client = await Client.connect(
-        os.environ.get("TEMPORAL_ADDRESS", f"localhost:{PORTS['temporal']}"))
+        os.environ.get("MUNITAS_TEMPORAL_ADDRESS", f"localhost:{PORTS['temporal']}"))
     handle = client.get_workflow_handle(row["workflow_id"])
     async for event in handle.fetch_history_events():
         attrs = event.workflow_execution_started_event_attributes
@@ -337,7 +337,7 @@ def checks() -> int:
 
     # Sealed here rather than through POST /datasets/{id}/seal-audio, which
     # needs a session this tenant has no seeded person for. Same result: the
-    # encounter_raw contract, a records.json the pipeline can read, and a
+    # audio_raw contract, a records.json the pipeline can read, and a
     # manifest naming every object. The uploads above already went to this
     # tenant's own bucket, because that path was fixed when per-tenant storage
     # was built; the pipeline is what was left behind.
@@ -350,7 +350,7 @@ def checks() -> int:
 
     contract = api("POST", "/schema-contracts", json={
         "tenant_id": tenant,
-        "name": "encounter_raw",
+        "name": "audio_raw",
         "fields": [
             {"name": "record_id", "type": "string", "sensitivity": "none",
              "added_by": "munitas-worker"},

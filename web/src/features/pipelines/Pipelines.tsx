@@ -26,13 +26,13 @@ export function Pipelines() {
     <Section
       level="page"
       title="Pipelines"
-      description="Registered by end users, the same way an agent is. A DAG of steps, versioned and content-addressed, not asserted."
+      description="Series of steps that people in the organisation register here, the same way they register agents. Each version is sealed on upload and cannot be changed afterwards."
       actions={
         mayRegister ? (
           <Link
             to="/pipelines/register"
             data-testid="pipelines-register-link"
-            className="rounded bg-indigo-500 hover:bg-indigo-800 px-3 py-1.5 text-sm font-medium text-white"
+            className="shrink-0 whitespace-nowrap rounded bg-indigo-500 hover:bg-indigo-800 px-3 py-1.5 text-sm font-medium text-white"
           >
             Register a pipeline
           </Link>

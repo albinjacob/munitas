@@ -17,6 +17,7 @@ import { useState } from "react";
 import { useRequestAccess } from "../../api/queries";
 import { usePeople } from "../../api/people";
 import type { LeaseRequest } from "../../api/types";
+import { when } from "../../lib/when";
 
 /** Long enough to do the work, short enough that nobody keeps it by accident. */
 const TTL_CHOICES = [4, 24, 72, 168];
@@ -84,7 +85,7 @@ export function RequestAccess({
         className="rounded border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900"
       >
         You asked for this on{" "}
-        {new Date(pending.created_at).toLocaleDateString()} and it is waiting
+        {when(pending.created_at)} and it is waiting
         with the person answerable for it. You will see it here once they decide.
       </p>
     );

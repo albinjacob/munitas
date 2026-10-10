@@ -24,11 +24,11 @@ from common import (RESEARCHER, WORKER_HEADERS, api, bearer_for, check, db,
                     fixture_contract, fixture_tenant, fixture_version,
                     heading, require_api, summary)
 
-# The demonstration organisation. Its people are seeded by
-# infra/postgres/seed-organisation.sql and none of them belong to the canary
+# The second test organisation. Its people are seeded by
+# infra/postgres/seed-canary.sql and none of them belong to the canary
 # tenant, which is the whole point of asking them for canary data.
-OTHER = "health"
-OTHER_PERSON = "sam-researcher"
+OTHER = "neighbour"
+OTHER_PERSON = "neighbour-researcher"
 
 
 def decisions_for(principal: str, version_id: str) -> list[dict]:
@@ -57,11 +57,15 @@ def main() -> int:
         "grant_roles": ["notebook_explore"],
     })
 
-    other_version = db_one(
-        """select dataset_version_id from version_class
-           where tenant_id = %s and current_class = 'PUBLISHED' limit 1""",
-        (OTHER,),
-    )
+    # The other organisation's own published version, made here, so the check never depends on what that organisation happens to hold.
+    other_made = fixture_version(fixture_tenant(OTHER), fixture_contract(OTHER), "UNDER_REVIEW")
+    api("POST", f"/dataset-versions/{other_made['id']}/promote", json={
+        "to_class": "PUBLISHED", "decided_by": "verify-suite",
+        "decided_by_kind": "workload",
+        "gate_evidence": {"note": "fixture for the isolation check"},
+        "grant_roles": ["notebook_explore"],
+    })
+    other_version = {"dataset_version_id": other_made["id"]}
 
     heading("U28: somebody from another organisation is refused")
 
@@ -80,7 +84,7 @@ def main() -> int:
     honest_reasons = (honest.json().get("detail", {}).get("reasons", [])
                       if honest.status_code == 403 else [])
     check("and the refusal says it is about the organisation, not the class",
-          any("tenant" in r for r in honest_reasons), "; ".join(honest_reasons)[:120])
+          any("different organisation" in r for r in honest_reasons), "; ".join(honest_reasons)[:120])
 
     heading("U28: and claiming otherwise does not help")
 
@@ -99,7 +103,7 @@ def main() -> int:
     lying_reasons = (lying.json().get("detail", {}).get("reasons", [])
                      if lying.status_code == 403 else [])
     check("and refused for the same reason, so the claim was ignored",
-          any("tenant" in r for r in lying_reasons), "; ".join(lying_reasons)[:120])
+          any("different organisation" in r for r in lying_reasons), "; ".join(lying_reasons)[:120])
 
     heading("U28: the same holds in the other direction")
 
@@ -117,12 +121,11 @@ def main() -> int:
         reverse_reasons = (reverse.json().get("detail", {}).get("reasons", [])
                            if reverse.status_code == 403 else [])
         check("and for the tenant, not for anything else",
-              any("tenant" in r for r in reverse_reasons),
+              any("different organisation" in r for r in reverse_reasons),
               "; ".join(reverse_reasons)[:120])
     else:
         check("a canary principal is refused the other organisation's data", False,
-              f"{OTHER} holds no published version to ask for. "
-              "Run scripts/seed/seed-health-example.py.")
+              f"{OTHER} holds no published version to ask for.")
         check("and for the tenant, not for anything else", False, "not attempted")
 
     heading("U28: somebody from the right organisation is not refused")

@@ -24,6 +24,8 @@ export interface PipelineRun {
   pipeline_kind: string;
   /** The registered pipeline's own name, for a 'dag' run. Null for the two built-in kinds. */
   pipeline_name: string | null;
+  /** For a 'dag' run: the pipeline version's steps, each with the steps it waits for. Null for the built-in kinds. */
+  dag?: { name: string; kind: string | null; depends_on: string[] }[] | null;
   workflow_id: string;
   /** How the run ended, from the platform's own record. 'running' until it does. */
   status: "running" | "succeeded" | "failed" | "cancelled" | "terminated" | "timed_out" | "unknown";

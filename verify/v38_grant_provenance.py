@@ -7,7 +7,7 @@ approved by Hartley": the reading principal and the requester were the same
 column, so a human's request either lost the human or made the workload read as
 them.
 
-The check that matters is the last one. Recording who asked is worthless if it
+The check that matters is the last one. File who asked is worthless if it
 lets the workload's own identity drift: policy and lease-matching must still see
 only the workload, never the human, or this closes one gap by reopening the one
 agent/identity.py's own docstring already warns against -- identity read from

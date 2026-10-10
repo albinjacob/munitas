@@ -36,7 +36,7 @@ export function useRegisterDataset() {
       registered_by: string;
       provenance: "external_public" | "external_licensed" | "internal_regulated";
       declared_class: VisibilityClass;
-      modality: string[];
+      modality?: string[];
     }) =>
       api.post<RegisteredDataset>("/datasets/register", {
         ...body,
@@ -273,7 +273,7 @@ export function useSealAudio() {
 /**
  * Taking one upload out of the set without erasing that it arrived.
  *
- * For a recording that cannot be read and cannot be replaced. The row stays, so
+ * For a file that cannot be read and cannot be replaced. The row stays, so
  * the record of who removed it survives; only its inclusion in a future version
  * goes away.
  */

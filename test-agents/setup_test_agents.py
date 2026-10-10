@@ -29,10 +29,10 @@ import os
 
 from ports_config import PORTS  # noqa: E402
 
-os.environ.setdefault("PG_DSN", f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform")
+os.environ.setdefault("MUNITAS_PG_DSN", f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform")
 os.environ.setdefault("MUNITAS_VERIFY_API", f"http://localhost:{PORTS['munitas_api_http']}")
 os.environ.setdefault("MUNITAS_VERIFY_KRATOS", f"http://localhost:{PORTS['kratos_public']}")
-os.environ.setdefault("S3_ENDPOINT", f"http://localhost:{PORTS['seaweedfs_s3']}")
+os.environ.setdefault("MUNITAS_S3_ENDPOINT", f"http://localhost:{PORTS['seaweedfs_s3']}")
 
 import common  # noqa: E402  (verify/common.py, path inserted above)
 

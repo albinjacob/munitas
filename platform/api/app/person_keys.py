@@ -1,0 +1,518 @@
+"""One person's data in a sealed table: locking it under a key of the person's own, reading it back, and erasing the person.
+
+A sealed table never changes, and a person can still be forgotten. The columns that identify a person are locked under a key made for that
+person, and erasing the person destroys that key and nothing else. The sealed file and its fingerprint stay exactly as they were: the locked
+columns become unreadable and everything else stays readable.
+
+The unit is a person, found through the contract's subject rule. The customer supplies the identifier (with its kind, the system or number it
+comes from) and the platform makes the person code and the key. The identifier itself is never stored: a blind index finds the person.
+
+Everything here asks a `KeyService` for keys and never reaches for key material any other way, so what holds the keys can be replaced.
+This first version finds the person by a column of the table; the other ways a contract can name a subject are refused with that said.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import hmac
+import json
+import os
+import secrets
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+
+from crypto import BuiltInKeyService, DestroyedKeyError, KeyService, lock_value, unlock_value
+
+import tablewriter.binaryrows as binaryrows
+import tablewriter.textrows as textrows
+
+from . import config, db, group_sizes, key_store, locked_leases, locked_table_rows, opa, privacy_contract, storage, versions
+from .person_errors import ErasureHeld, LeaseConflict, NoSuchLease, NoSuchVersion, NotPermitted, Refused  # noqa: F401
+
+FILE_NAME = "table.jsonl"
+READ_PURPOSE = "read locked columns"
+PERSON_COLUMN = "person_code"
+
+
+_service: KeyService | None = None
+
+
+def key_service() -> KeyService:
+    """The platform's key service: the built-in one, with its master key read from the mounted file."""
+    global _service
+    if _service is None:
+        _service = BuiltInKeyService.from_file(Path(config.KEY_SERVICE_MASTER_FILE), key_store.PostgresKeyStore())
+    return _service
+
+
+# Finding a person ------------------------------------------------------------
+
+
+def blind_index(secret: bytes, kind: str, value: str) -> str:
+    """The identifier as the lookup knows it. The kind is part of the input, so identifiers of different kinds never meet, and each part
+    is length-prefixed, so no choice of kind or value can be made to read as another pair."""
+    kind, value = kind.strip().lower(), str(value).strip()
+    return hmac.new(secret, f"{len(kind)}:{kind}{len(value)}:{value}".encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def find_person(service: KeyService, tenant_id: str, kind: str, value: str) -> str | None:
+    row = db.one("select person_code from subject_lookup where tenant_id = %s and blind_index = %s",
+                 (tenant_id, blind_index(service.lookup_secret(tenant_id), kind, value)))
+    return row["person_code"] if row else None
+
+
+def resolve_person(service: KeyService, tenant_id: str, kind: str, value: str, actor: str) -> str:
+    """The person code for an identifier, made with its key the first time the identifier is seen."""
+    index = blind_index(service.lookup_secret(tenant_id), kind, value)
+    row = db.one("select person_code from subject_lookup where tenant_id = %s and blind_index = %s", (tenant_id, index))
+    if row:
+        return row["person_code"]
+    code = "T-" + secrets.token_hex(8)
+    service.make_person_key(tenant_id, code, actor)
+    made = db.execute("insert into subject_lookup (tenant_id, blind_index, person_code) values (%s, %s, %s) "
+                      "on conflict (tenant_id, blind_index) do nothing returning person_code", (tenant_id, index, code))
+    if made:
+        return code
+    # Somebody else made this person between the look and the insert. Theirs stands, and the key made for this attempt goes.
+    service.destroy(tenant_id, code, actor)
+    return db.one("select person_code from subject_lookup where tenant_id = %s and blind_index = %s", (tenant_id, index))["person_code"]
+
+
+# Sealing ---------------------------------------------------------------------
+
+
+def _blank(value: object) -> bool:
+    return value is None or (isinstance(value, str) and not value.strip())
+
+
+def _contract_problems(contract: dict) -> list[str]:
+    """Why this contract cannot be used to seal a table in this version, before any row is looked at."""
+    problems = privacy_contract.check(contract)
+    if problems:
+        return problems
+    subject = privacy_contract.subject_rule(contract)
+    if privacy_contract.is_plain(contract):
+        return []
+    if not privacy_contract.erasable(contract):
+        return ["the contract says the table cannot be erased and also says how to find the person each row is about. A table about people can be erased: "
+                "remove the notErasableReason, or, if the table is not about people, remove the subject"]
+    if subject is None:
+        return ["the contract does not say how to find the person each row is about. If the table is not about people, say so: set erasable to false "
+                "and give a notErasableReason"]
+    if subject.get("foundBy") != "column":
+        return [f"finding the person by {subject.get('foundBy')!r} is not available in this version; this version reads the person from a column"]
+    return []
+
+
+def row_problems(contract: dict, rows: object) -> list[str]:
+    """Every row that cannot be sealed, and why, for a contract that is already known to be usable."""
+    if not isinstance(rows, list) or not rows:
+        return ["the table has no rows"]
+    subject = privacy_contract.subject_rule(contract)
+    cols = privacy_contract.columns(contract)
+    names = {c["name"] for c in cols}
+    key = next(c["name"] for c in cols if c["primaryKey"])
+    problems, seen = [], set()
+    for position, row in enumerate(rows, start=1):
+        if not isinstance(row, dict):
+            problems.append(f"row {position} is not a set of columns and values")
+            continue
+        label = str(row.get(key)) if not _blank(row.get(key)) else f"row {position}"
+        for extra in sorted(set(row) - names):
+            problems.append(f"{label}: the column {extra} is not in the contract")
+        if _blank(row.get(key)):
+            problems.append(f"{label}: has no {key}, which is the primary key")
+        elif label in seen:
+            problems.append(f"{label}: the {key} appears more than once")
+        seen.add(label)
+        if subject is not None and _blank(row.get(subject["column"])):
+            problems.append(f"{label}: names nobody, because {subject['column']} (the {subject['kind']}) is empty")
+    return problems
+
+
+def _problems(contract: dict, rows: object) -> list[str]:
+    return _contract_problems(contract) or row_problems(contract, rows)
+
+
+def intake_dataset(dataset_id: str, identity: dict) -> dict:
+    """The dataset, if this person may bring data into it: of their organisation, and a role that may bring data in."""
+    from . import ingest  # the same intake rules as every other way of bringing data in
+    dataset = ingest._dataset(dataset_id)
+    ingest._mine(dataset, identity)
+    ingest._require_intake_role(identity)
+    return dataset
+
+
+def seal_table(service: KeyService, *, dataset_id: str, identity: dict, contract: dict, rows: list[dict]) -> dict:
+    """Seal rows as a version of a dataset, with the identifying columns locked under each person's own key.
+
+    The whole table is refused, with every problem listed, when the contract is wrong or any row names nobody. Nothing is made or written
+    for a refusal: the checks run before the first key is made.
+    """
+    dataset = intake_dataset(dataset_id, identity)
+    problems = _contract_problems(contract)
+    if problems:
+        raise Refused(problems)
+    if privacy_contract.is_plain(contract):
+        lines = "".join(json.dumps(row) + "\n" for row in rows or [])
+        return seal_plain_file(dataset=dataset, dataset_id=dataset_id, identity=identity, contract=contract, raw=lines.encode("utf-8"),
+                               filename="rows.jsonl", options={})
+    problems = row_problems(contract, rows)
+    if problems:
+        raise Refused(problems)
+
+    tenant = dataset["tenant_id"]
+    cols = privacy_contract.columns(contract)
+    subject = privacy_contract.subject_rule(contract)
+    key_column = next(c["name"] for c in cols if c["primaryKey"])
+    actor = identity["id"]
+
+    codes = [resolve_person(service, tenant, subject["kind"], row[subject["column"]], actor) for row in rows]
+    keys = service.unwrap_many(tenant, codes, actor, f"seal a table (dataset {dataset_id})")
+
+    lines = []
+    for row, code in zip(rows, codes):
+        record_id = str(row[key_column])
+        sealed_row = {}
+        for c in cols:
+            value = row.get(c["name"])
+            if c["treatment"] == "lock":
+                value = lock_value(keys[code], tenant, code, c["name"], record_id, value)
+            elif c["treatment"] == privacy_contract.REPLACED:
+                value = code
+            sealed_row[c["name"]] = value
+        sealed_row[PERSON_COLUMN] = code
+        lines.append(json.dumps(sealed_row, sort_keys=True))
+    payload = ("\n".join(lines) + "\n").encode("utf-8")
+
+    backend = dataset["storage_backend"] or "seaweedfs"
+    prefix = versions.next_version(tenant, dataset_id)["storage_prefix"]
+    storage.admin_client_for(backend, tenant).put_object(Bucket=storage.bucket_for(backend, tenant), Key=f"{prefix}/{FILE_NAME}", Body=payload)
+    manifest = [{"key": f"{prefix}/{FILE_NAME}", "bytes": len(payload), "sha256": hashlib.sha256(payload).hexdigest()}]
+
+    schema_id = _register(tenant, contract, cols, key_column)
+    version = versions.seal(tenant_id=tenant, dataset_id=dataset_id, schema_id=schema_id, visibility_class="RAW",
+                            storage_backend=backend, object_manifest=manifest, record_count=len(rows))
+    # Counted from the values as they arrived and kept as counts only: how many different people share each combination of the readable
+    # quasi-identifying columns. Advice, so a table with small groups is sealed all the same.
+    report = group_sizes.record(tenant, version["id"], group_sizes.compute(
+        list(zip(codes, rows)), privacy_contract.counted_columns(contract), privacy_contract.group_size_threshold(contract)))
+    return {**version, "records": len(rows), "people": len(set(codes)), "sealed_by": actor, "group_size_report": report}
+
+
+PLAIN_FILE = "records"
+PLAIN_MAX_BYTES = 5 * 1024 * 1024
+PLAIN_ENDINGS = ".csv, .tsv, .json (one list of rows) or .jsonl (one row per line), each with .gz or .zst after it for a compressed file"
+
+
+def seal_plain_file(*, dataset: dict, dataset_id: str, identity: dict, contract: dict, raw: bytes, filename: str | None, options: dict | None) -> dict:
+    """Seal a file of rows that are not about people as a table that can be queried, with nothing locked.
+
+    The file is stored as it was sent, in the version's own folder, and the same step that writes every other table reads it there: strictly,
+    every value against the contract, and writes the table beside it. Nothing is parsed here, so a small file and a large one are judged
+    by the same rules. The seal is refused, with every problem, by row, line and column, when any is wrong, and the stored file is removed, so
+    nothing is left behind. The version starts at the most restricted level unless an approver of the owning department has already agreed with
+    a claim of something less, exactly as it does for files.
+    """
+    from . import ingest, iceberg  # the same default and the same claim as every other way of bringing data in
+
+    if filename and binaryrows.format_of(filename):
+        raise Refused([f"{filename!r} is a binary table file, which only a table worker reads, so it is sent in parts and not sealed at once. Use the large-table route "
+                       "(POST /datasets/{id}/table-uploads)"])
+    found = textrows.format_of(filename or "rows.csv") if (filename and "." in os.path.basename(filename)) else ("csv", None)
+    if found is None:
+        raise Refused([f"the rows file {filename!r} ends in an ending this route does not read. Use {PLAIN_ENDINGS}"])
+    kind, compression = found
+    if not raw.strip():
+        raise Refused(["the rows file is empty"])
+    if len(raw) > PLAIN_MAX_BYTES:
+        raise Refused(["the rows file is larger than 5 MB. A table this big is sealed another way; split it, or ask for the large-table route"])
+    try:
+        declared = textrows.Options.of({**(options or {}), **({"compression": compression} if compression else {})}, kind)
+    except ValueError as exc:
+        raise Refused([str(exc)]) from exc
+
+    tenant = dataset["tenant_id"]
+    fields = [privacy_contract.table_field(c) for c in privacy_contract.columns(contract)]
+    key_columns = privacy_contract.key_columns(contract)
+
+    backend = dataset["storage_backend"] or "seaweedfs"
+    prefix = versions.next_version(tenant, dataset_id)["storage_prefix"]
+    ending = kind + {"gzip": ".gz", "zstd": ".zst", None: ""}[compression]
+    key = f"{prefix}/{PLAIN_FILE}.{ending}"
+    client, bucket = storage.admin_client_for(backend, tenant), storage.bucket_for(backend, tenant)
+    client.put_object(Bucket=bucket, Key=key, Body=raw)
+    manifest = [{"key": key, "bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()}]
+
+    schema_id = _register_plain(tenant, contract, fields, key_columns)
+    try:
+        version = versions.seal(tenant_id=tenant, dataset_id=dataset_id, schema_id=schema_id, storage_backend=backend,
+                                visibility_class=ingest.sealed_class(dataset), object_manifest=manifest, record_count=0, records_key=key,
+                                table_required=True, records_options=declared.as_dict())
+    except iceberg.TableRequired as exc:
+        client.delete_object(Bucket=bucket, Key=key)
+        raise Refused(exc.problems or [exc.reason]) from exc
+    except BaseException:
+        client.delete_object(Bucket=bucket, Key=key)
+        raise
+    count = db.one("select record_count from dataset_version where id = %s", (version["id"],))["record_count"]
+    db.execute("insert into dataset_source (id, dataset_id, kind, locator, checksum, bytes, fetched_by) values (%s, %s, 'upload', %s, %s, %s, %s) returning id",
+               (str(uuid.uuid4()), dataset_id, os.path.basename(filename or "rows.csv"), manifest[0]["sha256"], len(raw), identity["id"]))
+    return {**version, "records": count, "people": None, "sealed_by": identity["id"], "group_size_report": None, "plain": True}
+
+
+def plain_schema_id(tenant: str, contract: dict) -> str:
+    """The schema contract for a table that is not about people, made if this is the first time the organisation has used it."""
+    return _register_plain(tenant, contract, [privacy_contract.table_field(c) for c in privacy_contract.columns(contract)],
+                           privacy_contract.key_columns(contract))
+
+
+def _register_plain(tenant: str, contract: dict, fields: list[dict], key_columns: list[str]) -> str:
+    """The schema contract for a table that is not about people, content addressed so the same contract is the same rows.
+
+    It keeps the reason the table cannot be erased as the person who brought it in wrote it, so the reason is a fact of the version and not
+    only something that was checked on the way in.
+    """
+    # The fields are part of what the schema contract is, not only the contract they came from: the platform's reading of a contract (a date is a
+    # date, a number with a stated scale is a decimal) has changed before and will again, and a table must be checked by the reading it was
+    # sealed under, never by an older record that happens to share the contract's text.
+    digest = versions.content_hash({"tenant": tenant, "plain": contract, "fields": fields, "key": key_columns})
+    existing = db.one("select id from schema_contract where tenant_id = %s and content_hash = %s", (tenant, digest))
+    if existing:
+        return str(existing["id"])
+    schema_id = str(uuid.uuid4())
+    stored = [{**f, "sensitivity": c["classification"], "added_by": "table contract"} for f, c in zip(fields, privacy_contract.columns(contract))]
+    reason = next((p["value"] for p in contract.get("customProperties", []) if p.get("vendor") == "munitas" and p.get("property") == "notErasableReason"), None)
+    db.execute("insert into schema_contract (id, tenant_id, name, fields, primary_key, content_hash, not_erasable_reason) "
+               "values (%s, %s, %s, %s, %s, %s, %s) returning id",
+               (schema_id, tenant, contract["name"], json.dumps(stored), key_columns, digest, reason))
+    return schema_id
+
+
+def large_people_problems(contract: dict) -> list[str]:
+    """Why this contract cannot bring in a table about people through the large route. Empty when it can. The contract is already known to be usable."""
+    cols = {c["name"]: c for c in privacy_contract.columns(contract)}
+    key = privacy_contract.key_columns(contract)
+    problems = []
+    if len(key) != 1:
+        problems.append("a table about people has exactly one column as its primary key, because each row's id is how its locked cells are bound to it")
+    elif cols[key[0]]["treatment"] != "readable":
+        problems.append(f"the primary key {key[0]} is {'locked' if cols[key[0]]['treatment'] == 'lock' else 'replaced by the person code'}, and it must stay readable: "
+                        "it is how a row is found again")
+    return problems
+
+
+def lock_plan(contract: dict) -> dict:
+    """What a worker needs to write a table about people, and what the platform needs to lock its rows, from the contract. No value in it."""
+    cols = privacy_contract.columns(contract)
+    subject = privacy_contract.subject_rule(contract)
+    return {"subject_column": subject["column"], "subject_kind": subject["kind"], "key_column": privacy_contract.key_columns(contract)[0],
+            "locked": [c["name"] for c in cols if c["treatment"] == "lock"], "replaced": [c["name"] for c in cols if c["treatment"] == privacy_contract.REPLACED],
+            "counted": privacy_contract.counted_columns(contract), "threshold": privacy_contract.group_size_threshold(contract),
+            "read_fields": [privacy_contract.table_field(c) for c in cols]}
+
+
+def people_table_schema_id(tenant: str, contract: dict) -> str:
+    """The schema contract, and the privacy contract it belongs to, for a table about people stored as a table that can be queried.
+
+    The table's columns are the contract's, except that a locked column is stored as text (the locked cell) and a last column holds the person code.
+    Content addressed, and separate from the schema a table sealed by the small route has, which is stored as a file.
+    """
+    digest = versions.content_hash({"tenant": tenant, "privacy": contract, "layout": "table"})
+    existing = db.one("select schema_id from privacy_contract where tenant_id = %s and content_hash = %s", (tenant, digest))
+    if existing:
+        return str(existing["schema_id"])
+    cols = privacy_contract.columns(contract)
+    fields = []
+    for c in cols:
+        field = privacy_contract.table_field(c)
+        if c["treatment"] in ("lock", privacy_contract.REPLACED):
+            field = {"name": c["name"], "type": "string"}
+        fields.append({**field, "sensitivity": c["classification"], "treatment": c["treatment"], "added_by": "privacy contract"})
+    fields.append({"name": PERSON_COLUMN, "type": "string", "sensitivity": "none", "added_by": "privacy contract"})
+    key = privacy_contract.key_columns(contract)
+    schema_id = str(uuid.uuid4())
+    with db.cursor(commit=True) as cur:
+        cur.execute("insert into schema_contract (id, tenant_id, name, fields, primary_key, content_hash) values (%s, %s, %s, %s, %s, %s)",
+                    (schema_id, tenant, contract["name"], json.dumps(fields), key, digest))
+        cur.execute("insert into privacy_contract (id, tenant_id, name, version, document, schema_id, content_hash) values (%s, %s, %s, %s, %s, %s, %s)",
+                    (str(uuid.uuid4()), tenant, contract["name"], contract["version"], json.dumps(contract), schema_id, digest))
+    return schema_id
+
+
+def _register(tenant: str, contract: dict, cols: list[dict], key_column: str) -> str:
+    """The schema contract and the privacy contract it belongs to, content addressed so the same contract is the same rows.
+
+    The schema contract's own digest is taken over the whole privacy contract, because two contracts with the same columns can differ in
+    what they do to them, and the version records only the schema contract's id.
+    """
+    digest = versions.content_hash({"tenant": tenant, "privacy": contract})
+    existing = db.one("select schema_id from privacy_contract where tenant_id = %s and content_hash = %s", (tenant, digest))
+    if existing:
+        return str(existing["schema_id"])
+    fields = [{"name": c["name"], "type": c["logicalType"], "sensitivity": c["classification"], "treatment": c["treatment"],
+               "added_by": "privacy contract"} for c in cols]
+    fields.append({"name": PERSON_COLUMN, "type": "string", "sensitivity": "none", "added_by": "privacy contract"})
+    schema_id = str(uuid.uuid4())
+    with db.cursor(commit=True) as cur:
+        cur.execute("insert into schema_contract (id, tenant_id, name, fields, primary_key, content_hash) values (%s, %s, %s, %s, %s, %s)",
+                    (schema_id, tenant, contract["name"], json.dumps(fields), [key_column], digest))
+        cur.execute("insert into privacy_contract (id, tenant_id, name, version, document, schema_id, content_hash) "
+                    "values (%s, %s, %s, %s, %s, %s, %s)",
+                    (str(uuid.uuid4()), tenant, contract["name"], contract["version"], json.dumps(contract), schema_id, digest))
+    return schema_id
+
+
+# Reading ---------------------------------------------------------------------
+
+
+def read_rows(service: KeyService, *, version_id: str, identity: dict) -> list[dict]:
+    """The rows `read_locked` opens, without the account of how."""
+    return read_locked(service, version_id=version_id, identity=identity)["rows"]
+
+
+def read_locked(service: KeyService, *, version_id: str, identity: dict, cursor: str | None = None, limit: int | None = None) -> dict:
+    """The rows of a sealed table with the locked columns opened, for somebody the policy lets. The decision is recorded either way.
+
+    The owning department's approvers read every row, a page at a time for a table stored as a table (`cursor` is where the last page stopped and `limit`
+    how many rows to give), all at once for a table stored as a file. Anybody else reads only the fixed sample their current lease opens, and the lease
+    is named on the record. A person who was erased does not fail the table: their locked columns come back as an erased marker with the
+    date, and every other column and every other person reads as before.
+    """
+    version = db.one("select v.id, v.tenant_id, v.schema_id, v.storage_prefix, v.storage_backend, v.object_manifest, v.visibility_class, "
+                     "d.department_id from dataset_version v join dataset d on d.id = v.dataset_id where v.id = %s", (version_id,))
+    if not version or version["tenant_id"] != identity["tenant_id"]:
+        raise NoSuchVersion(version_id)
+    contract = db.one("select document from privacy_contract where tenant_id = %s and schema_id = %s", (version["tenant_id"], version["schema_id"]))
+    if not contract:
+        raise NoSuchVersion(f"{version_id} was not sealed under a privacy contract")
+
+    lease = locked_leases.current_lease(version["tenant_id"], identity["id"], version_id)
+    decision = opa.locked_columns({
+        "person": {"id": identity["id"], "roles": identity["roles"]},
+        "dataset": {"approvers": locked_leases.approvers_of(version["department_id"])},
+        "lease": locked_leases.policy_view(lease)})
+    allowed, mode, reasons = bool(decision["allow"]), decision.get("mode", "none"), list(decision.get("reasons", []))
+    used = lease if allowed and mode == "sample" else None
+    db.execute(
+        """insert into access_decision (principal, principal_kind, principal_roles, tenant_id, dataset_version_id, requested_class,
+                                        purpose, allowed, reasons, phase, locked_column_lease_id)
+           values (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'policy', %s) returning principal""",
+        (identity["id"], identity.get("kind", "human"), identity["roles"], version["tenant_id"], version_id,
+         version["visibility_class"], READ_PURPOSE + (f": {used['purpose']}" if used else ""), allowed, reasons,
+         str(used["id"]) if used else None))
+    if not allowed:
+        raise NotPermitted(reasons)
+
+    tenant = version["tenant_id"]
+    columns = privacy_contract.columns(contract["document"])
+    locked = [c["name"] for c in columns if c["treatment"] == "lock"]
+    key_column = next(c["name"] for c in columns if c["primaryKey"])
+    entry = next((m for m in version["object_manifest"] if m["key"].endswith(FILE_NAME)), None)
+    if entry is None:
+        return _read_table(service, version, identity, used, mode, locked, key_column, cursor, limit)
+    body = storage.admin_client_for(version["storage_backend"], tenant).get_object(
+        Bucket=storage.bucket_for(version["storage_backend"], tenant), Key=entry["key"])["Body"].read()
+    rows = [json.loads(line) for line in body.decode("utf-8").splitlines() if line]
+    in_table = len(rows)
+    if used:
+        keep = set(locked_leases.sample_ids(version_id, identity["id"], [str(r[key_column]) for r in rows], used["row_limit"]))
+        rows = [r for r in rows if str(r[key_column]) in keep]
+    purpose = READ_PURPOSE + (f" (lease {used['id']}: {used['purpose']})" if used else "")
+    keys = service.unwrap_many(tenant, [r[PERSON_COLUMN] for r in rows], identity["id"], purpose)
+    out = []
+    for row in rows:
+        code, row = row[PERSON_COLUMN], dict(row)
+        if keys[code] is None:
+            _, when = service.status(tenant, code)
+            marker = {"erased_on": (when or datetime.now(timezone.utc)).date().isoformat()}
+            for name in locked:
+                row[name] = marker
+        else:
+            for name in locked:
+                row[name] = unlock_value(keys[code], tenant, code, name, str(row[key_column]), row[name])
+        out.append(row)
+    return {"rows": out, "mode": mode, "lease_id": str(used["id"]) if used else None, "next": None, "total": in_table}
+
+
+def _read_table(service: KeyService, version: dict, identity: dict, used: dict | None, mode: str, locked: list[str], key_column: str,
+                cursor: str | None, limit: int | None) -> dict:
+    """The same answer for a table stored as a table: a page of rows, or a lease's sample, with the locked cells opened. The people of a page are opened in one
+    call and the key log gets one line for the page that carries the count."""
+    tenant, version_id = version["tenant_id"], str(version["id"])
+    try:
+        files = locked_table_rows.Files(version)
+        if used:
+            rows, following = locked_table_rows.sample(files, version_id, identity["id"], key_column, used["row_limit"]), None
+        else:
+            size = max(1, min(int(limit or locked_table_rows.PAGE_DEFAULT), locked_table_rows.PAGE_MOST))
+            rows, following = locked_table_rows.page(files, cursor, size)
+    except locked_table_rows.NoTable as exc:
+        raise NoSuchVersion(f"{version_id} is not stored as a table") from exc
+    except ValueError as exc:
+        raise Refused([str(exc)]) from exc
+    purpose = READ_PURPOSE + (f" (lease {used['id']}: {used['purpose']})" if used else "") + f" of version {version_id} ({len(rows)} rows)"
+    keys = service.unwrap_batch(tenant, [r[PERSON_COLUMN] for r in rows], identity["id"], purpose) if rows else {}
+    out = []
+    for row in rows:
+        code, row = row[PERSON_COLUMN], dict(row)
+        if keys[code] is None:
+            _, when = service.status(tenant, code)
+            marker = {"erased_on": (when or datetime.now(timezone.utc)).date().isoformat()}
+            for name in locked:
+                row[name] = marker
+        else:
+            for name in locked:
+                row[name] = unlock_value(keys[code], tenant, code, name, str(row[key_column]), row[name])
+        out.append(row)
+    total = db.one("select record_count from dataset_version where id = %s", (version_id,))["record_count"]
+    return {"rows": json.loads(json.dumps(out, default=str)), "mode": mode, "lease_id": str(used["id"]) if used else None, "next": following, "total": total}
+
+
+# Erasing ---------------------------------------------------------------------
+
+
+def still_made_from(tenant_id: str, person_code: str) -> dict:
+    """What was made from this person's files, which erasing their key does not change.
+
+    Destroying a key makes what it locked unreadable. A transcript, a redacted file or anything else a pipeline made from a locked file
+    was made in the clear, in a later version, and stays exactly as it is. This lists those versions (with the run that made each), following the
+    lineage from every version that holds a file of the person through everything made from it, so whoever answers for the data can see what
+    is left and decide. It lists and changes nothing.
+    """
+    held = db.all_rows("select distinct dataset_version_id::text as id from file_person where tenant_id = %s and person_code = %s", (tenant_id, person_code))
+    derived = db.all_rows(
+        """with recursive walk(version_id) as (
+               select dataset_version_id from file_person where tenant_id = %s and person_code = %s
+               union
+               select l.dataset_version_id from lineage l join walk w on w.version_id = any(l.input_versions)
+           )
+           select distinct l.dataset_version_id::text as version_id, l.dataset_name, l.version, l.run_id::text as run_id, l.action_name
+             from lineage l join dataset_version v on v.id = l.dataset_version_id
+            where v.tenant_id = %s and l.dataset_version_id in (select version_id from walk)
+              and l.dataset_version_id not in (select dataset_version_id from file_person where tenant_id = %s and person_code = %s)
+            order by l.dataset_name, l.version""",
+        (tenant_id, person_code, tenant_id, tenant_id, person_code))
+    return {"file_versions": [h["id"] for h in held], "derived_versions": derived}
+
+
+def erase_person(service: KeyService, tenant_id: str, kind: str, value: str, identity: dict, reason: str) -> dict:
+    """Destroy a person's key, delete the lookup row and leave a tombstone. The sealed files are not touched.
+
+    An internal operation: who may ask, and the approval and waiting period, come later. A legal hold over the organisation refuses it,
+    because a destroyed key cannot be brought back. Safe to run again: each step is a no-op once done, so a run that stopped half way
+    is finished by running it again.
+    """
+    if db.one("select tenant_hold_state(%s) as state", (tenant_id,))["state"] != "none":
+        raise ErasureHeld(f"a legal hold stands over {tenant_id}, so no person is erased while it does")
+    code = find_person(service, tenant_id, kind, value)
+    if code is None:
+        return {"found": False, "key_destroyed": False, "person_code": None}
+    # Looked up before the key goes, so the list is of what stood at the moment of erasure.
+    left = still_made_from(tenant_id, code)
+    destroyed = service.destroy(tenant_id, code, identity["id"])
+    db.execute("delete from subject_lookup where tenant_id = %s and person_code = %s returning person_code", (tenant_id, code))
+    db.execute("insert into tombstone (record_id, tenant_id, reason, requested_by) values (%s, %s, %s, %s) "
+               "on conflict (record_id) do nothing returning record_id", (f"person:{code}", tenant_id, reason, identity["id"]))
+    return {"found": True, "key_destroyed": destroyed, "person_code": code, "tombstoned": True, **left}

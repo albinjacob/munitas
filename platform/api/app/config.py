@@ -17,12 +17,14 @@ def _required(name: str) -> str:
     return value
 
 
-PG_DSN = _required("PG_DSN")
+PG_DSN = _required("MUNITAS_PG_DSN")
 OPA_URL = os.environ.get("MUNITAS_OPA_URL", "http://opa:8181")
+# The policy engine answers only a caller that presents this token (platform/policy/system_authz.rego), and then only for decisions.
+OPA_TOKEN = os.environ.get("MUNITAS_OPA_TOKEN", "")
 # The score store a de-identification run writes its score card to. Only
 # asked whether it is up, before such a run starts (pipeline.py).
 MLFLOW_URL = os.environ.get("MUNITAS_MLFLOW_URL", "http://mlflow:5000")
-S3_ENDPOINT = os.environ.get("S3_ENDPOINT", "http://seaweedfs:8333")
+S3_ENDPOINT = os.environ.get("MUNITAS_S3_ENDPOINT", "http://seaweedfs:8333")
 
 # The storage keys the platform's own identities use. They are configuration,
 # not something read back out of the permissions document: grants.py compiles
@@ -36,14 +38,18 @@ def _pair(prefix: str, key: str, secret: str) -> tuple[str, str]:
     return (os.environ.get(f"{prefix}_KEY") or key, os.environ.get(f"{prefix}_SECRET") or secret)
 
 
-STORAGE_ADMIN = _pair("S3_ADMIN", 'munitas-admin', 'munitas-admin-secret')
+STORAGE_ADMIN = _pair("MUNITAS_S3_ADMIN", 'munitas-admin', 'munitas-admin-secret')
 ROLE_STORAGE_KEYS = {
-    'pipeline_action': _pair('S3_PIPELINE', 'pipeline-action', 'pipeline-action-secret'),
-    'training_job': _pair('S3_TRAINING_JOB', 'training-job', 'training-job-secret'),
-    'annotation_tool': _pair('S3_ANNOTATION_TOOL', 'annotation-tool', 'annotation-tool-secret'),
-    'notebook_explore': _pair('S3_NOTEBOOK_EXPLORE', 'notebook-explore', 'notebook-explore-secret'),
-    'agent_runtime': _pair('S3_AGENT_RUNTIME', 'agent-runtime', 'agent-runtime-secret'),
+    'pipeline_action': _pair('MUNITAS_S3_PIPELINE', 'pipeline-action', 'pipeline-action-secret'),
+    'training_job': _pair('MUNITAS_S3_TRAINING_JOB', 'training-job', 'training-job-secret'),
+    'annotation_tool': _pair('MUNITAS_S3_ANNOTATION_TOOL', 'annotation-tool', 'annotation-tool-secret'),
+    'notebook_explore': _pair('MUNITAS_S3_NOTEBOOK_EXPLORE', 'notebook-explore', 'notebook-explore-secret'),
+    'agent_runtime': _pair('MUNITAS_S3_AGENT_RUNTIME', 'agent-runtime', 'agent-runtime-secret'),
 }
+# The master key of the key service that holds each person's key (person_keys.py), read from a mounted file and never from the
+# environment or the database. Not required at startup: the platform runs without it, and the routes that need it say so.
+KEY_SERVICE_MASTER_FILE = os.environ.get("MUNITAS_KEY_SERVICE_MASTER_FILE", "/run/secrets/key_service_master")
+
 FILER_URL = os.environ.get("MUNITAS_FILER_URL", "http://seaweedfs:8888")
 MASTER_URL = os.environ.get("MUNITAS_MASTER_URL", "http://seaweedfs:9333")
 
@@ -90,10 +96,9 @@ STORAGE_VOLUMES_PER_TENANT = int(
 # Unset (empty string) is a valid state: an install that never configures
 # R2 simply cannot seal a version against it, refused with a clear reason
 # rather than a confusing failure deep inside r2.py.
-R2_ACCOUNT_ID = os.environ.get("R2_ACCOUNT_ID", "")
-R2_ACCESS_KEY_ID = os.environ.get("R2_ACCESS_KEY_ID", "")
-R2_SECRET_ACCESS_KEY = os.environ.get("R2_SECRET_ACCESS_KEY", "")
-R2_BUCKET = os.environ.get("R2_BUCKET", "")
+R2_ACCOUNT_ID = os.environ.get("MUNITAS_R2_ACCOUNT_ID", "")
+R2_ACCESS_KEY_ID = os.environ.get("MUNITAS_R2_ACCESS_KEY_ID", "")
+R2_SECRET_ACCESS_KEY = os.environ.get("MUNITAS_R2_SECRET_ACCESS_KEY", "")
 # The same R2 API token the two values above come from, in its original
 # form. Cloudflare's own REST API (creating a bucket, minting a scoped
 # token, issuing a temporary credential) authenticates with the token
@@ -101,13 +106,20 @@ R2_BUCKET = os.environ.get("R2_BUCKET", "")
 # id and a hash of that value. The hash is one-way, so holding the S3
 # pair is not enough to call the REST API and this fourth value has to be
 # carried separately. See platform/api/app/r2.py.
-R2_API_TOKEN = os.environ.get("R2_API_TOKEN", "")
+R2_API_TOKEN = os.environ.get("MUNITAS_R2_API_TOKEN", "")
 
-TEMPORAL_ADDRESS = os.environ.get("TEMPORAL_ADDRESS", "temporal:7233")
+TEMPORAL_ADDRESS = os.environ.get("MUNITAS_TEMPORAL_ADDRESS", "temporal:7233")
 # Optional, not `_required`: nothing existing calls this yet, so an API that
 # boots before Kratos is ready (or without it at all) must still start. See
 # platform/api/app/auth.py.
 KRATOS_PUBLIC_URL = os.environ.get("MUNITAS_KRATOS_PUBLIC_URL", "http://kratos:4433")
+# Hydra, which signs a notebook in on behalf of a person (platform/api/app/notebook_sign_in.py). The admin address is private to the services in the stack; the
+# public one here is the address the API itself reaches, not the one a person's browser is sent to (that is Hydra's own `URLS_SELF_PUBLIC`).
+HYDRA_ADMIN_URL = os.environ.get("MUNITAS_HYDRA_ADMIN_URL", "http://hydra:4445").rstrip("/")
+HYDRA_PUBLIC_URL = os.environ.get("MUNITAS_HYDRA_PUBLIC_URL", "http://hydra:4444").rstrip("/")
+NOTEBOOK_CLIENT_ID = os.environ.get("MUNITAS_NOTEBOOK_CLIENT_ID", "munitas-notebook")
+# The longest a notebook sign-in lasts. Hydra's own renewal-token life is set from the same value (docker-compose.yml), so the two cannot disagree.
+NOTEBOOK_SIGN_IN_HOURS = int(os.environ.get("MUNITAS_NOTEBOOK_SIGN_IN_HOURS", "8"))
 HF_INGEST_TASK_QUEUE = "munitas-hf-ingest"
 AGENT_RUN_TASK_QUEUE = "munitas-agent-run"
 PIPELINE_TASK_QUEUE = "munitas-pipeline"
@@ -137,13 +149,13 @@ _ = _required("MUNITAS_MASTER_KEY")
 # unauthenticated write surface.
 CONSOLE_ORIGINS = [
     o.strip() for o in os.environ.get(
-        "CONSOLE_ORIGINS", "http://localhost:3000,http://localhost:5173"
+        "MUNITAS_CONSOLE_ORIGINS", "http://localhost:3000,http://localhost:5173"
     ).split(",") if o.strip()
 ]
 
 # How long a minted credential lasts. Short, because the whole argument for
 # leases is that access expires on its own rather than by someone remembering.
-CREDENTIAL_TTL_MINUTES = int(os.environ.get("CREDENTIAL_TTL_MINUTES", "60"))
+CREDENTIAL_TTL_MINUTES = int(os.environ.get("MUNITAS_CREDENTIAL_TTL_MINUTES", "60"))
 
 # Iceberg projection and catalog (iceberg.py, iceberg_catalog.py).
 #
@@ -151,7 +163,7 @@ CREDENTIAL_TTL_MINUTES = int(os.environ.get("CREDENTIAL_TTL_MINUTES", "60"))
 # API enough memory for pyarrow can still seal versions as before.
 ICEBERG_PROJECTION = os.environ.get("MUNITAS_ICEBERG_PROJECTION", "on").lower() != "off"
 # The storage address a person's own tool can reach. The API reaches storage as
-# S3_ENDPOINT (an address inside the Compose network), which means nothing to a
+# MUNITAS_S3_ENDPOINT (an address inside the Compose network), which means nothing to a
 # laptop, and the catalog hands out the address in the table's configuration.
 PUBLIC_S3_ENDPOINT = os.environ.get("MUNITAS_PUBLIC_S3_ENDPOINT", "http://localhost:8333")
 # How long a catalog token may live, at most. A token carries a person's
@@ -197,6 +209,8 @@ HOLD_REVIEW_DAYS = int(os.environ.get("MUNITAS_HOLD_REVIEW_DAYS", "90"))
 # timer off (the sweep can still be run by hand), which a verification run uses
 # so a purge only happens when it asks for one.
 LIFECYCLE_SWEEP_SECONDS = int(os.environ.get("MUNITAS_LIFECYCLE_SWEEP_SECONDS", "300"))
+# How often development samples that have run out are ended and what was made from them is deleted. 0 turns the timer off.
+DEVELOPMENT_SWEEP_SECONDS = int(os.environ.get("MUNITAS_DEVELOPMENT_SWEEP_SECONDS", "60"))
 
 # What a purge keeps: the audit rows of a deleted organisation, for this many years, and then removes
 # (purge.py). Seven is the retention period the platform was asked to meet for records of who read what.
@@ -209,6 +223,9 @@ KRATOS_ADMIN_URL = os.environ.get("MUNITAS_KRATOS_ADMIN_URL", "http://kratos:443
 # deleted after LEGAL_EXPORT_KEEP_DAYS. The signing key makes a package's manifest verifiable by whoever
 # receives it: kept like the master key, and the public half is served at /legal-exports/signing-key.
 SIGNING_KEY = _required("MUNITAS_SIGNING_KEY")
+# Where alerts are written, one line of JSON each, in one file for every category (see alerts.py). In the stack `/logs` is the `logs` folder inside
+# the data folder (MUNITAS_DATA in .env). Empty switches the file off: alerts still reach the log and the part that raised them.
+ALERTS_FILE = os.environ.get("MUNITAS_ALERTS_FILE", "/logs/alerts.jsonl")
 LEGAL_EXPORT_BUCKET = os.environ.get("MUNITAS_LEGAL_EXPORT_BUCKET", "munitas-legal-exports")
 LEGAL_EXPORT_KEEP_DAYS = int(os.environ.get("MUNITAS_LEGAL_EXPORT_KEEP_DAYS", "14"))
 LEGAL_EXPORT_LINK_USES = int(os.environ.get("MUNITAS_LEGAL_EXPORT_LINK_USES", "3"))
@@ -248,6 +265,10 @@ ICEBERG_TIMEOUT_SECONDS = int(os.environ.get("MUNITAS_ICEBERG_TIMEOUT_SECONDS", 
 # every step and every retry, so this has to outlast the longest gap between two asks and not the length of a run.
 WRITE_GRANT_ACTIVE_SECONDS = int(os.environ.get("MUNITAS_WRITE_GRANT_ACTIVE_SECONDS", str(24 * 3600)))
 
+# A request that takes this long or longer is written to the log as a warning, with its method, path, status and time, so which requests are slow
+# is a fact to read and not a guess. 0 switches it off.
+SLOW_REQUEST_SECONDS = float(os.environ.get("MUNITAS_API_SLOW_REQUEST_SECONDS", "2"))
+
 # Table jobs (table_jobs.py). A table that is large is written by a worker, in a job, and not while a request waits.
 # A seal that names a records file bigger than TABLE_JOB_INLINE_BYTES becomes a job (a caller can also ask for one, or
 # refuse one, with table_mode). The limits a job works within are sent to the worker by the platform, so they are
@@ -262,6 +283,24 @@ TABLE_JOB_STALL_SECONDS = int(os.environ.get("MUNITAS_TABLE_JOB_STALL_SECONDS", 
 TABLE_JOB_DISPATCH_SECONDS = int(os.environ.get("MUNITAS_TABLE_JOB_DISPATCH_SECONDS", "3"))
 TABLE_SHARED_QUEUE = "munitas-table-write"
 
+# Bringing in a table in parts (table_uploads.py). A person sends a large file in parts of 8 MB through the API, each of which can be sent again, and
+# the file becomes a table job when they finish. These limits keep a few people from slowing everybody else down: they are counted for the person
+# (how many uploads are open, how many are started and refused in an hour) and for the whole platform (how many requests carrying a part are being
+# served at once, which is what holds the API's memory). An organisation's own limits (its largest file, how many tables are written at once, how
+# much it may stage and bring in a day) are access rules, which the organisation can lower.
+TABLE_UPLOAD_LIFE_HOURS = int(os.environ.get("MUNITAS_TABLE_UPLOAD_LIFE_HOURS", "24"))
+TABLE_UPLOAD_OPEN_PER_PERSON = int(os.environ.get("MUNITAS_TABLE_UPLOAD_OPEN_PER_PERSON", "3"))
+TABLE_UPLOAD_PER_HOUR = int(os.environ.get("MUNITAS_TABLE_UPLOAD_PER_HOUR", "20"))
+TABLE_UPLOAD_REFUSED_PER_HOUR = int(os.environ.get("MUNITAS_TABLE_UPLOAD_REFUSED_PER_HOUR", "10"))
+TABLE_UPLOAD_PARTS_IN_FLIGHT = int(os.environ.get("MUNITAS_TABLE_UPLOAD_PARTS_IN_FLIGHT", "4"))
+TABLE_UPLOAD_REQUESTS_IN_FLIGHT = int(os.environ.get("MUNITAS_TABLE_UPLOAD_REQUESTS_IN_FLIGHT", "16"))
+
+# A table about people is locked by the platform, as a table worker sends its rows (people_lock.py): the worker is told to send this many rows at a time,
+# and the platform refuses a batch larger than the other number. A batch is one round trip to the database to find the people, one to make the keys of the
+# new ones, and one to open them all, so larger is faster until a batch is slow enough to be noticed by everybody else.
+TABLE_LOCK_BATCH_ROWS = int(os.environ.get("MUNITAS_TABLE_LOCK_BATCH_ROWS", "5000"))
+TABLE_LOCK_MAX_ROWS = int(os.environ.get("MUNITAS_TABLE_LOCK_MAX_ROWS", "10000"))
+
 
 # A production start refuses the secrets this repository publishes. The storage keys the platform hands out (one per organisation, one per
 # job, the catalog's rolling keys) are DERIVED from the storage administrator's secret, and the worker token is what lets a caller seal a
@@ -270,8 +309,9 @@ TABLE_SHARED_QUEUE = "munitas-table-write"
 # production and the platform will not start until both are replaced. (It names the variables, never the values.)
 if os.environ.get("MUNITAS_ENV", "").strip().lower() == "production":
     _published = [name for name, weak in (
-        ("S3_ADMIN_SECRET", STORAGE_ADMIN[1] == "munitas-admin-secret"),
+        ("MUNITAS_S3_ADMIN_SECRET", STORAGE_ADMIN[1] == "munitas-admin-secret"),
         ("MUNITAS_WORKER_TOKEN", not WORKER_TOKEN or WORKER_TOKEN == "dev-worker-token-not-for-production"),
+        ("MUNITAS_OPA_TOKEN", not OPA_TOKEN or OPA_TOKEN == "dev-opa-token-not-for-production"),
     ) if weak]
     if _published:
         raise RuntimeError("MUNITAS_ENV is production, and these still hold the value published in this repository: "

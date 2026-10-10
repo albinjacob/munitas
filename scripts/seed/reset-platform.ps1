@@ -55,7 +55,7 @@
 #   .\scripts\seed\reset-platform.ps1
 
 param(
-    [string]$WslDistro = "Ubuntu-20.04"
+    [string]$WslDistro = "Munitas"
 )
 
 $ErrorActionPreference = "Stop"
@@ -72,7 +72,7 @@ $venvPython = Join-Path $RepoRoot ".venv\Scripts\python.exe"
 if (-not (Test-Path $venvPython)) {
     throw "No .venv at $venvPython. Reconnecting the logins runs on the host and needs it. Nothing was changed."
 }
-if (-not $env:PG_DSN) { $env:PG_DSN = "postgresql://munitas:munitas@localhost:$($Ports.postgres)/platform" }
+if (-not $env:MUNITAS_PG_DSN) { $env:MUNITAS_PG_DSN = "postgresql://munitas:munitas@localhost:$($Ports.postgres)/platform" }
 
 # Runs one step inside the distro and stops the script if it fails. Native
 # commands do not throw in Windows PowerShell, so without this check every

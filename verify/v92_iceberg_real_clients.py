@@ -13,10 +13,10 @@ query. Two independent engines, one set of rows, and the same answers from both:
 
 Runs on the host, because it uses tools the API container does not carry:
 
-    .venv\\Scripts\\python.exe -m pip install duckdb "pyiceberg[pyarrow]"
+    .venv\\Scripts\\python.exe -m pip install -r worker\\requirements-host-checks.txt
     .venv\\Scripts\\python.exe verify\\v92_iceberg_real_clients.py
 
-The host's PG_DSN, VERIFY_KRATOS and S3_ENDPOINT are set to the published
+The host's MUNITAS_PG_DSN, VERIFY_KRATOS and MUNITAS_S3_ENDPOINT are set to the published
 localhost ports when they are not already set. Per assertion, never in aggregate.
 """
 
@@ -32,9 +32,9 @@ from ports_config import PORTS  # noqa: E402
 
 # Before verify/common.py is imported, because it reads these at import. Newer S3
 # clients send uploads SeaweedFS stores wrongly unless told to send plain ones.
-os.environ.setdefault("PG_DSN", f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform")
+os.environ.setdefault("MUNITAS_PG_DSN", f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform")
 os.environ.setdefault("MUNITAS_VERIFY_KRATOS", f"http://localhost:{PORTS['kratos_public']}")
-os.environ.setdefault("S3_ENDPOINT", f"http://localhost:{PORTS['seaweedfs_s3']}")
+os.environ.setdefault("MUNITAS_S3_ENDPOINT", f"http://localhost:{PORTS['seaweedfs_s3']}")
 os.environ.setdefault("AWS_REQUEST_CHECKSUM_CALCULATION", "when_required")
 os.environ.setdefault("AWS_RESPONSE_CHECKSUM_VALIDATION", "when_required")
 sys.path.insert(0, str(Path(__file__).resolve().parent))

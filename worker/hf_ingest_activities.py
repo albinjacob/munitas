@@ -22,7 +22,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import httpx
-import psycopg
+from . import pgdb
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
@@ -36,7 +36,7 @@ MAX_UPLOAD_BYTES = 512 * 1024 * 1024
 
 @contextmanager
 def _db():
-    with psycopg.connect(config.PG_DSN, autocommit=True) as conn:
+    with pgdb.connect(config.PG_DSN, autocommit=True) as conn:
         yield conn
 
 

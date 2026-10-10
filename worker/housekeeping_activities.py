@@ -15,8 +15,8 @@ import logging
 import os
 from pathlib import Path
 
-import psycopg
-from psycopg.rows import dict_row
+from . import pgdb
+from .pgdb import dict_row
 from temporalio import activity
 from temporalio.client import Client
 
@@ -78,8 +78,8 @@ def close_stopped_pipeline_runs() -> dict:
     """
     async def go() -> dict:
         client = await asyncio.wait_for(Client.connect(config.TEMPORAL), timeout=10)
-        dsn = os.environ.get("PG_DSN", close_finished_pipeline_runs.PG_DSN)
-        with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        dsn = os.environ.get("MUNITAS_PG_DSN", close_finished_pipeline_runs.PG_DSN)
+        with pgdb.connect(dsn, row_factory=dict_row) as conn:
             return await close_finished_pipeline_runs.close_finished(client, conn, apply=True)
 
     result = asyncio.run(go())

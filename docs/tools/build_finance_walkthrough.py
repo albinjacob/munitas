@@ -45,9 +45,9 @@ STEPS = [
                 "and versions held back. A dataset is a named collection of records, and Munitas decides who "
                 "may read it. A version is one state of a dataset, and sealed means finished and closed for "
                 "good, so it can never be edited.",
-        "note": "The panel at the top left reads <strong>Lena, Data engineer, Organisation: finance</strong>, "
-                "with the note <strong>You see only what this organisation owns</strong>. The four counts "
-                "cover only the Finance organisation.",
+        "note": "The panel at the bottom left of the menu reads <strong>Lena</strong> and, under the name, "
+                "<strong>Data engineer</strong>, with <strong>Organisation</strong> <strong>finance</strong> below it. "
+                "The four counts cover only the Finance organisation.",
     },
     {
         "file": "03-register-filled.png", "actor": "lena",
@@ -107,8 +107,8 @@ STEPS = [
         "file": "08-agent-version-sealed.png", "actor": "lena",
         "title": "Lena uploads a new version of the program's code",
         "screen": "Agent detail &middot; /agents/&lt;id&gt;",
-        "text": "Lena uploads a new version of the program's code. The only tool it may use is <code>read_dataset_version</code>, and it calls no AI model. The sample program prints one fixed result, so this walkthrough follows the permission flow and not real scoring. Older versions below come from earlier recordings.",
-        "note": "The newest version is at the top, with a <strong>Deploy</strong> button. The version below it is labelled <strong>active</strong>, which marks the one that runs when somebody starts the program.",
+        "text": "Lena uploads a new version of the program's code. The only tool it may use is <code>read_dataset_version</code>, and it calls no AI model. The sample program prints one fixed result, so this walkthrough follows the permission flow and not real scoring. This is the program's first version, so the table has one row.",
+        "note": "The table has one row, <strong>v1</strong>, with the model <strong>none</strong>, the source path <strong>sandboxed &middot; main.py</strong> and a <strong>Deploy</strong> button at the end of the row. Nothing has been deployed yet, so no version carries a green label as the one that runs.",
     },
     {
         "file": "09-run-warned.png", "actor": "lena",
@@ -145,7 +145,7 @@ STEPS = [
                 "Fraud Operations data.",
         "note": "<strong>Waiting for your decision</strong> counts <strong>1</strong>, and the card names "
                 "<strong>kyc-identity-documents v1</strong>. The section <strong>What you are answerable "
-                "for</strong> reads <strong>2 datasets belong to Risk &amp; Compliance</strong>.",
+                "for</strong> reads <strong>1 dataset belongs to Risk &amp; Compliance</strong>.",
     },
     {
         "file": "13-deep-link-refused.png", "actor": "naomi",
@@ -156,8 +156,8 @@ STEPS = [
                 "the same answer for an address that was never valid, so it does not even confirm that the "
                 "version is there.",
         "note": "The red panel reads <strong>Could not load this version</strong> and, under it, "
-                "<code>no such dataset version</code>. The panel at the top left still reads <strong>Naomi, "
-                "Data custodian for Risk &amp; Compliance, Organisation: finance</strong>.",
+                "<code>no such dataset version</code>. The panel at the bottom left of the menu still reads <strong>Naomi</strong>, "
+                "<strong>Data custodian for Risk &amp; Compliance</strong> and <strong>Organisation</strong> <strong>finance</strong>.",
     },
     {
         "file": "14-omar-finds-a-request-form.png", "actor": "omar",
@@ -197,7 +197,7 @@ STEPS = [
         "file": "17-any-purpose-granted.png", "actor": "marcus",
         "title": "Marcus grants it, and the record says what it covers",
         "screen": "Home &middot; the custodian's home page",
-        "text": "The request moves to the top of <strong>What you have decided</strong>, with a label that records the choice. Separately, the capture script asked the platform whether Omar could read the digest for a purpose that nobody mentioned when Marcus approved, an unplanned spot-check, and the policy allowed it. That check has no screen of its own.",
+        "text": "The request moves to the top of <strong>What you have decided</strong>, with a label that records the choice. Separately, a script asked the platform whether Omar could read the digest for a purpose that nobody mentioned when Marcus approved, an unplanned spot-check, and the policy allowed it. That check has no screen of its own.",
         "note": "The top decision reads <strong>Granted</strong>, with <strong>covers any purpose</strong>, a time until which it stays open, and a <strong>Revoke</strong> link.",
     },
 ]

@@ -74,6 +74,12 @@ export function Empty({ what, hint }: { what: string; hint?: string }) {
  * sentence, because each reason is a separate fact and the reader usually needs
  * one specific one.
  */
+/** A reason from the platform is a lower-case clause; on a screen it reads as a sentence. */
+function sentenceOf(reason: string): string {
+  const text = reason.trim();
+  return text.charAt(0).toUpperCase() + text.slice(1) + (/[.!?]$/.test(text) ? "" : ".");
+}
+
 export function Failure({
   error,
   what,
@@ -102,7 +108,17 @@ export function Failure({
       <p className="font-semibold">
         Could not {verb} {what}.
       </p>
-      {api?.reasons.length ? (
+      {api && api.status >= 500 ? (
+        <>
+          <p className="mt-2">{api.reasons[0] ? sentenceOf(api.reasons[0]) : "The platform ran into a problem it did not expect."}</p>
+          <p className="mt-1">Nothing on your side is wrong. Try again in a moment, and if it keeps happening tell whoever runs the platform.</p>
+          {api.requestId && (
+            <p className="mt-2 text-xs text-red-800">
+              Quote this reference so they can find it: <span className="font-mono" data-testid="failure-reference">{api.requestId}</span>
+            </p>
+          )}
+        </>
+      ) : api?.reasons.length ? (
         <>
           <p className="mt-2">It was refused, for these reasons:</p>
           <ul className="mt-1 list-disc pl-5">
@@ -111,18 +127,21 @@ export function Failure({
             ))}
           </ul>
         </>
-      ) : (
+      ) : api ? (
+        <p className="mt-2">{api.message}</p>
+      ) : error instanceof TypeError ? null : (
+        // A browser's own wording for "nothing came back" ("Failed to fetch") says nothing a person can use; the sentence below says it.
         <p className="mt-1 font-mono text-xs">
           {error instanceof Error ? error.message : String(error)}
         </p>
       )}
-      {api?.status === 0 || !api ? (
+      {!api ? (
         // No shell command here. Somebody reading this screen is doing their
         // job, not operating the platform, and telling them to run a container
         // command is an instruction they cannot act on and did not ask for.
         <p className="mt-2 text-xs text-red-800">
-          If nothing on this page loads, the platform is not responding. Whoever
-          runs it will need to look.
+          This page could not reach the platform, and nothing came back. If nothing on this page loads, the platform is probably stopped or
+          restarting. Whoever runs it will need to look.
         </p>
       ) : null}
     </div>

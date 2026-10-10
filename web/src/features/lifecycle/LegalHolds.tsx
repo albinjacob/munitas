@@ -34,10 +34,14 @@ const STATUS_COPY: Record<Hold["status"], { label: string; tone: string }> = {
   released: { label: "Released", tone: "bg-slate-200 text-slate-800" },
 };
 
+/** How many deletion records the page shows before the rest are asked for: a long history should not bury the holds above it. */
+const DELETIONS_SHOWN = 5;
+
 export function LegalHolds() {
   const { principal } = useIdentity();
   const holds = useHolds(Boolean(principal));
   const deletions = useDeletions(Boolean(principal));
+  const [showAllDeletions, setShowAllDeletions] = useState(false);
 
   if (!principal) return <Loading what="your identity" />;
   if (holds.isLoading) return <Loading what="legal holds" />;
@@ -106,7 +110,7 @@ export function LegalHolds() {
           <Empty what="deletions" hint="No organisation has been deleted yet." />
         ) : (
           <div data-testid="deletion-records" className="space-y-3">
-            {deletions.data!.deletions.map((d) => (
+            {deletions.data!.deletions.slice(0, showAllDeletions ? undefined : DELETIONS_SHOWN).map((d) => (
               <div key={d.tenant_id} data-deletion={d.original_tenant_id ?? d.tenant_id} className="rounded border border-slate-200 bg-white p-3 text-sm">
                 <div className="font-medium">{d.original_tenant_id ?? d.tenant_id}</div>
                 <p className="mt-1 text-xs text-slate-500">
@@ -138,6 +142,18 @@ export function LegalHolds() {
                 )}
               </div>
             ))}
+            {deletions.data!.deletions.length > DELETIONS_SHOWN && (
+              <button
+                type="button"
+                data-testid="deletions-toggle"
+                onClick={() => setShowAllDeletions(!showAllDeletions)}
+                className="text-sm text-sky-700 underline"
+              >
+                {showAllDeletions
+                  ? `Show only the ${DELETIONS_SHOWN} most recent`
+                  : `Show all ${deletions.data!.deletions.length} deleted organisations`}
+              </button>
+            )}
           </div>
         )}
       </Section>
@@ -387,6 +403,11 @@ function PlaceHold() {
           >
             {place.isPending ? "Recording" : "Record the legal hold"}
           </button>
+          {!ready && (
+            <span className="ml-3 text-xs text-slate-500" data-testid="hold-why-disabled">
+              Fill in every field except the two record dates to record the hold.
+            </span>
+          )}
           {place.error && (
             <div className="mt-3">
               <Failure error={place.error} what="this legal hold" verb="record" />

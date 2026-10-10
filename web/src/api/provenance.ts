@@ -21,8 +21,8 @@ export const PROVENANCE: { value: Provenance; label: string; hint: string }[] = 
   },
   {
     value: "internal_regulated",
-    label: "Collected here, regulated",
-    hint: "Recordings, records or any data about identifiable people. The usual case.",
+    label: "Collected by this organisation, regulated",
+    hint: "Files, records or any data about identifiable people, collected by this organisation. The usual case.",
   },
 ];
 

@@ -48,7 +48,7 @@ from pydantic import BaseModel
 
 import tablewriter
 
-from . import auth, config, db, grants, iceberg, logs, models, opa, storage, task_credential, temporal_client, versions
+from . import access_rules, auth, config, db, grants, group_sizes, iceberg, logs, models, opa, people_lock, person_keys, storage, task_credential, temporal_client, versions
 
 log = logs.get_logger("table_jobs")
 router = APIRouter()
@@ -157,7 +157,8 @@ def _shown(job: dict) -> dict:
         "stalled": waiting is not None and waiting > config.TABLE_JOB_STALL_SECONDS,
         # The version exists only once the job is sealed. Until then it is the id the version will have.
         "version_id": str(job["version_id"]) if job["status"] == "sealed" and job["version_id"] else None,
-        "outcome": job["outcome"], "reason": job["reason"],
+        "outcome": job["outcome"], "reason": job["reason"], "problems": job.get("problems") or [],
+        "ready": job.get("ready", True), "progress": job.get("progress"), "brought_in_by": job.get("created_by"),
         "status_url": f"/table-jobs/{job['id']}",
     }, default=str))
 
@@ -235,7 +236,10 @@ def work(job_id: str, claim: task_credential.TaskClaim = Depends(_claim)) -> dic
         "version": job["version"], "storage_prefix": job["storage_prefix"], "bucket": storage.bucket_for(backend, tenant_id),
         "location": iceberg.table_location(backend, tenant_id, job["storage_prefix"]),
         "table_name": iceberg.table_name_for(job["version"]), "records_key": request["records_key"],
+        "records_options": request.get("records_options"),
         "contract": contract,
+        # For a table about people: how the worker reads the file and what it sends to be locked. The worker never holds a key.
+        "lock": ({k: v for k, v in request["lock"].items() if k != "subject_kind"} | {"batch_rows": config.TABLE_LOCK_BATCH_ROWS}) if request.get("lock") else None,
         "summary_base": iceberg.summary_base(tenant_id=tenant_id, dataset_id=str(job["dataset_id"]), version_id=str(job["version_id"]),
                                              version=job["version"], produced_by_run=request.get("produced_by_run")),
         "settings": dataclasses.asdict(cfg), "endpoint": config.S3_ENDPOINT, "expires_at": job["expires_at"].isoformat(),
@@ -247,7 +251,9 @@ def credentials(job_id: str, claim: task_credential.TaskClaim = Depends(_claim))
     """The job's own storage key. 202 while the key is not yet in the live permissions document."""
     job = _owned(job_id, claim)
     _active_or_409(job)
-    if not grants.is_active(job["created_at"]):
+    # In force once a print that started after the job could be given its key has finished. An upload is given its key only when it is finished, so for
+    # one it is that moment, and not the moment it was opened: a print in between does not hold the key.
+    if not grants.is_active(job.get("ready_at") or job["created_at"]):
         try:
             grants.reconcile(trigger="request")
         except Exception:  # noqa: BLE001 - the same answer the write credential gives
@@ -262,9 +268,57 @@ def credentials(job_id: str, claim: task_credential.TaskClaim = Depends(_claim))
             "prefix": job["storage_prefix"]}
 
 
+class ProgressIn(BaseModel):
+    phase: str | None = None
+    rows: int | None = None
+
+
+@router.post("/table-jobs/{job_id}/progress")
+def progress(job_id: str, body: ProgressIn, claim: task_credential.TaskClaim = Depends(_claim)) -> dict:
+    """The worker says how far it has got. The answer says whether to carry on: it does not once the job has ended, so a cancelled job is not written."""
+    job = _owned(job_id, claim)
+    if job["status"] not in ACTIVE or job["expires_at"] < _now():
+        return {"continue": False}
+    db.execute("update table_job set progress = %s where id = %s", (json.dumps({"phase": body.phase, "rows": body.rows}), job_id))
+    return {"continue": True}
+
+
+class LockIn(BaseModel):
+    subjects: list[str]
+    record_ids: list[str]
+    columns: dict[str, list]
+
+
+@router.post("/table-jobs/{job_id}/lock")
+def lock(job_id: str, body: LockIn, claim: task_credential.TaskClaim = Depends(_claim)) -> dict:
+    """A worker sends rows of a table about people to be locked: it gets back each row's person code and the cells of the locked columns, locked under the key of
+    the row's person. The keys are found or made and opened here, and never leave."""
+    job = _owned(job_id, claim)
+    _active_or_409(job)
+    request = job["request"] if isinstance(job["request"], dict) else json.loads(job["request"])
+    plan = request.get("lock")
+    if not plan:
+        raise HTTPException(409, {"reasons": ["this job is not a table about people, so it has nothing to lock"]})
+    n = len(body.subjects)
+    if not 1 <= n <= config.TABLE_LOCK_MAX_ROWS:
+        raise HTTPException(422, {"reasons": [f"a batch holds from 1 to {config.TABLE_LOCK_MAX_ROWS} rows"]})
+    if len(body.record_ids) != n or set(body.columns) != set(plan["locked"]) or any(len(v) != n for v in body.columns.values()):
+        raise HTTPException(422, {"reasons": ["a batch names every row's person and id, and exactly the columns the contract locks, each with a value for every row"]})
+    tenant_id = str(job["tenant_id"])
+    try:
+        codes, locked = people_lock.lock_rows(
+            person_keys.key_service(), tenant_id=tenant_id, kind=plan["subject_kind"], subjects=body.subjects, record_ids=body.record_ids, columns=body.columns,
+            actor=job["created_by"] or "a table job", purpose=f"lock a batch of a table (dataset {job['dataset_id']}) for job {job_id}")
+    except people_lock.PersonGone as exc:
+        raise HTTPException(409, {"reasons": [str(exc)]}) from exc
+    return {"codes": codes, "columns": locked}
+
+
 class FinishIn(BaseModel):
-    outcome: Literal["written", "skipped", "failed"]
+    outcome: Literal["written", "skipped", "failed", "refused"]
+    group_report: dict | None = None
     reason: str | None = None
+    problems: list[str] | None = None
     blocking: bool = True
     metadata_location: str | None = None
     snapshot_id: int | None = None
@@ -293,6 +347,13 @@ def _finish(job: dict, body: FinishIn) -> dict:
         return _shown(_job_row(job_id))
 
     projection, why = None, None
+    if body.outcome == "refused":
+        # The rows do not fit the contract. Nothing is sealed, whatever the request said about requiring a table: a refusal is about the data.
+        discard(job)
+        problems = [str(p)[:400] for p in (body.problems or [])][:101]
+        _end(job_id, "refused", "refused", (body.reason or "The rows were not accepted.")[:400], problems)
+        log.info("table job refused: the rows do not fit the contract", extra={"tenant_id": tenant_id, "job_id": job_id, "count": len(problems)})
+        return _shown(_job_row(job_id))
     if body.outcome == "written":
         projection, why = _verified(job, body)
     else:
@@ -302,22 +363,67 @@ def _finish(job: dict, body: FinishIn) -> dict:
     try:
         iceberg.enforce(why, request.get("table_required"))
     except iceberg.TableRequired as exc:
-        _clear_folder(job)
-        _end(job_id, "refused", exc.outcome, exc.reason)
+        discard(job)
+        _end(job_id, "refused", exc.outcome, exc.reason, exc.problems)
         log.info("table job refused", extra={"tenant_id": tenant_id, "job_id": job_id, "outcome": exc.outcome})
         return _shown(_job_row(job_id))
 
     if projection is None:
         _clear_folder(job)  # a version sealed without a table has nothing of the table under its folder
     manifest = list(request.get("object_manifest") or []) + (projection.objects if projection else [])
+    visibility_class = request["visibility_class"]
+    people = bool(request.get("lock"))
+    if request.get("from_upload"):
+        # A person's file: it joins the manifest with the hash the worker read it by, and the level is the one the dataset's owner has earned now,
+        # at the moment of sealing (the most restricted unless an approver has already agreed with a claim of something less). A file of a table about
+        # people is not kept: it holds the identifiers in the clear, and what is kept is the table, with them locked. Its level is always the most restricted.
+        from . import ingest
+
+        upload = job["upload"] if isinstance(job["upload"], dict) else json.loads(job["upload"])
+        if not people:
+            manifest = [{"key": request["records_key"], "bytes": upload["size_bytes"], "sha256": projection.records_sha256}] + manifest
+        visibility_class = "RAW" if people else ingest.sealed_class(db.one("select * from dataset where id = %s", (job["dataset_id"],)))
     sealed = versions.insert_sealed(
         version_id=str(job["version_id"]), tenant_id=tenant_id, dataset_id=str(job["dataset_id"]), version=job["version"], prefix=prefix,
-        storage_backend=backend, visibility_class=request["visibility_class"], manifest=manifest, schema_id=request["schema_id"],
-        produced_by_run=request.get("produced_by_run"), record_count=request.get("record_count") or 0, projection=projection, why=why)
+        storage_backend=backend, visibility_class=visibility_class, manifest=manifest, schema_id=request["schema_id"],
+        produced_by_run=request.get("produced_by_run"),
+        record_count=request.get("record_count") or (projection.record_count if projection else 0), projection=projection, why=why)
+    if people and projection:
+        group_sizes.record(tenant_id, str(job["version_id"]), body.group_report)
+        _remove_staged(job, request)
+    if request.get("from_upload") and projection:
+        db.execute("insert into dataset_source (id, dataset_id, kind, locator, checksum, bytes, fetched_by) values (%s, %s, 'upload', %s, %s, %s, %s) returning id",
+                   (str(uuid.uuid4()), str(job["dataset_id"]), upload["file_name"], projection.records_sha256, upload["size_bytes"], job["created_by"]))
+    db.execute("update table_job set progress = %s where id = %s", (json.dumps({"phase": "done", "rows": projection.record_count if projection else None}), job_id))
     _end(job_id, "sealed", "written" if projection else why[0], None if projection else why[1])
     log.info("table job sealed", extra={"tenant_id": tenant_id, "job_id": job_id, "dataset_version_id": sealed["id"],
                                                     "outcome": "with a table" if projection else "without a table"})
     return _shown(_job_row(job_id))
+
+
+def _remove_staged(job: dict, request: dict) -> None:
+    """Delete the file a person sent for a table about people, now that the table is sealed. It holds the identifiers in the clear."""
+    try:
+        backend, tenant_id = job["storage_backend"], str(job["tenant_id"])
+        storage.admin_client_for(backend, tenant_id).delete_object(Bucket=storage.bucket_for(backend, tenant_id), Key=request["records_key"])
+    except Exception as exc:  # noqa: BLE001
+        log.error("the file sent for a table about people could not be removed", extra={"job_id": str(job["id"]), "error_type": type(exc).__name__})
+
+
+def _report_problem(report: object, plan: dict, rows: int) -> str | None:
+    """Why a group-size report from a worker cannot be recorded, or None when it can. It is advice and holds counts only, but it is shown to people who
+    decide on it, so its shape and its agreement with the contract are checked here."""
+    if not isinstance(report, dict):
+        return "it carried no group-size report"
+    whole = lambda v: isinstance(v, int) and not isinstance(v, bool) and v >= 0  # noqa: E731
+    if report.get("columns") != plan["counted"] or report.get("threshold") != plan["threshold"]:
+        return "its group-size report was not made for the contract's columns and threshold"
+    if not (whole(report.get("people")) and 1 <= report["people"] <= rows and whole(report.get("groups")) and whole(report.get("groups_below"))
+            and whole(report.get("people_in_small_groups")) and report["people_in_small_groups"] <= report["people"]
+            and (report.get("smallest_group") is None or whole(report["smallest_group"])) and isinstance(report.get("advice"), list)
+            and all(isinstance(a, dict) and a.get("lock") in plan["counted"] and whole(a.get("people_in_small_groups_after")) for a in report["advice"])):
+        return "its group-size report was not in the shape a report has"
+    return None
 
 
 def _verified(job: dict, body: FinishIn):
@@ -353,6 +459,10 @@ def _verified(job: dict, body: FinishIn):
         return failed(f"the folder holds {len(stored - used)} data files the table does not use and lacks {len(used - stored)} it does")
     # The producer declared a hash for the records file when it sealed. The worker read that file, so the two must agree.
     request = job["request"] if isinstance(job["request"], dict) else json.loads(job["request"])
+    if request.get("lock"):
+        problem = _report_problem(body.group_report, request["lock"], body.record_count)
+        if problem:
+            return failed(problem)
     declared = next((o.get("sha256") for o in request.get("object_manifest") or [] if o.get("key") == request.get("records_key")), None)
     if declared and declared != body.records_sha256:
         return failed("the records file is not the one the producer declared, because its hash differs from the manifest")
@@ -361,6 +471,27 @@ def _verified(job: dict, body: FinishIn):
         namespace=dataset["name"], table_name=iceberg.table_name_for(job["version"]), location=location,
         metadata_location=body.metadata_location, snapshot_id=body.snapshot_id, record_count=body.record_count,
         records_sha256=body.records_sha256, objects=objects), None
+
+
+def discard(job: dict) -> None:
+    """Throw away what a job left in storage when it ends without a version: the parts of an upload that was not finished, the file that was sent, and
+    anything written of the table. A step that fails is logged and does not undo the decision to end the job."""
+    request = job["request"] if isinstance(job["request"], dict) else json.loads(job["request"])
+    upload = job.get("upload")
+    upload = json.loads(upload) if isinstance(upload, str) else upload
+    try:
+        backend, tenant_id = job["storage_backend"], str(job["tenant_id"])
+        client, bucket = storage.admin_client_for(backend, tenant_id), storage.bucket_for(backend, tenant_id)
+        if upload and not job.get("ready"):
+            try:
+                client.abort_multipart_upload(Bucket=bucket, Key=request["records_key"], UploadId=upload["storage_upload"])
+            except Exception:  # noqa: BLE001 - storage may have dropped it already
+                pass
+        if request.get("from_upload"):
+            client.delete_object(Bucket=bucket, Key=request["records_key"])
+    except Exception as exc:  # noqa: BLE001
+        log.error("what an upload left in storage could not be removed", extra={"job_id": str(job["id"]), "error_type": type(exc).__name__})
+    _clear_folder(job)
 
 
 def _clear_folder(job: dict) -> None:
@@ -374,9 +505,10 @@ def _clear_folder(job: dict) -> None:
         log.error("a table job's folder could not be cleared", extra={"job_id": str(job["id"]), "error_type": type(exc).__name__})
 
 
-def _end(job_id: str, status: str, outcome: str | None, reason: str | None) -> None:
-    db.execute("update table_job set status = %s, outcome = %s, reason = %s, finished_at = now() "
-               "where id = %s and status in ('pending', 'running', 'sealed')", (status, outcome, reason, job_id))
+def _end(job_id: str, status: str, outcome: str | None, reason: str | None, problems: list[str] | None = None) -> None:
+    db.execute("update table_job set status = %s, outcome = %s, reason = %s, problems = %s, finished_at = now() "
+               "where id = %s and status in ('pending', 'running', 'sealed')",
+               (status, outcome, reason, json.dumps(problems) if problems else None, job_id))
 
 
 def _drop_key() -> None:
@@ -393,9 +525,15 @@ def _drop_key() -> None:
 async def dispatch_once() -> int:
     """Start the workflow of every job that has none yet, and expire the ones nobody finished in time."""
     started = 0
-    for job in db.all_rows("select id, tenant_id, queue, expires_at from table_job where status = 'pending' and dispatched_at is null "
-                           "order by created_at limit 20"):
+    # An organisation's tables are written a few at a time (its own limit), and the rest wait their turn, oldest first: a job is handed out only while
+    # the organisation has fewer being written than it may. A job whose file is still being sent is not handed out at all.
+    active = {str(r["tenant_id"]): r["n"] for r in db.all_rows(
+        "select tenant_id, count(*) as n from table_job where status in ('pending', 'running') and dispatched_at is not null group by tenant_id")}
+    for job in db.all_rows("select id, tenant_id, queue, expires_at from table_job where status = 'pending' and dispatched_at is null and ready "
+                           "order by created_at limit 50"):
         job_id, tenant_id = str(job["id"]), str(job["tenant_id"])
+        if active.get(tenant_id, 0) >= int(access_rules.in_force(tenant_id)["table_uploads.jobs_at_once"]["value"]):
+            continue
         left = max(60, int((job["expires_at"] - _now()).total_seconds()))
         credential = task_credential.mint(principal=f"{tenant_id}-table-writer", task_kind=KIND, task_id=job_id,
                                           tenant_id=tenant_id, ttl_seconds=left)
@@ -410,6 +548,7 @@ async def dispatch_once() -> int:
                 log.error("a table job could not be handed to its workers yet", extra={"job_id": job_id, "error_type": type(exc).__name__})
                 continue
         db.execute("update table_job set dispatched_at = now() where id = %s", (job_id,))
+        active[tenant_id] = active.get(tenant_id, 0) + 1
         started += 1
     if await asyncio.to_thread(expire_due):
         await asyncio.to_thread(_drop_key)
@@ -420,10 +559,11 @@ def expire_due() -> int:
     """A job that nobody finished in time has no version, and its number and folder are free again."""
     rows = db.all_rows(
         """update table_job set status = 'expired', outcome = 'expired', finished_at = now(),
-                  reason = 'Nobody finished writing the table in time, so no version was made.'
+                  reason = case when upload is not null and not ready then 'The upload was not finished in time, so nothing was brought in.'
+                                else 'Nobody finished writing the table in time, so no version was made.' end
             where status in ('pending', 'running') and expires_at < now() returning *""")
     for row in rows:
-        _clear_folder(row)
+        discard(row)
         log.error("a table job ran out of time", extra={"tenant_id": str(row["tenant_id"]), "job_id": str(row["id"])})
     return len(rows)
 

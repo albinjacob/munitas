@@ -25,7 +25,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import httpx  # noqa: E402
-import psycopg  # noqa: E402
+import pgdb  # noqa: E402
 
 from agent.graph import build_graph  # noqa: E402
 from agent.identity import AgentIdentity, Budget  # noqa: E402
@@ -57,7 +57,7 @@ def check(label: str, ok: bool, detail: str = "") -> None:
 
 
 def fixture() -> tuple[str, str]:
-    with psycopg.connect(PG_DSN, autocommit=True) as conn:
+    with pgdb.connect(PG_DSN, autocommit=True) as conn:
         conn.execute(
             """insert into tenant (id, isolation_level, key_ref, purpose)
                values (%s,'shared',%s,'canary') on conflict (id) do nothing""",

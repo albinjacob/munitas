@@ -14,16 +14,11 @@ import json
 import subprocess
 from pathlib import Path
 
-import boto3
 import httpx
-from botocore.config import Config
 
 from . import config
 from .contracts import Contract
-
-
-class ControlPlaneError(Exception):
-    pass
+from .locked_file_open import ControlPlaneError, RangeFile, FileErased, open_remote  # noqa: F401  (re-exported: steps catch them from here)
 
 
 def _post(path: str, payload: dict) -> dict:
@@ -71,6 +66,9 @@ def s3_scoped(task_credential: str, dataset_version_id: str, tenant_id: str,
     role's key for its organisation, which opens that organisation's whole
     bucket for reading.
     """
+    import boto3
+    from botocore.config import Config  # imported here, so the sandbox worker (which has no storage library) can import this module
+
     response = httpx.post(f"{config.API}/credentials", json={
         "principal": principal, "principal_kind": "workload",
         "roles": [config.PIPELINE_ROLE], "tenant_id": tenant_id,
@@ -90,11 +88,11 @@ def s3_scoped(task_credential: str, dataset_version_id: str, tenant_id: str,
         )
 
     creds = response.json()
-    # config.S3_ENDPOINT, not creds["endpoint"]: the API answers with its own
+    # config.MUNITAS_S3_ENDPOINT, not creds["endpoint"]: the API answers with its own
     # internal view of storage (the Docker-network hostname, "seaweedfs",
     # reachable from inside the containers it runs among), and this worker
     # runs on the host, which reaches the same SeaweedFS through a published
-    # port on localhost instead -- config.S3_ENDPOINT already knows which of
+    # port on localhost instead -- config.MUNITAS_S3_ENDPOINT already knows which of
     # those it is, the same way the writer below never trusts a caller-supplied
     # endpoint either.
     return boto3.client(
@@ -106,6 +104,24 @@ def s3_scoped(task_credential: str, dataset_version_id: str, tenant_id: str,
         config=Config(signature_version="s3v4"),
         region_name="us-east-1",
     )
+
+
+def write_credentials(task_credential: str, dataset_id: str, tenant_id: str, principal: str, purpose: str) -> dict:
+    """The write key the platform grants a real task for one dataset's next version: the key, its secret, the bucket and the folder it opens.
+
+    Raises CredentialPending when the grant is allowed but storage permissions have not caught up yet, and ControlPlaneError when it is refused.
+    """
+    response = httpx.post(f"{config.API}/write-credentials", json={
+        "principal": principal, "principal_kind": "workload",
+        "roles": [config.PIPELINE_ROLE], "tenant_id": tenant_id,
+        "dataset_id": dataset_id, "purpose": purpose,
+        "task_credential": task_credential,
+    }, timeout=30.0, headers={"x-worker-token": config.WORKER_TOKEN}, verify=config.api_verify())
+    if response.status_code == 202:
+        raise CredentialPending(f"storage permissions for writing dataset {dataset_id} are not active yet: {response.json()}")
+    if response.status_code >= 400:
+        raise ControlPlaneError(f"/write-credentials refused this write: HTTP {response.status_code} {response.text[:300]}")
+    return response.json()
 
 
 def s3_scoped_write(task_credential: str, dataset_id: str, tenant_id: str,
@@ -124,25 +140,10 @@ def s3_scoped_write(task_credential: str, dataset_id: str, tenant_id: str,
     from what the platform can verify, never from the caller's own say-so"
     rule s3_scoped's own read-scope check already applies.
     """
-    response = httpx.post(f"{config.API}/write-credentials", json={
-        "principal": principal, "principal_kind": "workload",
-        "roles": [config.PIPELINE_ROLE], "tenant_id": tenant_id,
-        "dataset_id": dataset_id, "purpose": purpose,
-        "task_credential": task_credential,
-    }, timeout=30.0, headers={"x-worker-token": config.WORKER_TOKEN}, verify=config.api_verify())
+    import boto3
+    from botocore.config import Config
 
-    if response.status_code == 202:
-        raise CredentialPending(
-            f"storage permissions for writing dataset {dataset_id} are not "
-            f"active yet: {response.json()}"
-        )
-    if response.status_code >= 400:
-        raise ControlPlaneError(
-            f"/write-credentials refused this write: HTTP {response.status_code} "
-            f"{response.text[:300]}"
-        )
-
-    creds = response.json()
+    creds = write_credentials(task_credential, dataset_id, tenant_id, principal, purpose)
     return boto3.client(
         "s3",
         endpoint_url=config.S3_ENDPOINT,
@@ -353,7 +354,10 @@ def put_json(client, key: str, payload: object, bucket: str) -> dict:
 
 
 def put_file(client, key: str, path: Path, bucket: str) -> dict:
-    body = path.read_bytes()
+    return put_bytes(client, key, path.read_bytes(), bucket)
+
+
+def put_bytes(client, key: str, body: bytes, bucket: str) -> dict:
     client.put_object(Bucket=bucket, Key=key, Body=body)
     return {"key": key, "bytes": len(body), "sha256": hashlib.sha256(body).hexdigest()}
 
@@ -375,6 +379,53 @@ def step_reader(task_credential: str, version_ids: list[str], tenant_id: str, pr
 
 def read_json(client, bucket: str, key: str) -> object:
     return json.loads(client.get_object(Bucket=bucket, Key=key)["Body"].read())
+
+
+_locked_versions: dict[str, bool] = {}
+
+
+def files_are_locked(version_id: str) -> bool:
+    """Whether this version's recordings are stored locked under their patients' keys. Asked once per version and remembered for the process."""
+    if version_id not in _locked_versions:
+        response = httpx.get(f"{config.API}/internal/dataset-versions/{version_id}/locked-files", timeout=30.0,
+                             headers={"x-worker-token": config.WORKER_TOKEN}, verify=config.api_verify())
+        if response.status_code >= 400:
+            raise ControlPlaneError(f"asking whether {version_id} is locked returned {response.status_code}: {response.text[:300]}")
+        _locked_versions[version_id] = bool(response.json()["locked"])
+    return _locked_versions[version_id]
+
+
+def open_file(reader, bucket: str, key: str, *, version_id: str, record_id: str, tenant_id: str, principal: str, task_credential: str,
+                   purpose: str, kind: str = "audio") -> RangeFile:
+    """The recording (or its answer key) as a file to read, whether the version stores it plain or locked, and never written to this machine's disk.
+
+    A plain one is read from storage a block at a time. A locked one is stored as ciphertext, so the platform opens it: it checks that this task was
+    launched with the version as an input, unwraps the patient's key (the opening is logged with the task named, once), and returns each range that
+    is read. The key never leaves the platform. A patient who was erased raises RecordingErased, at the opening or at any later read.
+    Use it as `with open_recording(...) as audio:`.
+    """
+    if files_are_locked(version_id):
+        return open_remote(principal=principal, tenant_id=tenant_id, task_credential=task_credential, version_id=version_id, record_id=record_id,
+                           purpose=purpose, kind=kind)
+
+    def fetch(offset: int, length: int) -> bytes:
+        return reader.get_object(Bucket=bucket, Key=key, Range=f"bytes={offset}-{offset + length - 1}")["Body"].read()
+
+    # The size from the first byte's answer, so a read-only key that cannot ask for an object's details is enough.
+    probe = reader.get_object(Bucket=bucket, Key=key, Range="bytes=0-0")
+    size = int(probe["ContentRange"].rsplit("/", 1)[1])
+    probe["Body"].read()
+    return RangeFile(size, fetch)
+
+
+def read_answer_key(reader, bucket: str, key: str, *, version_id: str, record_id: str, tenant_id: str, principal: str, task_credential: str,
+                    purpose: str) -> object:
+    """A recording's answer key as parsed JSON, whether its version stores it plain or locked. A locked one is opened by the platform, like audio."""
+    if not files_are_locked(version_id):
+        return read_json(reader, bucket, key)
+    with open_remote(principal=principal, tenant_id=tenant_id, task_credential=task_credential, version_id=version_id, record_id=record_id,
+                     purpose=purpose, kind="answer_key") as source:
+        return json.loads(source.read().decode("utf-8"))
 
 
 _code_hash: str | None = None

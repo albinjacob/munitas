@@ -33,17 +33,10 @@ import {
 } from "../../api/housekeeping";
 import { Empty, Failure, Loading, Section } from "../../components/states";
 import { useIdentity } from "../../identity/IdentityContext";
+import { size } from "../../lib/size";
+import { sentence } from "../../lib/text";
+import { when } from "../../lib/when";
 
-/** Bytes as somebody reading a screen would say them. */
-function size(bytes: number): string {
-  if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(1)} MB`;
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${bytes} bytes`;
-}
-
-function when(iso: string): string {
-  return new Date(iso).toLocaleString();
-}
 
 /**
  * What an organisation is, in the reader's words.
@@ -152,7 +145,7 @@ export function Housekeeping() {
   // rather than replaced with a generic apology.
   if (!platform.isLoading && !own.isLoading && !seesPlatform && !seesOwn) {
     return (
-      <div className="p-6">
+      <div>
         <h1 className="mb-4 text-xl font-semibold text-slate-900">
           Storage housekeeping
         </h1>
@@ -165,7 +158,7 @@ export function Housekeeping() {
   }
 
   return (
-    <div className="p-6">
+    <div>
       <h1 className="text-xl font-semibold text-slate-900">
         Storage housekeeping
       </h1>
@@ -196,7 +189,7 @@ function TableJobsSection({ jobs, named }: { jobs: TableJobs; named: boolean }) 
   const minutes = Math.round(jobs.stall_seconds / 60);
   return (
     <Section
-      title="Tables being written"
+      title={named ? "Tables being written in this organisation" : "Tables being written, all organisations"}
       description="A large table is written by a worker and its version is sealed when the worker has finished. A job that waits for a worker for longer than the limit is reported here."
     >
       {jobs.alert && (
@@ -227,19 +220,19 @@ function TableJobsSection({ jobs, named }: { jobs: TableJobs; named: boolean }) 
         ))}
       </dl>
       {jobs.waiting.length > 0 && (
-        <table data-testid="table-jobs-waiting" className="mt-4 w-full text-sm">
+        <div className="data-card mt-4"><table data-testid="table-jobs-waiting" className="data-table">
           <thead>
             <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
-              <th className="pb-2 pr-4">{named ? "Dataset" : "Organisation"}</th>
-              <th className="pb-2 pr-4">State</th>
-              <th className="pb-2">Waiting for</th>
+              <th>{named ? "Dataset" : "Organisation"}</th>
+              <th>State</th>
+              <th>Waiting for</th>
             </tr>
           </thead>
           <tbody>
             {jobs.waiting.map((w) => (
               <tr key={w.job_id} className="border-t border-slate-100 align-top">
-                <td className="py-2 pr-4">{named ? `${w.dataset_name} v${w.version}` : `${w.tenant_id} v${w.version}`}</td>
-                <td className="py-2 pr-4">
+                <td>{named ? `${w.dataset_name} v${w.version}` : `${w.tenant_id} v${w.version}`}</td>
+                <td>
                   <span
                     className={`mr-2 rounded px-1.5 py-0.5 text-xs font-medium ${
                       w.stalled ? "bg-red-100 text-red-900" : "bg-slate-100 text-slate-700"
@@ -249,13 +242,13 @@ function TableJobsSection({ jobs, named }: { jobs: TableJobs; named: boolean }) 
                   </span>
                   {Math.round(w.waiting_seconds / 60)} min
                 </td>
-                <td className="py-2 text-slate-600">
+                <td className="text-slate-600">
                   {w.dedicated_worker ? `the organisation's own worker (${w.queue})` : "the shared workers"}
                 </td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
     </Section>
   );
@@ -264,7 +257,7 @@ function TableJobsSection({ jobs, named }: { jobs: TableJobs; named: boolean }) 
 function TableCopiesSection({ copies, named }: { copies: TableCopies; named: boolean }) {
   return (
     <Section
-      title="Table copies"
+      title={named ? "Table copies in this organisation" : "Table copies, all organisations"}
       description="A version whose rows are written as a table can be read by a standard tool and filtered for a legal export. Where one was asked for and was not written, it is listed here with the reason."
     >
       {copies.alert && (
@@ -295,21 +288,21 @@ function TableCopiesSection({ copies, named }: { copies: TableCopies; named: boo
         ))}
       </dl>
       {copies.lacking.length > 0 && (
-        <table data-testid="table-copies-lacking" className="mt-4 w-full text-sm">
+        <div className="data-card mt-4"><table data-testid="table-copies-lacking" className="data-table">
           <thead>
             <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
-              <th className="pb-2 pr-4">{named ? "Dataset" : "Organisation"}</th>
-              <th className="pb-2 pr-4">What happened</th>
-              <th className="pb-2">When</th>
+              <th>{named ? "Dataset" : "Organisation"}</th>
+              <th>What happened</th>
+              <th>When</th>
             </tr>
           </thead>
           <tbody>
             {copies.lacking.map((l) => (
               <tr key={l.dataset_version_id} className="border-t border-slate-100 align-top">
-                <td className="py-2 pr-4">
+                <td>
                   {named ? `${l.dataset_name} v${l.version}` : l.tenant_id}
                 </td>
-                <td className="py-2 pr-4">
+                <td>
                   <span
                     className={`mr-2 rounded px-1.5 py-0.5 text-xs font-medium ${
                       l.outcome === "failed" ? "bg-red-100 text-red-900" : "bg-amber-100 text-amber-900"
@@ -319,13 +312,37 @@ function TableCopiesSection({ copies, named }: { copies: TableCopies; named: boo
                   </span>
                   {l.reason}
                 </td>
-                <td className="py-2 whitespace-nowrap text-slate-600">{when(l.noted_at)}</td>
+                <td className="whitespace-nowrap text-slate-600">{when(l.noted_at)}</td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
     </Section>
+  );
+}
+
+/** What the last storage permission update noticed and carried on regardless of: said once, with when, and where the full record is. */
+function PermissionNotice({ status }: { status: StoragePermissions }) {
+  const latest = status.latest_alerts;
+  if (!latest || latest.alerts.length === 0) return null;
+  return (
+    <div
+      data-testid="permission-notice"
+      role="status"
+      className="mb-6 rounded border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900"
+    >
+      <p className="font-medium">The storage permission update on {when(latest.at)} noticed something to look at.</p>
+      <ul className="mt-1 list-disc pl-5">
+        {latest.alerts.map((a) => (
+          <li key={a.event}>{a.message}</li>
+        ))}
+      </ul>
+      <p className="mt-1 text-xs text-amber-800">
+        The update was applied. Every alert is also written to the alerts file in the logs folder of the data folder, under the category
+        storage-permissions.
+      </p>
+    </div>
   );
 }
 
@@ -349,11 +366,11 @@ function ActivationAlert({ status }: { status: StoragePermissions }) {
         New storage access has not taken effect
         {minutes ? ` for ${minutes} minute${minutes === 1 ? "" : "s"}` : ""}.
       </p>
-      <p className="mt-1">{status.reason}</p>
+      <p className="mt-1">{sentence(status.reason)}</p>
       <p className="mt-1">
         {status.retryable
           ? `The platform keeps retrying, so nothing needs re-running once the cause is fixed.${waiting}`
-          : `Retrying will not fix this. Once the cause is fixed, run reconcile-grants.py in the API container and access takes effect.${waiting}`}
+          : `Retrying will not fix this. Once the cause is fixed, run reconcile-grants.py in the API container, and the new access will take effect.${waiting}`}
       </p>
     </div>
   );
@@ -372,6 +389,7 @@ function PlatformView({
       {data.storage_permissions.alert && (
         <ActivationAlert status={data.storage_permissions} />
       )}
+      <PermissionNotice status={data.storage_permissions} />
       <TableJobsSection jobs={data.table_jobs} named={false} />
       <TableCopiesSection copies={data.table_copies} named={false} />
       <Section
@@ -391,22 +409,22 @@ function PlatformView({
               </span>{" "}
               containers in use.
             </p>
-            <table className="mt-3 w-full text-sm">
+            <div className="data-card mt-3"><table className="data-table">
               <thead>
                 <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
-                  <th className="pb-2">Where</th>
-                  <th className="pb-2">Containers</th>
+                  <th>Where</th>
+                  <th>Containers</th>
                 </tr>
               </thead>
               <tbody>
                 {pool.by_collection.map((row) => (
                   <tr key={row.collection} className="border-b border-slate-100">
-                    <td className="py-2 font-mono text-xs">{row.collection}</td>
-                    <td className="py-2">{row.volumes}</td>
+                    <td className="font-mono text-xs">{row.collection}</td>
+                    <td>{row.volumes}</td>
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           </>
         )}
       </Section>
@@ -415,15 +433,15 @@ function PlatformView({
         title="Every organisation"
         description="Where each one's files are kept, and how much of it could be freed. Only test organisations are ever freeable."
       >
-        <table className="w-full text-sm" data-testid="tenant-storage">
+        <div className="data-card"><table className="data-table" data-testid="tenant-storage">
           <thead>
             <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
-              <th className="pb-2 pr-6">Organisation</th>
-              <th className="w-[26rem] pb-2 pr-6">What it is for</th>
-              <th className="pb-2 pr-6">Where its files are</th>
-              <th className="pb-2 pr-4 text-right">Versions</th>
-              <th className="pb-2 pr-4 text-right">Could be freed</th>
-              <th className="pb-2 text-right">Already freed</th>
+              <th>Organisation</th>
+              <th className="w-[26rem]">What it is for</th>
+              <th>Where its files are</th>
+              <th className="text-right">Versions</th>
+              <th className="text-right">Could be freed</th>
+              <th className="text-right">Already freed</th>
             </tr>
           </thead>
           <tbody>
@@ -439,19 +457,19 @@ function PlatformView({
                 </tr>
                 {group.rows.map((row) => (
               <tr key={row.tenant_id} className="border-b border-slate-100">
-                <td className="py-2 pr-6 align-top font-medium">{row.tenant_id}</td>
-                <td className="py-2 pr-6 align-top text-slate-600">
+                <td className="font-medium">{row.tenant_id}</td>
+                <td className="text-slate-600">
                   {row.note ?? (
                     <span className="text-slate-400">
                       nobody wrote down why this exists
                     </span>
                   )}
                 </td>
-                <td className="py-2 pr-6 align-top">
+                <td>
                   <Where row={row} localPath={storagePath} />
                 </td>
-                <td className="py-2 pr-4 text-right align-top">{row.versions}</td>
-                <td className="py-2 pr-4 text-right align-top">
+                <td className="text-right">{row.versions}</td>
+                <td className="text-right">
                   {row.reclaimable_versions > 0 ? (
                     <span className="font-medium text-amber-800">
                       {row.reclaimable_versions}
@@ -460,7 +478,7 @@ function PlatformView({
                     <span className="text-slate-400">nothing</span>
                   )}
                 </td>
-                <td className="py-2 text-right align-top text-slate-600">
+                <td className="text-right text-slate-600">
                   {row.reclaimed_versions > 0
                     ? `${row.reclaimed_versions} (${size(row.bytes_reclaimed)})`
                     : "none"}
@@ -470,7 +488,7 @@ function PlatformView({
               </Fragment>
             ))}
           </tbody>
-        </table>
+        </table></div>
       </Section>
 
       <FreeStorage />
@@ -485,24 +503,24 @@ function PlatformView({
             hint="Nothing is waiting. The last verification run swept what it made."
           />
         ) : (
-          <table className="w-full text-sm" data-testid="probes-waiting">
+          <div className="data-card"><table className="data-table" data-testid="probes-waiting">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
-                <th className="pb-2">Organisation</th>
-                <th className="pb-2">Kind</th>
-                <th className="pb-2">Versions</th>
+                <th>Organisation</th>
+                <th>Kind</th>
+                <th>Versions</th>
               </tr>
             </thead>
             <tbody>
               {data.probes_waiting.map((row) => (
                 <tr key={row.tenant_id} className="border-b border-slate-100">
-                  <td className="py-2 font-mono text-xs">{row.tenant_id}</td>
-                  <td className="py-2 text-slate-500">{row.purpose}</td>
-                  <td className="py-2">{row.versions}</td>
+                  <td className="font-mono text-xs">{row.tenant_id}</td>
+                  <td className="text-slate-500">{row.purpose}</td>
+                  <td>{row.versions}</td>
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         )}
       </Section>
     </>
@@ -643,15 +661,15 @@ function OwnOrganisation({
           hint="Nothing has been freed from this organisation."
         />
       ) : (
-        <table className="w-full text-sm" data-testid="own-reclaimed">
+        <div className="data-card"><table className="data-table" data-testid="own-reclaimed">
           <thead>
             <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
-              <th className="pb-2">Dataset</th>
-              <th className="pb-2">Version</th>
-              <th className="pb-2">Freed</th>
-              <th className="pb-2">When</th>
-              <th className="pb-2">By</th>
-              <th className="pb-2">Why</th>
+              <th>Dataset</th>
+              <th>Version</th>
+              <th>Freed</th>
+              <th>When</th>
+              <th>By</th>
+              <th>Why</th>
             </tr>
           </thead>
           <tbody>
@@ -660,18 +678,18 @@ function OwnOrganisation({
                 key={`${row.dataset_name}-${row.version}-${row.reclaimed_at}`}
                 className="border-b border-slate-100"
               >
-                <td className="py-2 font-medium">{row.dataset_name}</td>
-                <td className="py-2">v{row.version}</td>
-                <td className="py-2">
-                  {size(row.bytes_freed)} in {row.object_count} file(s)
+                <td className="font-medium">{row.dataset_name}</td>
+                <td>Version {row.version}</td>
+                <td>
+                  {size(row.bytes_freed)} in {row.object_count} {row.object_count === 1 ? "file" : "files"}
                 </td>
-                <td className="py-2 text-slate-600">{when(row.reclaimed_at)}</td>
-                <td className="py-2 text-slate-600">{row.reclaimed_by}</td>
-                <td className="py-2 text-slate-600">{row.reason}</td>
+                <td className="text-slate-600">{when(row.reclaimed_at)}</td>
+                <td className="text-slate-600">{row.reclaimed_by}</td>
+                <td className="text-slate-600">{sentence(row.reason)}</td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
     </Section>
     </>

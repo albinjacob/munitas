@@ -15,6 +15,15 @@ export interface PipelineStepConfig {
   depends_on?: string[];
   block?: string;
   script?: string;
+  /** For a decision step: the access level the result is released to. */
+  to_class?: string;
+  /** A script step that is given the run's files, read through the platform. Its version is approved by a second person first. */
+  reads_files?: boolean;
+  /** A script step whose files, written through the platform, become a version that waits for review. Its version is approved first as well. */
+  writes_files?: boolean;
+  /** The memory and the memory-backed scratch space the step's container gets, in megabytes, when its pipeline file asked for more than the default. */
+  memory_mb?: number;
+  scratch_mb?: number;
 }
 
 export interface PipelineVersion {
@@ -23,6 +32,18 @@ export interface PipelineVersion {
   dag_config: { name: string; steps: PipelineStepConfig[] };
   config_hash: string;
   created_at: string;
+  uploaded_by_label: string | null;
+  /** The script steps that are given the files, and those that write files. When there are any, a second person moves the version to production before a run may start. */
+  steps_given_files: string[];
+  steps_writing_files: string[];
+  needs_promotion: boolean;
+  /** Where the version is in its life: in development, in production, or retired for good. */
+  stage: "development" | "production" | "retired";
+  promoted_by_label: string | null;
+  promoted_at: string | null;
+  retired_by_label: string | null;
+  retired_at: string | null;
+  retired_note: string | null;
 }
 
 export interface PipelineRow {
@@ -84,6 +105,18 @@ export function useRegisterPipeline() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["pipelines"] });
+    },
+  });
+}
+
+/** Moving a version to production, returning it to development, or retiring it. The platform decides who may and says why when it refuses. */
+export function useDecidePipelineVersion(pipelineId: string, action: "promote" | "demote" | "retire") {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { versionId: string; note: string }) =>
+      api.post<{ stage: PipelineVersion["stage"] }>(`/pipelines/${pipelineId}/versions/${body.versionId}/${action}`, { note: body.note }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["pipeline", pipelineId] });
     },
   });
 }

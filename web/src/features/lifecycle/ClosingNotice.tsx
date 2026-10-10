@@ -10,6 +10,7 @@
 
 import { useNavigate } from "react-router-dom";
 import { useAcknowledgeHold, useClosing, useHolds } from "../../api/lifecycle";
+import { PublicFrame } from "../../components/PublicFrame";
 import { Failure, Loading } from "../../components/states";
 import { notify } from "../../components/toast";
 import { useIdentity } from "../../identity/IdentityContext";
@@ -26,9 +27,8 @@ export function ClosingNotice() {
   if (!closed) return null;
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <div className="mx-auto max-w-3xl px-4 py-10">
-        <div className="mb-6 text-base font-semibold">Munitas</div>
+    <PublicFrame banner={false}>
+      <div>
         <h1 className="text-xl font-semibold">{closed.tenant_id} has closed down to its people</h1>
         <p className="mt-1 text-sm text-slate-600">
           You are signed in as <span data-testid="current-persona">{closed.label}</span>. Nothing can be done in this organisation any more, so none of the
@@ -72,7 +72,7 @@ export function ClosingNotice() {
           Sign out
         </button>
       </div>
-    </div>
+    </PublicFrame>
   );
 }
 
@@ -98,7 +98,7 @@ function Acknowledge(props: {
           onClick={() => ack.mutate(undefined, { onSuccess: () => notify("You have acknowledged the hold.") })}
           className="mt-3 rounded bg-slate-800 px-3 py-1.5 text-sm font-medium text-white disabled:bg-slate-300"
         >
-          {ack.isPending ? "Recording" : "I have read it and will answer for these records"}
+          {ack.isPending ? "File" : "I have read it and will answer for these records"}
         </button>
       )}
       {ack.error && (

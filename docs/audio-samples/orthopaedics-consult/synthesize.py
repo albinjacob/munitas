@@ -24,7 +24,9 @@ from pathlib import Path
 import torch
 from parler_tts import ParlerTTSForConditionalGeneration
 from transformers import AutoTokenizer
-import soundfile as sf
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+from worker import wavio  # noqa: E402
 
 HERE = Path(__file__).parent
 TRANSCRIPT = HERE / "transcript.txt"
@@ -119,7 +121,7 @@ def synth_one(model, tokenizer, description_tokenizer, device, desc, text, raw_p
         prompt_attention_mask=prompt_ids.attention_mask,
     )
     audio = generation.cpu().numpy().squeeze()
-    sf.write(raw_path, audio, model.config.sampling_rate)
+    Path(raw_path).write_bytes(wavio.write_int16(audio, model.config.sampling_rate))
 
 
 def main():

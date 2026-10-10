@@ -5,7 +5,7 @@ validation, detection, redaction -- only depends on this module's plain-
 dict output shape, never on any transcription library's own object types.
 That is what is meant to let a second backend be added later without
 touching worker/activities.py at all: one more class here, one more entry
-in BACKENDS, one more accepted value for WHISPER_DEVICE in
+in BACKENDS, one more accepted value for MUNITAS_WHISPER_DEVICE in
 worker/config.py.
 
 Why there is only one backend today, and why that is a real ceiling and
@@ -29,7 +29,7 @@ Apple Silicon. Adding it means:
      match faster-whisper's exactly (check its current docs rather than
      assuming), so this normalisation step is the real work.
   2. One more entry in BACKENDS, e.g. "mps": MlxWhisperBackend.
-  3. Extend WHISPER_DEVICE's accepted values in worker/config.py's own
+  3. Extend MUNITAS_WHISPER_DEVICE's accepted values in worker/config.py's own
      comment.
   4. worker/activities.py's _free_vram() only clears a CUDA cache today;
      an MLX backend would want its own equivalent
@@ -43,11 +43,11 @@ thing worker/activities.py calls, and it already only sees plain dicts.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Protocol
+from typing import BinaryIO, Protocol
 
 
 class TranscribeBackend(Protocol):
-    def transcribe(self, audio_path: Path) -> list[dict]:
+    def transcribe(self, audio: "Path | BinaryIO") -> list[dict]:
         """One entry per speech segment, in order:
 
             {"text": str, "words": [{"word": str, "start": float,
@@ -70,7 +70,8 @@ class FasterWhisperBackend:
         from faster_whisper import WhisperModel
         self._model = WhisperModel(model_name, device=device, compute_type=compute_type)
 
-    def transcribe(self, audio_path: Path) -> list[dict]:
+    def transcribe(self, audio: "Path | BinaryIO") -> list[dict]:
+        # `audio` is a path or an open file (a recording read a range at a time, never written to disk); faster-whisper takes either.
         # vad_filter runs Silero VAD ahead of Whisper and skips segments
         # with no detected speech; condition_on_previous_text=False stops
         # each segment being conditioned on the text just before it.
@@ -89,7 +90,7 @@ class FasterWhisperBackend:
         # boundaries, which is the same mechanism that lets the
         # hallucination happen in the first place.
         segments, _ = self._model.transcribe(
-            str(audio_path),
+            audio if hasattr(audio, "read") else str(audio),
             word_timestamps=True,
             language="en",
             vad_filter=True,

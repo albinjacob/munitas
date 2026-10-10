@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Health organisation walkthroughs: Munitas</title>
+
+<style>
+  :root {
+    --ink: #1c2333; --ink-soft: #4b5266; --ink-faint: #6b7182;
+    --paper: #eae7de; --paper-raised: #f6f4ec; --paper-line: #d8d4c6; --paper-line-strong: #c4bfae;
+    --accent: #7a2e2e; --brass: #8a6d3b; --code-bg: #e3e0d3;
+    --note: #8a5a00; --note-bg: #fbf1d4; --note-line: #ecd9a0;
+    --term-bg: #151a26; --term-ink: #e6e8ee; --term-out: #9aa3b8; --term-line: #232a3b;
+    --shadow: 0 1px 2px rgba(28,35,51,0.06), 0 4px 14px rgba(28,35,51,0.05);
+    --a0: #6a4c9c; --a0-bg: #efe9f7; --a0-line: #d8c9ee; --a1: #2a7d6a; --a1-bg: #e3f3ee; --a1-line: #bfe3d8; --a2: #a4562a; --a2-bg: #fbeee4; --a2-line: #edcdb4; --a3: #3949e0; --a3-bg: #edeefc; --a3-line: #c7caf5; --a4: #6b7a1f; --a4-bg: #f1f4de; --a4-line: #d9e0a8; --a5: #b03a5b; --a5-bg: #fbe7ed; --a5-line: #efc3cf;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ink: #eae6da; --ink-soft: #c3bfae; --ink-faint: #9a9787;
+      --paper: #14161c; --paper-raised: #1c1f28; --paper-line: #2f3340; --paper-line-strong: #434859;
+      --accent: #d47d78; --brass: #d1ac5f; --code-bg: #22252e;
+      --note: #e0b64c; --note-bg: #332a0c; --note-line: #54451a;
+      --term-bg: #0d1018; --term-ink: #e6e8ee; --term-out: #9aa3b8; --term-line: #232a3b;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 6px 20px rgba(0,0,0,0.35);
+      --a0: #c3a8ec; --a0-bg: #2c2340; --a0-line: #473465; --a1: #7fd1ba; --a1-bg: #14302a; --a1-line: #24574a; --a2: #f0a771; --a2-bg: #3a2415; --a2-line: #5e3c22; --a3: #8b93f7; --a3-bg: #23264a; --a3-line: #3a3e78; --a4: #c2d16a; --a4-bg: #2b3010; --a4-line: #464f1c; --a5: #f09ab4; --a5-bg: #3d1522; --a5-line: #62283a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ink: #eae6da; --ink-soft: #c3bfae; --ink-faint: #9a9787;
+    --paper: #14161c; --paper-raised: #1c1f28; --paper-line: #2f3340; --paper-line-strong: #434859;
+    --accent: #d47d78; --brass: #d1ac5f; --code-bg: #22252e;
+    --note: #e0b64c; --note-bg: #332a0c; --note-line: #54451a;
+    --term-bg: #0d1018; --term-ink: #e6e8ee; --term-out: #9aa3b8; --term-line: #232a3b;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 6px 20px rgba(0,0,0,0.35);
+    --a0: #c3a8ec; --a0-bg: #2c2340; --a0-line: #473465; --a1: #7fd1ba; --a1-bg: #14302a; --a1-line: #24574a; --a2: #f0a771; --a2-bg: #3a2415; --a2-line: #5e3c22; --a3: #8b93f7; --a3-bg: #23264a; --a3-line: #3a3e78; --a4: #c2d16a; --a4-bg: #2b3010; --a4-line: #464f1c; --a5: #f09ab4; --a5-bg: #3d1522; --a5-line: #62283a;
+  }
+
+  :root { --gutter: clamp(16px, 2vw, 32px); }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 16px; line-height: 1.62;
+  }
+  h1, h2, h3, h4 {
+    font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
+    font-weight: 600; color: var(--ink); text-wrap: balance;
+  }
+  a { color: var(--accent); }
+  code {
+    font-family: ui-monospace, "Cascadia Code", "Segoe UI Mono", "SFMono-Regular", Consolas, monospace;
+    background: var(--code-bg); padding: 0.1em 0.4em; border-radius: 3px; font-size: 0.88em;
+  }
+
+  /* ---------- top bar, the same on every page ---------- */
+  .topbar {
+    position: sticky; top: 0; z-index: 50; background: var(--paper-raised);
+    border-bottom: 1px solid var(--paper-line);
+  }
+  .topbar-inner {
+    margin: 0; padding: 0 var(--gutter); min-height: 48px;
+    display: flex; align-items: center; gap: 22px; flex-wrap: wrap;
+  }
+  .topbar .mark {
+    font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif; font-weight: 700;
+    letter-spacing: 0.02em; color: var(--ink); text-decoration: none; margin-right: 6px;
+  }
+  .topbar a.link { color: var(--ink-soft); text-decoration: none; font-size: 14px; padding: 13px 0 11px;
+                   border-bottom: 2px solid transparent; }
+  .topbar a.link:hover { color: var(--ink); }
+  .topbar a.link[aria-current="page"] { color: var(--ink); border-bottom-color: var(--brass); font-weight: 600; }
+
+  /* ---------- opening ---------- */
+  .wrap { margin: 0; padding: 0 var(--gutter) 72px; }
+  header.hero { padding: 56px 24px 36px; text-align: center; border-bottom: 1px solid var(--paper-line); margin-bottom: 36px; }
+  .crumbs { font-size: 13px; color: var(--ink-faint); margin: 0 0 18px; }
+  .crumbs a { color: var(--ink-faint); }
+  header.hero .eyebrow {
+    text-transform: uppercase; letter-spacing: 0.14em; font-size: 12px; font-weight: 600; color: var(--brass);
+    margin-bottom: 14px;
+  }
+  header.hero h1 { font-size: clamp(28px, 4.2vw, 42px); margin: 0 0 16px; letter-spacing: -0.01em; line-height: 1.18; }
+  header.hero p.lede { max-width: 660px; margin: 0 auto; color: var(--ink-soft); font-size: 17px; }
+  .glance {
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 28px; margin: 26px auto 0;
+    max-width: 720px; font-size: 14px; color: var(--ink-soft);
+  }
+  .glance b { display: block; font-size: 20px; color: var(--ink); font-family: "Iowan Old Style", Georgia, serif; }
+  .glance div { min-width: 90px; }
+  .cast-title { margin-top: 28px; font-weight: 600; color: var(--ink-soft); font-size: 14px; }
+  .cast { display: flex; gap: 12px; justify-content: center; margin-top: 12px; flex-wrap: wrap; }
+  .cast .card {
+    display: flex; align-items: center; gap: 10px; background: var(--paper-raised);
+    border: 1px solid var(--paper-line); border-radius: 10px; padding: 10px 16px; font-size: 14px; text-align: left;
+  }
+  .cast .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .cast .name { font-weight: 600; }
+  .cast .role { color: var(--ink-faint); font-size: 12.5px; }
+
+  /* ---------- reference boxes ---------- */
+  .before {
+    margin: 0 0 22px; padding: 18px 22px; border: 1px solid var(--paper-line); border-radius: 12px;
+    background: var(--paper-raised);
+  }
+  .before h2 { margin: 0 0 8px; font-size: 18px; }
+  .before ul { margin: 0; padding-left: 20px; color: var(--ink-soft); font-size: 14.5px; max-width: 110ch; }
+  .before li { margin-bottom: 6px; }
+  .before dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 6px 18px; font-size: 14px; }
+  .before dt { font-weight: 600; }
+  .before dd { margin: 0; color: var(--ink-soft); }
+  @media (max-width: 640px) { .before dl { grid-template-columns: 1fr; gap: 0; } .before dd { margin-bottom: 8px; } }
+
+  nav.toc {
+    background: var(--paper-raised); border: 1px solid var(--paper-line); border-radius: 12px;
+    padding: 20px 24px; margin: 30px 0 52px;
+  }
+  nav.toc .toc-title { font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-faint);
+                       font-weight: 600; margin-bottom: 12px; }
+  nav.toc ol { margin: 0; padding-left: 22px; columns: 3; column-gap: 32px; }
+  @media (max-width: 1000px) { nav.toc ol { columns: 2; } }
+  nav.toc li { margin-bottom: 6px; font-size: 14.5px; break-inside: avoid; }
+  nav.toc a { color: var(--ink); text-decoration: none; }
+  nav.toc a:hover { color: var(--accent); }
+
+  /* ---------- parts and steps ---------- */
+  section.act { margin-bottom: 56px; }
+  .act-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 6px; padding-bottom: 14px;
+              border-bottom: 2px solid var(--paper-line-strong); }
+  .act-head .act-num { font-size: 12.5px; font-weight: 700; letter-spacing: 0.1em; color: var(--brass); }
+  .act-head h2 { font-size: 24px; margin: 0; letter-spacing: -0.01em; }
+  .act-sub { color: var(--ink-soft); font-size: 15.5px; margin: 10px 0 28px; max-width: 90ch; }
+
+  .actor-chip {
+    display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600;
+    padding: 4px 11px 4px 9px; border-radius: 999px; border: 1px solid var(--paper-line);
+  }
+  .actor-chip .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .actor-chip.a0 { background: var(--a0-bg); border-color: var(--a0-line); color: var(--a0); }
+  .actor-chip.a0 .dot, .cast .dot.a0 { background: var(--a0); }
+  .actor-chip.a1 { background: var(--a1-bg); border-color: var(--a1-line); color: var(--a1); }
+  .actor-chip.a1 .dot, .cast .dot.a1 { background: var(--a1); }
+  .actor-chip.a2 { background: var(--a2-bg); border-color: var(--a2-line); color: var(--a2); }
+  .actor-chip.a2 .dot, .cast .dot.a2 { background: var(--a2); }
+  .actor-chip.a3 { background: var(--a3-bg); border-color: var(--a3-line); color: var(--a3); }
+  .actor-chip.a3 .dot, .cast .dot.a3 { background: var(--a3); }
+  .actor-chip.a4 { background: var(--a4-bg); border-color: var(--a4-line); color: var(--a4); }
+  .actor-chip.a4 .dot, .cast .dot.a4 { background: var(--a4); }
+  .actor-chip.a5 { background: var(--a5-bg); border-color: var(--a5-line); color: var(--a5); }
+  .actor-chip.a5 .dot, .cast .dot.a5 { background: var(--a5); }
+
+  .step { display: flex; gap: 22px; padding: 26px 0; border-bottom: 1px solid var(--paper-line); scroll-margin-top: 64px; }
+  .step:last-child { border-bottom: none; }
+  .step, .step-body { min-width: 0; }
+  .step-num {
+    flex: none; width: 40px; height: 40px; border-radius: 10px; background: var(--paper-raised);
+    border: 1px solid var(--paper-line-strong); display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 15px; color: var(--ink-soft);
+  }
+  .step-body { flex: 1; }
+  .step-title { font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif; font-size: 19px; font-weight: 600;
+                margin: 4px 0 4px; line-height: 1.3; }
+  .step-screen { display: block; margin: 0 0 10px; font-size: 12.5px; color: var(--ink-faint); }
+  .step-screen::before { content: "Where  "; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+                         font-size: 10.5px; color: var(--brass); }
+  .step-text { color: var(--ink-soft); font-size: 15.5px; margin: 0 0 14px; max-width: 78ch; }
+  .step-text code { color: var(--ink); }
+
+  .shot { border: 1px solid var(--paper-line-strong); border-radius: 10px; overflow: hidden; box-shadow: var(--shadow);
+          max-width: 100%; background: var(--paper-raised); }
+  .shot img { display: block; width: 100%; height: auto; cursor: zoom-in; }
+
+  .step-note {
+    display: flex; gap: 10px; margin: 14px 0 4px; max-width: 100ch; padding: 10px 12px; border-radius: 8px;
+    border: 1px solid var(--note-line); background: var(--note-bg); font-size: 14px; color: var(--ink);
+  }
+  .step-note::before { content: "Look for"; flex: none; font-weight: 700; font-size: 11px; text-transform: uppercase;
+                       letter-spacing: 0.06em; color: var(--note); padding-top: 2px; }
+  .step-note .note-body { flex: 1; min-width: 0; }
+
+  .term { border-radius: 10px; overflow: hidden; background: var(--term-bg); margin: 8px 0 4px; max-width: 100%; }
+  .term pre {
+    margin: 0; padding: 12px 14px; overflow-x: auto; font-size: 12.5px; line-height: 1.5; white-space: pre;
+    max-width: 100%; font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Consolas, "DejaVu Sans Mono", monospace;
+  }
+  .term .code { color: var(--term-ink); }
+  .term .out { color: var(--term-out); border-top: 1px solid var(--term-line); line-height: 1.25; }
+  .term .tag { display: block; padding: 8px 14px 0; font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase;
+               color: var(--term-out); }
+  .term .who { padding-top: 10px; color: var(--term-ink); letter-spacing: 0.04em; text-transform: none; font-size: 12px; }
+  .term .does { padding-top: 3px; padding-bottom: 4px; letter-spacing: 0.01em; text-transform: none; font-size: 12px;
+                line-height: 1.45; }
+  .term .does code { color: var(--term-ink); background: transparent; padding: 0; }
+
+  /* ---------- previous and next, footer ---------- */
+  .pager { display: flex; gap: 14px; margin: 8px 0 0; flex-wrap: wrap; }
+  .pager a {
+    flex: 1 1 280px; border: 1px solid var(--paper-line); background: var(--paper-raised); border-radius: 12px;
+    padding: 14px 18px; text-decoration: none; color: var(--ink); box-shadow: var(--shadow);
+  }
+  .pager a small { display: block; font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--brass);
+                   font-weight: 700; margin-bottom: 4px; }
+  .pager a.next { text-align: right; }
+  footer.page-foot { margin: 0; padding: 28px var(--gutter) 56px; color: var(--ink-faint); font-size: 13px;
+                     border-top: 1px solid var(--paper-line); }
+  footer.page-foot p { margin: 0 0 8px; }
+
+  /* ---------- the index ---------- */
+  .group { margin: 0 0 44px; }
+  .group h2 { font-size: 26px; margin: 0 0 4px; }
+  .group > p { margin: 0 0 18px; color: var(--ink-soft); }
+  .group h3.stage { font-size: 24px; font-weight: 700; margin: 40px 0 4px; padding-top: 22px; border-top: 1px solid var(--paper-line); }
+  .group h3.stage:first-of-type { margin-top: 24px; }
+  .group h3.stage + p { margin: 0 0 14px; color: var(--ink-soft); font-size: 16px; max-width: 110ch; }
+  .group h3.stage { scroll-margin-top: 72px; }
+  .tile { scroll-margin-top: 72px; }
+  .tile:target { outline: 2px solid var(--brass); outline-offset: 3px; }
+  .quicknav { margin: 0 0 28px; padding: 18px 22px; border: 1px solid var(--paper-line); border-radius: 12px; }
+  .quicknav h2 { margin: 0 0 10px; font-size: 18px; }
+  .quicknav .quicknav-stages { margin: 0; padding: 0; list-style: none; column-count: 2; column-gap: 40px; }
+  .quicknav .quicknav-stages > li { break-inside: avoid; margin: 0 0 14px; }
+  .quicknav .quicknav-stage { font-size: 16px; font-weight: 700; }
+  .quicknav ul { margin: 4px 0 0; padding: 0; list-style: none; }
+  .quicknav ul li { margin: 3px 0; font-size: 14.5px; }
+  .quicknav ul li a { color: var(--ink-soft); }
+  .quicknav .quicknav-n { display: inline-block; min-width: 1.7em; color: var(--ink-faint); }
+  .quicknav .quicknav-stages.quicknav-few { column-count: 1; }
+  @media (max-width: 800px) { .quicknav .quicknav-stages { column-count: 1; } }
+  .people { margin: 0 0 28px; padding: 18px 22px; border: 1px solid var(--paper-line); border-radius: 12px; }
+  .people h2 { margin: 0 0 6px; font-size: 20px; }
+  .people > p { margin: 0 0 12px; color: var(--ink-soft); font-size: 14.5px; max-width: 110ch; }
+  .people table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+  .people th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-faint); padding: 6px 14px 6px 0; border-bottom: 1px solid var(--paper-line); }
+  .people td { padding: 8px 14px 8px 0; border-bottom: 1px solid var(--paper-line); vertical-align: top; }
+  .people td.who { font-weight: 700; white-space: nowrap; }
+  .people td.for { color: var(--ink-soft); }
+  .tiles { display: grid; grid-template-columns: 1fr; gap: 16px; }
+  @media (max-width: 720px) { .tiles { grid-template-columns: 1fr; } }
+  .tile {
+    display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--paper-line); background: var(--paper-raised);
+    border-radius: 14px; padding: 20px 22px; box-shadow: var(--shadow); text-decoration: none; color: var(--ink);
+  }
+  .tile:hover { border-color: var(--brass); }
+  .tile .tag { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--brass); font-weight: 700; }
+  .tile h3 { margin: 0; font-size: 20px; line-height: 1.25; }
+  .tile p { margin: 0; color: var(--ink-soft); font-size: 14.5px; }
+  .tile .meta { margin-top: auto; padding-top: 6px; font-size: 13px; color: var(--ink-faint); }
+  .tile .open { font-weight: 600; color: var(--accent); font-size: 14px; }
+  .about { max-width: 700px; margin: 0 auto; }
+  .about p { color: var(--ink-soft); font-size: 16.5px; }
+
+  #lightbox { position: fixed; inset: 0; background: rgba(10, 11, 16, 0.82); display: none; align-items: center;
+              justify-content: center; padding: 32px; z-index: 100; cursor: zoom-out; }
+  #lightbox.open { display: flex; }
+  #lightbox img { max-width: 100%; max-height: 100%; border-radius: 8px; box-shadow: 0 24px 64px -16px rgba(0,0,0,0.6); }
+  #lightbox .close-hint { position: absolute; top: 20px; right: 24px; color: #e9eaf2; font-size: 13px; opacity: 0.7; }
+
+  @media (max-width: 640px) {
+    .step { flex-direction: column; gap: 10px; }
+    nav.toc ol { columns: 1; }
+    header.hero { padding: 40px 18px 28px; }
+    .wrap { padding-bottom: 56px; }
+    .topbar-inner { gap: 14px; }
+  }
+</style>
+
+</head>
+<body>
+<div class="topbar"><div class="topbar-inner"><a class="mark" href="feature-walkthrough.html">Munitas</a><a class="link" href="feature-walkthrough.html">Feature tour</a><a class="link" href="index.html" aria-current="page">All walkthroughs</a></div></div>
+<header class="hero">
+  <p class="crumbs"><a href="index.html">All walkthroughs</a> / Health organisation</p>
+  <div class="eyebrow">Munitas &middot; Walkthroughs</div>
+  <h1>Health organisation</h1>
+  <p class="lede">A hospital group. Departments such as Cardiology and Radiology each own some of its data, and a custodian in each department decides who may read it.</p>
+  <p class="lede" style="margin-top:0.9em">The walkthroughs follow one research programme in the order it unfolds, with the same people and the same data throughout.</p>
+</header>
+<div class="wrap">
+<nav class="quicknav" aria-label="Quick navigation">
+  <h2>Quick navigation</h2>
+  <ol class="quicknav-stages">
+    <li><a class="quicknav-stage" href="#stage-set-up-departments-roles-and-limits">Set-up: Departments, Roles and Limits</a>
+      <ul>
+        <li><a href="#w-before-any-data"><span class="quicknav-n">1.</span>Before the programme starts: who owns what, and who may do what</a></li>
+      </ul>
+    </li>
+    <li><a class="quicknav-stage" href="#stage-regular-data">Regular data</a>
+      <ul>
+        <li><a href="#w-a-table-arrives"><span class="quicknav-n">2.</span>Bring in a table, and see that nobody can read it yet</a></li>
+        <li><a href="#w-find-and-ask"><span class="quicknav-n">3.</span>Find a table, ask to read it, and the custodian decides</a></li>
+        <li><a href="#w-work-from-a-notebook"><span class="quicknav-n">4.</span>Sign a notebook in, with a pass that cannot decide anything</a></li>
+        <li><a href="#w-make-a-dataset"><span class="quicknav-n">5.</span>Make a new dataset from a query, under the same rules</a></li>
+      </ul>
+    </li>
+    <li><a class="quicknav-stage" href="#stage-locked-patient-data">Locked patient data</a>
+      <ul>
+        <li><a href="#w-people-arrive"><span class="quicknav-n">6.</span>Bring in patient data, locked under a key for each patient</a></li>
+        <li><a href="#w-read-a-few-rows"><span class="quicknav-n">7.</span>Read five locked rows, with an approver's say</a></li>
+        <li><a href="#w-open-a-few-files"><span class="quicknav-n">8.</span>Open two of the recordings, with an approver's say</a></li>
+        <li><a href="#w-de-identify-and-release"><span class="quicknav-n">9.</span>Remove names from the recordings, and a reviewer decides</a></li>
+        <li><a href="#w-evidence-without-names"><span class="quicknav-n">10.</span>See how locked data was used, without seeing a name</a></li>
+      </ul>
+    </li>
+    <li><a class="quicknav-stage" href="#stage-roles-and-approvers">Roles and approvers</a>
+      <ul>
+        <li><a href="#w-people-administration"><span class="quicknav-n">11.</span>Ask for a role, and see who may grant it</a></li>
+        <li><a href="#w-department-approvers"><span class="quicknav-n">12.</span>Cover a department while its custodian is away</a></li>
+      </ul>
+    </li>
+    <li><a class="quicknav-stage" href="#stage-ai-agents">AI agents</a>
+      <ul>
+        <li><a href="#w-agent-asks"><span class="quicknav-n">13.</span>Grant an AI agent permission to read a dataset</a></li>
+        <li><a href="#w-agent-egress"><span class="quicknav-n">14.</span>Grant an AI agent permission to call an external host</a></li>
+      </ul>
+    </li>
+    <li><a class="quicknav-stage" href="#stage-custom-pipelines">Custom pipelines</a>
+      <ul>
+        <li><a href="#w-custom-pipeline"><span class="quicknav-n">15.</span>Register a custom pipeline, and run it</a></li>
+        <li><a href="#w-development-sample"><span class="quicknav-n">16.</span>Test a new pipeline version on a development sample</a></li>
+        <li><a href="#w-custom-step"><span class="quicknav-n">17.</span>Approve a custom step before it runs</a></li>
+      </ul>
+    </li>
+    <li><a class="quicknav-stage" href="#stage-audit">Audit</a>
+      <ul>
+        <li><a href="#w-audit-decisions"><span class="quicknav-n">18.</span>Read every access decision, including every refusal</a></li>
+      </ul>
+    </li>
+  </ol>
+</nav>
+<section class="group" id="health">
+  <h3 class="stage" id="stage-set-up-departments-roles-and-limits">Set-up: Departments, Roles and Limits</h3>
+  <p>Before any data arrives, an organisation decides which department owns which data, who may approve access to it, which role each person holds, and what people are allowed to ask for.</p>
+  <div class="tiles">
+    <a class="tile" id="w-before-any-data" href="before-any-data-walkthrough.html">
+      <span class="tag">1. Health organisation</span>
+      <h3>Before the programme starts: who owns what, and who may do what</h3>
+      <p>Before a research programme brings in any new data, the Health organisation already has its structure in place. The platform administrator walks through it: the departments and who answers for each, the people and their roles, what each role may read without asking, and the limits on what people may ask for.</p>
+      <p class="meta">You will see: The departments with their approvers, the people and their roles, what each role may read without asking, and the limits an organisation has set.</p>
+      <p class="meta">5 steps, about 4 minutes. <span class="open">Open &rarr;</span></p>
+    </a>
+  </div>
+  <h3 class="stage" id="stage-regular-data">Regular data</h3>
+  <p>Data that does not identify anyone, such as a table of hospital admissions counted by ward and quarter. At first nobody can read the table, not even the person who brought it in. A researcher finds it and asks to read it, and the department that owns it decides. The researcher then uses it from a notebook and makes a new table from a query.</p>
+  <div class="tiles">
+    <a class="tile" id="w-a-table-arrives" href="a-table-arrives-walkthrough.html">
+      <span class="tag">2. Health organisation</span>
+      <h3>Bring in a table, and see that nobody can read it yet</h3>
+      <p>A data engineer brings in a table of hospital admissions and a small public list of diagnosis codes. The admissions table starts closed to everybody, including the person who brought it in. The list is registered with a claim that it is open to all, and the custodian of the owning department agrees with the claim.</p>
+      <p class="meta">You will see: Registering a dataset with an owner, a contract and rows checked and sealed as a table, a version that nobody can read yet, and a claim that a custodian agrees with.</p>
+      <p class="meta">8 steps, about 6 minutes. <span class="open">Open &rarr;</span></p>
+    </a>
+    <a class="tile" id="w-find-and-ask" href="find-and-ask-walkthrough.html">
+      <span class="tag">3. Health organisation</span>
+      <h3>Find a table, ask to read it, and the custodian decides</h3>
+      <p>A researcher is stopped at the table of admissions that a data engineer brought in, and sees only the public lookup. The researcher asks for access with a purpose and a reason, the custodian of the owning department grants it for a limited time, and the table opens.</p>
+      <p class="meta">You will see: Python and the console side by side: a refusal with its reason, a request, the custodian's decision, and rows that could not be read a moment before.</p>
+      <p class="meta">8 steps, about 6 minutes. <span class="open">Open &rarr;</span></p>
+    </a>
+    <a class="tile" id="w-work-from-a-notebook" href="work-from-a-notebook-walkthrough.html">
+      <span class="tag">4. Health organisation</span>
+      <h3>Sign a notebook in, with a pass that cannot decide anything</h3>
+      <p>A researcher signs a Python notebook in as themself: the notebook shows a code, the researcher types it in the console and approves, and the notebook receives a short-lived pass. The pass cannot decide a request, and the researcher ends it from the list of notebooks.</p>
+      <p class="meta">You will see: A code typed in the console, a page that says what the notebook will and will not be able to do, a refusal of the one thing a notebook cannot do, and the sign-in ending.</p>
+      <p class="meta">10 steps, about 8 minutes. <span class="open">Open &rarr;</span></p>
+    </a>
+    <a class="tile" id="w-make-a-dataset" href="make-a-dataset-walkthrough.html">
+      <span class="tag">5. Health organisation</span>
+      <h3>Make a new dataset from a query, under the same rules</h3>
+      <p>The researcher makes a new dataset from a query over the admissions and the diagnosis lookup. Munitas plans it, runs it, and keeps the new dataset as restricted as its inputs. A colleague without access is refused, a query that reaches too far is stopped, and when the custodian withdraws the access the new dataset closes too.</p>
+      <p class="meta">You will see: A plan, a finished dataset that records where it came from, three refusals with reasons, and a dataset that closes when access is withdrawn.</p>
+      <p class="meta">11 steps, about 9 minutes. <span class="open">Open &rarr;</span></p>
+    </a>
+  </div>
+  <h3 class="stage" id="stage-locked-patient-data">Locked patient data</h3>
+  <p>Data that does identify patients, such as consultation recordings and a table of clinic appointments about the same patients. Unlike the admissions table, it names people, so every identifying detail is locked under a key made for each patient. An approver decides who may open a few rows or files. A reviewer decides whether the names have been removed well enough to release the result. An auditor can see how everything was used without seeing a name.</p>
+  <div class="tiles">
+    <a class="tile" id="w-people-arrive" href="people-arrive-walkthrough.html">
+      <span class="tag">6. Health organisation</span>
+      <h3>Bring in patient data, locked under a key for each patient</h3>
+      <p>A data engineer brings in data that identifies patients. The page first asks whether anybody will ever need to be erased from it. Three consultation recordings are then locked under a key made for each patient, and a table of appointments about the same patients is sealed with what identifies them locked too.</p>
+      <p class="meta">You will see: The question that comes first, every mistake listed before anything is sent, recordings locked and counted without naming anybody, a table refused and then sealed, and what was done to each column.</p>
+      <p class="meta">11 steps, about 9 minutes. <span class="open">Open &rarr;</span></p>
+    </a>
+    <a class="tile" id="w-read-a-few-rows" href="read-a-few-rows-walkthrough.html">
+      <span class="tag">7. Health organisation</span>
+      <h3>Read five locked rows, with an approver's say</h3>
+      <p>The data engineer who brought in a table of appointments is refused its locked names and reasons, asks to read five rows for three days, and the custodian of the owning department decides. A researcher has no way to ask. The platform reports which readable columns could single a person out, and the lease opens exactly five rows.</p>
+      <p class="meta">You will see: A refusal with its reason, a request, the custodian's decision with a note, a report on small groups, and five rows with their locked values opened.</p>
+      <p class="meta">11 steps, about 9 minutes. <span class="open">Open &rarr;</span></p>
+    </a>
+    <a class="tile" id="w-open-a-few-files" href="open-a-few-files-walkthrough.html">
+      <span class="tag">8. Health organisation</span>
+      <h3>Open two of the recordings, with an approver's say</h3>
+      <p>The data engineer asks to open three of the locked recordings in the page, for an hour. The custodian allows two, the platform chooses which, and the engineer plays one. When the custodian ends the permission, the files close again.</p>
+      <p class="meta">You will see: A request for files, a custodian allowing fewer, a recording playing in the page, and the files closing when the permission ends.</p>
+      <p class="meta">6 steps, about 5 minutes. <span class="open">Open &rarr;</span></p>
+    </a>
+    <a class="tile" id="w-de-identify-and-release" href="de-identify-and-release-walkthrough.html">
+      <span class="tag">9. Health organisation</span>
+      <h3>Remove names from the recordings, and a reviewer decides</h3>
+      <p>The built-in pipeline removes names, dates and addresses from the three locked recordings and is scored against their answer keys. The person who started the run cannot decide the result, and neither can the custodian of the owning department. The de-identification reviewer decides, with a written reason, and a release widens access by one step.</p>
+      <p class="meta">You will see: A run on real speech, two people refused for different reasons, a reviewer's measurement and decision, and a researcher who still cannot read the released result.</p>
+      <p class="meta">9 steps, about 7 minutes. <span class="open">Open &rarr;</span></p>
+    </a>
+    <a class="tile" id="w-evidence-without-names" href="evidence-without-names-walkthrough.html">
+      <span class="tag">10. Health organisation</span>
+      <h3>See how locked data was used, without seeing a name</h3>
+      <p>The privacy auditor and the data protection officer read the record of everything that happened to the locked data: who read, who was refused, what was done to each column, and which key was opened and why. No patient's name appears, and the same person code ties a patient's recording to the same patient's row.</p>
+      <p class="meta">You will see: An audit page with no names on it, how each column was treated, and every key opening with its reason.</p>
+      <p class="meta">4 steps, about 3 minutes. <span class="open">Open &rarr;</span></p>
+    </a>
+  </div>
+  <h3 class="stage" id="stage-roles-and-approvers">Roles and approvers</h3>
+  <p>A person asks for a role and an approver decides. When a department's usual approver is away, another approver covers for them.</p>
+  <div class="tiles">
+    <a class="tile" id="w-people-administration" href="people-administration-walkthrough.html">
+      <span class="tag">11. Health organisation</span>
+      <h3>Ask for a role, and see who may grant it</h3>
+      <p>A researcher asks to hold a role and cannot decide the request alone. The person who runs Munitas is refused when trying to grant it, and the custodian of a department grants it instead.</p>
+      <p class="meta">You will see: A request for a role, a refusal with its reason, and a grant that starts as never checked.</p>
+      <p class="meta">9 steps, about 7 minutes. <span class="open">Open &rarr;</span></p>
+    </a>
+    <a class="tile" id="w-department-approvers" href="department-approvers-walkthrough.html">
+      <span class="tag">12. Health organisation</span>
+      <h3>Cover a department while its custodian is away</h3>
+      <p>The custodian of Cardiology names a colleague from another department as cover. The cover confirms a claim about Cardiology's data on their own, then the custodian ends the cover. The platform refuses to remove the last permanent approver and keeps a record of every change.</p>
+      <p class="meta">You will see: Adding an approver with a reason and an end date, a claim confirmed by the cover, a removal, a refusal with its reason, and the history of who answered for the department.</p>
+      <p class="meta">9 steps, about 7 minutes. <span class="open">Open &rarr;</span></p>
+    </a>
+  </div>
+  <h3 class="stage" id="stage-ai-agents">AI agents</h3>
+  <p>A program that works on data is held to the same rules as a person: it asks for access and waits for an approver to decide. A network architect decides which external hosts a version of it may call.</p>
+  <div class="tiles">
+    <a class="tile" id="w-agent-asks" href="agent-asks-walkthrough.html">
+      <span class="tag">13. Health organisation</span>
+      <h3>Grant an AI agent permission to read a dataset</h3>
+      <p>An AI agent that ranks radiology documents is given a new version of its code and run. The run waits until the custodian of the Radiology department grants it permission to read a dataset, in the same way a person's request would wait, and a second run has to ask again.</p>
+      <p class="meta">You will see: An agent version sealed, a run waiting for permission, a request that names who asked and who will read, and the runs finishing.</p>
+      <p class="meta">9 steps, about 7 minutes. <span class="open">Open &rarr;</span></p>
+    </a>
+    <a class="tile" id="w-agent-egress" href="agent-egress-walkthrough.html">
+      <span class="tag">14. Health organisation</span>
+      <h3>Grant an AI agent permission to call an external host</h3>
+      <p>A data engineer uploads a new version of a radiology agent and lists the one external host it needs to call. The version is sealed but cannot be deployed. Neither the engineer nor the custodian who owns the agent can decide the list: the network architect does, with a written reason. An approved version can then be deployed, and a version whose host is refused cannot.</p>
+      <p class="meta">You will see: A version waiting for a decision with its Deploy button greyed out, two people refused for different reasons, the architect's approval and refusal with their reasons, and what each decision does to the version.</p>
+      <p class="meta">13 steps, about 10 minutes. <span class="open">Open &rarr;</span></p>
+    </a>
+  </div>
+  <h3 class="stage" id="stage-custom-pipelines">Custom pipelines</h3>
+  <p>An organisation can write its own pipelines, which are series of steps that Munitas runs on data. A new version first runs only on development data, and a step that reads recordings needs an approver's agreement.</p>
+  <div class="tiles">
+    <a class="tile" id="w-custom-pipeline" href="custom-pipeline-walkthrough.html">
+      <span class="tag">15. Health organisation</span>
+      <h3>Register a custom pipeline, and run it</h3>
+      <p>A data engineer in Cardiology registers a pipeline of their own, asks for access to a note, and runs the pipeline. A reviewer makes the final decision, as for every other pipeline.</p>
+      <p class="meta">You will see: Registering a pipeline, asking for access, running it, and a reviewer's decision.</p>
+      <p class="meta">18 steps, about 14 minutes. <span class="open">Open &rarr;</span></p>
+    </a>
+    <a class="tile" id="w-development-sample" href="development-sample-walkthrough.html">
+      <span class="tag">16. Health organisation</span>
+      <h3>Test a new pipeline version on a development sample</h3>
+      <p>A data engineer in Cardiology has written a pipeline version that is still in development, so it may run only on development data. The engineer asks for a sample of the locked recordings, a custodian approves fewer, and the platform draws them. The pipeline version then runs for real on the sample and is refused on the real recordings. The sample ends, and recordings with no real person in them are declared synthetic.</p>
+      <p class="meta">You will see: A request for a sample, a custodian lowering it and the platform drawing it, a sample that says what it is, a run refused on real recordings and working on the sample, a sample that ends, and a declaration of synthetic recordings.</p>
+      <p class="meta">15 steps, about 12 minutes. <span class="open">Open &rarr;</span></p>
+    </a>
+    <a class="tile" id="w-custom-step" href="custom-step-walkthrough.html">
+      <span class="tag">17. Health organisation</span>
+      <h3>Approve a custom step before it runs</h3>
+      <p>A data engineer in Cardiology uploads a pipeline with a step of their own that reads recordings and writes files. The platform refuses to run it until an approver of the owning department, who did not upload it, approves it. The run then makes a new version that waits for a review.</p>
+      <p class="meta">You will see: A version waiting for an approver, a refused run, an approval, a finished run that links to what it made, and a new version that records exactly what produced it.</p>
+      <p class="meta">10 steps, about 8 minutes. <span class="open">Open &rarr;</span></p>
+    </a>
+  </div>
+  <h3 class="stage" id="stage-audit">Audit</h3>
+  <p>Every request to read data, from a person or a program, is recorded with who asked, what for and why it was allowed or refused. The people who watch can read the record and change nothing.</p>
+  <div class="tiles">
+    <a class="tile" id="w-audit-decisions" href="audit-decisions-walkthrough.html">
+      <span class="tag">18. Health organisation</span>
+      <h3>Read every access decision, including every refusal</h3>
+      <p>The data protection officer opens a home page of counts, then the list of every request to read data, newest first, and then only the refusals, each with its date and time, who asked, what for and the reason. Each request is recorded twice, once for whether it was allowed and once for whether the access was given, and reading the record is itself recorded.</p>
+      <p class="meta">You will see: A home page of counts and the latest refusals, every request in one list, the refusals alone with the reason for each, and the auditors' own reading appearing in the list.</p>
+      <p class="meta">3 steps, about 3 minutes. <span class="open">Open &rarr;</span></p>
+    </a>
+  </div>
+</section>
+</div>
+<footer class="page-foot">
+  <p><a href="index.html">All walkthroughs</a> &middot; <a href="feature-walkthrough.html">Feature tour</a> &middot; Last updated 2026-10-11.</p>
+</footer>
+</body>
+</html>

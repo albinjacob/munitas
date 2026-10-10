@@ -33,6 +33,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { EMAIL_BY_DIRECTORY_ID, PASSWORD, actingHeaders, bearerFor, loginAs } from "../tests/auth-helpers";
 import { API_BASE } from "../config/ports";
 import { settled } from "./settled";
+import { snap } from "./snap";
 
 const SHOTS = join(process.cwd(), "walkthroughs", "shots", "healthcare");
 const AUDIO_SAMPLE = join(
@@ -127,7 +128,7 @@ async function shot(page: Page, name: string, fullPage = false): Promise<void> {
   await settled(page);
   step += 1;
   const n = String(step).padStart(2, "0");
-  await page.screenshot({ path: join(SHOTS, `${n}-${name}.png`), fullPage });
+  await snap(page, { path: join(SHOTS, `${n}-${name}.png`), fullPage });
 }
 
 /**
@@ -225,7 +226,7 @@ async function waitForAgentRunToFinish(
   }
   if (status === "succeeded") {
     await page.reload();
-    const row = page.getByTestId("agent-runs").locator("li", { hasText: purpose }).first();
+    const row = page.getByTestId("agent-runs").locator("tr", { hasText: purpose }).first();
     await expect(row).toContainText("succeeded", { timeout: 15_000 });
     return;
   }
@@ -264,7 +265,8 @@ test("capture: the healthcare worked example, start to finish", async ({ page })
   await expect(page.getByTestId("current-persona")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Devi" })).toBeVisible();
   // The counts load after the heading. A picture taken sooner shows grey placeholders.
-  await expect(page.getByText("Held back", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "What you asked for" })).toBeVisible();
+  await expect(page.getByTestId("engineer-asked-panel")).toBeVisible();
   await shot(page, "devi-home");
 
   // ---- Act two: Devi brings a recording in ------------------------------
@@ -276,7 +278,6 @@ test("capture: the healthcare worked example, start to finish", async ({ page })
 
   await page.getByTestId("register-name").fill(demoName);
   await page.getByTestId("register-department").selectOption({ label: "Cardiology" });
-  await page.getByTestId("modality-audio").check();
   await shot(page, "register-filled");
 
   await page.getByTestId("register-submit").click();
@@ -302,7 +303,6 @@ test("capture: the healthcare worked example, start to finish", async ({ page })
   await page.goto("/datasets/register");
   await page.getByTestId("register-name").fill(pipelineName);
   await page.getByTestId("register-department").selectOption({ label: "Cardiology" });
-  await page.getByTestId("modality-audio").check();
   await page.getByTestId("register-submit").click();
   await expect(page.getByTestId("upload-step")).toBeVisible();
 
@@ -329,7 +329,7 @@ test("capture: the healthcare worked example, start to finish", async ({ page })
   await shot(page, "recording-and-answer-key-uploaded");
 
   await page.getByTestId("seal-audio-submit").click();
-  await expect(page.getByTestId("seal-done")).toContainText("recording", { timeout: 15000 });
+  await expect(page.getByTestId("seal-done")).toContainText("Sealed as version", { timeout: 15000 });
   await shot(page, "sealed-as-recordings");
 
   await page.getByRole("link", { name: "Run a pipeline against this version" }).click();
@@ -419,7 +419,7 @@ test("capture: the healthcare worked example, start to finish", async ({ page })
   await expect(page.getByTestId("upload-agent-version-form")).toBeVisible();
   await shot(page, "agent-empty-upload-form");
 
-  const existingVersions = await page.getByTestId("agent-versions").locator("li").count();
+  const existingVersions = await page.getByTestId("agent-versions").locator("tbody tr").count();
   const nextVersion = existingVersions + 1;
 
   await page.getByTestId("agent-version-zip").setInputFiles(AGENT_ZIP);
@@ -505,6 +505,7 @@ test("capture: the healthcare worked example, start to finish", async ({ page })
   await shot(page, "pipeline-registry-empty");
 
   await loginAs(page, ADMIN);
+  await page.goto("/services");
   await expect(page.getByTestId("component-map")).toBeVisible();
   await shot(page, "priya-sees-platform-health");
 

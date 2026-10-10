@@ -3,7 +3,7 @@
 Runs in a process separate from the API, the same reason
 `hf_ingest_activities.py` exists: a slow or stuck run has no business
 holding the process that serves every other request. Writes the
-`agent_run` row's outcome directly via psycopg, the same as
+`agent_run` row's outcome directly through the database driver (pgdb), the same as
 `hf_ingest_activities.py`'s activities write straight to
 `huggingface_fetch_job` rather than calling back through an HTTP endpoint.
 `access_decision` rows are already written by the graph's own tool
@@ -17,12 +17,12 @@ import json
 import logging
 from contextlib import contextmanager
 
-import psycopg
-from langgraph.checkpoint.postgres import PostgresSaver
+from . import pgdb
 from temporalio import activity
 
 from . import config
 from .agent_attempt import run_once
+from .pg_saver import PgdbSaver
 from .db import _db
 from agent.graph import build_graph
 from agent.identity import AgentIdentity, Budget
@@ -150,7 +150,7 @@ def _graph_for(params: dict):
     `if not exists`.
     """
     ctx = _context_for(params)
-    with PostgresSaver.from_conn_string(config.PG_DSN) as checkpointer:
+    with PgdbSaver.from_conn_string(config.PG_DSN) as checkpointer:
         checkpointer.setup()
         graph = build_graph(ctx, checkpointer=checkpointer)
         # The thread id is how the checkpointer finds this run's state again.
@@ -253,7 +253,7 @@ def fail_run(params: dict) -> None:
                    where id = %s and status in ('running', 'awaiting_approval')""",
                 (params["error"][:2000], params["run_id"]),
             )
-        except psycopg.errors.ReadOnlySqlTransaction:
+        except pgdb.errors.ReadOnlySqlTransaction:
             log.warning(
                 "agent_run %s could not be marked failed: its tenant was "
                 "retired while the run was in flight",

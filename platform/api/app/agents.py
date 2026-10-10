@@ -17,10 +17,10 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
-from psycopg import errors as pg_errors
+from pgdb import errors as pg_errors
 from pydantic import BaseModel, Field
 
-from . import auth, config, db, grants, opa, task_credential, temporal_client
+from . import auth, config, db, grants, opa, readability, task_credential, temporal_client
 
 router = APIRouter(tags=["agents"])
 
@@ -88,12 +88,16 @@ def _access_preflight(agent: dict, dataset_version_id: str) -> dict:
         )
         approver = (row or {}).get("labels") or ", ".join(custodian["approvers"])
 
+    # Said before anybody presses start: where the only way in is a request for the whole version and that would give the agent nothing readable, there is
+    # nothing to ask for, and the start would be refused. The console shows this and does not offer the button.
+    cannot_be_granted = readability.refusal_of_whole_version(readability.of(dataset_version_id), for_agent=True) if not allowed else []
     return {
         "dataset_version_id": dataset_version_id,
         "visibility_class": version["current_class"],
         "allowed": allowed,
         "reasons": reasons,
         "needs_access_request": not allowed,
+        "cannot_be_granted": cannot_be_granted,
         "approver_label": approver,
         "department_name": custodian.get("department_name"),
         "dataset_name": custodian.get("dataset_name"),
@@ -108,16 +112,8 @@ def access_preflight(
 ) -> dict:
     """Whether starting a run against this version would need access requested.
 
-    The console calls this when somebody picks a dataset, so the start button
-    can say what pressing it will do before it does it. Requesting access in
-    somebody's name without showing them first is the kind of thing that is
-    technically consented to and actually a surprise.
-
-    Previously took no session at all, unlike the console flow that calls
-    it (a signed-in person choosing a dataset), and unlike its sibling
-    `egress_status` below it is not workload-facing, so it had no comment
-    justifying that. Tenant-checked the same way `deploy` further down
-    already checks an agent against the caller's own tenant.
+    The console calls this when somebody picks a dataset, so the start button can say what pressing it will do before it does it. It needs a
+    session, and the agent is checked against the caller's own organisation.
     """
     agent = _agent(agent_id)
     if identity["tenant_id"] != agent["tenant_id"]:
@@ -395,11 +391,11 @@ def deploy(agent_id: str, body: DeployAgent,
             (body.agent_version_id,),
         )
         if not approval or approval["state"] != "approved":
-            state = approval["state"] if approval else "not yet requested"
+            hosts = ", ".join(version["requested_hosts"])
+            situation = f"that request is {approval['state']}" if approval else "no request to do so has been made yet"
             raise HTTPException(409, {"reasons": [
-                f"this version asks to call {', '.join(version['requested_hosts'])}, "
-                f"and that request is {state}, not approved -- a network_architect "
-                "has to approve it before this version can be deployed"
+                f"This version asks to call {hosts}, but {situation}. "
+                "A network architect has to approve the request before this version can run."
             ]})
 
     deployment_id = str(uuid.uuid4())
@@ -481,19 +477,9 @@ def refuse_egress_hosts(approval_id: str, body: EgressDecisionIn,
 def egress_status(version_id: str, scope: str | None = Depends(auth.organisation_scope)) -> dict:
     """What this version may call, and whether that has been approved.
 
-    Called by the agent's own runtime (`agent/tools.py`'s `fetch_url`), a
-    workload with no Kratos session to present. (`GET /dataset-versions/{id}`
-    used to take no session either, and no longer does: it carries a version's
-    storage keys, so it answers a session, the worker token or a run credential
-    only.) A version's requested hosts and approval state are not sensitive in the
-    way tenant data is, and this is read on every network call an agent
-    makes, not once at deploy time. Scoped by version id alone, no tenant
-    check: an agent already knows only its own `agent_version_id`, and a
-    stranger who guessed one learns a host list and a state, nothing about
-    any tenant's actual data.
-
-    The most recent approval decides, not "any approval ever", the same
-    defensive read `deploy` above and `_pending_gate` elsewhere both make.
+    Read by the agent's own runtime before each network call. The runtime has no sign-in session to present, so the answer is scoped by version
+    id alone and holds only the hosts the version asked for and the state of its approval, nothing about any organisation's data. The most
+    recent approval decides, not any approval ever.
     """
     version = db.one(
         "select requested_hosts, tenant_id from agent_version where id = %s",
@@ -829,17 +815,9 @@ async def start_run(agent_id: str, body: StartAgentRun,
                     identity: dict = Depends(auth.current_session)) -> dict:
     """Start a real run of this agent, in the background.
 
-    Not synchronous, for the same reason `POST /datasets/{id}/fetch-huggingface`
-    is not: a model call can run long under GPU contention with the
-    de-identification pipeline (agent/model.py's own comment notes a
-    300-second timeout for exactly this), and a slow or stuck run has no
-    business holding a browser tab or the process serving every other
-    request.
-
-    The version pinned onto the created row is resolved once, here, and
-    never re-derived later: whatever is active right now (or the version
-    named explicitly) is what this run is defined to have used, even if
-    somebody deploys a different version before it finishes.
+    The call does not wait for the run, because a model call can take a long time and a slow or stuck run should not hold a browser tab or the
+    process serving every other request. The version recorded on the run is resolved once, here, and never changed afterwards: it is the
+    version active now, or the one named explicitly, even if a different version is deployed before the run finishes.
     """
     agent = _agent(agent_id)
 
@@ -883,6 +861,10 @@ async def start_run(agent_id: str, body: StartAgentRun,
     if body.dataset_version_id:
         preflight = _access_preflight(agent, body.dataset_version_id)
         if preflight["needs_access_request"]:
+            # Asking for the whole version on locked content would park the run behind an approval that leads to bytes nobody can read.
+            not_worth_asking = readability.refusal_of_whole_version(readability.of(body.dataset_version_id), for_agent=True)
+            if not_worth_asking:
+                raise HTTPException(400, {"reasons": not_worth_asking})
             if not body.request_access:
                 raise HTTPException(409, {
                     "needs_access_request": True,

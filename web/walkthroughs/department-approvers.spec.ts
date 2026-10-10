@@ -18,6 +18,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { actingHeaders, bearerFor, loginAs } from "../tests/auth-helpers";
 import { API_BASE } from "../config/ports";
 import { settled } from "./settled";
+import { snap } from "./snap";
 import { closeTestRequests } from "./tidy";
 
 const SHOTS = join(process.cwd(), "walkthroughs", "shots", "department-approvers");
@@ -33,7 +34,7 @@ async function shot(page: Page, name: string): Promise<void> {
   await settled(page);
   step += 1;
   const n = String(step).padStart(2, "0");
-  await page.screenshot({ path: join(SHOTS, `${n}-${name}.png`) });
+  await snap(page, { path: join(SHOTS, `${n}-${name}.png`) });
 }
 
 // The top of the screen only. Health's list of access requests below it is long and carries leftovers of earlier checks, which have nothing to do
@@ -42,7 +43,7 @@ async function shotTop(page: Page, name: string, height: number): Promise<void> 
   await settled(page);
   step += 1;
   const n = String(step).padStart(2, "0");
-  await page.screenshot({ path: join(SHOTS, `${n}-${name}.png`), clip: { x: 0, y: 0, width: 1920, height } });
+  await snap(page, { path: join(SHOTS, `${n}-${name}.png`), clip: { x: 0, y: 0, width: 1920, height } });
 }
 
 async function call<T>(method: string, path: string, body: unknown, headers: Record<string, string>): Promise<T> {
@@ -55,9 +56,11 @@ async function call<T>(method: string, path: string, body: unknown, headers: Rec
   return response.json() as Promise<T>;
 }
 
-// Puts one department's card at the top of the picture, so the whole card is in view.
+// Shows the page from its top, so the title and the whole of the first department's card are in view.
 async function showCard(page: Page, id: string): Promise<void> {
-  await page.getByTestId(`department-${id}`).evaluate((e) => e.scrollIntoView({ block: "start" }));
+  await expect(page.getByTestId(`department-${id}`)).toBeVisible();
+  // The page from its top, so the title is in the picture and the card sits just under it: the header is fixed, and a card scrolled to the very top of the window would be partly under it.
+  await page.evaluate(() => window.scrollTo(0, 0));
 }
 
 function inTwoWeeks(): string {

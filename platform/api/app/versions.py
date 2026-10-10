@@ -16,7 +16,7 @@ import hashlib
 import json
 import uuid
 
-from . import db, iceberg
+from . import db, iceberg, kinds, storage
 
 
 def register_contract(tenant_id: str, name: str, fields: list[dict],
@@ -34,7 +34,7 @@ def register_contract(tenant_id: str, name: str, fields: list[dict],
     other tenant's attempt failed on the unique constraint.
 
     One function rather than one per caller. The worker registers
-    `encounter_raw` through POST /schema-contracts and the audio seal path
+    `audio_raw` through POST /schema-contracts and the audio seal path
     registers the same contract directly, and if those two computed the digest
     differently the same contract would exist twice under one name, with the
     pipeline and the console each holding a different id for it.
@@ -54,6 +54,28 @@ def register_contract(tenant_id: str, name: str, fields: list[dict],
         (str(uuid.uuid4()), tenant_id, name, json.dumps(fields), primary_key, digest),
     )
     return {"id": str(row["id"]), "content_hash": digest, "created": True}
+
+
+def ensure_dataset(tenant_id: str, name: str, derived_from_version_id: str | None = None) -> tuple[str, bool]:
+    """The dataset of this name in this organisation, made if it does not exist. Returns (id, created).
+
+    A dataset made from a version belongs to the department of the dataset that version is in, so whoever is accountable for the input is
+    accountable for what is made from it, and access to it can be approved. The version must be one of this organisation's: a LookupError says when
+    it is not.
+    """
+    existing = db.one("select id from dataset where tenant_id = %s and name = %s", (tenant_id, name))
+    if existing:
+        return str(existing["id"]), False
+    department_id = None
+    if derived_from_version_id:
+        source = db.one("""select d.department_id, v.tenant_id from dataset_version v join dataset d on d.id = v.dataset_id where v.id = %s""",
+                        (derived_from_version_id,))
+        if not source or source["tenant_id"] != tenant_id:
+            raise LookupError("the version this dataset is made from does not exist in this organisation")
+        department_id = source["department_id"]
+    row = db.execute("insert into dataset (id, tenant_id, name, department_id) values (%s, %s, %s, %s) returning id",
+                     (str(uuid.uuid4()), tenant_id, name, department_id))
+    return str(row["id"]), True
 
 
 def next_version(tenant_id: str, dataset_id: str) -> dict:
@@ -103,6 +125,7 @@ def seal(
     produced_by_run: str | None = None,
     records_key: str | None = None,
     table_required: bool | None = None,
+    records_options: dict | None = None,
 ) -> dict:
     """Create a sealed version.
 
@@ -131,14 +154,37 @@ def seal(
                 tenant_id=tenant_id, backend=storage_backend, dataset_id=dataset_id,
                 dataset_name=dataset["name"], version_id=version_id,
                 version=reserved["version"], prefix=prefix, schema_id=schema_id,
-                records_key=records_key, produced_by_run=produced_by_run)
+                records_key=records_key, produced_by_run=produced_by_run, records_options=records_options)
             iceberg.enforce(why, table_required)
             if projection:
                 manifest += projection.objects
+                record_count = record_count or projection.record_count   # a text file is counted as it is read, so the caller may not know
     return insert_sealed(
         version_id=version_id, tenant_id=tenant_id, dataset_id=dataset_id, version=reserved["version"], prefix=prefix,
         storage_backend=storage_backend, visibility_class=visibility_class, manifest=manifest, schema_id=schema_id,
         produced_by_run=produced_by_run, record_count=record_count, projection=projection, why=why)
+
+
+def _head_reader(backend: str, tenant_id: str):
+    """A function that returns the first bytes of one file of this version, or None when storage cannot be reached.
+
+    Sealing never sets storage up. An organisation that has stored nothing has no bucket and no key, and asking for its client would create both
+    (and print the storage permissions), so its files are told by their names, which is all there is to go on when nothing was uploaded.
+    """
+    from . import grants
+
+    provisioned = db.one("select 1 as found from tenant_storage_provision where tenant_id = %s and backend = %s", (tenant_id, backend))
+    if not provisioned or (backend == "seaweedfs" and not grants.ingest_is_active(tenant_id)):
+        return lambda key: None
+    try:
+        client, bucket = storage.admin_client_for(backend, tenant_id), storage.bucket_for(backend, tenant_id)
+    except Exception:  # noqa: BLE001 - without storage every file is told by its name
+        return lambda key: None
+
+    def read(key: str) -> bytes:
+        return client.get_object(Bucket=bucket, Key=key, Range=f"bytes=0-{kinds.HEAD - 1}")["Body"].read()
+
+    return read
 
 
 def insert_sealed(
@@ -163,6 +209,8 @@ def insert_sealed(
     is complete when this is called, the table's files included, because the content hash is taken over it here and
     nothing may be written under the folder afterwards.
     """
+    # What each file is, read from the file now and written into the list the hash covers: the kind of a version is a fact sealed with it.
+    kinds.tag(manifest, _head_reader(storage_backend, tenant_id), {o["key"] for o in projection.objects} if projection else set())
     digest = content_hash(
         {"manifest": manifest, "count": record_count, "prefix": prefix}
     )

@@ -27,17 +27,21 @@ rather than a policy.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 
-IMAGE = "python:3.12-slim"
+IMAGE = "python:3.11-slim"  # any Python image will do; this is the one the sandbox already uses, so nothing is downloaded
 NETWORK = "munitas_agentnet"
 CONTROL_NETWORK = "munitas_data"
+# Docker runs inside the WSL distro on this machine, not on Windows, so every docker command goes through it.
+DOCKER = ["wsl.exe", "-d", os.environ.get("MUNITAS_WSL_DISTRO", "Munitas"), "--", "docker"]
 
 # Runs inside the container. Reports per attempt rather than exiting on the
 # first failure, so one result cannot mask another.
 PROBE = r"""
 import json, socket, urllib.error, urllib.request
+
 out = {}
 
 def reach(url):
@@ -74,7 +78,7 @@ def check(label: str, ok: bool, detail: str = "") -> None:
 
 def probe(network: str) -> dict:
     result = subprocess.run(
-        ["docker", "run", "--rm", "--network", network, IMAGE, "python", "-c", PROBE],
+        [*DOCKER, "run", "--rm", "--network", network, IMAGE, "python", "-c", PROBE],
         capture_output=True, text=True, timeout=180,
     )
     for line in result.stdout.splitlines():
@@ -89,7 +93,7 @@ def main() -> int:
     print("-" * 33)
 
     internal = subprocess.run(
-        ["docker", "network", "inspect", NETWORK, "--format", "{{.Internal}}"],
+        [*DOCKER, "network", "inspect", NETWORK, "--format", "{{.Internal}}"],
         capture_output=True, text=True, timeout=60,
     ).stdout.strip()
     check("agentnet is declared internal", internal == "true", f"Internal={internal}")

@@ -26,13 +26,13 @@ STEPS = [
                 "quality reporting requires, so Devi registers a pipeline for that."),
         "title": "Devi opens the Pipelines page",
         "screen": "Pipelines &middot; /pipelines",
-        "text": "The page lists the pipelines registered in the Health organisation. Each one has an owning "
-                "department and a version number. Several rows come from earlier recordings of this "
-                "walkthrough, because a sealed version can never be deleted.",
-        "note": "The columns read <strong>Pipeline</strong>, <strong>Department</strong> and "
-                "<strong>Version</strong>. Most rows read <strong>v1 sealed</strong>, and one reads <strong>no "
-                "version registered yet</strong>. The button <strong>Register a pipeline</strong> is at the top "
-                "right.",
+        "text": "The page lists the pipelines registered in the Health organisation, each with an owning "
+                "department and a version number. Nobody in Health has registered one yet, so the list is empty "
+                "and the page says so.",
+        "note": "The page says <strong>No pipelines.</strong> and, under it, <strong>Nobody has registered one in this "
+                "organisation yet.</strong> The button <strong>Register a pipeline</strong> is on the page, and "
+                "the sentence under the heading says that each version is sealed on upload and cannot be changed "
+                "afterwards.",
     },
     {
         "file": "02-names-it-and-its-department.png", "actor": "devi",
@@ -40,12 +40,12 @@ STEPS = [
         "screen": "Pipelines &middot; Register a pipeline",
         "text": "Devi types a name and chooses <strong>Cardiology</strong> as the owner. A department is a team "
                 "inside an organisation that owns some of its data. Ownership says which department is "
-                "answerable for what the pipeline does. The name ends in a date and a number only so that this "
-                "example can be recorded again.",
+                "answerable for what the pipeline does. The name ends in a date and a number so that each "
+                "example has a name of its own.",
         "note": "<strong>Owned by</strong> reads <strong>Cardiology</strong>. The line under the heading reads "
-                "<strong>Names an owner. No version exists yet, so nothing can run until a DAG config and its "
-                "scripts are uploaded</strong>. A DAG is a set of steps in which each step may depend on "
-                "earlier ones.",
+                "<strong>Names an owner. No version exists yet, so nothing can run until a pipeline definition and its "
+                "scripts are uploaded on the pipeline&rsquo;s own page.</strong> A pipeline definition lists the "
+                "steps, and says which steps each one depends on.",
     },
     {
         "file": "03-registered-no-version-yet.png", "actor": "devi",
@@ -54,7 +54,8 @@ STEPS = [
         "text": "Registering created a name and an owner and nothing else. The page says so, and offers the "
                 "upload of the first version below.",
         "note": "<strong>Owned by Cardiology. Registered by Devi</strong> sits under the name. The panel reads "
-                "<strong>No versions</strong>, and the text under it asks for a config and its scripts.",
+                "<strong>No versions</strong>, and under it <strong>Upload a config and its scripts below to seal the "
+                "first one.</strong>",
     },
     {
         "file": "04-uploads-the-dag-config-and-scripts.png", "actor": "devi",
@@ -76,7 +77,7 @@ STEPS = [
                 "present, and then sealed version 1, which means finished and closed for good. A sealed version "
                 "is never edited: a change is registered as the next version.",
         "note": "<strong>v1</strong> and a short code identify the version. Under it, <strong>check_notes "
-                "(script: steps/check_notes.py)</strong> and <strong>decide (gate) &larr; check_notes</strong> "
+                "(script: steps/check_notes.py)</strong> and <strong>decide (gate) waits for check_notes</strong> "
                 "show the two steps and that <code>decide</code> depends on <code>check_notes</code>. The "
                 "heading below reads <strong>Upload the next version</strong>, and says there is no editing in "
                 "place.",
@@ -91,12 +92,13 @@ STEPS = [
         "title": "Devi registers a dataset for a cardiology note",
         "screen": "Bring a dataset in &middot; /datasets/register",
         "text": "A dataset is a named collection of records, and Munitas decides who may read it. Devi names "
-                "it, gives <strong>Cardiology</strong> as the owner, says it is text, and leaves the access "
-                "level at its default. The access level says how restricted a dataset is, and "
+                "it, gives <strong>Cardiology</strong> as the owner, and leaves the access "
+                "level at its default. The form does not ask what kind of data it is, because the platform "
+                "reads that from the files once they are sealed. The access level says how restricted a dataset is, and "
                 "<strong>Raw</strong> is the most restricted level.",
         "note": "<strong>Owned by</strong> reads <strong>Cardiology</strong>, the origin reads "
-                "<strong>Collected here, regulated</strong>, the access level reads <strong>Raw (the safe "
-                "default)</strong>, and <strong>text</strong> is ticked. The small text beside "
+                "<strong>Collected by this organisation, regulated</strong>, and the access level reads <strong>Raw (the safe "
+                "default)</strong>. The small text beside "
                 "<strong>Register</strong> says that nothing is readable yet.",
     },
     {
@@ -144,7 +146,7 @@ STEPS = [
         "text": "Hartley's home page lists the requests to read Cardiology's data. The first card carries "
                 "everything Devi wrote.",
         "note": "<strong>Waiting for your decision</strong> counts <strong>1</strong>. The card reads "
-                "<strong>Devi (Data engineer) wants to read cardiology-intake-notes v1</strong> with the label "
+                "<strong>Devi (Data engineer) wants to read</strong> <strong>cardiology-intake-notes</strong> <strong>v1</strong> with the label "
                 "<strong>Raw</strong>, Devi's reason, the purpose, and <strong>for 24 hours</strong>. Beside the "
                 "two buttons, the text reads <strong>Granting gives Devi 24 hours, for this purpose only, and "
                 "it ends by itself</strong>.",
@@ -165,7 +167,7 @@ STEPS = [
         "file": "12-access-shows-up-on-the-version-page.png", "actor": "devi",
         "act": ("PART FOUR", "Devi runs the pipeline",
                 "With the lease in place, the version page tells Devi what the access covers, and Devi can "
-                "choose Devi's own pipeline to run."),
+                "choose the pipeline that Devi registered."),
         "title": "The page now shows the access that Devi has",
         "screen": "Version detail &middot; /versions/&lt;id&gt;",
         "text": "In place of the request form, <strong>Your access</strong> states what the lease covers and "
@@ -224,7 +226,7 @@ STEPS = [
                 "with it, and the page says this cannot be undone. Devi started the run, so Devi may not "
                 "clear it.",
         "note": "The state reads <strong>Waiting for a decision</strong>. The text above the buttons reads "
-                "<strong>You started this run, so somebody else has to clear it</strong>, and "
+                "<strong>You started this run, so somebody else has to decide it.</strong> and "
                 "<strong>Release to open for annotation</strong> and <strong>Hold it back</strong> are both "
                 "pale and cannot be pressed.",
     },
@@ -235,7 +237,8 @@ STEPS = [
         "text": "Imani holds the de-identification reviewer role. A reason has to be written before either "
                 "button can be pressed, so that whoever reads the record later has the reasoning and not only "
                 "the outcome.",
-        "note": "The panel at the top left reads <strong>Imani, De-identification reviewer</strong>. The "
+        "note": "The panel at the bottom left of the menu reads <strong>Imani</strong> and, under the name, "
+                "<strong>De-identification reviewer</strong>. The "
                 "reason reads <strong>Required registry fields are present and well-formed; safe to open for "
                 "annotation</strong>, and both buttons are now active.",
     },
@@ -245,16 +248,16 @@ STEPS = [
         "screen": "Gate decision &middot; after releasing",
         "text": "The note moves from Raw to Open for annotation. The decision and its reason are now part of "
                 "the record on this page.",
-        "note": "The state reads <strong>Released</strong>. <strong>Your decision</strong> reads "
+        "note": "The state reads <strong>Released</strong>. <strong>The decision</strong> reads "
                 "<strong>Released by Imani</strong> followed by the reason, and a notice at the bottom right "
                 "reads <strong>Released to open for annotation</strong>.",
     },
 ]
 
 ACTORS = {
-    "devi": ("Devi", "Data engineer in the Cardiology department, builds and runs the pipeline"),
-    "hartley": ("Hartley", "Data custodian for the Cardiology department, decides who may read its data"),
-    "imani": ("Imani", "De-identification reviewer, the role that may clear a gate decision"),
+    "devi": ("Devi", "Data engineer in the Health organisation"),
+    "hartley": ("Hartley", "Data custodian for the Cardiology department"),
+    "imani": ("Imani", "De-identification reviewer in the Health organisation"),
 }
 
 CROPS = {

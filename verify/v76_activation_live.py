@@ -8,7 +8,7 @@ and a run actually see:
 
   * Storage is down (the SeaweedFS container is stopped). A credential request
     that policy allows answers 202, never 403, and an ordinary agent run
-    parks at a checkpoint instead of recording a refusal. When storage comes
+    parks at a checkpoint instead of file a refusal. When storage comes
     back, nobody does anything: the run continues and reaches its sign-off.
   * The permissions document is busy (its lock is held by this script). A
     sandboxed run, whose code has to be fetched from storage and so cannot be
@@ -19,19 +19,21 @@ Runs inside the WSL distro, because it stops and starts a container, beside
 the API, both workers and a stack that is otherwise idle. It restores storage
 and releases the lock however it ends.
 
-    PG_DSN=postgresql://munitas:munitas@localhost:5432/platform \\
-    VERIFY_KRATOS=http://localhost:4433 S3_ENDPOINT=http://localhost:8333 \\
-    $HOME/.munitas/verify-venv/bin/python verify/v76_activation_live.py
+    MUNITAS_PG_DSN=postgresql://munitas:munitas@localhost:5432/platform \\
+    MUNITAS_VERIFY_KRATOS=http://localhost:4433 MUNITAS_S3_ENDPOINT=http://localhost:8333 \\
+    MUNITAS_DATA=/mnt/c/Work/munitas/data \\
+    $HOME/.munitas/docker-checks-venv/bin/python verify/v76_activation_live.py
 """
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import time
 import uuid
 
-import psycopg
+import pgdb
 
 from common import (ENGINEER, PG_DSN, PIPELINE, api, bearer_for, check, db,
                     fixture_contract, fixture_version, heading, require_api,
@@ -43,6 +45,9 @@ from v55_sandboxed_agent_run import (TENANT, department, register_agent,
                                      upload_and_deploy)
 from v50_agent_deploy_and_runs import register_version
 
+# Docker runs inside the WSL distro on this machine, not on Windows, so every docker command goes through it.
+DOCKER = ["wsl.exe", "-d", os.environ.get("MUNITAS_WSL_DISTRO", "Munitas"), "--", "docker"]
+
 STORAGE = "munitas-seaweedfs-1"
 ADVISORY_LOCK_ID = 846_152_907_331  # platform/api/app/grants.py, _ADVISORY_LOCK_ID
 # While storage is down the activator's gaps grow (10, 20, 40 s ...), so the
@@ -51,7 +56,7 @@ RESUME_WAIT_SECONDS = 240
 
 
 def docker(*args: str) -> str:
-    return subprocess.run(["docker", *args], capture_output=True, text=True,
+    return subprocess.run([*DOCKER, *args], capture_output=True, text=True,
                           check=True, timeout=120).stdout.strip()
 
 
@@ -67,7 +72,7 @@ def wait_for_storage(timeout: float = 90.0) -> bool:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
-            if httpx.get(f"http://localhost:{PORTS['seaweedfs_filer']}/", timeout=3.0).status_code < 500:
+            if httpx.get(f"http://localhost:{PORTS['seaweedfs_s3']}/", timeout=3.0).status_code < 500:  # the S3 port answers (403 without a key) when storage is up
                 return True
         except httpx.HTTPError:
             pass
@@ -97,7 +102,7 @@ def decisions_for(run_id: str) -> list[dict]:
 
 def grant_active(decision_id: int) -> bool | None:
     rows = api("GET", "/access-decisions", params={"limit": 500},
-               headers=bearer_for("canary-engineer")).json()["decisions"]
+               headers=bearer_for("canary-admin")).json()["decisions"]
     for row in rows:
         if row["id"] == decision_id:
             return row["active"]
@@ -177,7 +182,7 @@ def main() -> int:
               direct.headers.get("retry-after") == str(body.get("retry_after_seconds")),
               f"header {direct.headers.get('retry-after')}, body {body.get('retry_after_seconds')}")
 
-        heading("U76b: an ordinary run parks instead of recording a refusal")
+        heading("U76b: an ordinary run parks instead of file a refusal")
         started = api("POST", f"/agents/{native_agent}/runs",
                       json={"purpose": "u76 parks on activation",
                             "dataset_version_id": published["id"]},
@@ -232,7 +237,7 @@ def main() -> int:
 
         # --- U76d: document busy, sandboxed run --------------------------
         heading("U76d: a sandboxed run parks while staging, and starts again from staging")
-        lock_conn = psycopg.connect(PG_DSN, autocommit=True)
+        lock_conn = pgdb.connect(PG_DSN, autocommit=True)
         lock_conn.execute("select pg_advisory_lock(%s)", (ADVISORY_LOCK_ID,))
         sandbox_run = start_run(sandbox_agent, staged["id"], "u76 sandboxed parks")
         run = wait_for_status(sandbox_run, {"awaiting_activation", "failed", "succeeded"}, 180)

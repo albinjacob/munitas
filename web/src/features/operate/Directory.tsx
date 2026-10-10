@@ -12,18 +12,32 @@
  * attributed, and who authorised something is the one fact an audit cannot lose.
  */
 
+import { useState } from "react";
 import { usePolicyRoles } from "../../api/queries";
 import { roleLabel } from "../../api/roles";
+import { useHeaderSearch } from "../../components/HeaderSearch";
 import { Loading, Section } from "../../components/states";
 import { useIdentity } from "../../identity/IdentityContext";
 import { RolesHeld } from "./RolesHeld";
 
 export function Directory() {
-  const { principals: active, retained, loading } = useIdentity();
+  const { principals: all, retained: allRetained, loading, tenant } = useIdentity();
+  // The platform administrator is offered the people of every organisation, because the legal-holds page needs them. This page is the
+  // people of one organisation, so it narrows to the one the signed-in person belongs to.
+  const active = all.filter((p) => p.tenant_id === tenant);
+  const retained = allRetained.filter((p) => p.tenant_id === tenant);
   const policy = usePolicyRoles();
+  const [q, setQ] = useState("");
+  useHeaderSearch({ value: q, onChange: setQ, placeholder: "Search people by name, role or department", testid: "directory-search" });
 
   if (loading) return <Loading what="the directory" />;
 
+
+  const words = q.trim().toLowerCase();
+  const matches = (p: { id: string; label: string; roles: string[]; approver_of: string[] }) =>
+    !words || `${p.label} ${p.id} ${p.roles.map(roleLabel).join(" ")} ${p.approver_of.join(" ")}`.toLowerCase().includes(words);
+  const shownActive = active.filter(matches);
+  const shownRetained = retained.filter(matches);
 
   function approves(roles: string[]): boolean {
     return Boolean(
@@ -35,8 +49,8 @@ export function Directory() {
     <>
       <Section
         level="page"
-        title="Directory"
-        description="Who the organisation registered. Approvals reference these entries, which is why an entry cannot simply be removed."
+        title="People and roles"
+        description="Everybody registered in this organisation, the role each person holds, and the department each data custodian approves for."
       >
         <div className="overflow-x-auto rounded border border-slate-200 bg-white">
           <table className="w-full text-sm">
@@ -49,7 +63,14 @@ export function Directory() {
               </tr>
             </thead>
             <tbody data-testid="directory-rows">
-              {active.map((p) => (
+              {words && shownActive.length === 0 && shownRetained.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="px-4 py-3 text-center text-slate-500">
+                    Nobody matches that search.
+                  </td>
+                </tr>
+              )}
+              {shownActive.map((p) => (
                 <tr key={p.id} data-person={p.id} className="border-t border-slate-100 transition-colors hover:bg-slate-50">
                   <td className="px-4 py-2">
                     <span className="font-medium">{p.label}</span>
@@ -89,7 +110,7 @@ export function Directory() {
           <div className="overflow-x-auto rounded border border-slate-200 bg-white">
             <table className="w-full text-sm">
               <tbody data-testid="retained-rows">
-                {retained.map((p) => (
+                {shownRetained.map((p) => (
                   <tr
                     key={p.id}
                     data-person={p.id}

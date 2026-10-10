@@ -6,3 +6,13 @@ boto3==1.35.24
 pyiceberg[pyarrow]==0.12.0
 pyarrow==25.0.1
 sqlalchemy==2.1.1
+# Reads a zstd-compressed table file (tablewriter/textrows.py). The API pins the same version.
+zstandard==0.25.0
+# Read binary table files (tablewriter/binaryrows.py): Avro, Excel (with the safe XML reader, so a workbook cannot make the worker fetch anything), and the
+# zone database ORC needs on an image that has none.
+fastavro==1.13.1
+openpyxl==3.1.5
+defusedxml==0.7.1
+tzdata==2026.3
+# Counts the people in small groups for a table about people with a query that spills to disk (tablewriter/peoplerows.py).
+duckdb==1.5.6

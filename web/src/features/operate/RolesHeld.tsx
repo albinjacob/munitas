@@ -25,10 +25,8 @@ import { roleLabel } from "../../api/roles";
 import { Empty, Failure, Loading, Section } from "../../components/states";
 import { notify } from "../../components/toast";
 import { useIdentity } from "../../identity/IdentityContext";
+import { when } from "../../lib/when";
 
-function when(iso: string): string {
-  return new Date(iso).toLocaleDateString();
-}
 
 /**
  * Whether anybody has confirmed this is still needed, and how long ago.
@@ -56,11 +54,11 @@ export function RolesHeld() {
   return (
     <>
       <Section
-        title="Asks waiting for a decision"
-        description="Anybody may ask for a role. Anybody except the person who asked may decide it."
+        title="Role requests waiting for a decision"
+        description="Anybody may ask for a role. A data custodian, other than the person who asked, decides it."
       >
         {pending.length === 0 ? (
-          <Empty what="asks" hint="Nothing is waiting for a decision." />
+          <Empty what="role requests" hint="Nothing is waiting for a decision." />
         ) : (
           <div data-testid="role-asks" className="space-y-3">
             {pending.map((ask) => (
@@ -72,7 +70,7 @@ export function RolesHeld() {
 
       <Section
         title="Roles held"
-        description="Each one lapses, so somebody has to decide again rather than it lasting because nobody looked."
+        description="Roles granted through a request. Each one lapses on the date shown and has to be requested again."
       >
         {held.length === 0 ? (
           <Empty
@@ -80,15 +78,15 @@ export function RolesHeld() {
             hint="Nobody holds a role granted this way yet."
           />
         ) : (
-          <table className="w-full text-sm" data-testid="roles-held">
+          <div className="data-card"><table className="data-table" data-testid="roles-held">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
-                <th className="pb-2 pr-6">Person</th>
-                <th className="pb-2 pr-6">Role</th>
-                <th className="pb-2 pr-6">Granted by</th>
-                <th className="pb-2 pr-6">Lapses</th>
-                <th className="pb-2 pr-6">Last checked</th>
-                <th className="pb-2">Still needed?</th>
+                <th>Person</th>
+                <th>Role</th>
+                <th>Granted by</th>
+                <th>Lapses</th>
+                <th>Last checked</th>
+                <th>Still needed?</th>
               </tr>
             </thead>
             <tbody>
@@ -100,7 +98,7 @@ export function RolesHeld() {
                 />
               ))}
             </tbody>
-          </table>
+          </table></div>
         )}
       </Section>
 
@@ -195,6 +193,7 @@ function Held({ grant, mine }: { grant: RoleHeld; mine: boolean }) {
           person rather than the id stored against the row. */}
       <td className="py-2 pr-6 align-top text-slate-600">
         {people.label(grant.approved_by)}
+        <div className="text-xs text-slate-500">{when(grant.created_at)}</div>
       </td>
       <td className="py-2 pr-6 align-top text-slate-600">
         {when(grant.expires_at)}
@@ -244,6 +243,9 @@ function Held({ grant, mine }: { grant: RoleHeld; mine: boolean }) {
   );
 }
 
+/** The roles a person may ask for: every role a person can hold, except the one that administers roles. */
+const REQUESTABLE_ROLES = ["analyst", "data_custodian", "deid_reviewer", "dpo", "network_architect", "notebook_explore", "pipeline_operator", "privacy_auditor"];
+
 function AskForRole() {
   const [role, setRole] = useState("");
   const [justification, setJustification] = useState("");
@@ -252,22 +254,28 @@ function AskForRole() {
   return (
     <Section
       title="Ask for a role"
-      description="For yourself. Somebody else decides it, and it lapses rather than lasting forever."
+      description="Request a role for yourself. Somebody else decides it, and it lapses after a set time."
     >
       <div className="flex flex-wrap items-end gap-3">
         <label className="text-sm">
           <span className="block text-slate-600">Role</span>
-          <input
+          <select
             data-testid="ask-role"
             value={role}
             onChange={(e) => setRole(e.target.value)}
-            placeholder="deid_reviewer"
-            className="mt-1 rounded border border-slate-300 px-2 py-1 font-mono text-xs"
-          />
+            className="mt-1 rounded border border-slate-300 px-2 py-1 text-sm"
+          >
+            <option value="">Choose a role</option>
+            {REQUESTABLE_ROLES.map((r) => (
+              <option key={r} value={r}>
+                {roleLabel(r)}
+              </option>
+            ))}
+          </select>
         </label>
         <label className="grow text-sm">
           <span className="block text-slate-600">
-            Why you need it, which is recorded with the ask
+            Why you need it, which is recorded with the request
           </span>
           <input
             data-testid="ask-reason"
@@ -290,12 +298,12 @@ function AskForRole() {
           }
           className="rounded bg-indigo-500 hover:bg-indigo-800 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
         >
-          {ask.isPending ? "Asking" : "Ask"}
+          {ask.isPending ? "Sending" : "Send request"}
         </button>
       </div>
       {ask.error && (
         <div className="mt-3">
-          <Failure error={ask.error} what="this ask" verb="record" />
+          <Failure error={ask.error} what="this request" verb="record" />
         </div>
       )}
     </Section>

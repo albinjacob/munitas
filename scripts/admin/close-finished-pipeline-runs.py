@@ -36,16 +36,16 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-import psycopg
-from psycopg.rows import dict_row
+import pgdb
+from pgdb import dict_row
 from temporalio.client import Client, WorkflowExecutionStatus
 from temporalio.service import RPCError, RPCStatusCode
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from ports_config import PORTS  # noqa: E402
 
-PG_DSN = os.environ.get("PG_DSN", f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform")
-TEMPORAL = os.environ.get("TEMPORAL_ADDRESS", f"localhost:{PORTS['temporal']}")
+PG_DSN = os.environ.get("MUNITAS_PG_DSN", f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform")
+TEMPORAL = os.environ.get("MUNITAS_TEMPORAL_ADDRESS", f"localhost:{PORTS['temporal']}")
 
 # Temporal's words for how a workflow ended, in the database's words. The
 # same table as platform/api/app/pipeline.py's _ENDED_AS.
@@ -97,7 +97,7 @@ def close_runs(conn, closing: list[tuple]) -> tuple[int, list[str]]:
                     (status, error, when, source, run_id),
                 )
                 closed += cur.rowcount
-        except psycopg.Error as exc:
+        except pgdb.Error as exc:
             refused.append(f"{workflow_id}: {str(exc).splitlines()[0]}")
     return closed, refused
 
@@ -143,7 +143,7 @@ async def main() -> int:
         mark = "close" if source else "leave"
         print(f"  {mark:5}  {r['tenant_id']:<22} {r['workflow_id']:<32} {status}" + (f" ({source})" if source else ""))
 
-    with psycopg.connect(PG_DSN, row_factory=dict_row) as conn:
+    with pgdb.connect(PG_DSN, row_factory=dict_row) as conn:
         result = await close_finished(client, conn, args.apply, report=line)
 
     print(f"\n{result['open']} open, {result['stopped']} stopped according to Temporal, {result['running']} still running.")

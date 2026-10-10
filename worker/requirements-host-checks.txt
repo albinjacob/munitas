@@ -1,0 +1,10 @@
+# What the checks that run on the host (the Windows .venv) need beyond worker/requirements.txt: the table-writing
+# libraries (v95) and the real Iceberg and DuckDB clients (v92). Install on top of the worker requirements:
+#   .venv\Scripts\python -m pip install -r worker\requirements-host-checks.txt
+# Pinned to the versions the API container and the table worker run (platform/api/requirements.txt and
+# platform/tablejob/requirements.txt), so a check on the host exercises the same libraries. Kept out of
+# worker/requirements.txt on purpose: the worker does not use them, and pyarrow is the package that has
+# blocked the worker's own install before.
+pyiceberg[pyarrow]==0.12.0   # Apache 2.0. Writes and reads Iceberg tables.
+pyarrow==25.0.1              # Apache 2.0. Pinned with pyiceberg, as in the API image.
+duckdb==1.5.6                # MIT. Reads the tables the way an outside client would.

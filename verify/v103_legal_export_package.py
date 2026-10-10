@@ -147,7 +147,7 @@ def main() -> int:
         check("records already erased are listed as erased", any(e["record_id"].startswith("erased-") for e in erased["records_erased_by_key_destruction"]))
         custody = json.loads((opened / "chain-of-custody.json").read_text())
         check("the chain of custody names who asked, approved and confirmed, and the demand",
-              [s["by"] for s in custody["steps"][:3]] == ["Priya", "Ravi", "Records officer"]
+              [s["by"] for s in custody["steps"][:3]] == ["Canary administrator", "Canary administrator, second", "Records officer"]
               and custody["demand"]["reference"] == "KB-2026-004411", str([s["by"] for s in custody["steps"]]))
         wrong = open_legal_package.open_package(package, "not-the-passphrase", Path(tempfile.mkdtemp()), public)
         check("a wrong passphrase opens nothing", not wrong["ok"])

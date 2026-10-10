@@ -59,7 +59,7 @@ SAMPLES = Path(__file__).resolve().parents[2] / "docs" / "audio-samples"
 # what real recordings are like. The other two carry theirs, so a
 # de-identification run on them can be scored.
 # (dataset name, department, folder under docs/audio-samples, send answer key)
-RECORDINGS = [
+FILES = [
     ("cardiology-consultation-recording", CARDIOLOGY, "cardiology-consult", True),
     ("oncology-consultation-recording", ONCOLOGY, "oncology-consult", False),
     ("orthopaedics-consultation-recording", ORTHOPAEDICS, "orthopaedics-consult", True),
@@ -174,7 +174,7 @@ def agent(name: str, department_id: str, purpose: str) -> str:
     return r.json()["id"]
 
 
-def recording(name: str, department_id: str, folder: str, with_answer_key: bool) -> str:
+def locked_file(name: str, department_id: str, folder: str, with_answer_key: bool) -> str:
     """Upload one real recording through the path a person would use.
 
     Unlike version() above, which only declares a manifest, this puts the
@@ -241,11 +241,11 @@ def main() -> int:
     if missing or not SAMPLES.is_dir():
         raise SystemExit(f"recordings missing under {SAMPLES}; see its README files")
     have = {d["name"] for d in get("/datasets", params={"tenant_id": TENANT, "q": "recording"}, headers=bearer_for(ENGINEER)).json()["datasets"]}
-    for name, dept, folder, with_key in RECORDINGS:
+    for name, dept, folder, with_key in FILES:
         if name in have:
             print(f"  {name} already there")
             continue
-        version_id = recording(name, department(dept), folder, with_key)
+        version_id = locked_file(name, department(dept), folder, with_key)
         key = "with its answer key" if with_key else "with no answer key"
         print(f"  {name}: real audio sealed into {dept}, {key} ({version_id})")
 

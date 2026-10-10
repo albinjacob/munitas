@@ -15,10 +15,32 @@ import { usePeople } from "../../api/people";
 import { ClassBadge } from "../../components/ClassBadge";
 import { Pagination } from "../../components/Pagination";
 import { Empty, Failure, Loading, Section } from "../../components/states";
+import { when } from "../../lib/when";
+import { sentence } from "../../lib/text";
+import { roleLabel } from "../../api/roles";
 
 type Filter = "all" | "denied" | "allowed";
 type ResourceFilter = "all" | "dataset" | "agent";
 const PAGE_SIZE = 15;
+
+/** What the platform writes when somebody reads the locked data audit is a list name and what was searched for; the screen says it in words. */
+const AUDIT_LISTS: Record<string, string> = {
+  reads: "locked column reads",
+  column_leases: "locked column leases",
+  file_reads: "locked file opens",
+  file_leases: "locked file leases",
+  keys: "keys",
+  erasures: "people who were erased",
+  small_groups: "small groups",
+  contracts: "how columns were treated",
+};
+function purposeText(purpose: string | null | undefined): string {
+  if (!purpose) return "none stated";
+  const m = purpose.match(/^read audit evidence: ([a-z_]+)(.*)$/);
+  if (!m || !AUDIT_LISTS[m[1]!]) return purpose === "read audit evidence" ? "Read the locked data audit" : purpose;
+  const rest = m[2]!.replace(/^ \((.*?)\)/, " (searched for $1)");
+  return `Read the locked data audit: ${AUDIT_LISTS[m[1]!]}${rest}`;
+}
 
 export function AuditLog() {
   const [filter, setFilter] = useState<Filter>("all");
@@ -46,8 +68,8 @@ export function AuditLog() {
   return (
     <Section
       level="page"
-      title="Who accessed what"
-      description="Every request, and what happened to it. Each one is recorded twice: whether it was allowed, and whether the access was actually given. Those two can differ."
+      title="Access decisions"
+      description="Every request, and what happened to it. Each one is recorded twice: whether it was allowed, and whether the access was actually given. Those two can differ. What happened to locked data itself, such as the values read and the keys used, is in the Locked data audit."
       actions={
         <div className="flex flex-wrap gap-2">
           <div className="flex gap-1 rounded border border-slate-300 bg-white p-0.5 text-sm">
@@ -81,7 +103,7 @@ export function AuditLog() {
                   filter === f ? "bg-indigo-600 text-white" : "text-slate-600"
                 }`}
               >
-                {f === "denied" ? `Refused (${denials})` : f}
+                {f === "denied" ? `Refused (${denials})` : f === "allowed" ? "Allowed" : "All"}
               </button>
             ))}
           </div>
@@ -99,11 +121,11 @@ export function AuditLog() {
             <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
               <tr>
                 <th className="px-4 py-2">When</th>
-                <th>Who</th>
-                <th>Question</th>
-                <th>Access level</th>
-                <th>What for</th>
-                <th>Result</th>
+                <th className="pr-4">Who</th>
+                <th className="pr-4">What was checked</th>
+                <th className="pr-4">Access level</th>
+                <th className="pr-4">What for</th>
+                <th className="pr-4">Result</th>
                 <th>Why</th>
               </tr>
             </thead>
@@ -116,14 +138,14 @@ export function AuditLog() {
                     d.allowed ? "hover:bg-slate-50" : "bg-red-50 hover:bg-red-100"
                   }`}
                 >
-                  <td className="px-4 py-2 text-xs text-slate-500">{d.at}</td>
-                  <td>
+                  <td className="px-4 py-2 pr-4 align-top text-xs text-slate-500">{when(d.at)}</td>
+                  <td className="pr-4 align-top">
                     <span className="font-medium">{people.label(d.principal)}</span>
-                    <span className="ml-1 text-xs text-slate-400">
-                      {d.principal_roles?.join(", ")}
+                    <span className="ml-1 block text-xs text-slate-400">
+                      {d.principal_roles?.map(roleLabel).join(", ")}
                     </span>
                   </td>
-                  <td>
+                  <td className="pr-4 align-top">
                     <span
                       title={
                         d.phase === "grant"
@@ -136,18 +158,18 @@ export function AuditLog() {
                           : "bg-slate-100 text-slate-700"
                       }`}
                     >
-                      {d.phase === "grant" ? "was it given" : "was it allowed"}
+                      {d.phase === "grant" ? "Whether it was given" : "Whether it was allowed"}
                     </span>
                   </td>
-                  <td>
+                  <td className="pr-4 align-top">
                     {d.requested_class ? (
                       <ClassBadge value={d.requested_class} />
                     ) : (
-                      <span className="text-xs text-slate-400">n/a</span>
+                      <span className="text-xs text-slate-500">Not applicable</span>
                     )}
                   </td>
-                  <td className="text-slate-600">{d.purpose || "none stated"}</td>
-                  <td>
+                  <td className="pr-4 align-top text-slate-600">{purposeText(d.purpose)}</td>
+                  <td className="pr-4 align-top">
                     <span
                       data-testid={`audit-result-${d.id}`}
                       title={
@@ -170,18 +192,18 @@ export function AuditLog() {
                     {d.reasons?.length ? (
                       <ul className="list-disc pl-4">
                         {d.reasons.map((r) => (
-                          <li key={r}>{r}</li>
+                          <li key={r}>{sentence(r)}</li>
                         ))}
                       </ul>
                     ) : (
-                      <span className="text-slate-400">none recorded</span>
+                      <span className="block text-slate-400">No reason recorded</span>
                     )}
                     {d.dataset_version_id && (
                       <Link
                         to={`/versions/${d.dataset_version_id}`}
                         className="mt-1 inline-block text-sky-700 underline"
                       >
-                        the data they asked for
+                        Open the dataset version
                       </Link>
                     )}
                   </td>

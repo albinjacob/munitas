@@ -67,7 +67,7 @@ CEILINGS = {
 }
 
 # Real, requested TTL for a minted credential, matching
-# CREDENTIAL_TTL_MINUTES so the API response's own expires_at stays
+# MUNITAS_CREDENTIAL_TTL_MINUTES so the API response's own expires_at stays
 # accurate for both backends rather than an assumption for one of them.
 _TTL_SECONDS = config.CREDENTIAL_TTL_MINUTES * 60
 
@@ -133,16 +133,13 @@ def _require_configured() -> None:
     if not (config.R2_ACCOUNT_ID and config.R2_ACCESS_KEY_ID
             and config.R2_SECRET_ACCESS_KEY and config.R2_API_TOKEN):
         raise StorageUnavailable(
-            "R2 is not configured on this install (R2_ACCOUNT_ID, "
-            "R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and R2_API_TOKEN must "
+            "R2 is not configured on this install (MUNITAS_R2_ACCOUNT_ID, "
+            "MUNITAS_R2_ACCESS_KEY_ID, MUNITAS_R2_SECRET_ACCESS_KEY and MUNITAS_R2_API_TOKEN must "
             "all be set); a dataset cannot be sealed against a backend that "
             "was never configured"
         )
-    # R2_BUCKET is deliberately not required here. Every tenant gets a
-    # bucket of its own, created on first write, so a fresh install needs
-    # no bucket to exist in advance. The setting names the shared bucket
-    # that tenants predating per-tenant storage still use, and it is
-    # checked at the one point that actually reads it.
+    # There is no bucket setting. Every tenant gets a bucket of its own, created on its first write, so a fresh install needs no bucket to exist
+    # in advance.
 
 
 def _api_headers(api_token: str) -> dict:
@@ -173,21 +170,8 @@ def _resolve_bucket(tenant_id: str) -> str:
     is assigned a bucket of its own. Neither branch asks what the tenant
     already contains.
 
-    The branch between them used to read "no row, but this tenant holds
-    R2 data" as "grandfathered onto the shared bucket", and raised when
-    R2_BUCKET was unset because it had no way to name the bucket it had
-    just decided the tenant was on. schema.sql's backfill writes that row
-    for every such tenant instead, taking R2_BUCKET from
-    `munitas.shared_r2_bucket` and skipping installs that never had a
-    shared R2 bucket to name.
-
-    That backfill is not optional, and this function cannot detect its
-    absence: a grandfathered tenant with no row is indistinguishable here
-    from a tenant writing for the first time, which is the entire point
-    of removing the guess. Skip it and such a tenant is assigned a new,
-    empty bucket while its objects stay in the old one, unreachable. That
-    is why the backfill lives in schema.sql, which is applied with the
-    code rather than remembered alongside it.
+    There is no shared bucket. An earlier design put tenants that predated per-tenant buckets on one shared bucket, named by a setting. That bucket
+    and its setting were removed, so a tenant either has a row here or has never written on this backend.
     """
     row = db.one(
         "select bucket from tenant_storage_provision "

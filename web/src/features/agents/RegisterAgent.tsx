@@ -143,6 +143,11 @@ export function RegisterAgent() {
           >
             {register.isPending ? "Registering" : "Register"}
           </button>
+          {!ready && (
+            <span className="text-xs text-slate-500" data-testid="register-agent-why-disabled">
+              Enter a name, choose a department and state the purpose to register.
+            </span>
+          )}
         </div>
 
         {register.error && (

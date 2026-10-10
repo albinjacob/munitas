@@ -2,7 +2,7 @@
 
 Both the native agent-run path (agent_run_activities.py) and the sandboxed one
 (sandbox_run_activities.py) record a run's outcome straight to Postgres via
-psycopg, the same accepted exception the pipeline already uses where the control
+the database driver (pgdb), the same accepted exception the pipeline already uses where the control
 plane has no endpoint for a write yet.
 
 This helper lived in agent_run_activities.py until the worker was split. The
@@ -17,12 +17,12 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 
-import psycopg
+from . import pgdb
 
 from . import config
 
 
 @contextmanager
 def _db():
-    with psycopg.connect(config.PG_DSN, autocommit=True) as conn:
+    with pgdb.connect(config.PG_DSN, autocommit=True) as conn:
         yield conn

@@ -82,6 +82,8 @@ export interface AccessPreflight {
   allowed: boolean;
   reasons: string[];
   needs_access_request: boolean;
+  /** Why asking for access would give the agent nothing readable (every file or column is locked); empty when asking can work. */
+  cannot_be_granted?: string[];
   approver_label: string | null;
   department_name: string | null;
   dataset_name: string | null;

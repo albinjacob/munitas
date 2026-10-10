@@ -82,14 +82,16 @@ insert into directory (id, tenant_id, label, kind, roles) values
   -- role after this, but it does not yet actually take effect
   -- (SESSION_STATUS.md), so at least one real holder is seeded, the same
   -- bootstrap every role needs before self-service can work at all.
-  ('arch-turner',    'health', 'Turner',   'human', '{network_architect}')
+  ('arch-turner',    'health', 'Turner',   'human', '{network_architect}'),
+  -- Checks how locked columns were used and reads no personal data: the privacy auditor.
+  ('aud-marlow',     'health', 'Marlow',   'human', '{privacy_auditor}')
 on conflict (id) do nothing;
 
 -- Four departments, each with its own custodian, so custodian scoping is
 -- something a person can watch happen rather than only a policy test.
 -- Hartley cannot approve access to Radiology's data and Okonjo cannot approve
 -- access to Cardiology's. Oncology and Orthopaedics exist because the three
--- consultation recordings in docs/audio-samples/ are about cardiology,
+-- consultation files in docs/audio-samples/ are about cardiology,
 -- oncology and orthopaedics, and each is seeded into the department it is
 -- about (scripts/seed/seed-health-example.py).
 insert into department (id, tenant_id, name, custodian) values

@@ -15,7 +15,7 @@ function name proves nothing about behaviour.
 
     .venv\\Scripts\\python.exe verify\\v59_gate_decision.py
 
-Needs PG_DSN, VERIFY_KRATOS and S3_ENDPOINT pointing at the published
+Needs MUNITAS_PG_DSN, VERIFY_KRATOS and MUNITAS_S3_ENDPOINT pointing at the published
 localhost ports, since verify/common.py defaults them to the container
 hostnames, which do not resolve outside the Compose network.
 """
@@ -28,7 +28,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import psycopg
+import pgdb
 
 from common import (ADMIN, CANARY, ENGINEER, REVIEWER, api, bearer_for, check,
                     db, fixture_contract, fixture_tenant, fixture_version,
@@ -216,7 +216,7 @@ def main() -> int:
                     "decided_by = %s, decided_at = now() where id = %s",
                     (ENGINEER, decision_id))
                 refused, detail = False, "the update was accepted"
-            except psycopg.errors.CheckViolation as exc:
+            except pgdb.errors.CheckViolation as exc:
                 refused = "gate_decision_no_self_decision" in str(exc)
                 detail = "gate_decision_no_self_decision"
         check("a self-decision written straight to the database is refused",

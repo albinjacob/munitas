@@ -17,7 +17,7 @@ import sys
 import time
 
 import httpx
-import psycopg
+import pgdb
 
 from common import api, bearer_for, check, db, heading, require_api, summary
 from lifecycle_fixture import (ADMIN_A, ADMIN_B, export_body, finish_org, hold_body, make_org, seal_data)
@@ -86,7 +86,7 @@ def main() -> int:
             with db() as conn:
                 conn.execute("update legal_export set approved_by = requested_by, status = 'approved' where id = %s", (export["id"],))
             direct = "accepted"
-        except psycopg.errors.CheckViolation:
+        except pgdb.errors.CheckViolation:
             direct = "refused"
         check("and the database refuses the same person twice even when the API is bypassed", direct == "refused", direct)
 

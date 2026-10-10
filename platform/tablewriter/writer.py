@@ -8,17 +8,28 @@ Anything the write put under the table's folder is removed again when it does no
 
 The records file comes in one of three shapes, chosen by its name: a JSON list, one JSON row per line, or Parquet. See
 Settings for what each costs in memory and why the limits are what they are.
+
+A caller that brings in a person's table also passes `records_options`: how the file was declared (its delimiter, encoding, header,
+words for a missing value, compression). The file is then read as text by textrows.py, which checks every value against the contract
+and refuses with every problem it found, by row, line and column, and writes nothing. CSV and TSV are read this way only.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
+import io
 import json
 import logging
 import threading
 from dataclasses import dataclass, field
+from typing import Callable
 
 from botocore.exceptions import BotoCoreError, ClientError
+
+from . import binaryrows, peoplerows, textrows
+from . import types as kinds
+from .textrows import Refused  # noqa: F401  (re-exported: callers name it here)
 
 log = logging.getLogger("tablewriter")
 
@@ -27,10 +38,9 @@ log = logging.getLogger("tablewriter")
 FORMAT_VERSION = 2
 TABLE_DIR = "iceberg"
 
-# Munitas contract type to Iceberg type. A list or a dictionary is stored as
-# JSON text: a contract names one without saying what is inside, and inventing
-# an element type would assert something nothing checked.
-_JSON_KINDS = {"list", "dict"}
+# A list or a dictionary is stored as JSON text: a contract names one without saying what is inside, and inventing an element type would
+# assert something nothing checked. The kinds of column, and what each is stored as, are in types.py.
+_JSON_KINDS = set(kinds.JSON_KINDS)
 
 
 @dataclass(frozen=True)
@@ -55,6 +65,8 @@ class Settings:
     parquet_row_group_bytes: int = 256 * 1024 * 1024
     thrift_string_bytes: int = 64 * 1024 * 1024
     thrift_container_items: int = 1_000_000
+    # Where the check for a repeated key keeps its files when a table is too large for it to hold in memory. Empty is the system's own.
+    scratch_dir: str = ""
 
 
 class Skipped(Exception):
@@ -89,19 +101,32 @@ class Projection:
     format_version: int = FORMAT_VERSION
     # One manifest entry per file written, in the shape object_manifest uses.
     objects: list[dict] = field(default_factory=list)
+    # For a table about people: the group-size report worked out while it was written (peoplerows.GroupCounter).
+    group_report: dict | None = None
 
 
-def _types(kind: str):
-    """(Iceberg type, Arrow type) for a contract's type name."""
-    import pyarrow as pa
-    from pyiceberg.types import BooleanType, DoubleType, LongType, StringType
+def _types(spec):
+    """(Iceberg type, Arrow type) for a contract field, given as the field or as the name of a plain kind."""
+    spec = {"type": spec} if isinstance(spec, str) else spec
+    return kinds.iceberg_type(spec), kinds.arrow_type(spec)
 
-    return {
-        "string": (StringType(), pa.string()),
-        "float": (DoubleType(), pa.float64()),
-        "int": (LongType(), pa.int64()),
-        "bool": (BooleanType(), pa.bool_()),
-    }.get(kind, (StringType(), pa.string()))
+
+def _coerce(value, spec: dict):
+    """A JSON value as the Python value its column's kind is stored from. A value that is not of that kind raises ValueError."""
+    from datetime import date, datetime
+    from decimal import Decimal
+
+    if value is None:
+        return None
+    k = kinds.kind(spec)
+    if k == kinds.DATE:
+        return date.fromisoformat(value)
+    if k == kinds.TIMESTAMP:
+        moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return moment if kinds.has_zone(spec) else moment.replace(tzinfo=None)
+    if k == kinds.DECIMAL:
+        return Decimal(str(value))
+    return value
 
 
 def build(fields: list[dict], primary_key: list[str], rows: list[dict]):
@@ -119,7 +144,7 @@ def build(fields: list[dict], primary_key: list[str], rows: list[dict]):
     nested, arrow_fields, columns = [], [], {}
     for index, spec in enumerate(fields, start=1):
         name, kind = spec["name"], spec.get("type", "string")
-        iceberg_type, arrow_type = _types(kind)
+        iceberg_type, arrow_type = _types(spec)
         required = name in primary_key
         sensitivity = spec.get("sensitivity", "none")
         doc = f"sensitivity={sensitivity}" + (" (JSON text)" if kind in _JSON_KINDS else "")
@@ -131,6 +156,11 @@ def build(fields: list[dict], primary_key: list[str], rows: list[dict]):
             value = row.get(name)
             if value is not None and kind in _JSON_KINDS:
                 value = json.dumps(value, ensure_ascii=False, sort_keys=True)
+            elif value is not None and kind in (kinds.DATE, kinds.TIMESTAMP, kinds.DECIMAL):
+                try:
+                    value = _coerce(value, spec)
+                except (ValueError, TypeError, ArithmeticError) as exc:
+                    raise Skipped(f"a row has a value that is not a {kind} in column {name!r}") from exc
             if value is None and required:
                 raise Skipped(f"a row has no value for the key field {name!r}")
             values.append(value)
@@ -174,7 +204,7 @@ def _iceberg_schema(fields: list[dict], primary_key: list[str]):
     for index, spec in enumerate(fields, start=1):
         kind = spec.get("type", "string")
         doc = f"sensitivity={spec.get('sensitivity', 'none')}" + (" (JSON text)" if kind in _JSON_KINDS else "")
-        nested.append(NestedField(index, spec["name"], _types(kind)[0], required=spec["name"] in primary_key, doc=doc))
+        nested.append(NestedField(index, spec["name"], _types(spec)[0], required=spec["name"] in primary_key, doc=doc))
     return Schema(*nested, identifier_field_ids=[n.field_id for n in nested if n.name in primary_key])
 
 
@@ -182,8 +212,7 @@ def _arrow_schema(fields: list[dict], primary_key: list[str]):
     """The Arrow schema build() produces, available before any row has been read."""
     import pyarrow as pa
 
-    return pa.schema([pa.field(spec["name"], _types(spec.get("type", "string"))[1], nullable=spec["name"] not in primary_key)
-                      for spec in fields])
+    return pa.schema([pa.field(spec["name"], _types(spec)[1], nullable=spec["name"] not in primary_key) for spec in fields])
 
 
 def _size(n: int) -> str:
@@ -271,13 +300,20 @@ def _from_rows(chunks, unit: str, fields: list[dict], primary_key: list[str], se
         yield from table.to_batches()
 
 
-def _compatible(kind: str, arrow_type) -> bool:
+def _compatible(spec: dict, arrow_type) -> bool:
     """Whether a Parquet column of this type may be read as a contract field of this kind. Strict on purpose: text is never
     read as a number, and a number is never read as text, because the contract is what the table promises."""
     import pyarrow as pa
 
+    kind = kinds.kind(spec)
     if pa.types.is_dictionary(arrow_type):
         arrow_type = arrow_type.value_type
+    if kind == kinds.DATE:
+        return pa.types.is_date(arrow_type)
+    if kind == kinds.TIMESTAMP:
+        return pa.types.is_timestamp(arrow_type) and (arrow_type.tz is not None) == kinds.has_zone(spec)
+    if kind == kinds.DECIMAL:
+        return pa.types.is_decimal(arrow_type)
     if kind == "int":
         return pa.types.is_integer(arrow_type)
     if kind == "float":
@@ -319,12 +355,12 @@ def _parquet_check(props: dict, bucket: str, key: str, fields: list[dict], cfg: 
         names = schema.names
         if len(set(names)) != len(names):
             raise Skipped("the Parquet file has two columns with the same name")
-        wanted = {spec["name"]: spec.get("type", "string") for spec in fields}
+        wanted = {spec["name"]: spec for spec in fields}
         if absent := [n for n in wanted if n not in names]:
             raise Skipped(f"the Parquet file has no column for {_names(absent)}")
         if extra := [n for n in names if n not in wanted]:
             raise Skipped(f"the Parquet file has columns the contract does not describe: {_names(extra)}")
-        if wrong := [n for n, kind in wanted.items() if not _compatible(kind, schema.field(n).type)]:
+        if wrong := [n for n, spec in wanted.items() if not _compatible(spec, schema.field(n).type)]:
             raise Skipped(f"the Parquet file's column types do not match the contract for {_names(wrong)}")
         if meta.num_rows < 1:
             raise Skipped("the Parquet file has no rows")
@@ -365,6 +401,67 @@ def _from_parquet(props: dict, bucket: str, key: str, arrow_schema, seen: dict, 
         handle.close()
 
 
+class _ObjectStream(io.RawIOBase):
+    """One stored object as a stream of bytes, read as it arrives."""
+
+    def __init__(self, client, bucket: str, key: str):
+        self.body = client.get_object(Bucket=bucket, Key=key)["Body"]
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, buffer) -> int:
+        data = self.body.read(len(buffer))
+        buffer[: len(data)] = data
+        return len(data)
+
+    def close(self) -> None:
+        try:
+            self.body.close()
+        finally:
+            super().close()
+
+
+def _from_text(client, bucket: str, key: str, kind: str, options, fields: list[dict], primary_key: list[str], arrow_schema, seen: dict,
+               checkpoint, cfg: "Settings", expected_rows: int, progress=None, phase: str = "writing"):
+    """Typed Arrow batches from a text file in storage, counted as they go by. Raises Refused for anything wrong in it."""
+    opener = lambda: _ObjectStream(client, bucket, key)
+    scratch = cfg.scratch_dir or None
+    if kind in ("csv", "tsv"):
+        source = textrows.csv_batches(opener, options, fields, primary_key, cfg.max_stream_bytes, arrow_schema, expected_rows, checkpoint, scratch)
+    else:
+        source = textrows.json_batches(opener, kind, options, fields, primary_key, cfg.max_stream_bytes, cfg.max_row_bytes, cfg.batch_rows,
+                                       arrow_schema, expected_rows, checkpoint, scratch)
+    for batch in source:
+        seen["rows"] += batch.num_rows
+        if progress is not None:
+            progress({"phase": phase, "rows": seen["rows"]})
+        yield batch
+
+
+def _from_binary(client, bucket: str, key: str, kind: str, props: dict, options, fields: list[dict], primary_key: list[str], arrow_schema, seen: dict,
+                 checkpoint, cfg: "Settings", expected_rows: int, progress=None, phase: str = "writing"):
+    """Typed Arrow batches from a binary file in storage, counted as they go by. Raises Refused for anything wrong in it."""
+    from urllib.parse import urlparse
+
+    import pyarrow.fs as pafs
+
+    def seekable():
+        endpoint = urlparse(props["s3.endpoint"])
+        filesystem = pafs.S3FileSystem(access_key=props["s3.access-key-id"], secret_key=props["s3.secret-access-key"], endpoint_override=endpoint.netloc,
+                                       scheme=endpoint.scheme or "http", region=props["s3.region"])
+        return filesystem.open_input_file(f"{bucket}/{key}")
+
+    source = binaryrows.batches(kind, open_seekable=seekable, open_sequential=lambda: _ObjectStream(client, bucket, key), fields=fields, key=primary_key,
+                                cfg=cfg, arrow_schema=arrow_schema, check_keys=options.check_keys, expected_rows=expected_rows, checkpoint=checkpoint,
+                                scratch=cfg.scratch_dir or None, sheet=options.sheet)
+    for batch in source:
+        seen["rows"] += batch.num_rows
+        if progress is not None:
+            progress({"phase": phase, "rows": seen["rows"]})
+        yield batch
+
+
 def s3_properties(endpoint: str, access_key: str, secret_key: str) -> dict:
     """The properties PyIceberg's own S3 client needs, for a key the caller holds."""
     return {
@@ -402,6 +499,9 @@ def write_table(
     cancel: "threading.Event | None" = None,
     manifest: bool = True,
     cleanup: bool = True,
+    records_options: dict | None = None,
+    progress: "Callable[[dict], None] | None" = None,
+    lock: "peoplerows.LockSpec | None" = None,
 ) -> Projection:
     """Write the records at `records_key` as an Iceberg table at `location`, which is inside `prefix`.
 
@@ -413,6 +513,13 @@ def write_table(
     permission). A caller whose key is limited to one folder passes False for both, and whoever holds a key that can do those
     takes over: it lists and hashes the files, and clears the folder when the write did not finish. (Making the table itself
     needs a list of object names, which the library does to be sure a metadata file is new.)
+
+    `records_options`, when given, says the records are a person's text file (CSV, TSV, JSON lines or a JSON list, perhaps compressed) read
+    strictly, as textrows.py describes. Anything wrong in it raises Refused, with every problem, and leaves nothing written.
+
+    `lock`, when given, says the records are a table about people (peoplerows.py): the file, a text or binary file read strictly, is checked whole first, and
+    then read again with its locked columns sent to the platform to be locked. `contract` is then the table as it is stored (locked columns as text, and
+    the person code), and `lock.read_fields` is the file's columns as the contract gave them.
     """
     fields = contract["fields"]
     if isinstance(fields, str):
@@ -423,12 +530,14 @@ def write_table(
         if cancel is not None and cancel.is_set():
             raise Abandoned("writing the table was given up on")
 
-    kind = records_format(records_key)
+    text = textrows.format_of(records_key) if records_options is not None else None
+    binary = binaryrows.format_of(records_key) if (records_options is not None and not text) else None
+    kind = text[0] if text else (binary or records_format(records_key))
     try:
         size = int(client.head_object(Bucket=bucket, Key=records_key)["ContentLength"])
     except Exception as exc:  # the object is simply not there, or not readable
         raise Skipped(f"the records object could not be read: {type(exc).__name__}") from exc
-    limit = cfg.max_list_bytes if kind == JSON_LIST else cfg.max_stream_bytes
+    limit = cfg.max_list_bytes if kind in (JSON_LIST, "json") else cfg.max_stream_bytes
     if size > limit:
         advice = ("; a JSON list is read whole, so send rows this many as newline-delimited JSON or Parquet"
                   if kind == JSON_LIST else "")
@@ -437,8 +546,52 @@ def write_table(
 
     schema, arrow_schema = _iceberg_schema(fields, primary_key), _arrow_schema(fields, primary_key)
     seen = {"rows": 0}
+    counted_while_writing = False
+    counter = None
     try:
-        if kind == JSON_LIST:
+        if lock is not None:
+            if not (text or binary):
+                raise Skipped("a table about people is read from a CSV, TSV, JSON lines or JSON file, or from a Parquet, Avro, ORC, Arrow or Excel file")
+            read_arrow = _arrow_schema(lock.read_fields, primary_key)
+            options = textrows.Options.of({**records_options, **({"compression": text[1]} if text and text[1] else {})}, kind if text else "csv")
+            records_sha256, _ = _digest(client, bucket, records_key, checkpoint)
+            estimate = max(1, size // ((10 if options.compression else 40) if text else 20))
+
+            def read(check_keys: bool, phase: str):
+                opts = dataclasses.replace(options, check_keys=check_keys)
+                if text:
+                    return _from_text(client, bucket, records_key, kind, opts, lock.read_fields, primary_key, read_arrow, seen, checkpoint, cfg, estimate,
+                                      progress, phase)
+                return _from_binary(client, bucket, records_key, binary, props, opts, lock.read_fields, primary_key, read_arrow, seen, checkpoint, cfg,
+                                    estimate, progress, phase)
+
+            # First pass: every row, and that every row names a person. No key exists yet, so a refusal makes nothing.
+            found = textrows.Collector()
+            for batch in read(True, "checking"):
+                peoplerows.check_subjects(batch, lock, seen["rows"] - batch.num_rows + 1, found)
+                if found.full:
+                    break
+            if found:
+                raise found.render()
+            if not seen["rows"]:
+                raise Skipped("the records file has no rows")
+            seen["rows"] = 0
+            counter = peoplerows.GroupCounter(lock.counted, lock.threshold, cfg.scratch_dir or None)
+            batches = peoplerows.locked_batches(read(False, "writing"), lock, arrow_schema, checkpoint, counter)
+            total, counted_while_writing = None, True
+        elif text:
+            options = textrows.Options.of({**records_options, **({"compression": text[1]} if text[1] else {})}, kind)
+            records_sha256, _ = _digest(client, bucket, records_key, checkpoint)
+            estimate = max(1, size // (10 if options.compression else 40))
+            batches = _from_text(client, bucket, records_key, kind, options, fields, primary_key, arrow_schema, seen, checkpoint, cfg, estimate, progress)
+            total, counted_while_writing = None, True
+        elif binary:
+            options = textrows.Options.of(records_options, "csv")
+            records_sha256, _ = _digest(client, bucket, records_key, checkpoint)
+            batches = _from_binary(client, bucket, records_key, binary, props, options, fields, primary_key, arrow_schema, seen, checkpoint, cfg,
+                                   max(1, size // 20), progress)
+            total, counted_while_writing = None, True
+        elif kind == JSON_LIST:
             raw = client.get_object(Bucket=bucket, Key=records_key)["Body"].read()
             try:
                 rows = json.loads(raw)
@@ -488,10 +641,19 @@ def write_table(
 
         def stream():
             yield from batches
+            if counted_while_writing:
+                # A text file is counted as it is read, so the count goes into the snapshot's summary here, after the last batch and before
+                # the commit that reads it.
+                summary["munitas.record-count"] = str(seen["rows"])
+                return
             if seen["rows"] != total:
                 raise Skipped(f"the records object held {seen['rows']} rows when read and {total} when counted")
 
         _append_in_groups(table, stream(), arrow_schema, summary, checkpoint, cfg)
+        if counted_while_writing:
+            total = seen["rows"]
+            if not total:
+                raise Skipped("the records file has no rows")
         checkpoint()
         snapshot = table.current_snapshot()
         # A permanent name for this snapshot. Written now, before the version is
@@ -499,12 +661,14 @@ def write_table(
         table.manage_snapshots().create_tag(snapshot.snapshot_id, table_name).commit()
         table = catalog.load_table((namespace, table_name))
 
+        report = counter.report() if counter is not None else None
         return Projection(
             namespace=namespace, table_name=table_name, location=location,
             metadata_location=table.metadata_location,
             snapshot_id=table.current_snapshot().snapshot_id,
             record_count=total, records_sha256=records_sha256,
             objects=_manifest_entries(client, bucket, folder) if manifest else [],
+            group_report=report,
         )
     except BaseException as exc:
         # Whatever this attempt wrote is removed, so a version sealed without its table (or not sealed at all) has nothing
@@ -512,6 +676,9 @@ def write_table(
         if cleanup and not _remove_written(client, bucket, folder):
             exc.cleanup_incomplete = True  # type: ignore[attr-defined]
         raise
+    finally:
+        if counter is not None:
+            counter.close()
 
 
 def _append_in_groups(table, batches, arrow_schema, summary: dict, checkpoint, cfg: "Settings") -> None:

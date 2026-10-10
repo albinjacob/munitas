@@ -9,7 +9,20 @@ real console against the live stack. Run that first, then this builder:
 """
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
 from walkthrough_kit import SHOTS_ROOT, Page, series_entry, write
+
+
+def _cover_end() -> str:
+    """The day the cover ends. The capture names it two weeks after it runs, so it is worked out from when the picture was taken."""
+    shot = SHOTS_ROOT / "department-approvers" / "03-the-cover-is-listed.png"
+    taken = datetime.fromtimestamp(shot.stat().st_mtime) if shot.exists() else datetime.now()
+    end = taken + timedelta(days=14)
+    return f"{end:%b} {end.day}, {end.year}"
+
+
+COVER_END = _cover_end()
 
 STEPS = [
     {
@@ -27,7 +40,8 @@ STEPS = [
                 "access to data. Hartley is also an approver of the Cardiology department, so the Cardiology card "
                 "carries a form for adding another approver.",
         "note": "Under <strong>Approvers</strong> the Cardiology card lists <strong>Hartley</strong> as "
-                "<strong>permanent</strong>. The Oncology, Orthopaedics and Radiology cards each read "
+                "<strong>permanent</strong>, and an orange line under it says <strong>Cardiology has one approver.</strong> A claim that the "
+                "approver makes cannot be confirmed until a second approver is added. The Oncology, Orthopaedics and Radiology cards each read "
                 "<strong>Only an approver of this department can change this list</strong>, because Hartley is "
                 "not an approver of those departments.",
     },
@@ -39,8 +53,8 @@ STEPS = [
                 "custodian role can be chosen, because adding an approver never gives anybody the role. Hartley "
                 "writes a reason, which is stored with the change, and an end date, so the cover stops by "
                 "itself.",
-        "note": "<strong>Person</strong> reads <strong>Mensah</strong>, <strong>Why</strong> reads "
-                "<strong>covers while Hartley is on leave</strong> and <strong>Cover ends on</strong> holds a "
+        "note": "The <strong>Person</strong> box reads <strong>Mensah</strong>, the <strong>Why</strong> box reads "
+                "<strong>covers while Hartley is on leave</strong>, and the <strong>Cover ends on</strong> box holds a "
                 "date two weeks away. Leaving the date empty would make a permanent approver.",
     },
     {
@@ -50,7 +64,7 @@ STEPS = [
         "text": "The Cardiology department now has two approvers. Hartley is permanent. Mensah is listed with the "
                 "last day of the cover, after which the platform stops counting Mensah as an approver of "
                 "Cardiology without anybody having to remove the entry.",
-        "note": "<strong>Mensah</strong> reads <strong>covering until Oct 19, 2026</strong> and "
+        "note": f"<strong>Mensah</strong> reads <strong>covering until {COVER_END}</strong> and "
                 "<strong>Hartley</strong> still reads <strong>permanent</strong>. A notice at the bottom right "
                 "reads <strong>Approver added</strong>.",
     },
@@ -67,7 +81,7 @@ STEPS = [
                 "the Cardiology claim appears on Mensah's home screen.",
         "note": "The header reads <strong>Cardiology and Oncology</strong>, the two departments Mensah answers "
                 "for. The list shows a Cardiology dataset marked <strong>Published</strong>, with "
-                "<strong>Claimed by Devi</strong> and the date.",
+                "<strong>Claimed by Devi</strong>, with the date and time.",
     },
     {
         "file": "05-the-cover-confirms-it.png", "actor": "mensah",
@@ -75,7 +89,7 @@ STEPS = [
         "screen": "Home &middot; /",
         "text": "Pressing <strong>Agree with this</strong> records that Mensah, an approver of the owning "
                 "department, confirmed the claim that Devi made. Hartley did not have to be present.",
-        "note": "<strong>Needs your confirmation</strong> now reads <strong>0</strong>, and the claim has left "
+        "note": "<strong>Need your confirmation</strong> now reads <strong>0</strong>, and the claim has left "
                 "the list.",
     },
     {
@@ -104,7 +118,7 @@ STEPS = [
         "file": "08-the-last-approver-stays.png", "actor": "hartley",
         "title": "The last permanent approver cannot be removed",
         "screen": "Departments &middot; the Cardiology card, Remove",
-        "text": "Hartley tries to remove Hartley, the only approver left. The platform refuses, because a "
+        "text": "Hartley now tries to remove Hartley's own entry, the only approver left. The platform refuses, because a "
                 "department with nobody who answers for it could neither approve access nor confirm a claim. "
                 "Another approver has to be added first.",
         "note": "The red sentence reads <strong>A department always keeps at least one permanent approver, so "
@@ -116,10 +130,9 @@ STEPS = [
         "title": "The history shows who answered for Cardiology, and when",
         "screen": "Departments &middot; the Cardiology card, Show history",
         "text": "Pressing <strong>Show history</strong> lists every approver the department has had, who added "
-                "each one and why, and who ended it and why. Entries are never edited or deleted. Each time the "
-                "capture for this page ran, Mensah was named as cover and removed again, so Mensah appears once "
-                "for each run.",
-        "note": "Each Mensah row reads <strong>covers while Hartley is on leave</strong> under "
+                "each one and why, and who ended it and why. Entries are never edited or deleted. "
+                "Mensah's cover appears as one row, with the date and time it was added and ended.",
+        "note": "The Mensah row reads <strong>covers while Hartley is on leave</strong> under "
                 "<strong>Added</strong> and <strong>Hartley is back</strong> under <strong>Ended</strong>. "
                 "Hartley's own row has an empty <strong>Ended</strong> cell, because Hartley is still an "
                 "approver.",
@@ -127,7 +140,7 @@ STEPS = [
 ]
 
 ACTORS = {
-    "hartley": ("Hartley", "Data custodian and approver for the Cardiology department"),
+    "hartley": ("Hartley", "Data custodian for the Cardiology department"),
     "mensah": ("Mensah", "Data custodian for the Oncology department, named as cover for Cardiology"),
 }
 
@@ -144,8 +157,7 @@ PAGE = Page(
     shots_dir=SHOTS_ROOT / "department-approvers",
     capture_note="Captured live against the <code>health</code> organisation by "
                  "<code>web/walkthroughs/department-approvers.spec.ts</code> and built by "
-                 "<code>docs/tools/build_department_approvers_walkthrough.py</code>. What the platform refuses "
-                 "here is proved separately by <code>verify/v127_department_approvers.py</code>.",
+                 "<code>docs/tools/build_department_approvers_walkthrough.py</code>.",
 )
 
 if __name__ == "__main__":

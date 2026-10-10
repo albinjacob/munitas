@@ -10,6 +10,8 @@ The page lives under docs/internal, which is never published.
 """
 from __future__ import annotations
 
+import os
+
 import html
 import json
 import re
@@ -21,7 +23,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 OUT = ROOT / "docs" / "internal" / "design" / "policy-comparison.html"
 CONTAINER = "munitas-munitas-api-1"
-DISTRO = "Ubuntu-20.04"
+DISTRO = os.environ.get("MUNITAS_WSL_DISTRO", "Munitas")
 
 # Runs inside the API container. It reads names and actions only, never a secret.
 INTROSPECT = r'''

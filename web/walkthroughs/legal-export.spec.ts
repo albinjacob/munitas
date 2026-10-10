@@ -27,6 +27,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { API_BASE } from "../config/ports";
 import { bearerFor, loginAs } from "../tests/auth-helpers";
 import { settled } from "./settled";
+import { snap } from "./snap";
 
 const SHOTS = join(process.cwd(), "walkthroughs", "shots", "legal-export");
 const PYTHON = join(process.cwd(), "..", ".venv", "Scripts", "python.exe");
@@ -47,7 +48,7 @@ async function shot(page: Page, name: string): Promise<void> {
   // would show something that did not just happen.
   await page.waitForTimeout(2800);
   step += 1;
-  await page.screenshot({ path: join(SHOTS, `${String(step).padStart(2, "0")}-${name}.png`) });
+  await snap(page, { path: join(SHOTS, `${String(step).padStart(2, "0")}-${name}.png`) });
 }
 
 async function call(who: string, path: string, body?: unknown): Promise<any> {

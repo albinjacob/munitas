@@ -44,7 +44,7 @@ ANSWER_KEY_SUFFIX = ".truth.json"
 # Sealed by ingest.py's seal-audio path, which earns the name by reading the
 # audio headers on the way in. The ordinary seal produces `uploaded_files`,
 # two fields that say only that a file arrived and how big it was.
-PIPELINE_CONTRACT = "encounter_raw"
+PIPELINE_CONTRACT = "audio_raw"
 
 # The object-storage backends the pipeline worker can read and write.
 #
@@ -197,10 +197,8 @@ def _record_ending(run_id, ending) -> None:
 def pipeline_kinds() -> dict:
     """Which pipeline kinds this process knows how to start.
 
-    Mirrors worker/main.py's own registered-workflows list, the same
-    reasoning as served_backends above: this process names the kind, that
-    process names the workflow class backing it, and a verify script checks
-    the two agree rather than trusting a comment to keep them in step.
+    It mirrors the worker's list of registered workflows: this process names the kind, the worker names the workflow class behind it, and a
+    check verifies that the two agree.
     """
     return {"kinds": sorted(pipelines.WORKFLOW_TYPE)}
 
@@ -224,7 +222,7 @@ async def start_deidentification(
     the caller asserts about themselves.
 
     body.pipeline_kind picks which workflow runs. The checks below that are
-    specific to the de-identification pipeline (the recordings contract, the
+    specific to the de-identification pipeline (the files contract, the
     answer-key check) only apply when that is the kind requested; a kind that
     is not 'deidentify' still needs a sealed version, a supported backend, no
     run already in flight, and a live worker, the same as every kind does.
@@ -304,9 +302,9 @@ async def start_deidentification(
             problems.append(
                 f"this version was sealed with the contract "
                 f"{version['contract_name']!r}, which records only that files "
-                f"arrived and how large they were. The pipeline needs recordings "
+                f"arrived and how large they were. The pipeline needs files "
                 f"it can read a duration and a sample rate from. Upload the audio "
-                f"again and use Seal as recordings"
+                f"again and use Seal as files"
             )
         else:
             manifest = version["object_manifest"] or []
@@ -318,8 +316,26 @@ async def start_deidentification(
                         if len(missing) > MAX_NAMED else "")
                 problems.append(
                     f"{named}{more} has no answer key, so this run could redact "
-                    f"the recording but could not tell you whether the redaction "
+                    f"the file but could not tell you whether the redaction "
                     f"worked. Scoring a run that has no answer key is not built yet"
+                )
+
+    if pipeline_version is not None:
+        from .dag_pipelines import version_stage
+        from .pipeline_dag import steps_needing_approval
+        stage = version_stage(str(pipeline_version["id"]), pipeline_version["dag_config"])
+        if stage == "retired":
+            problems.append("this version of the pipeline was retired, so it cannot be run. Run a later version")
+        elif stage == "development":
+            from . import development_samples
+            if not development_samples.is_development_data(version["tenant_id"], identity["id"], version_id):
+                asking = steps_needing_approval(pipeline_version["dag_config"])
+                many = len(asking) > 1
+                problems.append(
+                    f"this version is in development, so it can be run only on development data: files declared synthetic, or a development sample "
+                    f"drawn for you. Its custom step{'s' if many else ''} {', '.join(asking)} {'read the files or write' if many else 'reads the files or writes'} "
+                    f"files, so on any other data an approver of the department that owns the pipeline, other than the person who uploaded it, has to check it "
+                    f"and move it to production first. Ask for a sample on the version's page, under Development samples"
                 )
 
     backend = version["storage_backend"] or "seaweedfs"
@@ -454,33 +470,28 @@ async def start_deidentification(
     }
 
 
+def _dag_shape(config) -> list[dict] | None:
+    """The steps of a pipeline version as names, kinds and what each waits for; None when the run is not tied to a version that has any."""
+    steps = config.get("steps") if isinstance(config, dict) else None
+    if not steps:
+        return None
+    return [{"name": s["name"], "kind": s.get("kind"), "depends_on": list(s.get("depends_on") or [])} for s in steps if isinstance(s, dict) and "name" in s]
+
+
 @router.get("/pipeline-runs/{pipeline_run_id}")
 async def read_pipeline_run(
     pipeline_run_id: str, identity: dict = Depends(auth.current_session)
 ) -> dict:
     """One run: what it started from, what it has done, and where it stands.
 
-    The workflow's status is asked of Temporal on every read rather than stored
-    in a column here. A stored status is written by the very process whose
-    death it would need to report: kill the worker mid-run and the column says
-    `running` for as long as the database exists. This platform has that defect
-    live in one place already, on `/health`, where the Temporal error is set
-    once at startup and never cleared, so the API keeps reporting Temporal down
-    after Temporal has recovered. Repeating the shape one table over would be
-    hard to defend.
+    The workflow's status is asked of Temporal on every read, not stored in a column, because a stored status is written by the very process
+    whose death it would need to report. The steps and the gate decision are database facts, so an unreachable Temporal costs the status line
+    and nothing else: the status is then null, with a stated reason, and the call does not fail.
 
-    The steps and the gate decision are database facts, so an unreachable
-    Temporal costs the status line and nothing else. That is why it produces a
-    null status and a stated reason rather than an error.
-
-    Previously took no session at all: any run's detail, including who
-    triggered it, readable by anyone who knew or guessed its id, cross-
-    tenant. Answers "no such pipeline run" rather than "not yours" for one
-    in another tenant, the same non-disclosure posture `get_dataset`
-    (`ingest.py`) already uses.
+    A session is required. A run in another organisation answers "no such pipeline run", not "not yours".
     """
     row = db.one(
-        """select r.*, d.label as triggered_by_label, p.name as pipeline_name
+        """select r.*, d.label as triggered_by_label, p.name as pipeline_name, pv.dag_config
              from pipeline_run r
              left join directory d on d.id = r.triggered_by
              left join pipeline_version pv on pv.id = r.pipeline_version_id
@@ -495,12 +506,15 @@ async def read_pipeline_run(
         # Generic, unlike action_run: a DAG's step names are whatever the
         # operator called them, not one of the fixed pipeline's own.
         steps = db.all_rows(
-            """select step_name as action, status, started_at, ended_at,
-                      null as output_version
-                 from pipeline_step_run
-                where pipeline_run_id = %s
-                order by started_at""",
-            (pipeline_run_id,),
+            # A step that wrote files names the version the platform made of them in its result. That is only believed when it is a version of this
+            # organisation (compared as text, so a step that put anything else under that name cannot make this query fail).
+            """select s.step_name as action, s.status, s.started_at, s.ended_at,
+                      (select v.id from dataset_version v
+                        where v.id::text = s.output ->> 'output_version_id' and v.tenant_id = %s) as output_version
+                 from pipeline_step_run s
+                where s.pipeline_run_id = %s
+                order by s.started_at""",
+            (row["tenant_id"], pipeline_run_id),
         )
     else:
         steps = db.all_rows(
@@ -546,6 +560,9 @@ async def read_pipeline_run(
         "dataset": row["dataset"],
         "pipeline_kind": row["pipeline_kind"],
         "pipeline_name": row["pipeline_name"],
+        # The shape of a custom pipeline's steps (names, kinds and which waits for which), so a screen can draw the run as the graph it is. Nothing
+        # else of the pipeline's definition: not its scripts, its inputs or its settings.
+        "dag": _dag_shape(row["dag_config"]) if row["pipeline_kind"] == "dag" else None,
         "workflow_id": row["workflow_id"],
         "status": row["status"],
         "error": row["error"],

@@ -20,6 +20,8 @@ The page is self-contained and opens from the filesystem. It lives under docs/in
 """
 from __future__ import annotations
 
+import os
+
 import html
 import json
 import re
@@ -32,7 +34,7 @@ DOCS = Path(__file__).resolve().parent.parent
 ROOT = DOCS.parent
 OUT = DOCS / "internal" / "dev" / "api-callers.html"
 CONTAINER = "munitas-munitas-api-1"
-DISTRO = "Ubuntu-20.04"
+DISTRO = os.environ.get("MUNITAS_WSL_DISTRO", "Munitas")
 
 # ---------------------------------------------------------------------------------------------- what the API says about itself
 
@@ -122,6 +124,7 @@ SPECIAL = {
 DEPENDENCY_LABEL = [
     ("catalog_principal", "A catalog token. It is issued to a signed-in person, expires, and can be revoked.", "catalog"),
     ("_claim", "A table-job credential, signed by the platform and valid for one job only", "job"),
+    ("_step_pass", "A custom pipeline step's pass: made for one step of one run, expiring, and checked against the run, its version and the approval on every request", "step"),
     ("worker_only", "Worker token only. No person can call it, not even an administrator.", "worker"),
     ("_worker", "Worker token only. No person can call it, not even an administrator.", "worker"),
     ("person_or_worker", "A signed-in person, or the worker token", "mixed"),
@@ -414,7 +417,7 @@ def build(routes: list[dict], seen: dict) -> str:
             f'<td class="auth {kind}">{html.escape(label)}</td><td class="az">{html.escape(authorization(r))}</td>'
             + "".join(cells) + "</tr>")
     names = {"person": "a signed-in person", "worker": "worker token only", "mixed": "more than one way", "open": "public, no sign-in",
-             "catalog": "catalog token", "job": "table-job credential", "none": "no check at all"}
+             "catalog": "catalog token", "job": "table-job credential", "step": "custom step pass", "none": "no check at all"}
     chips = "".join(f'<span class="chip">{html.escape(names[k])}: <b>{v}</b></span>' for k, v in sorted(counts.items(), key=lambda kv: -kv[1]))
     chips += "".join(f'<span class="chip">called by {html.escape(lbl.lower())}: <b>{caller_totals[k]}</b></span>' for k, lbl, *_ in CALLERS)
     options = "".join(f'<option value="{k}">{html.escape(names[k])}</option>' for k in names if k != "open")

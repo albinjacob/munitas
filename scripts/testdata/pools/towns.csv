@@ -1,0 +1,59 @@
+locale,town,region,postcode_prefix,weight
+en_GB,London,Greater London,E,14
+en_GB,London,Greater London,SW,10
+en_GB,London,Greater London,N,8
+en_GB,Manchester,Greater Manchester,M,6
+en_GB,Birmingham,West Midlands,B,6
+en_GB,Leeds,West Yorkshire,LS,5
+en_GB,Glasgow,Glasgow City,G,5
+en_GB,Liverpool,Merseyside,L,4
+en_GB,Bristol,Bristol,BS,4
+en_GB,Sheffield,South Yorkshire,S,4
+en_GB,Edinburgh,City of Edinburgh,EH,4
+en_GB,Cardiff,Cardiff,CF,3
+en_GB,Newcastle upon Tyne,Tyne and Wear,NE,3
+en_GB,Nottingham,Nottinghamshire,NG,3
+en_GB,Leicester,Leicestershire,LE,3
+en_GB,Brighton,East Sussex,BN,2
+en_GB,Oxford,Oxfordshire,OX,2
+en_GB,Cambridge,Cambridgeshire,CB,2
+en_GB,York,North Yorkshire,YO,2
+en_GB,Exeter,Devon,EX,2
+en_GB,Norwich,Norfolk,NR,2
+en_GB,Belfast,County Antrim,BT,3
+en_GB,Southampton,Hampshire,SO,2
+en_GB,Plymouth,Devon,PL,1
+en_GB,Aberdeen,Aberdeen City,AB,1
+en_US,Chicago,IL,606,6
+en_US,Houston,TX,770,6
+en_US,Phoenix,AZ,850,4
+en_US,Philadelphia,PA,191,4
+en_US,San Antonio,TX,782,3
+en_US,San Diego,CA,921,3
+en_US,Dallas,TX,752,4
+en_US,Columbus,OH,432,3
+en_US,Charlotte,NC,282,3
+en_US,Seattle,WA,981,3
+en_US,Denver,CO,802,3
+en_US,Boston,MA,021,3
+en_US,Nashville,TN,372,2
+en_US,Portland,OR,972,2
+en_US,Atlanta,GA,303,3
+en_US,Minneapolis,MN,554,2
+en_US,Detroit,MI,482,2
+en_US,Baltimore,MD,212,2
+en_US,Pittsburgh,PA,152,2
+en_US,Tampa,FL,336,2
+en_IE,Dublin,Dublin,D,6
+en_IE,Cork,Cork,T,3
+en_IE,Galway,Galway,H,2
+en_IE,Limerick,Limerick,V,2
+en_IE,Waterford,Waterford,X,1
+en_IN,Mumbai,Maharashtra,400,4
+en_IN,Delhi,Delhi,110,4
+en_IN,Bengaluru,Karnataka,560,3
+en_IN,Hyderabad,Telangana,500,3
+en_IN,Chennai,Tamil Nadu,600,3
+en_IN,Kolkata,West Bengal,700,2
+en_IN,Pune,Maharashtra,411,2
+en_IN,Ahmedabad,Gujarat,380,2

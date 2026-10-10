@@ -3,5 +3,13 @@ from .envelope import (
     EnvelopeCrypto,
     UnknownRecordError,
 )
+from .keyservice import BuiltInKeyService, KeyService, KeyStore
+from .lock import is_locked, lock_value, unlock_value
+from .stream import NotOpenable, lock_part, open_stream, read_range
 
-__all__ = ["EnvelopeCrypto", "DestroyedKeyError", "UnknownRecordError"]
+__all__ = [
+    "EnvelopeCrypto", "DestroyedKeyError", "UnknownRecordError",
+    "KeyService", "KeyStore", "BuiltInKeyService",
+    "is_locked", "lock_value", "unlock_value",
+    "NotOpenable", "lock_part", "open_stream", "read_range",
+]

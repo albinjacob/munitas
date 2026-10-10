@@ -35,13 +35,13 @@ sys.path.insert(0, str(Path(__file__).parent))
 from common import (api, bearer_for, check, db, heading,  # noqa: E402
                     require_api, summary)
 
-# The demonstration organisation's people, because this needs real roles that
+# The test organisation's people, because this needs real roles that
 # differ from each other: somebody who may decide, somebody who may not, and
 # the administrator who deliberately may not either.
-ASKER = "sam-researcher"       # notebook_explore
-CUSTODIAN = "cust-hartley"     # data_custodian, may decide
-ADMIN = "ops-priya"            # platform_admin + hybridops, may not decide
-OVERSIGHT = "dpo-nakamura"     # dpo, may confirm a role is still needed
+ASKER = "canary-researcher"    # notebook_explore
+CUSTODIAN = "canary-custodian" # data_custodian, may decide
+ADMIN = "canary-admin"         # platform_admin + hybridops, may not decide
+OVERSIGHT = "canary-dpo"       # dpo, may confirm a role is still needed
 
 WANTED = "deid_reviewer"
 
@@ -110,7 +110,7 @@ def main() -> int:
             conn.execute(
                 """insert into role_request
                      (id, tenant_id, principal, role, justification, requested_days)
-                   values (gen_random_uuid(), 'health', %s, 'platform_admin',
+                   values (gen_random_uuid(), 'canary', %s, 'platform_admin',
                            'straight past the API', 30)""",
                 (ASKER,),
             )

@@ -1,6 +1,6 @@
-"""Bring an organisation's closing dates forward, as if days had passed. For verification and recording only.
+"""Bring an organisation's closing dates forward, as if days had passed. For verification and file only.
 
-A closing takes 15 days and then another 15, which nobody can wait for while recording a
+A closing takes 15 days and then another 15, which nobody can wait for while file a
 walkthrough or running a check. The platform works the phase out from two dates on the organisation
 (`tenant_phase` in platform/schema.sql), so moving those dates is all that a clock moving on would
 change. This changes nothing else: a legal hold, the records and the rules are exactly as they were.
@@ -20,13 +20,13 @@ import os
 import sys
 from pathlib import Path
 
-import psycopg
-from psycopg.rows import dict_row
+import pgdb
+from pgdb import dict_row
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from ports_config import PORTS  # noqa: E402
 
-PG_DSN = os.environ.get("PG_DSN", f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform")
+PG_DSN = os.environ.get("MUNITAS_PG_DSN", f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform")
 
 
 def main() -> int:
@@ -37,7 +37,7 @@ def main() -> int:
     group.add_argument("--end-closing", action="store_true")
     args = parser.parse_args()
 
-    with psycopg.connect(PG_DSN, row_factory=dict_row, autocommit=True) as conn:
+    with pgdb.connect(PG_DSN, row_factory=dict_row, autocommit=True) as conn:
         row = conn.execute("select tenant_phase(id) as phase from tenant where id = %s", (args.tenant,)).fetchone()
         if not row or row["phase"] not in ("retiring", "closing", "purge_due"):
             print(f"{args.tenant!r} is not being closed ({row['phase'] if row else 'no such organisation'}). Nothing changed.")

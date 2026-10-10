@@ -16,6 +16,7 @@ import asyncio
 import base64
 import hashlib
 import json
+import time
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -23,14 +24,14 @@ from datetime import datetime, timedelta, timezone
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from psycopg import errors as pg_errors
+from pgdb import errors as pg_errors
 
 from crypto import DestroyedKeyError, EnvelopeCrypto
 
 from . import (access_preview, activation, agent_upload, agents, auth, config,
               dag_pipelines, db, department_approvers, derivations, external_accounts, grants, housekeeping, iceberg,
-              iceberg_catalog, ingest, legal_export, lifecycle, logs, models, opa, people, pipeline, r2,
-              read_models, seaweed, storage, table_jobs, task_credential, temporal_client,
+              development_outputs, development_sample_routes, access_rules_routes, file_lease_routes, notebook_routes, notebook_sign_in_routes, person_keys, release_review, release_review_routes, iceberg_catalog, ingest, legal_export, lifecycle, logs, models, opa, people, person_routes, pipeline, r2, record_routes, locked_file_routes, table_upload_routes, step_routes,
+              read_models, readability, screens, seaweed, storage, table_jobs, task_credential, temporal_client,
               versions)
 
 log = logs.get_logger("main")
@@ -61,8 +62,9 @@ async def lifespan(app: FastAPI):
     activator = asyncio.create_task(activation.run_forever())
     closer = asyncio.create_task(lifecycle.run_forever())
     dispatcher = asyncio.create_task(table_jobs.run_forever())
+    ender = asyncio.create_task(development_outputs.run_forever())
     yield
-    for task in (activator, closer, dispatcher):
+    for task in (activator, closer, dispatcher, ender):
         task.cancel()
         try:
             await task
@@ -85,9 +87,22 @@ async def tag_request(request, call_next):
     """
     rid = request.headers.get("X-Request-Id") or logs.new_request_id()
     token = logs.request_id.set(rid)
+    started = time.monotonic()
     try:
         response = await call_next(request)
+    except Exception:  # noqa: BLE001 - whatever it was, the person gets an answer they can read and a reference to quote
+        # Answered here, inside the layer that adds the browser's permission headers. An error that escapes this function is answered by the
+        # server's outermost layer, which adds none, so the browser reports a network failure ("Failed to fetch") and the person is told the
+        # platform is not responding when it answered with an error. The details go to the log, under this reference, and never to the person.
+        logs.get_logger("main").exception("an unexpected error while handling a request", extra={"request_id": rid})
+        response = JSONResponse(status_code=500, content={"detail": {"reasons": ["the platform ran into a problem it did not expect while doing this"], "request_id": rid}})
     finally:
+        took = time.monotonic() - started
+        if config.SLOW_REQUEST_SECONDS and took >= config.SLOW_REQUEST_SECONDS:
+            # The route's pattern, not the address, so a person's identifier or a dataset's id never goes into the log.
+            route = request.scope.get("route")
+            logs.get_logger("main").warning(
+                "a slow request", extra={"request_id": rid, "method": request.method, "route": getattr(route, "path", "unknown"), "seconds": round(took, 2)})
         logs.request_id.reset(token)
     response.headers["X-Request-Id"] = rid
     return response
@@ -106,11 +121,14 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=config.CONSOLE_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PATCH", "DELETE"],
+    # PUT is how the console sends one part of a file. A browser asks before it sends one (a preflight request), and refuses when the answer
+    # does not list the method, so without it the console cannot upload a file in a real browser. verify/v137 sends that request itself.
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     allow_headers=["*"],
 )
 
 app.include_router(read_models.router)
+app.include_router(screens.router)
 app.include_router(housekeeping.router)
 app.include_router(people.router)
 app.include_router(department_approvers.router)
@@ -119,6 +137,14 @@ app.include_router(external_accounts.router)
 app.include_router(agents.router)
 app.include_router(agent_upload.router)
 app.include_router(dag_pipelines.router)
+app.include_router(step_routes.router)
+app.include_router(development_sample_routes.router)
+app.include_router(file_lease_routes.router)
+app.include_router(access_rules_routes.router)
+app.include_router(notebook_routes.router)
+app.include_router(notebook_sign_in_routes.router)
+app.include_router(record_routes.router)
+app.include_router(release_review_routes.router)
 app.include_router(auth.router)
 app.include_router(pipeline.router)
 app.include_router(access_preview.router)
@@ -127,6 +153,9 @@ app.include_router(derivations.router)
 app.include_router(lifecycle.router)
 app.include_router(legal_export.router)
 app.include_router(table_jobs.router)
+app.include_router(person_routes.router)
+app.include_router(table_upload_routes.router)
+app.include_router(locked_file_routes.router)
 # The catalog answers in the shape Iceberg clients read, not FastAPI's default.
 app.add_exception_handler(iceberg_catalog.CatalogError, iceberg_catalog.handle_error)
 
@@ -134,6 +163,9 @@ app.add_exception_handler(iceberg_catalog.CatalogError, iceberg_catalog.handle_e
 @app.exception_handler(iceberg.TableRequired)
 def table_required(request, exc: iceberg.TableRequired):
     """A version that had to be a table was not sealed. Its number is unused and nothing was left behind."""
+    if exc.problems:
+        return JSONResponse(status_code=422, content={"detail": {"reasons": [exc.reason, *exc.problems], "table_outcome": exc.outcome,
+                                                                 "problems": exc.problems}})
     return JSONResponse(
         status_code=422 if exc.outcome == "skipped" else 503,
         content={"detail": {"reasons": [
@@ -198,7 +230,7 @@ def register_contract(body: models.SchemaContractIn, _worker: None = Depends(aut
     """
     fields = [f.model_dump() for f in body.fields]
     # The work itself lives in versions.py, because the audio seal path in
-    # ingest.py registers the same encounter_raw contract directly and two
+    # ingest.py registers the same audio_raw contract directly and two
     # implementations of the digest would put one contract in the table twice
     # under one name, with the pipeline and the console each holding a
     # different id for it. The tenant is part of that digest, and why is
@@ -213,44 +245,20 @@ def register_contract(body: models.SchemaContractIn, _worker: None = Depends(aut
 
 @app.post("/datasets", status_code=201)
 def create_dataset(body: models.DatasetIn, _worker: None = Depends(auth.worker_only)) -> dict:
-    existing = db.one(
-        "select id from dataset where tenant_id = %s and name = %s",
-        (body.tenant_id, body.name),
-    )
-    if existing:
-        return {"id": str(existing["id"]), "created": False}
-    # A dataset made from a version belongs to the department of the dataset that version is in, so whoever is accountable for the
-    # input is accountable for what is made from it, and access to it can be approved. The version must be one of this organisation's.
-    department_id = None
-    if body.derived_from_version_id:
-        source = db.one(
-            """select d.department_id, v.tenant_id from dataset_version v join dataset d on d.id = v.dataset_id
-                where v.id = %s""", (body.derived_from_version_id,))
-        if not source or source["tenant_id"] != body.tenant_id:
-            raise HTTPException(422, {"reasons": ["the version this dataset is made from does not exist in this organisation"]})
-        department_id = source["department_id"]
-    row = db.execute(
-        "insert into dataset (id, tenant_id, name, department_id) values (%s, %s, %s, %s) returning id",
-        (_uuid(), body.tenant_id, body.name, department_id),
-    )
-    return {"id": str(row["id"]), "created": True}
+    try:
+        dataset_id, created = versions.ensure_dataset(body.tenant_id, body.name, body.derived_from_version_id)
+    except LookupError as exc:
+        raise HTTPException(422, {"reasons": [str(exc)]}) from exc
+    return {"id": dataset_id, "created": created}
 
 
 @app.post("/action-runs", status_code=201)
 def start_run(body: models.ActionRunIn, _worker: None = Depends(auth.worker_only)) -> dict:
     """Start an action run, keyed by an idempotency key.
 
-    Re-submitting the same key returns the original run instead of starting a
-    second one. This is what makes V6 checkable: kill the worker mid-action, let
-    Temporal retry, and exactly one output version should exist afterwards.
-
-    A manual run must name who triggered it, and a scheduled one must name its
-    schedule instead; each is refused before the workflow even reaches this
-    endpoint's insert, the same "an unattributable run should not start" logic
-    `run_pipeline.py`'s CLI applies before starting the Temporal workflow at all.
-    Retrying an existing idempotency key returns the original row unchanged
-    regardless of what trigger fields this call carries: the row already exists,
-    so nothing here is re-validated or re-attributed.
+    Submitting the same key again returns the original run instead of starting a second one, so a retried action leaves exactly one output
+    version. A manual run must name who triggered it, and a scheduled run must name its schedule; a run with neither is refused. Retrying an
+    existing key returns the original row unchanged, whatever trigger fields the new call carries.
     """
     existing = db.one(
         "select id, status, output_version from action_run where idempotency_key = %s",
@@ -391,26 +399,12 @@ def end_pipeline_run(run_id: str, body: models.EndPipelineRun, _worker: None = D
 def next_version(dataset_id: str, tenant_id: str, scope: str | None = Depends(auth.organisation_scope)) -> dict:
     """Tell a producer where the next version's objects must be written.
 
-    A pipeline has to write its objects before it can seal a version, but the
-    storage prefix belongs to the version, so it does not exist yet. Without
-    this the producer invents its own prefix, the sealed version points
-    somewhere else, and a prefix-scoped credential grants access to nothing.
-    That failure is silent: the version looks fine and the grant looks fine.
+    A pipeline has to write its objects before it can seal a version, but the storage prefix belongs to the version, so it does not exist yet.
+    This answers with the prefix and the bucket that `create_version` will use, so the sealed version points at the objects and a prefix-scoped
+    credential grants access to them. A producer that chose its own prefix or bucket would write somewhere the grant does not reach.
 
-    This is a reservation in name only. It computes the same prefix
-    `create_version` will compute, and two producers racing on one dataset would
-    both be told the same answer and one would lose. Single producer per dataset
-    is the assumption, and a real deployment needs an allocation that takes a
-    lock instead.
-
-    The bucket is answered here too, and for the same reason the prefix is. A
-    producer that picks its own bucket from a constant writes into the shared
-    one while the sealed version's credential points at the tenant's own, and
-    that failure is silent in exactly the way this endpoint exists to prevent:
-    the objects are somewhere real, the version looks fine, the grant looks
-    fine, and there is nothing to read. Every tenant grandfathered onto the
-    shared bucket hides it, which is why it went unnoticed until a tenant with
-    its own provisioned bucket was asked the question.
+    This is a reservation in name only: two producers racing on one dataset would be told the same answer and one would lose. One producer per
+    dataset is the assumption.
     """
     # Where the next version's objects go names an organisation's bucket and folder: a producer is told its own, and an
     # organisation's name in the URL is not a way to ask for another's.
@@ -454,19 +448,16 @@ def next_version(dataset_id: str, tenant_id: str, scope: str | None = Depends(au
 def create_version(body: models.DatasetVersionIn, _worker: None = Depends(auth.worker_only)):
     """Seal a new dataset version.
 
-    Sealed on creation, which is why there is no update endpoint anywhere in
-    this file. The storage prefix encodes tenant, dataset and version and never
-    the class, so a later promotion changes a grant rather than moving bytes.
+    A version is sealed on creation, which is why there is no update endpoint: a change is always a new version. The storage prefix encodes
+    organisation, dataset and version and never the class, so a later promotion changes a grant and moves no bytes.
 
-    A version that names a records file is also written as an Iceberg table, before the row exists. A small one is
-    written while this request waits. A large one is written by a worker, in a job (table_jobs.py): the answer is then
-    202 with the job, the version number and folder are reserved, and the version is sealed, with its table inside it,
-    when the job finishes. `table_mode` chooses; left out, the size of the records file does.
+    A version that names a records file is also written as an Iceberg table, before the row exists. A small one is written while the request
+    waits. A large one is written by a worker, in a job: the answer is then 202 with the job, the version number and folder are reserved, and the
+    version is sealed, with its table inside it, when the job finishes. `table_mode` chooses; left out, the size of the records file does.
 
-    Only the platform's own workers may call this (the worker token). It names the organisation in its body and writes a
-    version into it, so a caller that could reach it without proving what it is could seal a version into any organisation,
-    and start table jobs that hold a version number and a storage key. A person's data arrives through the upload endpoint,
-    which seals in-process under their session.
+    Only the platform's own workers may call this (the worker token). It names the organisation in its body, so a caller that could reach it
+    without proving what it is could seal a version into any organisation. A person's data arrives through the upload endpoint, which seals
+    under their session.
     """
     started = table_jobs.maybe_start(body)
     if started is not None:
@@ -475,7 +466,7 @@ def create_version(body: models.DatasetVersionIn, _worker: None = Depends(auth.w
         tenant_id=body.tenant_id, dataset_id=body.dataset_id, schema_id=body.schema_id,
         visibility_class=body.visibility_class, storage_backend=body.storage_backend,
         object_manifest=body.object_manifest, record_count=body.record_count,
-        produced_by_run=body.produced_by_run, records_key=body.records_key, table_required=body.table_required)
+        produced_by_run=body.produced_by_run, records_key=body.records_key, table_required=body.table_required, records_options=body.records_options)
 
 
 @app.get("/dataset-versions/{version_id}")
@@ -493,6 +484,10 @@ def get_version(version_id: str, tenant_id: str | None = Depends(auth.organisati
     probing ids was trying to learn. The platform's own workers send the worker token instead
     and name the organisation they act for. This endpoint also returns `object_manifest`, the
     storage keys of the version's files, so it must never answer without one or the other.
+
+    A version made from a file somebody brought in also says so (`brought_in`): the file's name, its size and
+    its SHA-256, who sent it and when. It is null for a version nothing was brought in for, such as one a
+    pipeline made.
     """
     row = db.one(
         """select vc.*, d.name as dataset_name,
@@ -507,6 +502,13 @@ def get_version(version_id: str, tenant_id: str | None = Depends(auth.organisati
     )
     if not row:
         raise HTTPException(404, "no such dataset version")
+    row["brought_in"] = db.one(
+        """select s.locator as file_name, s.bytes, s.checksum as sha256, s.fetched_by as who, s.fetched_at as at
+             from dataset_source s
+            where s.dataset_id = %s and s.kind = 'upload' and s.checksum is not null
+              and s.checksum in (select e->>'sha256' from jsonb_array_elements(%s::jsonb) e)
+            order by s.fetched_at desc limit 1""",
+        (str(row["dataset_id"]), json.dumps(row["object_manifest"])))
     return json.loads(json.dumps(row, default=str))
 
 
@@ -564,6 +566,12 @@ def request_lease(body: models.LeaseRequestIn,
     if version["tenant_id"] != acting_tenant:
         raise HTTPException(404, "no such dataset version")
 
+    # A permission to read the whole of a version that holds nothing readable is worth nothing, and an approval of it would say otherwise. Said now,
+    # with the way to ask that does work, and not after somebody has waited for a decision.
+    not_worth_asking = readability.refusal_of_whole_version(readability.of(body.dataset_version_id))
+    if not_worth_asking:
+        raise HTTPException(400, {"reasons": not_worth_asking})
+
     if body.standing and (not principal_row or principal_row["kind"] != "workload"):
         raise HTTPException(
             400,
@@ -617,6 +625,12 @@ async def approve_lease(
         raise HTTPException(404, "no such lease request")
     if req["state"] != "pending":
         raise HTTPException(409, f"request already {req['state']}")
+
+    # A request made before this rule, or put in the queue some other way, is not approved either: the approval would say that somebody may read data
+    # they cannot. The approver can still reject it, with a reason.
+    not_worth_approving = readability.refusal_of_whole_version(readability.of(str(req["dataset_version_id"])))
+    if not_worth_approving:
+        raise HTTPException(400, {"reasons": not_worth_approving})
 
     # Who is entitled to approve this, according to the asset's owner.
     custodian = db.one(
@@ -777,11 +791,8 @@ async def reject_lease(request_id: str, body: models.LeaseRejection,
 def revoke_lease(lease_id: str, identity: dict = Depends(auth.current_session)) -> dict:
     """Withdraw a lease before it would otherwise expire.
 
-    Same authority as approving one: the asset's custodian, not the principal
-    or requester it was granted to, and not anybody outside that relationship.
-    Unauthenticated and unauthorized revocation was a real, open gap before
-    this: nothing checked who was asking, or whether they had any standing
-    over the asset at all.
+    Same authority as approving one: the asset's custodian, not the principal or requester it was granted to, and not anybody outside that
+    relationship.
     """
     lease = db.one("select * from access_lease where id = %s", (lease_id,))
     if not lease:
@@ -942,7 +953,7 @@ def _resolve_pipeline_task(
     Raises HTTPException(403, {"allowed": False, "reasons": [...]}) on any
     failure: missing or invalid token, a token naming the wrong principal or
     tenant, or a task row that does not exist or belongs to someone else.
-    Both callers are responsible for their own audit recording around this,
+    Both callers are responsible for their own audit file around this,
     since /credentials records to access_decision (keyed to a dataset
     version) and /write-credentials has no such row to key one to.
     """
@@ -1029,6 +1040,8 @@ def _authenticate_credential_request(body: models.CredentialRequest, request: Re
             claim = task_credential.verify(proof)
         except task_credential.InvalidTaskCredential as exc:
             raise HTTPException(403, {"allowed": False, "reasons": [f"task credential rejected: {exc}"]}) from exc
+        if claim.task_kind in ("notebook_files", "notebook_read"):
+            raise HTTPException(403, {"allowed": False, "reasons": ["a notebook's files token opens a few files through the notebook routes and asks for no storage credential"]})
         if claim.principal != body.principal:
             raise HTTPException(403, {"allowed": False, "reasons": ["this credential is not for the principal that is asking"]})
         return
@@ -1042,7 +1055,7 @@ def request_credential(body: models.CredentialRequest, request: Request, x_worke
     """Mint a storage credential for one dataset version, or refuse and say why.
 
     The order of operations matters and is not negotiable: decide, record the
-    decision, then act on it. Recording after acting would lose the audit trail
+    decision, then act on it. File after acting would lose the audit trail
     for exactly the requests that fail partway.
 
     Three outcomes: 200 with the key when access is allowed and in effect,
@@ -1507,28 +1520,12 @@ def list_decisions(
     offset: int = 0,
     identity: dict = Depends(auth.current_session),
 ) -> dict:
-    """Read the audit log. Denials included, which is the point of having it.
+    """Read the record of access decisions: every request to read data in the caller's own organisation, and what happened to it. Refusals are included.
 
-    `tenant_id` used to be a caller-supplied query parameter, and this
-    endpoint took no session at all: anyone who could reach the API could
-    read any tenant's full audit log, unauthenticated, just by naming it.
-    Scoped to the caller's own tenant now, the same fix every read endpoint
-    in `read_models.py` already has; this one was missed because it is a
-    read stranded in `main.py`, which by that file's own docstring is
-    supposed to hold only endpoints with a consequence.
-
-    Now the same `{decisions, shown, total, limit, offset}` envelope every
-    `read_models.py` list endpoint uses, for real page controls.
-
-    `allowed`/`resource` (`"dataset"` or `"agent"`, by whether
-    `agent_run_id` is set) used to be filtered in the browser, on whatever
-    one page's worth of rows happened to already be fetched -- harmless
-    while every row was fetched at once, silently wrong the moment
-    pagination means most rows never reach the browser to be filtered at
-    all. Filtered here instead, the same principle `/datasets` already
-    states: a console that fetches everything and hides most of it in the
-    browser gets slower and, now, also wronger as the platform grows.
+    Only a data custodian, the data protection officer or a platform administrator may read it. Any other role is refused with a 403. The answer is `{decisions, shown, total, limit, offset}`, for page controls. `allowed` and `resource`
+    (`"dataset"` or `"agent"`, by whether `agent_run_id` is set) filter here, in the database, so the total and the page always agree.
     """
+    screens.require_screen("audit", identity)
     resource_sql = {
         None: "true",
         "dataset": "d.agent_run_id is null",
@@ -1783,9 +1780,11 @@ def _pending_gate(decision_id: str) -> dict:
 
 
 def _gate_permission(row: dict, identity: dict) -> None:
+    uploaded = db.one("select pv.uploaded_by from pipeline_run pr join pipeline_version pv on pv.id = pr.pipeline_version_id where pr.id = %s",
+                      (row["pipeline_run_id"],)) if row["pipeline_run_id"] else None
     permitted, reasons = opa.may_decide_gate({
         "decider": {"id": identity["id"], "roles": identity["roles"]},
-        "gate": {"triggered_by": row["triggered_by"]},
+        "gate": {"triggered_by": row["triggered_by"], "pipeline_uploaded_by": uploaded["uploaded_by"] if uploaded else None},
     })
     if not permitted:
         # Refused before the write is attempted, so the caller gets an
@@ -1805,6 +1804,11 @@ def decide_gate_promote(decision_id: str, body: models.GateDecisionIn,
     """
     row = _pending_gate(decision_id)
     _gate_permission(row, identity)
+    # The release rests on what the platform checked and what the reviewer looked at, from the same evidence the page shows.
+    found = release_review.evidence(person_keys.key_service(), identity, row)
+    stopped = release_review.blockers(found, row)
+    if stopped:
+        raise HTTPException(409, {"decided": False, "reasons": stopped})
 
     result = _perform_promotion(
         str(row["dataset_version_id"]), row["to_class"], identity["id"], "human",
@@ -1826,6 +1830,7 @@ def decide_gate_promote(decision_id: str, body: models.GateDecisionIn,
            where id = %s and state = 'pending'""",
         (identity["id"], body.reason, decision_id),
     )
+    release_review.record(decision_id, found, "released")
     return {"decided": True, "state": "promoted", **result}
 
 
@@ -1835,6 +1840,7 @@ def decide_gate_refuse(decision_id: str, body: models.GateDecisionIn,
     """Refuse the gate. The version stays exactly where it is."""
     row = _pending_gate(decision_id)
     _gate_permission(row, identity)
+    found = release_review.evidence(person_keys.key_service(), identity, row)
 
     db.execute(
         """update gate_decision
@@ -1843,5 +1849,6 @@ def decide_gate_refuse(decision_id: str, body: models.GateDecisionIn,
            where id = %s and state = 'pending'""",
         (identity["id"], body.reason, decision_id),
     )
+    release_review.record(decision_id, found, "held back")
     return {"decided": True, "state": "refused",
             "dataset_version_id": str(row["dataset_version_id"])}

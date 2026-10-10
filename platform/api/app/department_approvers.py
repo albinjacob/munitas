@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-import psycopg.errors
+import pgdb
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -54,7 +54,7 @@ def _department(department_id: str, identity: dict) -> dict:
     """A department of another organisation is not found, not forbidden, so its existence is not disclosed."""
     try:
         row = db.one("select id, tenant_id, name from department where id = %s", (department_id,))
-    except psycopg.errors.InvalidTextRepresentation:
+    except pgdb.errors.InvalidTextRepresentation:
         row = None
     if not row or row["tenant_id"] != identity["tenant_id"]:
         raise HTTPException(404, "no such department")
@@ -165,7 +165,7 @@ def add_approver(department_id: str, body: AddApprover, identity: dict = Depends
                 (department["tenant_id"], department_id, person["id"], identity["id"], body.valid_until, body.reason.strip()),
             )
             created = cur.fetchone()
-    except psycopg.errors.UniqueViolation as exc:
+    except pgdb.errors.UniqueViolation as exc:
         raise HTTPException(409, {"added": False, "reasons": ["this person is already an approver of this department"]}) from exc
     return {"id": str(created["id"]), "department_id": str(department["id"]), "person_id": person["id"],
             "valid_until": body.valid_until.isoformat() if body.valid_until else None}
@@ -197,7 +197,7 @@ def remove_approver(department_id: str, person_id: str, body: RemoveApprover, id
                     where department_id = %s and person_id = %s and removed_at is null""",
                 (identity["id"], body.reason.strip(), department_id, person_id),
             )
-    except psycopg.errors.CheckViolation as exc:
+    except pgdb.errors.CheckViolation as exc:
         # The policy counted from what it read; the database is the guarantee when two changes race.
         raise HTTPException(409, {"removed": False, "reasons": [
             "a department always keeps at least one permanent approver, so this one cannot be removed until another is added"]}) from exc

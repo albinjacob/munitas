@@ -30,7 +30,7 @@ export const SERVICES: Service[] = [
     role: "pipeline_action",
     floor: "RAW",
     description:
-      "Transcribes, detects and redacts. The only role that reaches raw data, because it works inside the boundary and produces the thing everyone else waits for.",
+      "Transcribes, finds identifying detail and removes it. The only service that reads raw data, because it works inside the platform and produces the data everyone else waits for.",
   },
   {
     id: "annotation-tool",
@@ -38,7 +38,7 @@ export const SERVICES: Service[] = [
     role: "annotation_tool",
     floor: "OPEN_FOR_ANNOTATION",
     description:
-      "Holds the credential on a reviewer's behalf, so a person corrects spans without ever holding a data-plane key themselves.",
+      "Works on a reviewer's behalf, so a person can correct findings without ever holding a key themselves.",
   },
   {
     id: "svc-trainer",
@@ -46,7 +46,7 @@ export const SERVICES: Service[] = [
     role: "training_job",
     floor: "OPEN_FOR_TRAINING",
     description:
-      "Trains on de-identified data. Anything more sensitive needs a lease a custodian approved.",
+      "Trains on de-identified data. Anything more sensitive needs a lease that a custodian approved.",
   },
   {
     id: "agent-triage-1",

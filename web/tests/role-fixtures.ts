@@ -11,9 +11,12 @@ import { API_BASE } from "../config/ports";
 
 export const API = API_BASE;
 
-export const ASKER = "sam-researcher";
-export const CUSTODIAN = "cust-hartley";
-export const ADMIN = "ops-priya";
+export const ASKER = "canary-researcher";
+export const CUSTODIAN = "canary-custodian";
+export const ADMIN = "canary-admin";
+
+/** The same three in the walkthrough organisation, for the capture that makes the pictures. Tests never use these: they run in the test organisation. */
+export const WALKTHROUGH = { ASKER: "sam-researcher", CUSTODIAN: "cust-hartley", ADMIN: "ops-priya" };
 
 /** Rendered as written, because the label table has no entry for it. */
 export const WANTED = "deid_reviewer";
@@ -25,9 +28,9 @@ export const WANTED = "deid_reviewer";
  * behind, and the next run would then act on two rows that look identical:
  * the state a test starts from has to be built, not assumed.
  */
-export async function clearTheRole(): Promise<void> {
+export async function clearTheRole(custodian: string = CUSTODIAN): Promise<void> {
   const headers = {
-    ...(await bearerFor(CUSTODIAN)),
+    ...(await bearerFor(custodian)),
     "content-type": "application/json",
   };
   const roles = await fetch(`${API}/people/roles`, { headers }).then((r) => r.json());

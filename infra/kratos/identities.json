@@ -15,7 +15,8 @@
         { "directory_id": "ops-ravi", "email": "ravi@health.example", "name": "Ravi" },
         { "directory_id": "cust-mensah", "email": "mensah@health.example", "name": "Mensah" },
         { "directory_id": "cust-lindqvist", "email": "lindqvist@health.example", "name": "Lindqvist" },
-        { "directory_id": "arch-turner", "email": "turner@health.example", "name": "Turner" }
+        { "directory_id": "arch-turner", "email": "turner@health.example", "name": "Turner" },
+        { "directory_id": "aud-marlow", "email": "marlow@health.example", "name": "Marlow" }
       ]
     },
     {
@@ -28,7 +29,20 @@
         { "directory_id": "canary-researcher", "email": "researcher@canary.example", "name": "Canary researcher" },
         { "directory_id": "canary-dpo", "email": "dpo@canary.example", "name": "Canary oversight" },
         { "directory_id": "canary-reviewer", "email": "reviewer@canary.example", "name": "Canary reviewer" },
-        { "directory_id": "canary-architect", "email": "architect@canary.example", "name": "Canary architect" }
+        { "directory_id": "canary-auditor", "email": "auditor@canary.example", "name": "Canary privacy auditor" },
+        { "directory_id": "canary-architect", "email": "architect@canary.example", "name": "Canary architect" },
+        { "directory_id": "canary-admin", "email": "admin@canary.example", "name": "Canary administrator" },
+        { "directory_id": "canary-admin-second", "email": "admin-second@canary.example", "name": "Canary administrator, second" }
+      ]
+    },
+    {
+      "tenant": "neighbour",
+      "source": "infra/postgres/seed-canary.sql",
+      "identities": [
+        { "directory_id": "neighbour-custodian", "email": "custodian@neighbour.example", "name": "Neighbour custodian" },
+        { "directory_id": "neighbour-engineer", "email": "engineer@neighbour.example", "name": "Neighbour engineer" },
+        { "directory_id": "neighbour-researcher", "email": "researcher@neighbour.example", "name": "Neighbour researcher" },
+        { "directory_id": "neighbour-admin", "email": "admin@neighbour.example", "name": "Neighbour administrator" }
       ]
     },
     {

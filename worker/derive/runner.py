@@ -11,9 +11,9 @@ also checked here to be a single SELECT, whatever the platform checked before,
 because this is the boundary that matters.
 
 Environment (all optional, for running it outside a container):
-  DERIVE_DATA  folder holding one folder per input, named by its alias
-  DERIVE_OUT   folder the result is written into
-  DERIVE_JOB   the job file: sql, inputs, primary_key, fields
+  MUNITAS_DERIVE_DATA  folder holding one folder per input, named by its alias
+  MUNITAS_DERIVE_OUT   folder the result is written into
+  MUNITAS_DERIVE_JOB   the job file: sql, inputs, primary_key, fields
 
 The last line printed is one JSON object: {"status": "ok", ...} or
 {"status": "failed", "reason": ...}. A reason names a column or a kind of
@@ -30,11 +30,11 @@ import os
 import re
 import sys
 
-DATA = os.environ.get("DERIVE_DATA", "/data")
-OUT = os.environ.get("DERIVE_OUT", "/out")
-JOB = os.environ.get("DERIVE_JOB", "/job/job.json")
-MAX_ROWS = int(os.environ.get("DERIVE_MAX_ROWS", 5_000_000))
-MAX_BYTES = int(os.environ.get("DERIVE_MAX_BYTES", 512 * 1024 * 1024))
+DATA = os.environ.get("MUNITAS_DERIVE_DATA", "/data")
+OUT = os.environ.get("MUNITAS_DERIVE_OUT", "/out")
+JOB = os.environ.get("MUNITAS_DERIVE_JOB", "/job/job.json")
+MAX_ROWS = int(os.environ.get("MUNITAS_DERIVE_MAX_ROWS", 5_000_000))
+MAX_BYTES = int(os.environ.get("MUNITAS_DERIVE_MAX_BYTES", 512 * 1024 * 1024))
 CHUNK = 5000
 ALIAS = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,62}$")
 # DuckDB errors whose message is about names and syntax, not about values.

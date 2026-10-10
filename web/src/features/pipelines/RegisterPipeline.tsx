@@ -33,7 +33,7 @@ export function RegisterPipeline() {
     <Section
       level="page"
       title="Register a pipeline"
-      description="Names an owner. No version exists yet, so nothing can run until a DAG config and its scripts are uploaded on this pipeline's own page."
+      description="Names an owner. No version exists yet, so nothing can run until a pipeline definition and its scripts are uploaded on the pipeline's own page."
     >
       <form
         data-testid="register-pipeline-form"
@@ -102,6 +102,11 @@ export function RegisterPipeline() {
           >
             {register.isPending ? "Registering" : "Register"}
           </button>
+          {!ready && (
+            <span className="text-xs text-slate-500" data-testid="register-pipeline-why-disabled">
+              Enter a name and choose a department to register.
+            </span>
+          )}
         </div>
 
         {register.error && (

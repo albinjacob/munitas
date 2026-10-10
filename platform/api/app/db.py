@@ -5,8 +5,8 @@ from __future__ import annotations
 from contextlib import contextmanager
 from datetime import timezone
 
-from psycopg.rows import dict_row
-from psycopg_pool import ConnectionPool
+from pgdb import dict_row
+from pgdb import ConnectionPool
 
 from . import config
 

@@ -17,14 +17,15 @@
 #   - `to_class`, below, matches the built-in pipeline's own default target
 #     class. Change it if your organisation routes redacted-but-unscored
 #     output somewhere else.
-#   - `recommendation` is fixed at "fail", the only two values the schema
-#     allows are "pass" and "fail" (platform/schema.sql's
-#     gate_decision_recommendation_check) -- there is no third "review"
-#     state at the database level. "pass" would claim a measurement that
-#     never happened, so this defaults to the conservative answer instead.
-#     `state` stays "pending" either way -- a human decides regardless of
-#     this value, see recommendation_reason for why it says what it says.
-#     Do not change this to "pass" without adding real scoring first.
+#   - `recommendation` is fixed at "not_measured", the value for a run
+#     nothing measured (platform/schema.sql's
+#     gate_decision_recommendation_check allows pass, fail and
+#     not_measured). "pass" would claim a measurement that never happened,
+#     and "fail" would claim a measurement that found the redaction wanting,
+#     so neither is right. `state` stays "pending" either way -- a human
+#     decides regardless of this value, see recommendation_reason for why
+#     it says what it says. Do not change this to "pass" without adding
+#     real scoring first.
 name: redact-without-scoring
 steps:
   # Reads the already-sealed recording this run was started against.
@@ -70,10 +71,20 @@ steps:
       audio_index_key: "${steps.adopt.records_key}"
       input_version: "${steps.detect.version_id}"
 
+  # A practice run: the same transcription and detection, on a few recordings made for the purpose whose contents are known, scored the way
+  # the built-in pipeline scores. It says what the method does and nothing about this batch, which is why the gate below still says
+  # not_measured. It writes nothing into your organisation. Runs after redact so the two do not compete for the same graphics card.
+  - name: practice
+    kind: builtin
+    block: practice_run
+    depends_on: [redact]
+
   - name: gate
     kind: gate
-    depends_on: [redact]
+    depends_on: [practice]
     to_class: OPEN_FOR_ANNOTATION
     inputs:
-      recommendation: fail
-      recommendation_reason: "not scored: no ground truth on this recording, and automatic scoring without one isn't built yet. Redaction ran with the same models as the built-in pipeline, but nothing here checked whether it actually worked -- needs full human review before any promotion"
+      recommendation: not_measured
+      recommendation_reason: "${steps.practice.reason}"
+      metrics: "${steps.practice.metrics}"
+      leak_detail: "${steps.practice.leak_detail}"

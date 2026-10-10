@@ -137,6 +137,10 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
       api.get<DirectoryEntry[]>("/directory", { kind: "human", purpose: "all" }),
     enabled: Boolean(session.data) && !closed,
     staleTime: 60_000,
+    // The sign-in panel names the departments a person approves for and their roles. Both can end without this person doing anything (a
+    // role lapses, somebody removes them), so the panel is read again on a timer and whenever the window comes back, not remembered.
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
   });
 
   const everyone = useMemo(

@@ -14,8 +14,12 @@ import re
 
 import yaml
 
-BUILTIN_BLOCKS = {"adopt_version", "transcribe", "detect", "handoff", "redact", "verify"}
+BUILTIN_BLOCKS = {"adopt_version", "transcribe", "detect", "handoff", "redact", "verify", "practice_run"}
 STEP_KINDS = {"builtin", "script", "gate", "wait_for_human"}
+
+# What a gate may recommend. `not_measured` is for a run nothing measured, which is neither a pass nor a fail. The same three the database accepts
+# (gate_decision_recommendation_check in schema.sql); verify/v131 checks they agree.
+RECOMMENDATIONS = ("pass", "fail", "not_measured")
 
 # ${steps.NAME.KEY}, the only reference syntax a step's `inputs` values
 # understand. Anything else in an inputs value is a literal.
@@ -56,6 +60,24 @@ def _referenced_step_names(value) -> list[str]:
         if m:
             return [m.group(1)]
     return []
+
+
+def steps_writing_files(config: dict) -> list[str]:
+    """The names of the script steps that declare `writes_files: true`: what they write through the platform becomes a version that waits for review."""
+    return [s["name"] for s in config.get("steps", []) if s.get("kind") == "script" and s.get("writes_files") is True]
+
+
+def steps_needing_approval(config: dict) -> list[str]:
+    """The script steps whose version must be approved by a second person before a run may start: those given the files, and those that write
+    files, because code the platform did not write reads the sound or makes what is stored."""
+    asking, writing = steps_asking_for_files(config), steps_writing_files(config)
+    return [s["name"] for s in config.get("steps", []) if s["name"] in asking or s["name"] in writing]
+
+
+def steps_asking_for_files(config: dict) -> list[str]:
+    """The names of the script steps that declare `reads_files: true`: they are given the run's files as files, so the version holding them is
+    approved by a second person before a run may start."""
+    return [s["name"] for s in config.get("steps", []) if s.get("kind") == "script" and s.get("reads_files") is True]
 
 
 def validate_dag(config: dict, script_names: set[str]) -> list[str]:
@@ -115,6 +137,27 @@ def validate_dag(config: dict, script_names: set[str]) -> list[str]:
                     f"step {step['name']!r} names script {script!r}, which is not "
                     f"in the uploaded zip"
                 )
+        if kind == "script":
+            for key, ceiling in (("memory_mb", 4096), ("scratch_mb", 2048)):
+                if key in step and (not isinstance(step[key], int) or isinstance(step[key], bool) or not 16 <= step[key] <= ceiling):
+                    problems.append(f"step {step['name']!r} sets {key!r} to {step[key]!r}, and it must be a whole number of megabytes from 16 to {ceiling}")
+            if isinstance(step.get("memory_mb"), int) and isinstance(step.get("scratch_mb"), int) and step["scratch_mb"] > step["memory_mb"]:
+                problems.append(f"step {step['name']!r} asks for {step['scratch_mb']} MB of scratch space and {step['memory_mb']} MB of memory: scratch space is "
+                                f"memory-backed, so it cannot be larger than the memory")
+        if "writes_files" in step:
+            if kind != "script":
+                problems.append(f"step {step['name']!r} sets 'writes_files', which only a script step may")
+            elif not isinstance(step["writes_files"], bool):
+                problems.append(f"step {step['name']!r} sets 'writes_files' to {step['writes_files']!r}, and it must be true or false")
+            elif step["writes_files"] and not re.match(r"^[a-zA-Z0-9_]+$", str(step["name"])):
+                problems.append(f"step {step['name']!r} writes files, and the dataset they become is named after the step: use letters, digits and underscores")
+        if "reads_files" in step:
+            if kind != "script":
+                problems.append(f"step {step['name']!r} sets 'reads_files', which only a script step may: a built-in step already reads the files it needs")
+            elif not isinstance(step["reads_files"], bool):
+                problems.append(f"step {step['name']!r} sets 'reads_files' to {step['reads_files']!r}, and it must be true or false")
+            elif step["reads_files"] and {"files", "files_skipped"} & set(step.get("inputs") or {}):
+                problems.append(f"step {step['name']!r} is given the files under the names 'files' and 'files_skipped', so it cannot also take inputs of those names")
         elif kind == "gate":
             if not step.get("to_class"):
                 problems.append(f"gate step {step['name']!r} needs a to_class")
@@ -124,6 +167,14 @@ def validate_dag(config: dict, script_names: set[str]) -> list[str]:
                     f"gate step {step['name']!r} needs inputs.recommendation and "
                     f"inputs.recommendation_reason"
                 )
+            else:
+                literal = inputs["recommendation"]
+                # A reference to another step's output is only known when the run gets there. A literal is known now.
+                if isinstance(literal, str) and not REF_PATTERN.match(literal) and literal not in RECOMMENDATIONS:
+                    problems.append(
+                        f"gate step {step['name']!r} recommends {literal!r}, which is not one of "
+                        f"{', '.join(RECOMMENDATIONS)}"
+                    )
 
     # Cycle detection: a plain depth-first walk, reporting the first back
     # edge found rather than every one, the same "one clear problem, not a

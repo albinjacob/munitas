@@ -210,7 +210,32 @@
   .group { margin: 0 0 44px; }
   .group h2 { font-size: 26px; margin: 0 0 4px; }
   .group > p { margin: 0 0 18px; color: var(--ink-soft); }
-  .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .group h3.stage { font-size: 24px; font-weight: 700; margin: 40px 0 4px; padding-top: 22px; border-top: 1px solid var(--paper-line); }
+  .group h3.stage:first-of-type { margin-top: 24px; }
+  .group h3.stage + p { margin: 0 0 14px; color: var(--ink-soft); font-size: 16px; max-width: 110ch; }
+  .group h3.stage { scroll-margin-top: 72px; }
+  .tile { scroll-margin-top: 72px; }
+  .tile:target { outline: 2px solid var(--brass); outline-offset: 3px; }
+  .quicknav { margin: 0 0 28px; padding: 18px 22px; border: 1px solid var(--paper-line); border-radius: 12px; }
+  .quicknav h2 { margin: 0 0 10px; font-size: 18px; }
+  .quicknav .quicknav-stages { margin: 0; padding: 0; list-style: none; column-count: 2; column-gap: 40px; }
+  .quicknav .quicknav-stages > li { break-inside: avoid; margin: 0 0 14px; }
+  .quicknav .quicknav-stage { font-size: 16px; font-weight: 700; }
+  .quicknav ul { margin: 4px 0 0; padding: 0; list-style: none; }
+  .quicknav ul li { margin: 3px 0; font-size: 14.5px; }
+  .quicknav ul li a { color: var(--ink-soft); }
+  .quicknav .quicknav-n { display: inline-block; min-width: 1.7em; color: var(--ink-faint); }
+  .quicknav .quicknav-stages.quicknav-few { column-count: 1; }
+  @media (max-width: 800px) { .quicknav .quicknav-stages { column-count: 1; } }
+  .people { margin: 0 0 28px; padding: 18px 22px; border: 1px solid var(--paper-line); border-radius: 12px; }
+  .people h2 { margin: 0 0 6px; font-size: 20px; }
+  .people > p { margin: 0 0 12px; color: var(--ink-soft); font-size: 14.5px; max-width: 110ch; }
+  .people table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+  .people th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-faint); padding: 6px 14px 6px 0; border-bottom: 1px solid var(--paper-line); }
+  .people td { padding: 8px 14px 8px 0; border-bottom: 1px solid var(--paper-line); vertical-align: top; }
+  .people td.who { font-weight: 700; white-space: nowrap; }
+  .people td.for { color: var(--ink-soft); }
+  .tiles { display: grid; grid-template-columns: 1fr; gap: 16px; }
   @media (max-width: 720px) { .tiles { grid-template-columns: 1fr; } }
   .tile {
     display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--paper-line); background: var(--paper-raised);
@@ -247,7 +272,7 @@
   <div class="eyebrow">Munitas &middot; Walkthroughs</div>
   <h1>See how Munitas decides who may read which data</h1>
   <p class="lede">Munitas is a governed data platform. It decides who may read which piece of data, for what
-  purpose and for how long, and it keeps a permanent record of every decision. Each walkthrough below follows
+  purpose and for how long, and it keeps a permanent record of every decision. Each walkthrough follows
   one real story, step by step, with real screens from the Munitas console.</p>
   <p class="lede" style="margin-top:0.9em"><em>Munitas</em> is built from the Latin <em>munire</em>, &ldquo;to fortify or protect&rdquo;, in the pattern of
   <em>veritas</em> and <em>libertas</em>: the state of being protected. It names what the platform is for.
@@ -258,95 +283,36 @@
 <section class="before">
   <h2>How the walkthroughs work</h2>
   <ul>
-    <li>Three example organisations appear, a hospital group, a card payments company and a small clinic that is
-    closing. Every name of a person, patient and card holder in them is invented, and each organisation sees only
-    its own data.</li>
-    <li>Every step names where it happens, shows the evidence, and then says what to look for in it. Each page
-    starts with the words that it uses, so a page can be read on its own.</li>
-    <li>The screens are captured live from a running Munitas, and the Python steps show the exact commands that
+    <li>Three separate example organisations appear: a hospital group (Health), a company that handles card payments
+    (Finance) and a small clinic that is closing down (Harbour Clinic). Health is the full story, and the other two are
+    shorter. Every name of a person, patient and card holder is invented, and the people of an organisation see only that
+    organisation's data.</li>
+    <li>Every step names the screen it happens on, shows what was captured, and then says what to look for in it. Click
+    any picture to enlarge it.</li>
+    <li>Each page starts with the words it uses, so a page can be read on its own. The Health pages also follow one story,
+    with the same people and the same data throughout.</li>
+    <li>The screens are captured live from a running Munitas, and where a step shows Python, it shows the commands that
     were typed and what came back. Nothing is mocked.</li>
-    <li>New here? Start with the first walkthrough under Health organisation. The other walkthroughs tell
-    different stories with different people, so they can be read in any order.</li>
+    <li>New here? Open the Health organisation. Its walkthroughs follow one research programme in the order it unfolds.</li>
   </ul>
 </section>
-<section class="group" id="health">
-  <h2>Health organisation</h2>
-  <p>A hospital group. Departments such as Cardiology and Radiology each own some of its data, and a custodian in each department decides who may read it.</p>
+<section class="group">
+  <h2>Choose an organisation</h2>
   <div class="tiles">
-    <a class="tile" href="healthcare-walkthrough.html">
-      <span class="tag">1. Health organisation</span>
-      <h3>Remove names from a patient recording and release it</h3>
-      <p>A recording of a cardiology consultation is brought in, a pipeline removes the names and dates from it, and a reviewer decides whether it may be released. A researcher then asks for access, and a program has to ask in the same way a person does.</p>
-      <p class="meta">You will see: Bringing a recording in, a pipeline that removes names, a reviewer's yes or no, requests for access, a program asking for permission.</p>
-      <p class="meta">31 steps, about 25 minutes. <span class="open">Open &rarr;</span></p>
+    <a class="tile" href="health_walkthrough.html">
+      <h3>Health organisation</h3>
+      <p>A hospital group. Departments such as Cardiology and Radiology each own some of its data, and a custodian in each department decides who may read it.</p>
+      <p class="meta">18 walkthroughs, 169 steps, about 134 minutes in all. <span class="open">Open &rarr;</span></p>
     </a>
-    <a class="tile" href="people-administration-walkthrough.html">
-      <span class="tag">2. Health organisation</span>
-      <h3>Ask for a role, and see who may grant it</h3>
-      <p>A researcher asks to hold a role and cannot decide the request alone. The person who runs Munitas is refused when trying to grant it, and the custodian of a department grants it instead.</p>
-      <p class="meta">You will see: A request for a role, a refusal with its reason, and a grant that starts as never checked.</p>
-      <p class="meta">9 steps, about 7 minutes. <span class="open">Open &rarr;</span></p>
+    <a class="tile" href="finance_walkthrough.html">
+      <h3>Finance organisation</h3>
+      <p>A company that handles card payments. Fraud Operations and Risk and Compliance are separate departments with their own custodians.</p>
+      <p class="meta">2 walkthroughs, 37 steps, about 30 minutes in all. <span class="open">Open &rarr;</span></p>
     </a>
-    <a class="tile" href="custom-pipeline-walkthrough.html">
-      <span class="tag">3. Health organisation</span>
-      <h3>Run a pipeline that you wrote yourself</h3>
-      <p>A data engineer in Cardiology registers a pipeline of their own, asks for access to a note, and runs the pipeline. A reviewer makes the final decision, as for every other pipeline.</p>
-      <p class="meta">You will see: Registering a pipeline, asking for access, running it, and a reviewer's decision.</p>
-      <p class="meta">18 steps, about 14 minutes. <span class="open">Open &rarr;</span></p>
-    </a>
-    <a class="tile" href="derive-health-walkthrough.html">
-      <span class="tag">4. Health organisation</span>
-      <h3>Make a new dataset from patient admissions</h3>
-      <p>A researcher is stopped at a restricted table of patient admissions, asks for access, and makes a new dataset from a query. The new dataset closes again when the custodian takes the access back.</p>
-      <p class="meta">You will see: Python and the console side by side: a refusal, a lease, a plan, and a finished dataset.</p>
-      <p class="meta">20 steps, about 16 minutes. <span class="open">Open &rarr;</span></p>
-    </a>
-    <a class="tile" href="department-approvers-walkthrough.html">
-      <span class="tag">5. Health organisation</span>
-      <h3>Cover a department while its custodian is away</h3>
-      <p>The custodian of Cardiology names a colleague from another department as cover. The cover confirms a claim about Cardiology's data on their own, then the custodian ends the cover. The platform refuses to remove the last permanent approver and keeps a record of every change.</p>
-      <p class="meta">You will see: Adding an approver with a reason and an end date, a claim confirmed by the cover, a removal, a refusal with its reason, and the history of who answered for the department.</p>
-      <p class="meta">9 steps, about 7 minutes. <span class="open">Open &rarr;</span></p>
-    </a>
-  </div>
-</section>
-<section class="group" id="finance">
-  <h2>Finance organisation</h2>
-  <p>A company that handles card payments. Fraud Operations and Risk and Compliance are separate departments with their own custodians.</p>
-  <div class="tiles">
-    <a class="tile" href="finance-walkthrough.html">
-      <span class="tag">1. Finance organisation</span>
-      <h3>Score card transactions for fraud, with permission</h3>
-      <p>A fraud operations team brings in card transactions, and a scoring program has to ask the custodian of the owning department before it may read them. A second custodian in the same organisation sees none of it.</p>
-      <p class="meta">You will see: Bringing data in, a program waiting for permission, and two custodians with separate lists.</p>
-      <p class="meta">17 steps, about 14 minutes. <span class="open">Open &rarr;</span></p>
-    </a>
-    <a class="tile" href="derive-finance-walkthrough.html">
-      <span class="tag">2. Finance organisation</span>
-      <h3>Make a new dataset from card transactions</h3>
-      <p>An analyst is stopped at a restricted table of card transactions, asks the Fraud Operations custodian for access, and makes a new dataset of large payments made abroad.</p>
-      <p class="meta">You will see: Python and the console side by side: a refusal, a lease, a plan, and a finished dataset.</p>
-      <p class="meta">20 steps, about 16 minutes. <span class="open">Open &rarr;</span></p>
-    </a>
-  </div>
-</section>
-<section class="group" id="harbour">
-  <h2>Harbour Clinic</h2>
-  <p>A small clinic that is closing down. One department, Patient Records, holds its letters, and two platform administrators handle the legal hold that keeps them.</p>
-  <div class="tiles">
-    <a class="tile" href="closing-an-organisation-walkthrough.html">
-      <span class="tag">1. Harbour Clinic</span>
-      <h3>Close down an organisation, and keep its records for a legal case</h3>
-      <p>A small clinic is closing. Its data custodian starts the closing, and an ordinary member cannot stop it. A law firm asks that the records be kept for a patient claim, two platform administrators record and approve a legal hold, and everything is deleted only after the hold is released.</p>
-      <p class="meta">You will see: A closing with two stages, a refusal, a legal hold that needs two administrators, and a short record of what was deleted.</p>
-      <p class="meta">18 steps, about 14 minutes. <span class="open">Open &rarr;</span></p>
-    </a>
-    <a class="tile" href="legal-export-walkthrough.html">
-      <span class="tag">2. Harbour Clinic</span>
-      <h3>Hand over a closed clinic's records for a legal case</h3>
-      <p>A court demands a patient's records from the clinic that is closing. One platform administrator asks for them, a different one approves, and the custodian named by the legal hold confirms what is included and names the patient, so that only that patient's rows leave. The platform builds a signed, encrypted package that the recipient opens with a passphrase.</p>
-      <p class="meta">You will see: Three people each doing one step, a refusal, a passphrase shown once, a download link, and the recipient checking the package on their own computer.</p>
-      <p class="meta">16 steps, about 13 minutes. <span class="open">Open &rarr;</span></p>
+    <a class="tile" href="harbour_walkthrough.html">
+      <h3>Harbour Clinic</h3>
+      <p>A small clinic that is closing down. One department, Patient Records, holds its letters, and two platform administrators handle the legal hold that keeps them.</p>
+      <p class="meta">2 walkthroughs, 34 steps, about 27 minutes in all. <span class="open">Open &rarr;</span></p>
     </a>
   </div>
 </section>
@@ -357,7 +323,7 @@
 </section>
 </div>
 <footer class="page-foot">
-  <p><a href="feature-walkthrough.html">Feature tour</a> &middot; Last updated 2026-10-05.</p>
+  <p><a href="feature-walkthrough.html">Feature tour</a> &middot; Last updated 2026-10-11.</p>
 </footer>
 </body>
 </html>

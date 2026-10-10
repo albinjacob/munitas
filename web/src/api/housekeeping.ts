@@ -55,6 +55,12 @@ export interface StoragePermissions {
   /** True when an administrator needs to know. */
   alert: boolean;
   parked_runs: number;
+  /** The newest update in the last day that noticed something odd and carried on anyway. Null when none did. */
+  latest_alerts?: {
+    at: string;
+    trigger: string;
+    alerts: { event: string; severity: "notice" | "warning" | "critical"; message: string }[];
+  } | null;
 }
 
 /** How many versions are also stored as tables, and where one was meant to be and is not. */

@@ -119,14 +119,14 @@ def main() -> int:
 
     heading("U49: registering a version is scoped to the agent's own tenant")
 
-    # eng-devi is registered in `health`, not `canary`. Naming them as
+    # neighbour-engineer is registered in `neighbour`, not `canary`. Naming them as
     # --registered-by against an agent that lives in canary must be refused,
     # the same as register() itself refuses a cross-tenant registered_by.
     # Signed in as that person, so the refusal is the platform's own and not just a missing session.
     cross_tenant = register(
-        "--agent-id", agent_id, "--registered-by", "eng-devi",
+        "--agent-id", agent_id, "--registered-by", "neighbour-engineer",
         "--model-id", "gpt-4.1", "--tool", "search_docs",
-        "--source-path", fake_repo_url, as_person="eng-devi",
+        "--source-path", fake_repo_url, as_person="neighbour-engineer",
     )
     # A 404, not a 403: somebody from another organisation is told there is no such agent, so they cannot learn that one exists.
     check("a --registered-by from a different tenant is refused by the platform, as if the agent did not exist",

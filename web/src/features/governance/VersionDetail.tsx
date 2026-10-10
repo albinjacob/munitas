@@ -28,12 +28,17 @@ import {
 import { ApiError } from "../../api/client";
 import { useStartDeidentification } from "../../api/pipeline";
 import { usePipelines } from "../../api/dag_pipelines";
-import { AccessMark } from "../../components/AccessMark";
 import { ClassBadge } from "../../components/ClassBadge";
 import { Empty, Failure, Loading, Section } from "../../components/states";
+import { byOn, when } from "../../lib/when";
 import { CopyableHash } from "../../components/CopyableHash";
-import { RequestAccess } from "./RequestAccess";
-import { useVersionTable } from "../../api/queries";
+import { AccessPanel } from "./AccessPanel";
+import { LockedColumnsSection } from "../locking/LockedColumns";
+import { LockedFilesSection } from "../locking/LockedFiles";
+import { RecordFilesSection } from "../locking/RecordFiles";
+import { FirstRows } from "./FirstRows";
+import { useVersionHolds, useVersionTable } from "../../api/queries";
+import { size } from "../../lib/size";
 import { PORTS } from "../../config/ports";
 
 const TEMPORAL = `http://localhost:${PORTS.temporal_ui}`;
@@ -64,6 +69,7 @@ export function VersionDetail() {
   const version = useVersion(versionId);
   const transitions = useTransitions(versionId);
   const table = useVersionTable(versionId);
+  const holds = useVersionHolds(versionId);
   const lineage = useLineage(versionId);
   const access = useAccessPreview({ versionIds: versionId ? [versionId] : [] });
   const myRequests = useLeaseRequests(undefined);
@@ -73,7 +79,7 @@ export function VersionDetail() {
   // unreachable from here rather than merely unlisted on a list screen.
   const pipelines = usePipelines(1000, 0);
   // Which kind is offered is not decided here: this page has no way to know
-  // whether the version was sealed with the recordings contract, and asking
+  // whether the version was sealed with the files contract, and asking
   // would duplicate a check the endpoint already makes. Every kind is
   // offered; starting the wrong one for this version comes back as a
   // stated reason, the same courtesy-gate RegisterDataset.tsx's own button
@@ -97,14 +103,8 @@ export function VersionDetail() {
       r.principal === principal?.id,
   );
 
-  // The policy's answer, not a copy of it. The request form is offered only
-  // where asking can change something: nothing asked yet, access that ended,
-  // or a request already waiting (the form then says it is waiting).
+  // The policy's answer, not a copy of it.
   const mark = access.data?.versions[v.dataset_version_id];
-  const offerForm =
-    Boolean(principal) &&
-    mark !== undefined &&
-    (mark.mark === "ask" || mark.mark === "ended" || mark.mark === "pending");
 
   // The courtesy this button hides behind, same role RegisterDataset.tsx's
   // own start button checks. The endpoint is what actually refuses anyone
@@ -142,7 +142,7 @@ export function VersionDetail() {
             className="mb-4 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"
           >
             <strong className="font-semibold">The files are gone.</strong> They
-            were deleted on {new Date(v.reclaimed_at).toLocaleDateString()} to
+            were deleted on {when(v.reclaimed_at)} to
             free storage. Everything recorded about this version stays: what it
             was, what it was made from, who was allowed to read it and who was
             refused. There is nothing left to download.
@@ -165,9 +165,17 @@ export function VersionDetail() {
               <ClassBadge value={v.current_class} />
             </span>
           </Field>
-          <Field label="Records">
-            <span className="tabular-nums">{v.record_count ?? 0}</span>
+          <Field label="Sealed">
+            <span data-testid="sealed-at">{v.created_at ? when(v.created_at) : "Not recorded"}</span>
           </Field>
+          {v.brought_in && (
+            <Field label="Brought in" hint="The file as it was sent, and who sent it.">
+              <span data-testid="brought-in-by">
+                {v.brought_in.file_name}
+                {v.brought_in.bytes ? ` (${size(v.brought_in.bytes)})` : ""} {byOn(v.brought_in.who, v.brought_in.at)}
+              </span>
+            </Field>
+          )}
           {/*
             Where the data physically sits, and the hash that fixes its
             contents, are shown to the people who run the platform. For everyone
@@ -188,11 +196,100 @@ export function VersionDetail() {
                 </code>
               </Field>
               <Field label="Fingerprint" hint="Changes if the contents change.">
-                {v.content_hash ? <CopyableHash value={v.content_hash} /> : "n/a"}
+                {v.content_hash ? <CopyableHash value={v.content_hash} /> : <span className="text-slate-500">Not recorded</span>}
               </Field>
+              {v.brought_in?.sha256 && (
+                <Field label="Fingerprint of the file sent" hint="Of the bytes as they arrived, so a later copy can be shown to be the same file.">
+                  <CopyableHash value={v.brought_in.sha256} />
+                </Field>
+              )}
             </>
           )}
         </dl>
+      </Section>
+
+      <Section
+        title="What it holds"
+        description={
+          v.reclaimed_at
+            ? "What this version held before its files were deleted."
+            : "What the platform found in this version's files when it was sealed. Nothing here was declared by whoever uploaded it."
+        }
+      >
+        {holds.isLoading ? (
+          <Loading what="what this version holds" />
+        ) : holds.error ? (
+          <Failure error={holds.error} what="what this version holds" />
+        ) : !holds.data || holds.data.by_format.length === 0 ? (
+          <Empty what="files" hint="Nothing is stored in this version." />
+        ) : (
+          <div data-testid="version-holds" className="rounded border border-slate-200 bg-white p-4">
+            <dl className="grid grid-cols-2 gap-4 md:grid-cols-5">
+              <Field label="Kind">
+                <span data-testid="holds-kind">{holds.data.kinds.map((k) => k.charAt(0).toUpperCase() + k.slice(1)).join(" + ")}</span>
+                {holds.data.kinds.length > 1 && <span className="block text-xs text-slate-500">Multimodal</span>}
+              </Field>
+              <Field label="Structure">
+                <span data-testid="holds-structure">{holds.data.structure ? holds.data.structure.charAt(0).toUpperCase() + holds.data.structure.slice(1) : ""}</span>
+                {holds.data.structure === "mixed" && (
+                  <span className="block text-xs text-slate-500">
+                    {holds.data.structures.map((x) => x.charAt(0).toUpperCase() + x.slice(1)).join(", ")}
+                  </span>
+                )}
+              </Field>
+              <Field label={holds.data.formats.length > 1 ? "Formats" : "Format"}>
+                <span data-testid="holds-format-list">{holds.data.formats.map((f) => (f === "table" ? "Table" : f.toUpperCase())).join(", ")}</span>
+              </Field>
+              {holds.data.table ? (
+                <Field label="Rows">
+                  <span data-testid="holds-rows" className="tabular-nums">
+                    {holds.data.table.present ? (holds.data.table.rows ?? 0).toLocaleString() : "No table was written"}
+                  </span>
+                </Field>
+              ) : (
+                <>
+                  <Field label="Files">
+                    <span data-testid="holds-files" className="tabular-nums">{holds.data.files.toLocaleString()}</span>
+                  </Field>
+                  <Field label="Size">
+                    <span data-testid="holds-size" className="tabular-nums">{size(holds.data.bytes)}</span>
+                  </Field>
+                </>
+              )}
+            </dl>
+            {holds.data.by_format.length > 1 && (
+            <table className="mt-4 w-full text-sm" data-testid="holds-formats">
+              <thead className="border-b border-slate-200 text-left text-xs uppercase text-slate-500">
+                <tr>
+                  <th className="py-2 pr-4 font-medium">Format</th>
+                  <th className="py-2 pr-4 font-medium">Kind</th>
+                  <th className="py-2 pr-4 font-medium">Structure</th>
+                  <th className="py-2 pr-4 text-right font-medium">Files</th>
+                  <th className="py-2 text-right font-medium">Size</th>
+                </tr>
+              </thead>
+              <tbody>
+                {holds.data.by_format.map((row) => (
+                  <tr key={`${row.kind}-${row.format}`} className="border-b border-slate-100">
+                    <td className="py-1.5 pr-4 font-medium">{row.format === "table" ? "Table" : row.format.toUpperCase()}</td>
+                    <td className="py-1.5 pr-4 text-slate-700">{row.kind.charAt(0).toUpperCase() + row.kind.slice(1)}</td>
+                    <td className="py-1.5 pr-4 text-slate-700">{row.structure.charAt(0).toUpperCase() + row.structure.slice(1)}</td>
+                    <td className="py-1.5 pr-4 text-right tabular-nums">{row.files.toLocaleString()}</td>
+                    <td className="py-1.5 text-right tabular-nums">{size(row.bytes)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            )}
+            {(holds.data.read_from === "name" || holds.data.read_from === "mixed") && (
+              <p data-testid="holds-basis" className="mt-3 text-xs text-slate-500">
+                {holds.data.read_from === "name"
+                  ? "These were worked out from the file names, because the files could not be read: they are locked to the person each is about, or the version was sealed before the platform read its files."
+                  : "Some of these were worked out from the file names, because those files could not be read: they are locked to the person each is about, or the version was sealed before the platform read its files."}
+              </p>
+            )}
+          </div>
+        )}
       </Section>
 
       <Section
@@ -211,6 +308,7 @@ export function VersionDetail() {
               <strong>{table.data!.rows} rows</strong>, written when this version was sealed (snapshot {table.data!.snapshot_id}). A
               standard tool such as DuckDB can read it, and a legal export can hand over only the rows for named people.
             </p>
+            <FirstRows versionId={v.dataset_version_id} />
           </div>
         ) : (
           <div data-testid="table-copy" className="rounded border border-slate-200 bg-white p-4 text-sm">
@@ -246,7 +344,7 @@ export function VersionDetail() {
                 onChange={(event) => setPipelineChoice(event.target.value)}
                 className="rounded border border-slate-300 px-2 py-1"
               >
-                <option value="deidentify">De-identify these recordings</option>
+                <option value="deidentify">De-identify these files</option>
                 <option value="count_records">
                   Count records (starter pipeline)
                 </option>
@@ -321,23 +419,19 @@ export function VersionDetail() {
 
       {principal && (
         <Section title="Your access">
-          {/* A waiting request is described by the form itself, once. */}
-          {mark?.mark !== "pending" && (
-            <p className="rounded border border-slate-200 bg-white p-4 text-sm">
-              <AccessMark access={mark} failed={Boolean(access.error)} detailed />
-            </p>
-          )}
-          {offerForm && (
-            <div className={mark?.mark === "pending" ? undefined : "mt-3"}>
-              <RequestAccess
-                versionId={v.dataset_version_id}
-                principal={principal.id}
-                existing={mine}
-              />
-            </div>
-          )}
+          <AccessPanel
+            versionId={v.dataset_version_id}
+            principalId={principal.id}
+            mark={mark}
+            markFailed={Boolean(access.error)}
+            existing={mine}
+          />
         </Section>
       )}
+
+      <LockedColumnsSection versionId={v.dataset_version_id} />
+      <LockedFilesSection versionId={v.dataset_version_id} />
+      <RecordFilesSection versionId={v.dataset_version_id} />
 
       <Section
         title="Release history"
@@ -369,7 +463,7 @@ export function VersionDetail() {
                       by {t.decided_by}{" "}
                       <span className="text-slate-400">({t.decided_by_kind})</span>
                     </span>
-                    <span className="ml-auto text-xs text-slate-400">{t.at}</span>
+                    <span className="ml-auto text-xs text-slate-400">{when(t.at)}</span>
                   </div>
                   <div className="mt-3">
                     <p className="text-xs uppercase tracking-wide text-slate-500">
@@ -406,8 +500,20 @@ export function VersionDetail() {
           <Failure error={lineage.error} what="its origin" />
         ) : !lineage.data ? null : (
           <dl className="grid grid-cols-1 gap-4 rounded border border-slate-200 bg-white p-4 md:grid-cols-2">
-            <Field label="Step">{lineage.data.action_name ?? "none recorded"}</Field>
-            <Field label="Run by">{lineage.data.operator ?? "n/a"}</Field>
+            {lineage.data.action_name ? (
+              <>
+                <Field label="Made by the step">{lineage.data.action_name}</Field>
+                <Field label="Run by">{lineage.data.operator ?? "Not recorded"}</Field>
+                {lineage.data.started_at && (
+                  <Field label="Started">{when(lineage.data.started_at)}</Field>
+                )}
+                {lineage.data.ended_at && <Field label="Finished">{when(lineage.data.ended_at)}</Field>}
+              </>
+            ) : (
+              <Field label="How it came to be here">
+                Brought in directly. A person uploaded it, so no pipeline run made it.
+              </Field>
+            )}
             {/*
               Which build produced this matters when you are debugging a bad
               run. It means nothing to somebody deciding whether they want the
@@ -416,10 +522,10 @@ export function VersionDetail() {
             {technical && (
               <>
                 <Field label="Code version" hint="Exactly which build ran.">
-                  <CopyableHash value={lineage.data.code_hash ?? "n/a"} />
+                  <CopyableHash value={lineage.data.code_hash ?? "Not recorded"} />
                 </Field>
                 <Field label="Environment">
-                  <CopyableHash value={lineage.data.image_digest ?? "n/a"} />
+                  <CopyableHash value={lineage.data.image_digest ?? "Not recorded"} />
                 </Field>
               </>
             )}
@@ -435,18 +541,18 @@ export function VersionDetail() {
                   ))}
                 </ul>
               ) : (
-                <span className="text-slate-400">nothing, this is where the trail starts</span>
+                <span className="text-slate-500">Nothing: this version is where the trail starts.</span>
               )}
             </Field>
             {technical && (
-              <Field label="The run itself">
+              <Field label="Workflow engine">
                 <a
                   href={`${TEMPORAL}/namespaces/default/workflows`}
                   target="_blank"
                   rel="noreferrer"
                   className="text-sky-700 underline"
                 >
-                  See how this run went
+                  Open the workflow engine (all runs)
                 </a>
               </Field>
             )}

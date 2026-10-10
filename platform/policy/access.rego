@@ -1,5 +1,6 @@
 package munitas.access
 
+import data.munitas.role_words
 import rego.v1
 
 # Visibility ordering. A lower ordinal is less visible (more restricted).
@@ -28,6 +29,7 @@ role_floor := {
 	"platform_admin": 4, # runs the system, holds no standing access to its contents
 	"hybridops": 4, # support and reliability work needs telemetry, not records
 	"network_architect": 4, # approves which hosts an agent may call, reads no data by holding the role
+	"privacy_auditor": 4, # reads the evidence and the logs, never personal data; real values only through a lease somebody else approved
 }
 
 # Which roles hold a storage key of their own, and what each may do across
@@ -197,7 +199,7 @@ lease_ended(l) := "expired" if {
 
 # Reasons are attached to every decision, allowed or denied, and are what lands
 # in the audit record.
-reason contains "principal tenant does not match dataset tenant" if {
+reason contains "this person belongs to a different organisation from the one that owns this dataset" if {
 	input.principal.tenant != input.dataset.tenant
 }
 
@@ -343,7 +345,7 @@ approve_reason contains "an approver cannot approve a request made on their beha
 	input.request.requested_by != null
 }
 
-approve_reason contains "this principal holds no role that may approve" if {
+approve_reason contains "this person holds no role that may approve" if {
 	every role in input.approver.roles {
 		not approver_roles[role]
 	}
@@ -530,6 +532,9 @@ may_decide_gate if {
 	# because the constraint is the guarantee while this is the explanation.
 	input.decider.id != object.get(input.gate, "triggered_by", null)
 
+	# Nor the person who uploaded the version of the pipeline that made it: whoever wrote the code does not judge what it made.
+	input.decider.id != object.get(input.gate, "pipeline_uploaded_by", null)
+
 	some role in input.decider.roles
 	decider_roles[role]
 }
@@ -538,7 +543,11 @@ gate_reason contains "a de-identification run cannot be cleared by whoever start
 	input.decider.id == object.get(input.gate, "triggered_by", null)
 }
 
-gate_reason contains "this principal holds no role that may decide a de-identification gate" if {
+gate_reason contains "a de-identification result cannot be cleared by whoever uploaded the version of the pipeline that made it" if {
+	input.decider.id == object.get(input.gate, "pipeline_uploaded_by", null)
+}
+
+gate_reason contains "this person holds no role that may decide a de-identification gate" if {
 	every role in input.decider.roles {
 		not decider_roles[role]
 	}
@@ -554,7 +563,7 @@ gate_decision := {
 # Starting a de-identification run is an operational act, not an access
 # decision. It moves no data to the person who starts it: the operator sees
 # that a run happened and what the gate measured, never what was said in the
-# recordings. So the only question is whose job it is to press the button, and
+# files. So the only question is whose job it is to press the button, and
 # one role already says so in role_floor above.
 #
 # The platform administrator is absent, the same call the gate rule made. An
@@ -574,7 +583,7 @@ may_start_pipeline if {
 	operator_roles[role]
 }
 
-start_reason contains "this principal holds no role that may start a pipeline run" if {
+start_reason contains "this person holds no role that may start a pipeline run" if {
 	every role in input.operator.roles {
 		not operator_roles[role]
 	}
@@ -823,7 +832,7 @@ egress_reason contains "an agent version's own submitter cannot approve its requ
 	input.approver.id == object.get(input.version, "submitted_by", null)
 }
 
-egress_reason contains "this principal holds no role that may approve an agent version's requested hosts" if {
+egress_reason contains "this person holds no role that may approve an agent version's requested hosts" if {
 	every role in input.approver.roles {
 		not egress_architect_roles[role]
 	}
@@ -886,7 +895,7 @@ may_see_housekeeping if {
 	platform_housekeeping_roles[role]
 }
 
-housekeeping_reason contains "this principal holds no role that may see storage housekeeping" if {
+housekeeping_reason contains "this person holds no role that may see storage housekeeping" if {
 	input.scope == "platform"
 	every role in input.viewer.roles {
 		not platform_housekeeping_roles[role]
@@ -901,7 +910,7 @@ housekeeping_reason contains sprintf("housekeeping for %v is not this principal'
 	}
 }
 
-housekeeping_reason contains "this principal holds no role that may see an organisation's storage housekeeping" if {
+housekeeping_reason contains "this person holds no role that may see an organisation's storage housekeeping" if {
 	input.scope == "tenant"
 	input.viewer.tenant_id == input.tenant_id
 	every role in input.viewer.roles {
@@ -937,7 +946,7 @@ may_free_storage if {
 	housekeeping_actor_roles[role]
 }
 
-free_reason contains "this principal holds no role that may free stored bytes" if {
+free_reason contains "this person holds no role that may free stored bytes" if {
 	every role in input.actor.roles {
 		not housekeeping_actor_roles[role]
 	}
@@ -1017,7 +1026,7 @@ approve_role_reason contains "nobody approves their own role" if {
 	input.approver.id == input.request.principal
 }
 
-approve_role_reason contains "this principal holds no role that may decide who holds a role" if {
+approve_role_reason contains "this person holds no role that may decide who holds a role" if {
 	every role in input.approver.roles {
 		not role_approver_roles[role]
 	}
@@ -1050,7 +1059,7 @@ attest_reason contains "nobody confirms their own role is still needed" if {
 	input.attester.id == input.grant.principal
 }
 
-attest_reason contains "this principal holds no role that may confirm another's" if {
+attest_reason contains "this person holds no role that may confirm another's" if {
 	every role in input.attester.roles {
 		not attester_roles[role]
 	}
@@ -1438,4 +1447,681 @@ passphrase_reason contains "the passphrase is given once the package is ready" i
 export_passphrase_decision := {
 	"allow": may_read_passphrase,
 	"reasons": [r | some r in passphrase_reason],
+}
+
+# ------------------------------------------ locked columns: leases and reading --
+
+# A table sealed under a privacy contract has columns locked under each person's own key. Who may read them back is decided here.
+#
+# The owning department's approvers read them in full: they answer for the data. Nobody else does by holding a role. A de-identification
+# engineer devising a rule, a reviewer checking a run and an auditor verifying that locking works may all need to see real values, and the
+# way to let them is a lease: a purpose, an approver who is not the asker, a short life and a row cap, each read logged. That is the
+# break-glass pattern: no standing permission, approval by another person, a short fixed time, monitored.
+#
+# The data protection officer may ask for a lease but never approves one, for the reason given at approver_roles above. Nobody approves
+# their own. The caps are constants here so that changing them is one edit with its tests.
+locked_lease_requester_roles := {"pipeline_operator", "deid_reviewer", "privacy_auditor", "dpo"}
+
+locked_lease_max_days := 7
+
+locked_lease_max_rows := 20
+
+# What an organisation has set (platform/api/app/access_rules.py hands the values in force as `input.limits`). With none, the constants above are the values, exactly as
+# before. A direct read of a document, with no input at all, also gets the defaults.
+limits_in := v if {
+	v := input.limits
+} else := {}
+
+locked_requesters_in_force := {r | some r in object.get(limits_in, ["locked_rows", "who_may_ask"], locked_lease_requester_roles)}
+
+locked_days_in_force := object.get(limits_in, ["locked_rows", "most_days"], locked_lease_max_days)
+
+locked_rows_in_force := object.get(limits_in, ["locked_rows", "most_rows"], locked_lease_max_rows)
+
+# How a refusal about locked data names a role: "a data engineer". The words are in role_words.rego, where a role is renamed.
+locked_role_words := {r: w.one | some r, w in role_words.roles; w.person}
+
+locked_role_order := ["pipeline_operator", "deid_reviewer", "privacy_auditor", "dpo", "notebook_explore", "analyst", "data_custodian"]
+
+locked_requester_phrases := [locked_role_words[r] | some r in locked_role_order; locked_requesters_in_force[r]]
+
+locked_requesters_text := "nobody" if count(locked_requester_phrases) == 0
+
+locked_requesters_text := locked_requester_phrases[0] if count(locked_requester_phrases) == 1
+
+locked_requesters_text := sprintf("%s or %s", [concat(", ", array.slice(locked_requester_phrases, 0, count(locked_requester_phrases) - 1)), locked_requester_phrases[count(locked_requester_phrases) - 1]]) if count(locked_requester_phrases) > 1
+
+locked_days_text := "a lease lasts 1 day" if locked_days_in_force == 1
+
+locked_days_text := sprintf("a lease lasts between 1 and %d days", [locked_days_in_force]) if locked_days_in_force != 1
+
+locked_rows_text := "a lease opens 1 row" if locked_rows_in_force == 1
+
+locked_rows_text := sprintf("a lease opens between 1 and %d rows", [locked_rows_in_force]) if locked_rows_in_force != 1
+
+default may_request_locked_lease := false
+
+may_request_locked_lease if {
+	input.requester.id == input.request.principal
+	some role in input.requester.roles
+	locked_requesters_in_force[role]
+	count(trim_space(object.get(input.request, "purpose", ""))) > 0
+	input.request.days >= 1
+	input.request.days <= locked_days_in_force
+	input.request.rows >= 1
+	input.request.rows <= locked_rows_in_force
+}
+
+locked_lease_request_reason contains "a lease is asked for by the person who would hold it" if {
+	input.requester.id != input.request.principal
+}
+
+locked_lease_request_reason contains sprintf("this person holds no role that may ask for a lease on locked columns (%s)", [locked_requesters_text]) if {
+	count(locked_requester_phrases) > 0
+	every role in input.requester.roles {
+		not locked_requesters_in_force[role]
+	}
+}
+
+locked_lease_request_reason contains "no role may ask for a lease on locked columns in this organisation" if {
+	count(locked_requester_phrases) == 0
+}
+
+locked_lease_request_reason contains "a lease needs a purpose, which is recorded with it" if {
+	count(trim_space(object.get(input.request, "purpose", ""))) == 0
+}
+
+locked_lease_request_reason contains locked_days_text if {
+	not input.request.days >= 1
+}
+
+locked_lease_request_reason contains locked_days_text if {
+	input.request.days > locked_days_in_force
+}
+
+locked_lease_request_reason contains locked_rows_text if {
+	not input.request.rows >= 1
+}
+
+locked_lease_request_reason contains locked_rows_text if {
+	input.request.rows > locked_rows_in_force
+}
+
+locked_lease_request_decision := {
+	"allow": may_request_locked_lease,
+	"reasons": [r | some r in locked_lease_request_reason],
+}
+
+# Deciding a lease is the department approver's act, the same authority as deciding who may read the data.
+default may_approve_locked_lease := false
+
+may_approve_locked_lease if {
+	input.approver.id != input.request.principal
+	some role in input.approver.roles
+	approver_roles[role]
+	input.approver.id in input.dataset.approvers
+}
+
+locked_lease_approval_reason contains "nobody approves their own lease" if {
+	input.approver.id == input.request.principal
+}
+
+locked_lease_approval_reason contains "this person holds no role that may decide a lease (a data custodian)" if {
+	every role in input.approver.roles {
+		not approver_roles[role]
+	}
+}
+
+locked_lease_approval_reason contains "only an approver of the department that owns this data may decide a lease on it" if {
+	not input.approver.id in input.dataset.approvers
+}
+
+locked_lease_approval_decision := {
+	"allow": may_approve_locked_lease,
+	"reasons": [r | some r in locked_lease_approval_reason],
+}
+
+# A pipeline version whose custom step is given the files is approved by the department's approver, never the person who uploaded it.
+default may_approve_pipeline_version := false
+
+may_approve_pipeline_version if {
+	input.approver.id != input.version.uploaded_by
+	some role in input.approver.roles
+	approver_roles[role]
+	input.approver.id in input.dataset.approvers
+}
+
+pipeline_version_approval_reason contains "nobody moves a version they uploaded to production" if {
+	input.approver.id == input.version.uploaded_by
+}
+
+pipeline_version_approval_reason contains "this person holds no role that may move a pipeline version to production (a data custodian)" if {
+	every role in input.approver.roles {
+		not approver_roles[role]
+	}
+}
+
+pipeline_version_approval_reason contains "only an approver of the department that owns this pipeline may move a version of it to production" if {
+	not input.approver.id in input.dataset.approvers
+}
+
+pipeline_version_approval_decision := {
+	"allow": may_approve_pipeline_version,
+	"reasons": [r | some r in pipeline_version_approval_reason],
+}
+
+# Taking an approval back: the department's approver, whoever approved it.
+default may_withdraw_pipeline_approval := false
+
+may_withdraw_pipeline_approval if {
+	some role in input.actor.roles
+	approver_roles[role]
+	input.actor.id in input.dataset.approvers
+}
+
+pipeline_approval_withdrawal_decision := {
+	"allow": may_withdraw_pipeline_approval,
+	"reasons": [r | not may_withdraw_pipeline_approval; r := "only an approver of the department that owns this pipeline may return a version of it to development"],
+}
+
+# ------------------------------------------------------------ development samples --
+
+# A pipeline version in development may run only on development data: synthetic files, or a small sample of real ones that a department approver
+# approved for the person who asked. The platform draws the sample. The caps are constants here, and a later change makes them settings per organisation
+# and department, with these as the ceiling.
+development_sample_requester_roles := {"pipeline_operator", "deid_reviewer"}
+
+development_sample_kinds := {"develop", "debug"}
+
+development_sample_max_days := 14
+
+development_sample_max_records := 50
+
+# What a run makes on development data ends at the earlier of this many days and the end of the sample it came from, and its files are then deleted.
+development_output_days := 7
+
+default may_request_development_sample := false
+
+may_request_development_sample if {
+	input.requester.id == input.request.principal
+	some role in input.requester.roles
+	development_sample_requester_roles[role]
+	input.request.kind in development_sample_kinds
+	count(trim_space(object.get(input.request, "purpose", ""))) > 0
+	input.request.days >= 1
+	input.request.days <= development_sample_max_days
+	input.request.records >= 1
+	input.request.records <= development_sample_max_records
+	development_sample_named_ok
+}
+
+development_sample_named_ok if input.request.kind == "develop"
+
+development_sample_named_ok if {
+	input.request.kind == "debug"
+	input.request.named >= 1
+	input.request.named <= input.request.records
+}
+
+development_sample_request_reason contains "a sample is asked for by the person who would use it" if {
+	input.requester.id != input.request.principal
+}
+
+development_sample_request_reason contains "this person holds no role that may ask for a development sample (a data engineer or a de-identification reviewer)" if {
+	every role in input.requester.roles {
+		not development_sample_requester_roles[role]
+	}
+}
+
+development_sample_request_reason contains "a sample is either for developing or for debugging" if {
+	not input.request.kind in development_sample_kinds
+}
+
+development_sample_request_reason contains "a sample needs a purpose, which is recorded with it" if {
+	count(trim_space(object.get(input.request, "purpose", ""))) == 0
+}
+
+development_sample_request_reason contains "a sample lasts between 1 and 14 days" if {
+	not input.request.days >= 1
+}
+
+development_sample_request_reason contains "a sample lasts between 1 and 14 days" if {
+	input.request.days > development_sample_max_days
+}
+
+development_sample_request_reason contains "a sample holds between 1 and 50 files" if {
+	not input.request.records >= 1
+}
+
+development_sample_request_reason contains "a sample holds between 1 and 50 files" if {
+	input.request.records > development_sample_max_records
+}
+
+development_sample_request_reason contains "a sample for debugging names the files that went wrong, at least one and no more than the sample holds" if {
+	input.request.kind == "debug"
+	not development_sample_named_ok
+}
+
+development_sample_request_decision := {
+	"allow": may_request_development_sample,
+	"reasons": [r | some r in development_sample_request_reason],
+}
+
+# Deciding a request: an approver of the department that owns the files, never the person who asked.
+default may_decide_development_sample := false
+
+may_decide_development_sample if {
+	input.approver.id != input.request.principal
+	some role in input.approver.roles
+	approver_roles[role]
+	input.approver.id in input.dataset.approvers
+}
+
+development_sample_decision_reason contains "nobody decides their own request for a sample" if {
+	input.approver.id == input.request.principal
+}
+
+development_sample_decision_reason contains "this person holds no role that may decide a request for a sample (a data custodian)" if {
+	every role in input.approver.roles {
+		not approver_roles[role]
+	}
+}
+
+development_sample_decision_reason contains "only an approver of the department that owns these files may decide a request for a sample" if {
+	not input.approver.id in input.dataset.approvers
+}
+
+development_sample_decision := {
+	"allow": may_decide_development_sample,
+	"reasons": [r | some r in development_sample_decision_reason],
+}
+
+# Ending a sample early, which only tightens: the department's approver, or the person it was drawn for.
+default may_end_development_sample := false
+
+may_end_development_sample if {
+	some role in input.actor.roles
+	approver_roles[role]
+	input.actor.id in input.dataset.approvers
+}
+
+may_end_development_sample if {
+	input.actor.id == input.request.principal
+}
+
+development_sample_end_decision := {
+	"allow": may_end_development_sample,
+	"reasons": [r | not may_end_development_sample; r := "only an approver of the department that owns these files, or the person the sample was drawn for, may end it"],
+}
+
+# Declaring a version synthetic, so that it holds no real person: an approver of the owning department, with a reason.
+default may_declare_synthetic := false
+
+may_declare_synthetic if {
+	some role in input.actor.roles
+	approver_roles[role]
+	input.actor.id in input.dataset.approvers
+	count(trim_space(object.get(input.request, "note", ""))) > 0
+}
+
+synthetic_declaration_reason contains "only an approver of the department that owns these files may declare them synthetic" if {
+	not input.actor.id in input.dataset.approvers
+}
+
+synthetic_declaration_reason contains "a declaration needs a reason, which is recorded with it" if {
+	count(trim_space(object.get(input.request, "note", ""))) == 0
+}
+
+synthetic_declaration_decision := {
+	"allow": may_declare_synthetic,
+	"reasons": [r | some r in synthetic_declaration_reason],
+}
+
+# -------------------------------------------------------------- leases on real files --
+
+# A person who is not building a pipeline opens real files under a lease: they say what for, how many files and for how many hours, a department approver
+# who is not that person decides, the platform draws the files and fixes them, and the lease ends on its own. A lease for the console lets a person
+# listen to a few files in the page; a lease for a notebook lets a notebook read more, through the client library, for longer. The caps are constants
+# here, and a later change makes them settings per organisation and department, with these as the ceiling.
+file_lease_kinds := {"console", "notebook"}
+
+file_lease_default_caps := {
+	"console": {"records": 10, "hours": 1},
+	"notebook": {"records": 200, "hours": 8},
+}
+
+# What an organisation has set (`input.limits`, from platform/api/app/access_rules.py), or the defaults above.
+file_lease_caps := {
+	"console": {
+		"records": object.get(limits_in, ["files_in_page", "most_files"], file_lease_default_caps.console.records),
+		"hours": object.get(limits_in, ["files_in_page", "most_hours"], file_lease_default_caps.console.hours),
+	},
+	"notebook": {
+		"records": object.get(limits_in, ["files_in_notebook", "most_files"], file_lease_default_caps.notebook.records),
+		"hours": object.get(limits_in, ["files_in_notebook", "most_hours"], file_lease_default_caps.notebook.hours),
+	},
+}
+
+file_lease_kind_word := {"console": "console", "notebook": "notebook"}
+
+file_lease_hours_text(n) := "1 hour" if n == 1
+
+file_lease_hours_text(n) := sprintf("%d hours", [n]) if n != 1
+
+default may_request_file_lease := false
+
+may_request_file_lease if {
+	input.requester.id == input.request.principal
+	count(input.requester.roles) > 0
+	input.request.kind in file_lease_kinds
+	count(trim_space(object.get(input.request, "purpose", ""))) > 0
+	input.request.records >= 1
+	input.request.records <= file_lease_caps[input.request.kind].records
+	input.request.hours >= 1
+	input.request.hours <= file_lease_caps[input.request.kind].hours
+}
+
+file_lease_request_reason contains "a lease is asked for by the person who would use it" if {
+	input.requester.id != input.request.principal
+}
+
+file_lease_request_reason contains "this person holds no role, so cannot ask to open files" if {
+	count(input.requester.roles) == 0
+}
+
+file_lease_request_reason contains "a lease is for the console or for a notebook" if {
+	not input.request.kind in file_lease_kinds
+}
+
+file_lease_request_reason contains "a lease needs a purpose, which is recorded with it" if {
+	count(trim_space(object.get(input.request, "purpose", ""))) == 0
+}
+
+file_lease_request_reason contains sprintf("a %s lease holds between 1 and %d files", [file_lease_kind_word[input.request.kind], file_lease_caps[input.request.kind].records]) if {
+	input.request.kind in file_lease_kinds
+	not input.request.records >= 1
+}
+
+file_lease_request_reason contains sprintf("a %s lease holds between 1 and %d files", [file_lease_kind_word[input.request.kind], file_lease_caps[input.request.kind].records]) if {
+	input.request.kind in file_lease_kinds
+	input.request.records > file_lease_caps[input.request.kind].records
+}
+
+file_lease_request_reason contains "a lease lasts at least 1 hour" if {
+	input.request.kind in file_lease_kinds
+	not input.request.hours >= 1
+}
+
+file_lease_request_reason contains sprintf("a %s lease lasts at most %s", [file_lease_kind_word[input.request.kind], file_lease_hours_text(file_lease_caps[input.request.kind].hours)]) if {
+	input.request.kind in file_lease_kinds
+	input.request.hours > file_lease_caps[input.request.kind].hours
+}
+
+file_lease_request_decision := {
+	"allow": may_request_file_lease,
+	"reasons": [r | some r in file_lease_request_reason],
+}
+
+# Deciding a request: an approver of the department that owns the files, never the person who asked.
+default may_decide_file_lease := false
+
+may_decide_file_lease if {
+	input.approver.id != input.request.principal
+	some role in input.approver.roles
+	approver_roles[role]
+	input.approver.id in input.dataset.approvers
+}
+
+file_lease_decision_reason contains "nobody decides their own request to open files" if {
+	input.approver.id == input.request.principal
+}
+
+file_lease_decision_reason contains "this person holds no role that may decide a request to open files (a data custodian)" if {
+	every role in input.approver.roles {
+		not approver_roles[role]
+	}
+}
+
+file_lease_decision_reason contains "only an approver of the department that owns these files may decide a request to open them" if {
+	not input.approver.id in input.dataset.approvers
+}
+
+file_lease_decision := {
+	"allow": may_decide_file_lease,
+	"reasons": [r | some r in file_lease_decision_reason],
+}
+
+# Ending a lease early, which only tightens: the department's approver, or the person it was granted to.
+default may_end_file_lease := false
+
+may_end_file_lease if {
+	some role in input.actor.roles
+	approver_roles[role]
+	input.actor.id in input.dataset.approvers
+}
+
+may_end_file_lease if {
+	input.actor.id == input.request.principal
+}
+
+file_lease_end_decision := {
+	"allow": may_end_file_lease,
+	"reasons": [r | not may_end_file_lease; r := "only an approver of the department that owns these files, or the person the lease was granted to, may end it"],
+}
+
+# ------------------------------------------------------ opening a version's files --
+
+# A person opens the files of a version (a file, or a file a step made) through the platform, which unlocks a locked one with its person's key
+# and writes every opening to a log. The platform works out, from what it holds and never from what the person says, why this person may open them:
+#
+#   own_sample              the version is a development sample drawn for this person, and it is in force;
+#   synthetic               the version was declared synthetic, so no real person is in it;
+#   own_development_output  the version was made by a run this person started, on development data that is still in force for them;
+#   lease                   this person holds a lease on these real files that is in force, for the files it names;
+#   none                    anything else: real files, or what was made from them.
+#
+# What was made from a file is no more open than the file (what a step makes from a sample is the sample's person's to open, and what it
+# makes from real files is not yet anybody's). Real files are opened with an approver's permission, which is asked for on the version's page.
+open_record_bases := {"own_sample", "synthetic", "own_development_output"}
+
+open_record_roles := development_sample_requester_roles | approver_roles
+
+default may_open_record := false
+
+may_open_record if {
+	input.read.basis in open_record_bases
+	some role in input.person.roles
+	open_record_roles[role]
+}
+
+# Under a lease the platform has granted this person, for the files it names and until it ends: the basis is worked out from the lease, never from what the
+# person says, and the lease belongs to the person the request is for.
+may_open_record if {
+	input.read.basis == "lease"
+	count(input.person.roles) > 0
+}
+
+# A reviewer opens the files of one result while it waits for their decision, to judge it: the roles that decide, and nobody else.
+# The platform says the basis is `review` only for a person who holds one of them and who neither started the run nor uploaded its pipeline.
+may_open_record if {
+	input.read.basis == "review"
+	some role in input.person.roles
+	decider_roles[role]
+}
+
+# How many different files of one result a reviewer may open. The checks that run on every file make up for the rest; the decision records which were opened.
+release_review_records := 25
+
+open_record_reason contains "these are real files, or files made from them, which a person opens only when an approver of the department that owns them has allowed it, which you ask for in the form on this page" if {
+	input.read.basis == "none"
+}
+
+open_record_reason contains "this version was made for development and has ended, with the sample or the days it was made for, so its files are deleted" if {
+	input.read.basis == "expired"
+}
+
+# Said only where the role is what decides: a development sample, synthetic files or what was made from either. Where the answer is "ask an approver", a
+# person without these roles is not stopped by that, and saying so would contradict the reason above.
+open_record_reason contains "this person holds no role that may open files and the files made from them (a data engineer, a de-identification reviewer or a data custodian)" if {
+	input.read.basis in open_record_bases
+	every role in input.person.roles {
+		not open_record_roles[role]
+	}
+}
+
+open_record_decision := {
+	"allow": may_open_record,
+	"reasons": [r | some r in open_record_reason],
+}
+
+# Retiring a pipeline version, which only tightens: the department's approver, or the person who uploaded the version.
+default may_retire_pipeline_version := false
+
+may_retire_pipeline_version if {
+	some role in input.actor.roles
+	approver_roles[role]
+	input.actor.id in input.dataset.approvers
+}
+
+may_retire_pipeline_version if {
+	input.actor.id == input.version.uploaded_by
+}
+
+pipeline_version_retirement_decision := {
+	"allow": may_retire_pipeline_version,
+	"reasons": [r | not may_retire_pipeline_version; r := "only an approver of the department that owns this pipeline, or the person who uploaded this version, may retire it"],
+}
+
+# Ending a lease early: the department's approver, or the person who holds it.
+default may_revoke_locked_lease := false
+
+may_revoke_locked_lease if {
+	some role in input.actor.roles
+	approver_roles[role]
+	input.actor.id in input.dataset.approvers
+}
+
+may_revoke_locked_lease if input.actor.id == input.request.principal
+
+locked_lease_revoke_reason contains "only an approver of the department that owns this data, or the person who holds the lease, may end it" if {
+	not may_revoke_locked_lease
+}
+
+locked_lease_revoke_decision := {
+	"allow": may_revoke_locked_lease,
+	"reasons": [r | some r in locked_lease_revoke_reason],
+}
+
+# Reading. `lease` is this person's lease on this version, or null. The platform passes only a lease it found, and this decides whether it
+# still counts: held by this person, not ended early, not past its end.
+department_approver_reads if {
+	some role in input.person.roles
+	approver_roles[role]
+	input.person.id in input.dataset.approvers
+}
+
+lease_reads if {
+	input.lease != null
+	input.lease.principal == input.person.id
+	not input.lease.revoked
+	lease_current(input.lease)
+}
+
+default may_read_locked_columns := false
+
+may_read_locked_columns if department_approver_reads
+
+may_read_locked_columns if lease_reads
+
+# In full for the department's approver; a fixed sample for a lease holder.
+default locked_columns_mode := "none"
+
+locked_columns_mode := "full" if department_approver_reads
+
+locked_columns_mode := "sample" if {
+	not department_approver_reads
+	lease_reads
+}
+
+locked_columns_reason contains "this person is not an approver of the department that owns this data and holds no current lease for its locked columns" if {
+	not may_read_locked_columns
+}
+
+locked_columns_decision := {
+	"allow": may_read_locked_columns,
+	"mode": locked_columns_mode,
+	"reasons": [r | some r in locked_columns_reason],
+}
+
+# ------------------------------------------------------------ audit evidence --
+
+# The evidence of how locking was used: who read or was refused, which keys were made, opened or destroyed, the leases, the contracts'
+# treatments and the erasures. Never a name or a value. The auditor's job, and the data protection officer's, who already sees every decision.
+audit_evidence_roles := {"privacy_auditor", "dpo"}
+
+default may_read_audit_evidence := false
+
+may_read_audit_evidence if {
+	some role in input.person.roles
+	audit_evidence_roles[role]
+}
+
+audit_evidence_reason contains "this person holds no role that may read the audit evidence (a privacy auditor or the data protection officer)" if {
+	not may_read_audit_evidence
+}
+
+audit_evidence_decision := {
+	"allow": may_read_audit_evidence,
+	"reasons": [r | some r in audit_evidence_reason],
+}
+
+# ------------------------------------------------------ group-size reports --
+
+# When a table is sealed the platform counts how many different people share each combination of the readable quasi-identifying columns, and
+# reports the combinations with too few. A small group can single a person out although no column names them. The report is advice, with counts
+# and no values. It is read by those who answer for the data (the owning department's approvers) and by those whose job is to judge or audit it
+# (the de-identification reviewer, the privacy auditor, the data protection officer). Deciding what to do about it, accept the risk or change the
+# contract, is the owner's act and nobody else's.
+default may_read_group_size_report := false
+
+may_read_group_size_report if {
+	some role in input.person.roles
+	audit_evidence_roles[role]
+}
+
+may_read_group_size_report if {
+	some role in input.person.roles
+	decider_roles[role]
+}
+
+may_read_group_size_report if {
+	some role in input.person.roles
+	approver_roles[role]
+	input.person.id in input.dataset.approvers
+}
+
+group_size_report_reason contains "this person may not read the group-size report of this table (the owning department's approvers, a privacy auditor, the data protection officer or a de-identification reviewer)" if {
+	not may_read_group_size_report
+}
+
+group_size_report_decision := {
+	"allow": may_read_group_size_report,
+	"reasons": [r | some r in group_size_report_reason],
+}
+
+default may_decide_group_size_report := false
+
+may_decide_group_size_report if {
+	some role in input.person.roles
+	approver_roles[role]
+	input.person.id in input.dataset.approvers
+}
+
+group_size_decision_reason contains "only an approver of the department that owns this data decides what to do about small groups" if {
+	not may_decide_group_size_report
+}
+
+group_size_decision := {
+	"allow": may_decide_group_size_report,
+	"reasons": [r | some r in group_size_decision_reason],
 }

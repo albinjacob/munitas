@@ -29,7 +29,7 @@ from common import (ADMIN, CANARY, RESEARCHER, api, bearer_for, check, db,
                     fixture_department, fixture_tabular_version, fixture_tenant,
                     heading, require_api, s3_client, summary)
 
-OTHER_PERSON = "sam-researcher"  # an organisation that is not canary
+OTHER_PERSON = "neighbour-researcher"  # an organisation that is not canary
 ACTIVATION_WAIT_SECONDS = 90
 
 

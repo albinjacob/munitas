@@ -22,8 +22,8 @@ SHOTS = SHOTS_ROOT / "legal-export"
 TERMINAL = json.loads((SHOTS / "terminal.json").read_text(encoding="utf-8")) if (SHOTS / "terminal.json").exists() else {"blocks": []}
 
 CLOCK = (
-    "To start this story the clinic was closed down through the platform and the first 15 days were skipped with "
-    "<code>scripts/admin/advance-closing-clock.py</code>, which moves the clinic&rsquo;s two closing dates back and "
+    "To start this story the clinic was closed down through the platform and the first 15 days were skipped by a "
+    "script run by an administrator, which moves the clinic&rsquo;s two closing dates back and "
     "changes nothing else. The dates on the screens are therefore earlier than they would be on a real calendar."
 )
 
@@ -109,7 +109,7 @@ STEPS = [
         "screen": "Legal holds &middot; Producing records for this matter",
         "text": "Ravi sees the same waiting request with the whole demand in front of the decision. The note is "
                 "stored with the decision. It is required only when a request is declined.",
-        "note": "The name at the top left is <strong>Ravi</strong>. The note field reads <strong>Demand checked "
+        "note": "The name at the bottom left of the menu is <strong>Ravi</strong>. The note field reads <strong>Demand checked "
                 "against the court&rsquo;s reference</strong>, and both <strong>Approve it</strong> and "
                 "<strong>Decline</strong> are offered. There is no line saying that Ravi asked for this one.",
     },
@@ -138,9 +138,9 @@ STEPS = [
                 "records. Neither platform administrator can. For a table that is filtered there is one more "
                 "thing only the custodian does: name the people the demand is about.",
         "note": "A box titled <strong>Records being produced for a legal matter</strong> holds the card "
-                "<strong>KB-2026-004411: matter HC-2026-0417</strong>. It says <strong>Filtered: appointments, "
-                "Only the rows for named people, matched on the column patient_id. The custodian names "
-                "them</strong>. A box below asks for <strong>one value of the column patient_id per line</strong> "
+                "<strong>KB-2026-004411: matter HC-2026-0417</strong>. It says <strong>Filtered: appointments</strong>, "
+                "<strong>Only the rows for named people, matched on the column patient_id. The custodian names "
+                "them.</strong> A box below asks for <strong>one value of the column patient_id per line</strong> "
                 "and says that <strong>the platform administrators never see these values</strong>.",
     },
     {
@@ -170,8 +170,8 @@ STEPS = [
                 "the custodian.",
         "note": "The label reads <strong>Ready</strong>. The card adds <strong>Scope confirmed by Adeyemi</strong>, "
                 "the line <strong>2 of 10 rows matched</strong> and no patient id, "
-                "<strong>Package: 1 file</strong> with its size, <strong>encrypted</strong>, and "
-                "<strong>Kept until @D14@</strong>, after which the platform deletes the package. A button reads "
+                "<strong>Package</strong> reading <strong>1 file</strong>, its size and <strong>encrypted</strong>, and "
+                "<strong>Kept until</strong> <strong>@D14@</strong>, after which the platform deletes the package. A button reads "
                 "<strong>Show me "
                 "the passphrase, once</strong>.",
     },
@@ -199,7 +199,7 @@ STEPS = [
                 "called the manifest. It names every file and gives its size and a fingerprint of its contents, "
                 "which is a value that changes if even one byte of the file changes. The platform signs the "
                 "manifest, so any later change to a file or to the list can be noticed.",
-        "note": "The status is <strong>Ready</strong>. The card says <strong>Filtered: appointments, Only the "
+        "note": "The status is <strong>Ready</strong>. The card says <strong>Filtered: appointments</strong>, <strong>Only the "
                 "rows for named people, matched on the column patient_id</strong> and <strong>2 of 10 rows "
                 "matched</strong>, and it shows no patient id. The table lists one file, "
                 "<strong>data/appointments/v1/v1.filtered.csv</strong>, with its size and the start of its "
@@ -215,7 +215,7 @@ STEPS = [
                 "recipient also needs the passphrase that only Adeyemi was given.",
         "note": "A box under the button shows the link, beginning with the platform&rsquo;s address and "
                 "<code>/legal-exports/download/mlx_</code>, and the line <strong>Works 3 times until "
-                "@D7@. It is not shown again</strong>.",
+                "@D7@</strong>. <strong>It is not shown again.</strong>",
     },
     {
         "terminal": [0], "actor": "ruth",
@@ -280,7 +280,7 @@ STEPS = [
 ACTORS = {
     "priya": ("Priya", "Platform administrator, who asks for the records"),
     "ravi": ("Ravi", "A second platform administrator, who approves"),
-    "adeyemi": ("Adeyemi", "Data protection officer at Harbour Clinic, the custodian the hold names"),
+    "adeyemi": ("Adeyemi", "Data protection officer at Harbour Clinic, the temporary custodian the hold names"),
     "ruth": ("Ruth Aldous", "Lawyer at Aldous and Brennan LLP, who receives the package"),
 }
 
@@ -313,7 +313,7 @@ CAPTURED = datetime.fromtimestamp(_FIRST.stat().st_mtime).date() if _FIRST.exist
 
 def _on(days: int) -> str:
     d = CAPTURED + timedelta(days=days)
-    return f"{d.strftime('%B')} {d.day}, {d.year}"
+    return f"{d.strftime('%b')} {d.day}, {d.year}"
 
 
 _DATES = {"@D7@": _on(7), "@D14@": _on(14)}
@@ -340,11 +340,7 @@ PAGE = Page(
     capture_note="Captured live against the <code>harbour</code> organisation by "
                  "<code>web/walkthroughs/legal-export.spec.ts</code> and built by "
                  "<code>docs/tools/build_legal_export_walkthrough.py</code>. The terminal part is the real output "
-                 "of the real commands. What the platform refuses is proved separately by "
-                 "<code>verify/v102_legal_export_rules.py</code> and <code>verify/v103_legal_export_package.py</code>, "
-                 "and <code>verify/v104_legal_export_filter.py</code>, which also open a package with the "
-                 "recipient&rsquo;s program, change it in four ways, and show that each change is noticed, "
-                 "and that a filtered table holds the named rows and nothing else.",
+                 "of the real commands.",
 )
 
 if __name__ == "__main__":

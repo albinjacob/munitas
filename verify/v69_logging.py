@@ -50,6 +50,12 @@ ALLOWED_FIELDS = {
     # an organisation id and nothing else), and the version number it reserved. Identifiers of the same kind as derivation_id and
     # dataset_version_id: they say which job a line is about without saying anything about the rows it is writing.
     "job_id", "queue", "version",
+    # An alert says which part of the platform raised it (a category such as "storage-permissions"), what happened (a short stable
+    # name for the event) and how serious it is (notice, warning or critical). Fixed words chosen by the code, never taken from data.
+    "category", "event", "severity",
+    # A slow request names the kind of request (the HTTP verb) and the route's own pattern, such as "/datasets/{dataset_id}/seal-files": the
+    # pattern, never the address, so no identifier or value from the request is in it. Fixed words chosen by the code.
+    "method", "route",
 }
 
 EXTRA_CALL = re.compile(r"extra=\{(.*?)\}", re.S)
@@ -112,6 +118,29 @@ def main() -> int:
     out = formatted({})
     check("and carries none when there is no request", "request_id" not in out,
           out.get("request_id"))
+
+    heading("U69: an error nobody expected is answered in words, in a form the browser may read")
+
+    from fastapi.testclient import TestClient
+
+    from app import config as platform_config
+    from app import main as platform_main
+
+    @platform_main.app.get("/__u69_unexpected")
+    def _unexpected() -> None:
+        raise RuntimeError("the secret detail of what went wrong inside")
+
+    origin = platform_config.CONSOLE_ORIGINS[0]
+    client = TestClient(platform_main.app, raise_server_exceptions=False)
+    answer = client.get("/__u69_unexpected", headers={"Origin": origin})
+    body = answer.json() if answer.headers.get("content-type", "").startswith("application/json") else {}
+    detail = body.get("detail", {})
+    check("it is answered as an error with a body, not dropped", answer.status_code == 500 and bool(detail), f"{answer.status_code} {answer.text[:120]}")
+    check("the answer says, in words, that the platform hit something it did not expect", "did not expect" in " ".join(detail.get("reasons", [])), str(detail))
+    check("the browser is allowed to read it: the console's origin is named in the answer's headers",
+          answer.headers.get("access-control-allow-origin") == origin, str(dict(answer.headers)))
+    check("it carries a reference, and the same reference is in the header", bool(detail.get("request_id")) and detail["request_id"] == answer.headers.get("x-request-id"), str(detail))
+    check("and nothing of what went wrong inside is in what the person gets", "secret detail" not in answer.text and "RuntimeError" not in answer.text, answer.text[:200])
 
     heading("U69: no call site names a field outside the allowed set")
 

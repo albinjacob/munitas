@@ -279,6 +279,72 @@ function Get-DataRoot {
     throw "MUNITAS_DATA is not set in $envFile. Copy .env.example to .env and set it to the folder that should hold the platform's data."
 }
 
+function Import-DotEnv {
+    # Puts the values of an `.env` file into THIS process's environment, for the names given and no others.
+    #
+    # The host worker reads no `.env` of its own, so a value written there had no effect on it. It must not be given the whole
+    # file either: `.env` holds secrets the worker is built not to hold (the storage administrator's secret, the master key), and
+    # anything the worker starts would inherit them. So the caller names what the worker reads, and only those names are set.
+    # A blank value means "not set" and is skipped, so a commented-out or empty line never overrides the default in the code.
+    # A value already set in the environment is replaced, because `.env` is the place this project asks for settings to be written.
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][string[]]$Only
+    )
+    if (-not (Test-Path -LiteralPath $Path)) { return @() }
+    $allowed = [System.Collections.Generic.HashSet[string]]::new([string[]]$Only)
+    $set = @()
+    foreach ($line in Get-Content -LiteralPath $Path) {
+        if ($line -notmatch '^\s*([A-Z][A-Z0-9_]*)\s*=(.*)$') { continue }
+        $name = $Matches[1]
+        $value = $Matches[2].Trim()
+        if ($value.Length -ge 2 -and (($value.StartsWith('"') -and $value.EndsWith('"')) -or ($value.StartsWith("'") -and $value.EndsWith("'")))) {
+            $value = $value.Substring(1, $value.Length - 2)
+        }
+        if ($value -eq '' -or -not $allowed.Contains($name)) { continue }
+        Set-Item -LiteralPath "Env:$name" -Value $value
+        $set += $name
+    }
+    return $set
+}
+
+function Get-OpaPolicySource {
+    # Where the policy engine gets its policy: "folder" (the default: it reads platform/policy and reloads on a change) or "bundle" (it fetches a built and
+    # tested package that publish-policy.ps1 publishes). From MUNITAS_OPA_POLICY_SOURCE in the environment or `.env`, the environment first. Anything else is
+    # refused by name, because a typo that quietly meant "folder" would hide that the mode asked for is not the mode running.
+    param([Parameter(Mandatory = $true)][string]$ProjectRoot)
+
+    $value = [Environment]::GetEnvironmentVariable("MUNITAS_OPA_POLICY_SOURCE", "Process")
+    if ([string]::IsNullOrWhiteSpace($value)) { $value = [Environment]::GetEnvironmentVariable("MUNITAS_OPA_POLICY_SOURCE", "User") }
+    if ([string]::IsNullOrWhiteSpace($value)) {
+        $envFile = Join-Path $ProjectRoot ".env"
+        if (Test-Path $envFile) {
+            $declared = Select-String -Path $envFile -Pattern '^\s*MUNITAS_OPA_POLICY_SOURCE\s*=\s*(.*?)\s*$' | Select-Object -First 1
+            if ($declared) { $value = $declared.Matches[0].Groups[1].Value.Trim('"', "'") }
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($value)) { $value = "folder" }
+    if ($value -notin @("folder", "bundle")) {
+        throw "MUNITAS_OPA_POLICY_SOURCE is '$value'. It must be folder or bundle. RUNBOOK.md, 'The policy engine', says what each means."
+    }
+
+    # A production start takes its policy from a signed package. In folder mode anyone who can write to the policy folder changes every decision, and nothing
+    # is signed, which is right for editing rules on a laptop and wrong anywhere else.
+    $environment = [Environment]::GetEnvironmentVariable("MUNITAS_ENV", "Process")
+    if ([string]::IsNullOrWhiteSpace($environment)) {
+        $envFile = Join-Path $ProjectRoot ".env"
+        if (Test-Path $envFile) {
+            $declared = Select-String -Path $envFile -Pattern '^\s*MUNITAS_ENV\s*=\s*(.*?)\s*$' | Select-Object -First 1
+            if ($declared) { $environment = $declared.Matches[0].Groups[1].Value.Trim('"', "'") }
+        }
+    }
+    if ($environment -and $environment.Trim().ToLower() -eq "production" -and $value -ne "bundle") {
+        throw "MUNITAS_ENV is production, so MUNITAS_OPA_POLICY_SOURCE must be bundle (it is $value). RUNBOOK.md, 'The policy engine', says how."
+    }
+    return $value
+}
+
+
 function Get-ComposePrefix {
     # Returns the shell fragment every Compose command starts with, ready to
     # have `up -d`, `logs`, `exec` and so on appended.
@@ -303,8 +369,8 @@ function Get-ComposePrefix {
     # for anything declared twice, because Compose applies the file after
     # these arrive.
     Import-WslEnvPassthrough -Names @(
-        "R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY",
-        "R2_API_TOKEN", "R2_BUCKET"
+        "MUNITAS_R2_ACCOUNT_ID", "MUNITAS_R2_ACCESS_KEY_ID", "MUNITAS_R2_SECRET_ACCESS_KEY",
+        "MUNITAS_R2_API_TOKEN"
     ) | Out-Null
 
     # docker-compose.yml bind-mounts MUNITAS_HOST_WORK_DIR, and Compose warns
@@ -324,7 +390,10 @@ function Get-ComposePrefix {
 
     $repoInWsl = ConvertTo-WslPath -WslDistro $WslDistro -WindowsPath $ProjectRoot
     $dataInWsl = ConvertTo-WslPath -WslDistro $WslDistro -WindowsPath $dataRoot
-    return "cd '$repoInWsl' && MUNITAS_DATA='$dataInWsl' MUNITAS_HOST_WORK_DIR='$workDir' docker compose"
+    # The policy engine's second mode adds one file to Compose (docker-compose.opa-bundle.yml); the default adds nothing.
+    $policySource = Get-OpaPolicySource -ProjectRoot $ProjectRoot
+    $files = if ($policySource -eq "bundle") { " -f docker-compose.yml -f docker-compose.opa-bundle.yml" } else { "" }
+    return "cd '$repoInWsl' && MUNITAS_DATA='$dataInWsl' MUNITAS_HOST_WORK_DIR='$workDir' MUNITAS_OPA_POLICY_SOURCE='$policySource' docker compose$files"
 }
 
 

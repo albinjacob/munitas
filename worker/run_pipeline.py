@@ -16,7 +16,7 @@ import json
 import uuid
 
 import httpx
-import psycopg
+from . import pgdb
 from temporalio.client import Client
 from temporalio.service import RPCError
 
@@ -26,13 +26,13 @@ from ports_config import PORTS
 
 # name -> (source contract, target contract, output class)
 ACTIONS = {
-    "ingest": (None, "encounter_raw", "RAW"),
-    "transcribe": ("encounter_raw", "encounter_transcribed", "RAW"),
-    "detect": ("encounter_transcribed", "encounter_detected", "RAW"),
+    "ingest": (None, "audio_raw", "RAW"),
+    "transcribe": ("audio_raw", "audio_transcribed", "RAW"),
+    "detect": ("audio_transcribed", "audio_detected", "RAW"),
     # Label Studio tasks carry unredacted transcripts, so the handoff output is
     # RAW and gets a sealed version like everything else holding PHI.
-    "handoff": ("encounter_detected", "encounter_detected", "RAW"),
-    "redact": ("encounter_detected", "encounter_redacted", "UNDER_REVIEW"),
+    "handoff": ("audio_detected", "audio_detected", "RAW"),
+    "redact": ("audio_detected", "audio_redacted", "UNDER_REVIEW"),
 }
 
 PG_DSN = f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform"
@@ -53,7 +53,7 @@ def ensure_actions(tenant: str | None = None) -> dict[str, str]:
     """
     tenant = tenant or config.TENANT
     ids: dict[str, str] = {}
-    with psycopg.connect(PG_DSN, autocommit=True) as conn:
+    with pgdb.connect(PG_DSN, autocommit=True) as conn:
         for name, (_, _, output_class) in ACTIONS.items():
             row = conn.execute(
                 "select id from dataset_action where tenant_id = %s and name = %s",
@@ -73,7 +73,7 @@ def ensure_actions(tenant: str | None = None) -> dict[str, str]:
 
 
 def ensure_tenant() -> None:
-    with psycopg.connect(PG_DSN, autocommit=True) as conn:
+    with pgdb.connect(PG_DSN, autocommit=True) as conn:
         conn.execute(
             """insert into tenant (id, isolation_level, key_ref)
                values (%s, 'shared', %s) on conflict (id) do nothing""",

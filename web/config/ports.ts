@@ -17,8 +17,6 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
 export interface Ports {
   postgres: number;
   seaweedfs_s3: number;
-  seaweedfs_filer: number;
-  seaweedfs_master: number;
   temporal: number;
   temporal_ui: number;
   opa: number;
@@ -32,6 +30,7 @@ export interface Ports {
   munitas_api_https: number;
   kratos_public: number;
   kratos_admin: number;
+  hydra_public: number;
   console_dev: number;
   console_preview: number;
 }

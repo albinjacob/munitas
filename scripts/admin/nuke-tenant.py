@@ -18,7 +18,7 @@ tenant's data is any less immutable because this script ran.
 
 Its SeaweedFS buckets go too, emptied and deleted once the rows are gone.
 Until they did, a deleted tenant's files stayed in storage with nothing
-recording them, and a rebuilt tenant, which reuses the same bucket name,
+file them, and a rebuilt tenant, which reuses the same bucket name,
 inherited every previous copy. A Cloudflare R2 bucket is real external
 storage and is only named, never touched.
 
@@ -35,18 +35,18 @@ import os
 import sys
 from pathlib import Path
 
-import psycopg
-from psycopg.rows import dict_row
+import pgdb
+from pgdb import dict_row
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from ports_config import PORTS  # noqa: E402
 
 PG_DSN = os.environ.get(
-    "PG_DSN", f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform"
+    "MUNITAS_PG_DSN", f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform"
 )
-S3_ENDPOINT = os.environ.get("S3_ENDPOINT", f"http://localhost:{PORTS['seaweedfs_s3']}")
-ADMIN_KEY = os.environ.get("S3_ADMIN_KEY", "munitas-admin")
-ADMIN_SECRET = os.environ.get("S3_ADMIN_SECRET", "munitas-admin-secret")
+S3_ENDPOINT = os.environ.get("MUNITAS_S3_ENDPOINT", f"http://localhost:{PORTS['seaweedfs_s3']}")
+ADMIN_KEY = os.environ.get("MUNITAS_S3_ADMIN_KEY", "munitas-admin")
+ADMIN_SECRET = os.environ.get("MUNITAS_S3_ADMIN_SECRET", "munitas-admin-secret")
 
 
 def s3():
@@ -145,7 +145,14 @@ def tenant_scoped_tables(conn) -> list[str]:
 INDIRECT_TABLES: dict[str, tuple[str, str]] = {
     "dataset_source": ("dataset_id", "dataset"),
     "class_transition": ("dataset_version_id", "dataset_version"),
-    "huggingface_fetch_job": ("dataset_id", "dataset"),
+    "huggingface_fetch_job": ("dataset_id", "dataset"),    # Found by asking the database for every table with no tenant_id column that points at one that has it (2026-10-09). A purge or a delete that
+    # does not know a table cannot remove its parent, and stops with a foreign key error before anything is changed.
+    "agent_run_attempt": ("run_id", "agent_run"),
+    "external_credential": ("directory_id", "directory"),
+    "gate_leak": ("gate_decision_id", "gate_decision"),
+    "notebook_code_attempt": ("principal", "directory"),
+    "pipeline_step_run": ("pipeline_run_id", "pipeline_run"),
+    "pipeline_version": ("pipeline_id", "pipeline"),
 }
 
 
@@ -204,7 +211,7 @@ def delete_all(conn, tables: list[str], tenant: str) -> dict[str, int]:
                 if cur.rowcount:
                     deleted[t] = cur.rowcount
                 progressed = True
-            except psycopg.errors.ForeignKeyViolation as exc:
+            except pgdb.errors.ForeignKeyViolation as exc:
                 still_remaining.append(t)
                 reasons[t] = f"{exc.diag.constraint_name}: {exc.diag.message_detail}"
         if not progressed and still_remaining:
@@ -219,7 +226,7 @@ def delete_all(conn, tables: list[str], tenant: str) -> dict[str, int]:
                 with conn.transaction():
                     deleted.update(_delete_together(conn, still_remaining, tenant))
                 return deleted
-            except psycopg.errors.ForeignKeyViolation as exc:
+            except pgdb.errors.ForeignKeyViolation as exc:
                 raise RuntimeError(
                     "stuck: " + ", ".join(still_remaining) + " still have rows "
                     "referenced from outside them, even deleted together. "
@@ -256,7 +263,7 @@ def main() -> int:
                         help="skip straight to the typed confirmation, for scripted use")
     args = parser.parse_args()
 
-    with psycopg.connect(PG_DSN, row_factory=dict_row) as conn:
+    with pgdb.connect(PG_DSN, row_factory=dict_row) as conn:
         row = conn.execute(
             "select purpose from tenant where id = %s", (args.tenant,)
         ).fetchone()

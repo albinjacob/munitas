@@ -55,28 +55,43 @@ const BY_ROLE: Record<string, Copy> = {
   dpo: {
     description:
       "Independent oversight. Sees every decision including every refusal, and makes none.",
-    landing: "The audit log, refusals first, and records that were erased.",
+    landing: "You see every decision, including every refusal, and you make none.",
   },
   notebook_explore: {
     description:
       "Wants de-identified data for a project. Asks for access, never grants it.",
-    landing: "What you can already read, and how to ask for the rest.",
+    landing: "You ask for the data you need. The people answerable for it decide.",
+  },
+  deid_reviewer: {
+    description:
+      "Decides whether a result with the names removed may be released to more people.",
+    landing: "You decide whether a result with the names removed may be released.",
+  },
+  network_architect: {
+    description:
+      "Decides which external hosts an agent version may call.",
+    landing: "You decide which external hosts each agent version may call.",
+  },
+  privacy_auditor: {
+    description:
+      "Reads the evidence of how locked data was used and never sees the personal data itself.",
+    landing: "You read the evidence of how locked data was used. You never see the personal data itself.",
   },
   pipeline_operator: {
     description:
       "Runs the de-identification pipeline and works out why a run failed.",
-    landing: "How much has been sealed, released, and is still held back.",
+    landing: "You bring in data, register pipelines and agents, and ask to read what you need.",
   },
   platform_admin: {
     description:
       "Keeps the services running. Sees everything about the system and holds no standing access to what is in it.",
-    landing: "Every part of the system, and what the platform holds overall.",
+    landing: "You keep the platform running. You hold no standing access to the data in it.",
   },
 };
 
 const FALLBACK: Copy = {
   description: "Registered in the directory.",
-  landing: "What this role can reach is decided by the policy engine.",
+  landing: "What this role can reach is decided by the platform's rules.",
 };
 
 /**
@@ -99,7 +114,7 @@ function custodianCopy(entry: DirectoryEntry): Copy | null {
     const plural = entry.approver_of.length > 1;
     return {
       description: `Approver for ${departments}. Decides who may read ${plural ? "their" : "its"} data, and for what.`,
-      landing: `Requests waiting on your decision, and what ${departments} ${plural ? "own" : "owns"}.`,
+      landing: `You decide who may read what ${departments} ${plural ? "own" : "owns"}.`,
     };
   }
 

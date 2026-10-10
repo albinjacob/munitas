@@ -1,516 +1,587 @@
 /**
- * Dataset list, filtered, expanding to versions.
+ * Datasets: every dataset in the organisation, how open it is, and what each one holds.
  *
- * Filtering is on the server. A console that fetches everything and hides most
- * of it in the browser gets slower as the platform gets more useful, which is
- * the wrong way round.
+ * Four cards that are shortcuts to filters, then the list: the same filters, the same sortable columns, the same words about where a dataset came from and
+ * who owns it, and the versions of each one a click away. Each dataset shows the widest access level any of its versions has reached, because that decides
+ * who could have seen it. The colours keep the console's rule: red is Raw and nothing else.
  *
- * The sensitivity shown is the **widest** any version has reached, not the
- * newest version's. A dataset whose latest version is raw but which has an older
- * version released is not a raw dataset from an exposure point of view, and
- * showing the newest would understate who could have seen it.
+ * Counts are the platform's own totals. The amber "waiting" mark appears only when requests really are waiting for the person. The search in the header
+ * narrows this list; its words are in the address (`?q=`), so a link to a search works.
  */
 
+import { Fragment, useEffect, useState, type ReactNode } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { Ico } from "../../components/Ico";
+import { useHeaderSearch } from "../../components/HeaderSearch";
+import { useIdentity } from "../../identity/IdentityContext";
 import { INTAKE_ROLES, useHoldsRole } from "../../identity/mayDo";
-import { Fragment, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { useAccessPreview, useDatasetVersions, useDatasets } from "../../api/queries";
-import type { AccessPreview } from "../../api/types";
-import { CLASS_LABEL, CLASS_ORDER } from "../../api/types";
+import { useAccessPreview, useDatasets, useDatasetVersions, useOrganisation } from "../../api/queries";
+import { useLeases } from "../../api/locking";
+import { useFileLeases } from "../../api/fileLeases";
+import { CLASS_LABEL, CLASS_ORDER, type AccessPreview, type DatasetRow, type VisibilityClass } from "../../api/types";
 import { licenceAllows, provenanceLabel } from "../../api/provenance";
-import type { DatasetRow } from "../../api/types";
-import { AccessMark } from "../../components/AccessMark";
-import { ClassBadge, ClassPair } from "../../components/ClassBadge";
-import { Pagination } from "../../components/Pagination";
-import { Empty, Failure, Loading, Section } from "../../components/states";
+import { TONE, wording } from "../../components/AccessMark";
+import { size } from "../../lib/size";
+import { when } from "../../lib/when";
 
-const MODALITIES = ["audio", "text", "image", "tabular"];
+export const KIND_CHOICES = ["audio", "image", "text", "tabular", "other", "multimodal"];
+export const FORMAT_CHOICES = ["wav", "mp3", "flac", "ogg", "m4a", "png", "jpeg", "gif", "webp", "json", "jsonl", "xml", "txt", "csv", "tsv", "parquet", "xlsx", "pdf", "zip", "table"];
+export const STRUCTURE_CHOICES = ["structured", "semi-structured", "unstructured", "mixed"];
+export const formatName = (f: string) => (f === "table" ? "Table" : f.toUpperCase());
 
-/** The database's timestamp, which puts a space where ISO puts a T. */
-function day(timestamp: string): string {
-  return new Date(timestamp.replace(" ", "T")).toLocaleDateString();
+const cap = (w: string) => w.charAt(0).toUpperCase() + w.slice(1);
+const DAY = 86_400_000;
+const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+
+// ------------------------------------------------------------------------------------------------------------------------------ the page
+
+export function Datasets() {
+  const { principal } = useIdentity();
+  const mayBringIn = useHoldsRole(INTAKE_ROLES);
+
+  // The first card counts what was registered in this many days.
+  const days = 7;
+  // The words searched for are in the address; the header search writes them.
+  const [params, setParams] = useSearchParams();
+  const q = params.get("q") ?? "";
+  useHeaderSearch({
+    value: q,
+    onChange: (value) => setParams(value ? { q: value } : {}, { replace: true }),
+    placeholder: "Search datasets by name",
+    testid: "dataset-search",
+  });
+  const [debounced, setDebounced] = useState(q.trim());
+  // The same filters as the old page, and the cards are shortcuts to some of them.
+  const [klass, setKlass] = useState("");
+  const [kind, setKind] = useState("");
+  const [format, setFormat] = useState("");
+  const [structure, setStructure] = useState("");
+  const [departmentId, setDepartmentId] = useState("");
+  // A dataset is registered (nothing in it yet), active (some data can still be read) or deleted (every version's data was deleted, the record kept).
+  // Deleted ones stay out of the list unless asked for.
+  const [state, setState] = useState<"" | "registered" | "active">("");
+  const [showDeleted, setShowDeleted] = useState(false);
+  const [sort, setSort] = useState("registered");
+  const [direction, setDirection] = useState<"asc" | "desc">("desc");
+  const [page, setPage] = useState(1);
+  const PAGE = 15;
+  const [open, setOpen] = useState<string | null>(null);
+
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(q.trim()), 300);
+    return () => clearTimeout(id);
+  }, [q]);
+  useEffect(() => setPage(1), [debounced, klass, kind, format, structure, departmentId, state, showDeleted]);
+
+  // The numbers on the cards are the platform's own totals, one small query each, so they stay exact however many datasets there are.
+  const all = useDatasets({ limit: 1 });
+  const holding = useDatasets({ state: "active", limit: 1 });
+  const raw = useDatasets({ widest_class: "RAW", limit: 1 });
+  const published = useDatasets({ widest_class: "PUBLISHED", limit: 1 });
+  // The badge on the first card counts what was registered in the chosen period, from the newest hundred.
+  const recent = useDatasets({ sort: "registered", direction: "desc", limit: 100 });
+  const organisation = useOrganisation();
+  const list = useDatasets({
+    q: debounced || undefined,
+    widest_class: klass || undefined,
+    kind: kind || undefined,
+    format: format || undefined,
+    structure: structure || undefined,
+    department_id: departmentId || undefined,
+    state: state || undefined,
+    include_deleted: showDeleted || undefined,
+    sort,
+    direction,
+    limit: PAGE,
+    offset: (page - 1) * PAGE,
+  });
+  const preview = useAccessPreview({ datasetIds: (list.data?.datasets ?? []).filter((d) => d.version_count > 0).map((d) => d.id) });
+  const departments = new Map((organisation.data?.departments ?? []).map((dep) => [dep.id, dep.name]));
+  const filtered = Boolean(debounced || klass || kind || format || structure || departmentId || state || showDeleted);
+  const clearFilters = () => {
+    setParams({}, { replace: true });
+    setDebounced("");
+    setKlass("");
+    setKind("");
+    setFormat("");
+    setStructure("");
+    setDepartmentId("");
+    setState("");
+    setShowDeleted(false);
+  };
+  /** Pressing the heading of the column the list is ordered by turns it round; pressing another orders by that one, newest or first alphabetically. */
+  const changeSort = (field: string) => {
+    if (field === sort) setDirection(direction === "asc" ? "desc" : "asc");
+    else {
+      setSort(field);
+      setDirection(field === "registered" || field === "versions" ? "desc" : "asc");
+    }
+    setPage(1);
+  };
+
+  const leases = useLeases();
+  const fileLeases = useFileLeases();
+  const waiting = (leases.data?.to_decide.length ?? 0) + (fileLeases.data?.to_decide.length ?? 0);
+
+  const total = all.data?.total ?? 0;
+  const sample: DatasetRow[] = recent.data?.datasets ?? [];
+  const windowStart = startOfDay(new Date()) - (days - 1) * DAY;
+  const inWindow = sample.filter((d) => new Date(d.created_at).getTime() >= windowStart);
+  const windowFull = inWindow.length === sample.length && (recent.data?.total ?? 0) > sample.length;
+
+  const share = (n: number | undefined) => (total > 0 && n !== undefined ? `${Math.round((n / total) * 100)}% of all` : "");
+
+  if (!principal) return null;
+  const waitingText = waiting === 1 ? "1 request is waiting for you" : `${waiting} requests are waiting for you`;
+
+  return (
+    <>
+      <div className="ds-hero">
+        <div>
+          <h1>Datasets</h1>
+          <p>Everything registered in {principal.tenant_id}, except datasets whose data was deleted, which are listed when you ask. Each dataset shows the widest access level any of its versions has reached, because that decides who could have seen it.</p>
+        </div>
+        <div className="ds-actions">
+          {waiting > 0 && (
+            <Link to="/locked-column-access" className="ds-live" data-testid="ds-waiting">
+              <span className="ds-pulse" />
+              {waitingText}
+            </Link>
+          )}
+          {mayBringIn && (
+            <Link to="/datasets/register" className="ds-btn primary" data-testid="datasets-register-link">
+              <Ico name="plus" />
+              Bring a dataset in
+            </Link>
+          )}
+        </div>
+      </div>
+
+      <div className="ds-stats">
+        <StatCard
+          testid="ds-stat-all"
+          tone="blue"
+          icon="database"
+          value={all.data ? total : null}
+          name="Datasets"
+          pressed={!filtered}
+          onClick={clearFilters}
+          badge={
+            recent.data ? (
+              inWindow.length > 0 ? (
+                <span className="ds-trend up">
+                  <Ico name="up" className="" />+{inWindow.length}
+                  {windowFull ? "+" : ""} in {days} days
+                </span>
+              ) : (
+                <span className="ds-trend flat">
+                  <Ico name="flat" className="" />
+                  none new
+                </span>
+              )
+            ) : null
+          }
+        />
+        <StatCard
+          testid="ds-stat-holding"
+          tone="indigo"
+          icon="layers"
+          value={holding.data?.total ?? null}
+          name="Active"
+          pressed={state === "active"}
+          onClick={() => setState(state === "active" ? "" : "active")}
+          badge={<span className="ds-trend flat">{share(holding.data?.total)}</span>}
+        />
+        <StatCard
+          testid="ds-stat-raw"
+          tone="red"
+          icon="lock"
+          value={raw.data?.total ?? null}
+          name="Raw, not yet released"
+          pressed={klass === "RAW"}
+          onClick={() => setKlass(klass === "RAW" ? "" : "RAW")}
+          badge={<span className="ds-trend flat">{share(raw.data?.total)}</span>}
+        />
+        <StatCard
+          testid="ds-stat-published"
+          tone="green"
+          icon="globe"
+          value={published.data?.total ?? null}
+          name="Published"
+          pressed={klass === "PUBLISHED"}
+          onClick={() => setKlass(klass === "PUBLISHED" ? "" : "PUBLISHED")}
+          badge={<span className="ds-trend flat">{share(published.data?.total)}</span>}
+        />
+      </div>
+
+      <section className="ds-card ds-tablecard" data-testid="ds-table">
+        <div className="ds-pad" style={{ paddingBottom: 12 }}>
+          <div className="ds-cardhead" style={{ marginBottom: 14 }}>
+            <div>
+              <h2>{filtered ? "Matching datasets" : "All datasets"}</h2>
+              <p data-testid="dataset-count">{list.data ? `Showing ${list.data.shown} of ${list.data.total}${filtered ? " matching" : ""}.` : "Loading"}</p>
+            </div>
+          </div>
+          <div className="ds-filters" data-testid="ds-filters">
+            <Field label="Access level">
+              <select data-testid="dataset-class" value={klass} onChange={(e) => setKlass(e.target.value)}>
+                <option value="">Any</option>
+                {CLASS_ORDER.map((c) => (
+                  <option key={c} value={c}>
+                    {CLASS_LABEL[c]}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Kind">
+              <select data-testid="dataset-kind-filter" value={kind} onChange={(e) => setKind(e.target.value)}>
+                <option value="">Any</option>
+                {KIND_CHOICES.map((o) => (
+                  <option key={o} value={o}>
+                    {cap(o)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Format">
+              <select data-testid="dataset-format-filter" value={format} onChange={(e) => setFormat(e.target.value)}>
+                <option value="">Any</option>
+                {FORMAT_CHOICES.map((o) => (
+                  <option key={o} value={o}>
+                    {formatName(o)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Structure">
+              <select data-testid="dataset-structure-filter" value={structure} onChange={(e) => setStructure(e.target.value)}>
+                <option value="">Any</option>
+                {STRUCTURE_CHOICES.map((o) => (
+                  <option key={o} value={o}>
+                    {cap(o)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Department">
+              <select data-testid="dataset-department" value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
+                <option value="">Any</option>
+                {(organisation.data?.departments ?? []).map((dep) => (
+                  <option key={dep.id} value={dep.id}>
+                    {dep.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="State">
+              <select data-testid="dataset-state" value={state} onChange={(e) => setState(e.target.value as "" | "registered" | "active")}>
+                <option value="">Any</option>
+                <option value="registered">Registered</option>
+                <option value="active">Active</option>
+              </select>
+            </Field>
+            <label className="ds-check">
+              <input type="checkbox" data-testid="dataset-show-deleted" checked={showDeleted} disabled={state !== ""} onChange={(e) => setShowDeleted(e.target.checked)} />
+              Also show deleted datasets
+            </label>
+            {filtered && (
+              <button type="button" className="ds-link" data-testid="ds-clear" onClick={clearFilters}>
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
+        {list.error ? (
+          <div className="ds-note" role="alert">
+            The datasets could not be loaded.
+          </div>
+        ) : list.isLoading ? (
+          <div className="ds-note">Loading</div>
+        ) : list.data && list.data.datasets.length === 0 ? (
+          <div className="ds-note">{filtered ? "Nothing matches those filters. Change them or press Clear." : "Nothing has been brought into the platform yet."}</div>
+        ) : (
+          <>
+            <table className="ds-table">
+              <thead>
+                <tr>
+                  <SortHead label="Dataset" field="name" sort={sort} direction={direction} onSort={changeSort} />
+                  <SortHead label="Kind" field="kind" sort={sort} direction={direction} onSort={changeSort} />
+                  <SortHead label="Format" field="format" sort={sort} direction={direction} onSort={changeSort} />
+                  <SortHead label="Structure" field="structure" sort={sort} direction={direction} onSort={changeSort} />
+                  <SortHead label="Versions" field="versions" sort={sort} direction={direction} onSort={changeSort} />
+                  <SortHead label="Widest access" field="access" sort={sort} direction={direction} onSort={changeSort} />
+                  <SortHead label="Registered" field="registered" sort={sort} direction={direction} onSort={changeSort} />
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {list.data?.datasets.map((d) => {
+                  const readable = preview.data?.datasets[d.id];
+                  return (
+                    <Fragment key={d.id}>
+                      <tr data-testid="ds-row" data-dataset={d.name}>
+                        <td style={{ minWidth: 180 }}>
+                          <span className="mono" data-testid="ds-name">
+                            {d.name}
+                          </span>
+                          <span className={`ds-state ${d.state}`} data-testid="dataset-state-cell">
+                            {d.state === "deleted" ? "Deleted, record kept" : cap(d.state)}
+                          </span>
+                          <Provenance d={d} department={departments.get(d.department_id ?? "")} />
+                        </td>
+                        <td>
+                          {(d.kinds ?? []).length === 0 ? (
+                            <span className="sub">Nothing in it yet</span>
+                          ) : (
+                            <span data-testid="dataset-kind">{(d.kinds ?? []).map(cap).join(" + ")}</span>
+                          )}
+                          {(d.kinds ?? []).length > 1 && <span className="sub">Multimodal</span>}
+                        </td>
+                        <td>
+                          {(d.formats ?? []).length === 0 ? (
+                            <span className="sub">None</span>
+                          ) : (
+                            <>
+                              <span className="mono" data-testid="dataset-format">
+                                {(d.formats ?? []).map(formatName).join(", ")}
+                              </span>
+                              {(d.files ?? 0) > 0 && (
+                                <span className="sub" style={{ whiteSpace: "nowrap" }}>
+                                  {d.files} {d.files === 1 ? "file" : "files"}, {size(d.bytes ?? 0)}
+                                </span>
+                              )}
+                            </>
+                          )}
+                          {d.is_table && d.table_missing && (
+                            <span className="ds-marker" data-testid="table-missing" title="Open a version to see why it has no table copy">
+                              Stored as a table, but not every version has a table copy
+                            </span>
+                          )}
+                        </td>
+                        <td>
+                          {d.structure ? (
+                            <>
+                              <span data-testid="dataset-structure">{cap(d.structure)}</span>
+                              {d.structure === "mixed" && <span className="sub">{(d.structures ?? []).map(cap).join(", ")}</span>}
+                            </>
+                          ) : (
+                            <span className="sub">None</span>
+                          )}
+                        </td>
+                        <td>
+                          {d.version_count}
+                          {d.version_count > 0 && (
+                            <span className="sub">
+                              <span data-testid="dataset-readable">{preview.error ? "Couldn't check" : readable ? `${readable.readable} of ${readable.total}` : ""}</span>{" "}
+                              {!preview.error && readable ? "you can read" : ""}
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ whiteSpace: "nowrap" }}>
+                          {d.widest_class ? <ClassPill value={d.widest_class} /> : <span className="sub">Nothing in it yet</span>}
+                        </td>
+                        <td data-testid="dataset-registered">
+                          {when(d.created_at).replace(/ (AM|PM)$/, "\u00a0$1")}
+                        </td>
+                        <td style={{ whiteSpace: "nowrap", textAlign: "right" }}>
+                          {d.version_count > 0 ? (
+                            <button type="button" className="ds-link" data-testid="ds-show-versions" aria-expanded={open === d.id} onClick={() => setOpen(open === d.id ? null : d.id)}>
+                              {open === d.id ? "Hide versions" : "Show versions"}
+                            </button>
+                          ) : (
+                            <Link to={`/datasets/${d.id}/ingest`} className="ds-link" data-testid="ds-bring-in">
+                              Bring data in
+                            </Link>
+                          )}
+                        </td>
+                      </tr>
+                      {open === d.id && (
+                        <tr className="ds-expand">
+                          <td colSpan={8}>
+                            <Versions datasetId={d.id} preview={preview.data} previewFailed={Boolean(preview.error)} />
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+            <div className="ds-pager">
+              <span data-testid="ds-range-text">
+                Showing {(page - 1) * PAGE + 1} to {(page - 1) * PAGE + (list.data?.datasets.length ?? 0)} of {list.data?.total ?? 0}
+              </span>
+              <div className="btns">
+                <button type="button" data-testid="ds-prev" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+                  Previous
+                </button>
+                <button type="button" data-testid="ds-next" disabled={!list.data || page * PAGE >= list.data.total} onClick={() => setPage((p) => p + 1)}>
+                  Next
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </section>
+    </>
+  );
 }
 
-/**
- * Where it came from and what its licence allows, under the name.
- *
- * A correction gets its own line and keeps it. The fetch screen said so once,
- * at the moment the licence was read; anybody arriving later saw only the
- * corrected answer, with no sign the registration had said something else.
- */
-/**
- * Whether this dataset is also stored as a table, which is what lets a standard tool read its rows and a legal export
- * hand over only the rows for named people. A dataset of files shows nothing. A table dataset says so, and a table
- * dataset with a version that has no table copy says that too, because that version cannot be filtered.
- */
-function TableMarker({ d }: { d: DatasetRow }) {
-  if (!d.is_table) return null;
-  return d.table_missing ? (
-    <span
-      data-testid="table-missing"
-      title="Open a version to see why it has no table copy"
-      className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-normal text-amber-900"
-    >
-      a table, but not every version has a table copy
-    </span>
-  ) : (
-    <span data-testid="table-marker" className="ml-2 rounded bg-sky-100 px-1.5 py-0.5 text-xs font-normal text-sky-900">
-      a table
+function StatCard({
+  testid,
+  tone,
+  icon,
+  value,
+  name,
+  badge,
+  pressed,
+  onClick,
+}: {
+  testid: string;
+  tone: "blue" | "green" | "red" | "indigo";
+  icon: string;
+  value: number | null;
+  name: string;
+  badge: ReactNode;
+  pressed: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button type="button" className="ds-card ds-stat" data-testid={testid} aria-pressed={pressed} onClick={onClick}>
+      <div className="top">
+        <span className={`ds-ico ${tone}`}>
+          <Ico name={icon} />
+        </span>
+        {badge}
+      </div>
+      <div className="val" data-testid={`${testid}-value`}>
+        {value === null ? "…" : value.toLocaleString()}
+      </div>
+      <div className="name">{name}</div>
+    </button>
+  );
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="ds-field">
+      {label}
+      {children}
+    </label>
+  );
+}
+
+function SortHead({ label, field, sort, direction, onSort }: { label: string; field: string; sort: string; direction: "asc" | "desc"; onSort: (field: string) => void }) {
+  const active = sort === field;
+  return (
+    <th aria-sort={active ? (direction === "asc" ? "ascending" : "descending") : "none"}>
+      <button type="button" className="ds-sort" data-testid={`sort-${field}`} onClick={() => onSort(field)}>
+        {label}
+        <span aria-hidden="true" className={active ? "on" : ""}>
+          {active ? (direction === "asc" ? "\u25B2" : "\u25BC") : "\u2195"}
+        </span>
+      </button>
+    </th>
+  );
+}
+
+/** The class in the console's own colours: red is Raw and nothing else, and the ramp cools as the data opens. */
+function ClassPill({ value, title }: { value: VisibilityClass; title?: string }) {
+  return (
+    <span className={`ds-pill ${value}`} data-testid={`class-badge-${value}`} title={title ? `${title} (${value})` : value}>
+      {CLASS_LABEL[value]}
     </span>
   );
 }
 
-function Provenance({ d }: { d: DatasetRow }) {
-  const licence = d.license_tag
-    ? ` Licence ${d.license_tag}: ${licenceAllows(d.license_export_unmodified, d.license_export_modified)}.`
-    : "";
+/** Sealed and current class together: a version that was promoted has not been rewritten, and showing only today's class would hide that. */
+function ClassPair({ sealed, current }: { sealed: VisibilityClass; current: VisibilityClass }) {
+  if (sealed === current) return <ClassPill value={current} title="Never promoted" />;
+  return (
+    <span className="ds-pair">
+      <ClassPill value={sealed} title="Class at seal time, unchanged" />
+      <span aria-label="promoted to" className="ds-arrow">
+        &rarr;
+      </span>
+      <ClassPill value={current} title="Current class, from the transition log" />
+    </span>
+  );
+}
+
+/** Where it came from, what its licence allows, who owns it, and a correction of how it was first registered, which keeps its own line. */
+function Provenance({ d, department }: { d: DatasetRow; department?: string }) {
+  const licence = d.license_tag ? ` Licence ${d.license_tag}: ${licenceAllows(d.license_export_unmodified, d.license_export_modified)}.` : "";
   return (
     <>
-      <span data-testid="dataset-provenance" className="block text-xs font-normal text-slate-500">
+      <span className="sub" data-testid="dataset-provenance">
         {provenanceLabel(d.provenance)}.{licence}
       </span>
+      {department && (
+        <span className="sub" data-testid="dataset-owner">
+          Owned by {department}.
+        </span>
+      )}
       {d.provenance_registered_as && d.provenance_overridden_at && (
-        <span
-          data-testid="dataset-provenance-corrected"
-          className="block text-xs font-normal text-amber-800"
-        >
-          Registered as "{provenanceLabel(d.provenance_registered_as)}". Changed on{" "}
-          {day(d.provenance_overridden_at)}, when its licence was read.
+        <span className="sub warn" data-testid="dataset-provenance-corrected">
+          Registered as "{provenanceLabel(d.provenance_registered_as)}". Changed on {when(d.provenance_overridden_at)}, when its licence was read.
         </span>
       )}
     </>
   );
 }
 
-function Versions({
-  datasetId,
-  preview,
-  previewFailed,
-}: {
-  datasetId: string;
-  preview: AccessPreview | undefined;
-  previewFailed: boolean;
-}) {
-  const { data, isLoading, error } = useDatasetVersions(datasetId);
-
-  if (isLoading) return <Loading what="versions" />;
-  if (error) return <Failure error={error} what="versions" />;
-  if (!data?.length) return <Empty what="versions in this dataset" />;
-
+/** One version's access, in the words the whole console uses for it. */
+function AccessText({ access, failed }: { access: AccessPreview["versions"][string] | undefined; failed: boolean }) {
+  if (failed) return <span className="ds-acc no">Couldn't check</span>;
+  if (!access) return <span className="ds-acc no">Checking</span>;
+  const w = wording(access);
+  const tone = w.tone === TONE.yes ? "yes" : w.tone === TONE.wait ? "wait" : "no";
   return (
-    // overflow-x-auto and whitespace-nowrap: this table used to assume the
-    // width of the desktop row it renders inside, which has plenty to
-    // spare. Rendered inside the mobile card list instead, the same four
-    // headers with no gap between them ran together into one unreadable
-    // word -- scrollable with real spacing costs the desktop case nothing
-    // and fixes the narrow one.
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-max text-sm">
-        <thead className="whitespace-nowrap text-left text-xs uppercase text-slate-500">
-          <tr>
-            <th className="py-1 pr-4">Version</th>
-            <th className="pr-4">Access level</th>
-            <th className="pr-4">Records</th>
-            <th className="pr-4">Your access</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {data.map((v) => (
-            <tr key={v.dataset_version_id} className="whitespace-nowrap border-t border-slate-100 transition-colors hover:bg-slate-50">
-              <td className="py-1.5 pr-4 tabular-nums">v{v.version}</td>
-              <td className="pr-4">
-                <ClassPair sealed={v.sealed_class} current={v.current_class} />
-              </td>
-              <td className="pr-4 tabular-nums">{v.record_count ?? 0}</td>
-              <td className="pr-4">
-                <AccessMark
-                  access={preview?.versions[v.dataset_version_id]}
-                  failed={previewFailed}
-                />
-              </td>
-              <td className="text-right">
-                <Link
-                  to={`/versions/${v.dataset_version_id}`}
-                  className="text-sky-700 underline"
-                >
-                  Open
-                </Link>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <span className={`ds-acc ${tone}`} data-testid="access-mark" data-mark={access.mark}>
+      {w.label}
+      {w.detail && <span className="sub">{w.detail}</span>}
+    </span>
   );
 }
 
-const PAGE_SIZE = 15;
-
-/**
- * Whether the viewport is at least Tailwind's own `md` breakpoint (768px),
- * checked for real rather than left to CSS alone.
- *
- * The table below and its mobile card equivalent are structurally
- * different markup (a `<table>` needs `<tr>`/`<td>`, a card list does not),
- * so there is no single element either layout's "show versions" panel
- * could share. Toggling both with CSS (`hidden md:block` / `md:hidden`)
- * would still mount both, one of them merely invisible -- and a test
- * asserting on a shared testid inside that panel would then find two
- * matches instead of one, even though only one is ever on screen. Gating
- * which layout mounts at all on a real `matchMedia` check, not just which
- * one is visible, keeps exactly one instance of that panel in the DOM.
- * Defaults to `true` (desktop): this is a client-only SPA with no SSR
- * pass to mismatch against, and every existing test already runs at a
- * desktop viewport, so this default is also what they already expect
- * before the media query listener's first real reading arrives.
- */
-function useIsDesktop(): boolean {
-  const [isDesktop, setIsDesktop] = useState(true);
-  useEffect(() => {
-    const mq = window.matchMedia("(min-width: 768px)");
-    setIsDesktop(mq.matches);
-    const onChange = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, []);
-  return isDesktop;
-}
-
-export function Datasets() {
-  const mayBringIn = useHoldsRole(INTAKE_ROLES);
-  const [q, setQ] = useState("");
-  const [klass, setKlass] = useState("");
-  const [modality, setModality] = useState("");
-  const [emptyOnly, setEmptyOnly] = useState(false);
-  const [open, setOpen] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
-  const isDesktop = useIsDesktop();
-
-  const { data, isLoading, error } = useDatasets({
-    q: q || undefined,
-    widest_class: klass || undefined,
-    modality: modality || undefined,
-    has_versions: emptyOnly ? false : undefined,
-    limit: PAGE_SIZE,
-    offset: (page - 1) * PAGE_SIZE,
-  });
-
-  // One question for every dataset on screen, so the counts and the version
-  // marks come from the same answer.
-  const preview = useAccessPreview({
-    datasetIds: (data?.datasets ?? [])
-      .filter((d) => d.version_count > 0)
-      .map((d) => d.id),
-  });
-
-  const filtered = Boolean(q || klass || modality || emptyOnly);
-
+/** The versions of one dataset: each one's class (as sealed and as it is now), what it holds, and whether the person can read it. */
+function Versions({ datasetId, preview, previewFailed }: { datasetId: string; preview: AccessPreview | undefined; previewFailed: boolean }) {
+  const { data, isLoading, error } = useDatasetVersions(datasetId);
+  if (isLoading) return <div className="ds-note">Loading versions</div>;
+  if (error) return <div className="ds-note" role="alert">The versions could not be loaded.</div>;
+  if (!data?.length) return <div className="ds-note">No versions in this dataset.</div>;
   return (
-    <Section
-      level="page"
-      title="Datasets"
-      description="The access level shown is the widest any version has reached, because that is what determines who could have seen it."
-      actions={
-        mayBringIn ? (
-          <Link
-            to="/datasets/register"
-            data-testid="datasets-register-link"
-            className="rounded bg-indigo-500 hover:bg-indigo-800 px-3 py-1.5 text-sm font-medium text-white"
-          >
-            Bring a dataset in
-          </Link>
-        ) : undefined
-      }
-    >
-      <div className="mb-4 flex flex-wrap items-end gap-3 rounded border border-slate-200 bg-white p-3">
-        <label className="flex flex-col gap-1 text-xs text-slate-500">
-          Search by name
-          <input
-            data-testid="dataset-search"
-            value={q}
-            onChange={(e) => {
-              setQ(e.target.value);
-              setPage(1);
-            }}
-            placeholder="encounters"
-            className="w-56 rounded border border-slate-300 px-2 py-1 text-sm text-slate-900"
-          />
-        </label>
-
-        <label className="flex flex-col gap-1 text-xs text-slate-500">
-          Access level
-          <select
-            data-testid="dataset-class"
-            value={klass}
-            onChange={(e) => {
-              setKlass(e.target.value);
-              setPage(1);
-            }}
-            className="rounded border border-slate-300 px-2 py-1 text-sm text-slate-900"
-          >
-            <option value="">Any</option>
-            {CLASS_ORDER.map((c) => (
-              <option key={c} value={c}>
-                {CLASS_LABEL[c]}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="flex flex-col gap-1 text-xs text-slate-500">
-          Kind of data
-          <select
-            data-testid="dataset-modality"
-            value={modality}
-            onChange={(e) => {
-              setModality(e.target.value);
-              setPage(1);
-            }}
-            className="rounded border border-slate-300 px-2 py-1 text-sm text-slate-900"
-          >
-            <option value="">Any</option>
-            {MODALITIES.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="flex items-center gap-2 pb-1 text-sm text-slate-700">
-          <input
-            type="checkbox"
-            data-testid="dataset-empty-only"
-            checked={emptyOnly}
-            onChange={(e) => {
-              setEmptyOnly(e.target.checked);
-              setPage(1);
-            }}
-          />
-          Registered but still empty
-        </label>
-
-        {filtered && (
-          <button
-            type="button"
-            onClick={() => {
-              setQ("");
-              setKlass("");
-              setModality("");
-              setEmptyOnly(false);
-              setPage(1);
-            }}
-            className="pb-1 text-sm text-sky-700 underline"
-          >
-            Clear
-          </button>
-        )}
-      </div>
-
-      {isLoading ? (
-        <Loading what="datasets" />
-      ) : error ? (
-        <Failure error={error} what="datasets" />
-      ) : !data?.datasets.length ? (
-        <Empty
-          what="datasets"
-          hint={
-            filtered
-              ? "Nothing matches those filters."
-              : "Nothing has been brought into the platform yet."
-          }
-        />
-      ) : (
-        <>
-          <p data-testid="dataset-count" className="mb-2 text-sm text-slate-500">
-            {/*
-              Says what is hidden, still, even with real pages: "15 of 283
-              matching" tells you there is more before you ever reach the
-              page controls at the bottom.
-            */}
-            Showing {data.shown} of {data.total}
-            {filtered ? " matching" : ""}.
-          </p>
-
-          {/*
-            A table with five data columns plus an action does not fit a
-            phone screen -- confirmed live, even with `overflow-x-auto` the
-            first column alone (name, plus the provenance line under it)
-            used the full width before a horizontal scroll could reach
-            anything else, and scrolling sideways loses the row's own name
-            off the left edge regardless. Below `md`, the same rows render
-            as stacked label/value cards instead. `isDesktop` picks which
-            one actually mounts (see its own comment for why this can't be
-            a plain CSS show/hide of both).
-          */}
-          {isDesktop ? (
-          <div className="overflow-x-auto rounded border border-slate-200 bg-white">
-            <table className="w-full text-sm">
-              <thead className="whitespace-nowrap bg-slate-50 text-left text-xs uppercase text-slate-500">
-                <tr>
-                  <th className="px-4 py-2">Dataset</th>
-                  <th className="px-3">Kind</th>
-                  <th className="px-3">Versions</th>
-                  <th className="px-3">You can read</th>
-                  <th className="px-3">Most widely released</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {data.datasets.map((d) => (
-                  <Fragment key={d.id}>
-                    <tr data-dataset={d.name} className="border-t border-slate-100 transition-colors hover:bg-slate-50">
-                      <td className="px-4 py-2 font-medium">
-                        {d.name}
-                        <Provenance d={d} />
-                        <TableMarker d={d} />
-                      </td>
-                      <td className="whitespace-nowrap px-3 text-slate-600">
-                        {d.modality?.length ? (
-                          d.modality.join(", ")
-                        ) : (
-                          <span className="text-xs text-slate-400">not recorded</span>
-                        )}
-                      </td>
-                      <td className="whitespace-nowrap px-3 tabular-nums">{d.version_count}</td>
-                      <td data-testid="dataset-readable" className="whitespace-nowrap px-3 tabular-nums">
-                        {d.version_count === 0
-                          ? ""
-                          : preview.error
-                            ? "Couldn't check"
-                            : preview.data?.datasets[d.id]
-                              ? `${preview.data.datasets[d.id].readable} of ${preview.data.datasets[d.id].total}`
-                              : ""}
-                      </td>
-                      <td className="whitespace-nowrap px-3">
-                        {d.widest_class ? (
-                          <ClassBadge value={d.widest_class} />
-                        ) : (
-                          // "none" read like a failure. It is an empty shelf:
-                          // somebody registered this and never put anything in
-                          // it, which is a real state worth naming.
-                          <span className="text-xs text-slate-500">
-                            registered, nothing in it yet
-                          </span>
-                        )}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-2 text-right">
-                        {d.version_count > 0 ? (
-                          <button
-                            type="button"
-                            onClick={() => setOpen(open === d.id ? null : d.id)}
-                            className="text-sky-700 underline"
-                          >
-                            {open === d.id ? "Hide versions" : "Show versions"}
-                          </button>
-                        ) : (
-                          <Link to={`/datasets/${d.id}/ingest`} className="text-sky-700 underline">
-                            Bring data in
-                          </Link>
-                        )}
-                      </td>
-                    </tr>
-                    {open === d.id && (
-                      <tr className="bg-slate-50">
-                        <td colSpan={6} className="px-4 py-3">
-                          <Versions
-                            datasetId={d.id}
-                            preview={preview.data}
-                            previewFailed={Boolean(preview.error)}
-                          />
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          ) : (
-          <ul className="space-y-3">
-            {data.datasets.map((d) => (
-              <li
-                key={d.id}
-                data-dataset={d.name}
-                className="rounded border border-slate-200 bg-white p-4 text-sm"
-              >
-                <div className="font-medium">
-                  {d.name}
-                  <Provenance d={d} />
-                  <TableMarker d={d} />
-                </div>
-                <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
-                  <dt className="text-slate-500">Kind</dt>
-                  <dd className="text-right text-slate-700">
-                    {d.modality?.length ? (
-                      d.modality.join(", ")
-                    ) : (
-                      <span className="text-slate-400">not recorded</span>
-                    )}
-                  </dd>
-                  <dt className="text-slate-500">Versions</dt>
-                  <dd className="text-right tabular-nums text-slate-700">
-                    {d.version_count}
-                  </dd>
-                  <dt className="text-slate-500">You can read</dt>
-                  <dd data-testid="dataset-readable" className="text-right tabular-nums text-slate-700">
-                    {d.version_count === 0
-                      ? "—"
-                      : preview.error
-                        ? "Couldn't check"
-                        : preview.data?.datasets[d.id]
-                          ? `${preview.data.datasets[d.id].readable} of ${preview.data.datasets[d.id].total}`
-                          : "—"}
-                  </dd>
-                  <dt className="text-slate-500">Most widely released</dt>
-                  <dd className="text-right">
-                    {d.widest_class ? (
-                      <ClassBadge value={d.widest_class} />
-                    ) : (
-                      <span className="text-xs text-slate-500">
-                        registered, nothing in it yet
-                      </span>
-                    )}
-                  </dd>
-                </dl>
-                <div className="mt-3 border-t border-slate-100 pt-2">
-                  {d.version_count > 0 ? (
-                    <button
-                      type="button"
-                      onClick={() => setOpen(open === d.id ? null : d.id)}
-                      className="text-sky-700 underline"
-                    >
-                      {open === d.id ? "Hide versions" : "Show versions"}
-                    </button>
-                  ) : (
-                    <Link to={`/datasets/${d.id}/ingest`} className="text-sky-700 underline">
-                      Bring data in
-                    </Link>
-                  )}
-                </div>
-                {open === d.id && (
-                  <div className="mt-3 border-t border-slate-100 pt-3">
-                    <Versions
-                      datasetId={d.id}
-                      preview={preview.data}
-                      previewFailed={Boolean(preview.error)}
-                    />
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
-          )}
-
-          <Pagination
-            page={page}
-            pageSize={PAGE_SIZE}
-            total={data.total}
-            onPageChange={setPage}
-          />
-        </>
-      )}
-    </Section>
+    <table className="ds-vtable" data-testid="ds-versions">
+      <thead>
+        <tr>
+          <th>Version</th>
+          <th>Access level</th>
+          <th>Holds</th>
+          <th>Your access</th>
+          <th />
+        </tr>
+      </thead>
+      <tbody>
+        {data.map((v) => (
+          <tr key={v.dataset_version_id}>
+            <td>v{v.version}</td>
+            <td>
+              <ClassPair sealed={v.sealed_class} current={v.current_class} />
+            </td>
+            <td data-testid="version-holds-count">
+              {(v.record_count ?? 0).toLocaleString()} {v.holds_rows ? ((v.record_count ?? 0) === 1 ? "row" : "rows") : (v.record_count ?? 0) === 1 ? "file" : "files"}
+            </td>
+            <td>
+              <AccessText access={preview?.versions[v.dataset_version_id]} failed={previewFailed} />
+            </td>
+            <td style={{ textAlign: "right" }}>
+              <Link to={`/versions/${v.dataset_version_id}`} className="ds-link">
+                {preview?.versions[v.dataset_version_id]?.mark === "removed" ? "Details" : "Open"}
+              </Link>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }

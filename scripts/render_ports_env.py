@@ -7,7 +7,7 @@ and the same fix shape:
 1. docker-compose.yml's own ${VAR} substitution. Compose has no way to read
    a JSON file for this -- it only ever reads the shell environment or a
    project-root .env. So this writes every port into a clearly-delimited
-   block in .env, leaving the rest of your .env (PG_PASSWORD, MUNITAS_DATA,
+   block in .env, leaving the rest of your .env (MUNITAS_PG_PASSWORD, MUNITAS_DATA,
    secrets) exactly as it was.
 2. infra/kratos/kratos.yml. Ory Kratos reads this file directly and has no
    ${VAR} expansion of its own, so infra/kratos/kratos.yml.template holds
@@ -50,7 +50,7 @@ END = "# END PORTS"
 def render_env(ports: dict[str, int]) -> None:
     block_lines = [BEGIN]
     for name, port in ports.items():
-        block_lines.append(f"PORT_{name.upper()}={port}")
+        block_lines.append(f"MUNITAS_PORT_{name.upper()}={port}")
     block_lines.append(END)
     block = "\n".join(block_lines)
 
