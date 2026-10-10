@@ -11,7 +11,7 @@ dependencies without ever giving code that is about to hold a real dataset
 credential a route off the machine.
 
 No credential of this platform's own is ever handed to either container:
-not `PG_DSN`, not an S3 admin key, nothing from this module's own
+not `MUNITAS_PG_DSN`, not an S3 admin key, nothing from this module's own
 `config.py`. Everything the run container can do is limited to the same
 `POST /credentials` request any other workload identity can make
 (`agent/tools.py`'s pattern, proven against arbitrary out-of-process code

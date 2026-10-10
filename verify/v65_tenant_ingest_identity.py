@@ -128,11 +128,11 @@ def main() -> int:
     with db() as conn:
         conn.execute("update tenant set purpose = 'retired', retired_at = now(), retiring_until = now(), "
                      "closing_until = now() + interval '1 day' where id = %s", (retired,))
-    import psycopg.errors
+    import pgdb
     try:
         grants.identity_for_tenant_ingest(retired)
         check("minting for a retired tenant is refused", False, "it succeeded")
-    except psycopg.errors.ReadOnlySqlTransaction as exc:
+    except pgdb.errors.ReadOnlySqlTransaction as exc:
         # The trigger raises with errcode='read_only_sql_transaction', which
         # is what this specific exception class corresponds to; a bare
         # `except Exception` would also catch an unrelated bug and misreport

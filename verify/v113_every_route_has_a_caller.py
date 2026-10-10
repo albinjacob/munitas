@@ -31,9 +31,12 @@ OPEN_ON_PURPOSE = {
     ("GET", "/legal-exports/download/{token}"): "a capability URL: the token in the path is the credential, it works a few times and expires",
     ("POST", "/iceberg/v1/oauth/tokens"): "answers every caller with the same refusal and reads and writes nothing",
     ("GET", "/policy/roles"): "reference material: what each role is and may do, readable before signing in (the console's roles page, U16)",
+    ("POST", "/notebook/v1/sign-in"): "a notebook asking to sign in has no session yet; it is shown a code and nobody is identified, and it is limited by address (U167)",
+    ("POST", "/notebook/v1/sign-in/token"): "the notebook polls with the device code only it holds; answers pending, denied or the pass (U167)",
+    ("POST", "/notebook/v1/sign-in/refresh"): "the notebook renews with the renewal token only it holds; Hydra checks it and ends the sign-in on reuse (U167)",
 }
 AUTH_DEPENDENCIES = {"current_session", "current_session_while_closing", "organisation_scope", "person_or_worker", "worker_only",
-                     "catalog_principal", "_claim", "_worker", "_step_pass", "_handle"}
+                     "catalog_principal", "_claim", "_worker", "_step_pass", "_handle", "_notebook"}
 
 
 def dependencies_of(dependant) -> set[str]:

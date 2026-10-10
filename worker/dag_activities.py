@@ -18,7 +18,7 @@ from pathlib import Path
 import httpx
 from temporalio import activity
 
-from . import config, recording_open
+from . import config, locked_file_open
 from .dag_sandbox import run_dag_step
 from .sandbox_run import SandboxBuildError, build_deps, extract_code
 
@@ -98,9 +98,9 @@ def _run_script_step(params: dict) -> dict:
             # The platform makes the pass only for a step its version declares, whose version is approved, in a run that is still going. The
             # step then reads its recordings from the platform itself, through the gateway: nothing is fetched or written on this machine.
             try:
-                step_pass = recording_open.step_pass(principal=f"{spec['tenant']}-pipeline", tenant_id=spec["tenant"],
+                step_pass = locked_file_open.step_pass(principal=f"{spec['tenant']}-pipeline", tenant_id=spec["tenant"],
                                                      task_credential=spec["task_credential"], step=spec["step"])
-            except (recording_open.ControlPlaneError, httpx.HTTPError) as exc:
+            except (locked_file_open.ControlPlaneError, httpx.HTTPError) as exc:
                 return {"status": "failed", "reason": str(exc), "output": None, "exit_code": None, "timed_out": False}
 
         result = run_dag_step(
@@ -112,9 +112,9 @@ def _run_script_step(params: dict) -> dict:
         # The container has exited. The platform seals what the step wrote as one version under review if it succeeded, and throws it all away if
         # it did not. Asked in both cases, so a step that failed leaves nothing behind.
         try:
-            finished = recording_open.finish_step(principal=f"{spec['tenant']}-pipeline", tenant_id=spec["tenant"], task_credential=spec["task_credential"],
+            finished = locked_file_open.finish_step(principal=f"{spec['tenant']}-pipeline", tenant_id=spec["tenant"], task_credential=spec["task_credential"],
                                                   step=spec["step"], succeeded=result.get("status") == "succeeded")
-        except (recording_open.ControlPlaneError, httpx.HTTPError) as exc:
+        except (locked_file_open.ControlPlaneError, httpx.HTTPError) as exc:
             return {**result, "status": "failed", "reason": f"what the step wrote could not be sealed: {exc}", "output": None}
         if finished["status"] == "refused":
             return {**result, "status": "failed", "reason": finished["reason"], "output": None}

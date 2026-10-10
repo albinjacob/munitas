@@ -80,6 +80,11 @@ def current_session_while_closing(request: Request) -> dict:
 
 
 def _resolve_session(request: Request, refuse_closing: bool) -> dict:
+    # A notebook's pass (a token from the notebook sign-in) is not a console session. It is checked by its own rules, and reaches only the short list of routes
+    # in notebook_sign_in.ALLOWED: this is the one place every acting route passes through, so that list is enforced here and nowhere else.
+    from . import notebook_sign_in
+    if notebook_sign_in.is_pass(request):
+        return notebook_sign_in.resolve_pass(request, refuse_closing)
     forward = {}
     if cookie := request.headers.get("cookie"):
         forward["Cookie"] = cookie
@@ -286,6 +291,8 @@ def organisation_scope(
             raise HTTPException(401, {"reasons": ["a custom step's pass is for the step routes and cannot be used here"]})
         if claim.task_kind == "person_read":
             raise HTTPException(401, {"reasons": ["the handle to an opened file is for the stream route and cannot be used here"]})
+        if claim.task_kind in ("notebook_files", "notebook_read"):
+            raise HTTPException(401, {"reasons": ["a notebook's files token and the handle to a file it opened are for the notebook routes and the stream route, and cannot be used here"]})
         if claim.task_kind == "table_write_job":
             # A table worker holds this for hours and for one job. It names an organisation, but it is for that job's own
             # endpoints (table_jobs.py), which check it themselves, and it is not a way to read that organisation's records.

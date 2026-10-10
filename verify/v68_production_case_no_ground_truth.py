@@ -1,6 +1,6 @@
-"""U68: a real recording with no answer key, through redact-without-scoring.
+"""U68: a real file with no answer key, through redact-without-scoring.
 
-Real recordings never come with an answer key, so checking a
+Real files never come with an answer key, so checking a
 de-identification without one has to be possible. This proves that case
 is handled honestly rather than silently: the built-in 'deidentify' pipeline
 refuses such a version outright, and the operator-registered
@@ -12,11 +12,11 @@ Runs on the host, matching v66's own reasoning: it needs a live worker on
 this machine for the real transcribe/detect/handoff/redact activities (not
 sandboxed script steps this time, but the same host requirement -- GPU
 models only worker.main loads). Several minutes; real ASR and detection
-run against a ~2m16s recording.
+run against a ~2m16s file.
 
     .venv\\Scripts\\python.exe verify\\v68_production_case_no_ground_truth.py
 
-Needs PG_DSN, VERIFY_KRATOS and VERIFY_API pointing at the published
+Needs MUNITAS_PG_DSN, VERIFY_KRATOS and VERIFY_API pointing at the published
 localhost ports, the same as v66, plus `python -m worker.main` running.
 """
 from __future__ import annotations
@@ -90,8 +90,8 @@ def u68a_register_template(headers: dict, dept_id: str) -> str | None:
     return r.json()["id"] if r.status_code == 201 else None
 
 
-def u68b_real_recording_no_truth(headers: dict, dept_id: str) -> tuple[str, str]:
-    heading("U68b: a real recording seals with no answer key")
+def u68b_real_file_no_truth(headers: dict, dept_id: str) -> tuple[str, str]:
+    heading("U68b: a real file seals with no answer key")
 
     r = httpx.post(f"{common.API}/datasets/register", json={
         "tenant_id": common.CANARY,
@@ -108,13 +108,13 @@ def u68b_real_recording_no_truth(headers: dict, dept_id: str) -> tuple[str, str]
         files={"file": ("oncology-consult.wav", WAV_PATH.read_bytes(), "audio/wav")},
         headers=headers, timeout=60.0,
     )
-    check("uploading the recording succeeds", r.status_code == 201, r.text[:400])
+    check("uploading the file succeeds", r.status_code == 201, r.text[:400])
     r.raise_for_status()
-    check("no truth.json was uploaded for this recording -- the whole point", True)
+    check("no truth.json was uploaded for this file -- the whole point", True)
 
     r = httpx.post(f"{common.API}/datasets/{dataset_id}/seal-audio",
                    headers=headers, timeout=30.0)
-    check("sealing as a recordings version succeeds", r.status_code == 201, r.text[:600])
+    check("sealing as a files version succeeds", r.status_code == 201, r.text[:600])
     r.raise_for_status()
     return dataset_id, r.json()["id"]
 
@@ -188,10 +188,10 @@ def u68d_dag_reaches_honest_gate(headers: dict, dataset_id: str, version_id: str
         str(step_names),
     )
 
-    # The practice run: what the method does on recordings whose contents are known, which says nothing about this batch.
+    # The practice run: what the method does on files whose contents are known, which says nothing about this batch.
     metrics = gate.get("metrics") or {}
-    check("the practice run ran on recordings with known contents", metrics.get("practice_ran") == 1 and metrics.get("practice_records", 0) >= 1, str(metrics))
-    check("its measurements are the practice run's own, and the batch has none: nothing claims a recall for this recording",
+    check("the practice run ran on files with known contents", metrics.get("practice_ran") == 1 and metrics.get("practice_records", 0) >= 1, str(metrics))
+    check("its measurements are the practice run's own, and the batch has none: nothing claims a recall for this file",
           "recall_effective" not in metrics and "leaks_total" not in metrics and "practice_recall_effective" in metrics, str(sorted(metrics)))
     reason = gate.get("recommendation_reason") or ""
     check("the reason says what the practice run found, and that it describes the method and not this batch",
@@ -214,7 +214,7 @@ def main() -> int:
     dept_id = _department_id()
 
     pipeline_version_id = u68a_register_template(headers, dept_id)
-    dataset_id, version_id = u68b_real_recording_no_truth(headers, dept_id)
+    dataset_id, version_id = u68b_real_file_no_truth(headers, dept_id)
     u68c_deidentify_refuses(headers, dataset_id, version_id)
     u68d_dag_reaches_honest_gate(headers, dataset_id, version_id, pipeline_version_id)
 

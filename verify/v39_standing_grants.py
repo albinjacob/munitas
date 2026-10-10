@@ -19,7 +19,7 @@ from __future__ import annotations
 import sys
 import uuid
 
-import psycopg
+import pgdb
 
 from common import (CUSTODIAN, ENGINEER, PG_DSN, RESEARCHER, TRAINER, api,
                     bearer_for, check, db, fixture_contract,
@@ -186,7 +186,7 @@ def main() -> int:
     raised = False
     detail = ""
     try:
-        with psycopg.connect(PG_DSN, autocommit=True) as conn:
+        with pgdb.connect(PG_DSN, autocommit=True) as conn:
             conn.execute(
                 """insert into access_lease
                      (id, tenant_id, principal, dataset_version_id, purpose,
@@ -195,7 +195,7 @@ def main() -> int:
                 (str(uuid.uuid4()), tenant, RESEARCHER, version["id"],
                  "direct insert probe", CUSTODIAN),
             )
-    except Exception as exc:  # psycopg raises its own exception hierarchy
+    except Exception as exc:  # the database layer raises its own exception hierarchy
         raised = True
         detail = str(exc)[:200]
     check("a direct SQL insert of a standing lease for a human raises",

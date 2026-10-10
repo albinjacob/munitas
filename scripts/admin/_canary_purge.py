@@ -31,8 +31,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import psycopg
-from psycopg.rows import dict_row
+import pgdb
+from pgdb import dict_row
 
 # G1. The one tenant this can ever touch. Not read from an argument, a file or the environment.
 TENANT = "canary"
@@ -40,12 +40,22 @@ PURPOSE = "canary"
 BUCKET = "munitas-canary"
 PREFIX_ROOT = f"{TENANT}/"
 
-PG_DSN = os.environ.get("PG_DSN", "postgresql://munitas:munitas@localhost:5432/platform")
-S3_ENDPOINT = os.environ.get("S3_ENDPOINT", "http://localhost:8333")
-ADMIN_KEY = os.environ.get("S3_ADMIN_KEY", "munitas-admin")
-ADMIN_SECRET = os.environ.get("S3_ADMIN_SECRET", "munitas-admin-secret")
+PG_DSN = os.environ.get("MUNITAS_PG_DSN", "postgresql://munitas:munitas@localhost:5432/platform")
+S3_ENDPOINT = os.environ.get("MUNITAS_S3_ENDPOINT", "http://localhost:8333")
+ADMIN_KEY = os.environ.get("MUNITAS_S3_ADMIN_KEY", "munitas-admin")
+ADMIN_SECRET = os.environ.get("MUNITAS_S3_ADMIN_SECRET", "munitas-admin-secret")
 
 PROTECTED_RULES = [("dataset_version", "dataset_version_no_update"), ("dataset_version", "dataset_version_no_delete")]
+
+# Every table that points at a dataset, a version or a run, which a purge must therefore delete from first. A table added to the schema that
+# points at one of these and is not here makes the purge stop ("stuck, still referenced"), so verify/v119 compares this set with the schema's own
+# foreign keys and fails the day a new one is missing.
+COVERED_TABLES = frozenset({
+    "access_lease", "action_run", "agent_run", "catalog_key", "class_transition", "dataset_source", "dataset_version", "derivation",
+    "development_data_declaration", "development_output", "development_sample", "file_lease", "file_part", "file_person", "file_upload", "gate_decision",
+    "group_size_report", "huggingface_fetch_job", "iceberg_projection_note", "iceberg_table_ref", "lease_request", "locked_column_lease",
+    "pipeline_run", "pipeline_step_run", "record_read_log", "step_file_opened", "step_output", "step_output_part", "storage_identity",
+    "storage_reclamation", "table_job", "table_job_part", "task_read_grant", "access_decision", "agent_run_attempt"})
 
 # The tables a purge touches, for the comparison in G7. Every one of them is counted per tenant before and after.
 WATCHED = ("dataset", "dataset_version", "action_run", "access_lease", "lease_request", "agent_run", "pipeline_run",
@@ -124,8 +134,8 @@ class Plan:
         return [str(v["id"]) for v in self.versions]
 
 
-def connect() -> psycopg.Connection:
-    return psycopg.connect(PG_DSN, row_factory=dict_row)
+def connect() -> pgdb.Connection:
+    return pgdb.connect(PG_DSN, row_factory=dict_row)
 
 
 def s3():
@@ -286,7 +296,7 @@ def run_passes(conn, steps: list[tuple[str, str, list[str]]]) -> dict[str, int]:
                 if cur is not None and cur.rowcount:
                     deleted[table] = deleted.get(table, 0) + cur.rowcount
                 progressed = True
-            except psycopg.errors.ForeignKeyViolation as exc:
+            except pgdb.errors.ForeignKeyViolation as exc:
                 still.append((table, column, values))
                 reasons[f"{table}.{column}"] = f"{exc.diag.constraint_name}: {exc.diag.message_detail}"
         if not progressed and still:
@@ -307,7 +317,7 @@ def run_passes(conn, steps: list[tuple[str, str, list[str]]]) -> dict[str, int]:
                         if row[f"n{i}"]:
                             deleted[table] = deleted.get(table, 0) + row[f"n{i}"]
                 return deleted
-            except psycopg.errors.ForeignKeyViolation as exc:
+            except pgdb.errors.ForeignKeyViolation as exc:
                 raise RuntimeError("stuck, still referenced from outside the set being deleted, even together: " + f"{exc.diag.constraint_name}: {exc.diag.message_detail}. "
                                    "One table at a time, it said: " + "; ".join(f"{k}: {v}" for k, v in reasons.items())) from exc
         remaining = still
@@ -336,6 +346,10 @@ def purge(conn, plan: Plan, client=None) -> tuple[dict[str, int], list[str]]:
     pipeline_runs = ids("select id from pipeline_run where source_version_id = any(%s)")
     agent_runs = ids("select id from agent_run where dataset_version_id = any(%s)")
     fetch_jobs = [str(r["id"]) for r in conn.execute("select id from huggingface_fetch_job where dataset_id = any(%s)", (dataset_ids,)).fetchall()]
+    step_outputs = [str(r["id"]) for r in conn.execute("select id from step_output where version_id = any(%s) or pipeline_run_id = any(%s)", (version_ids, pipeline_runs)).fetchall()]
+    uploads = [str(r["id"]) for r in conn.execute("select id from file_upload where dataset_id = any(%s)", (dataset_ids,)).fetchall()]
+    table_jobs = [str(r["id"]) for r in conn.execute("select id from table_job where dataset_id = any(%s)", (dataset_ids,)).fetchall()]
+    samples = [str(r["id"]) for r in conn.execute("select id from development_sample where sample_version_id = any(%s) or source_version_id = any(%s)", (version_ids, version_ids)).fetchall()]
 
     try:
         for table, rule in PROTECTED_RULES:
@@ -349,7 +363,10 @@ def purge(conn, plan: Plan, client=None) -> tuple[dict[str, int], list[str]]:
                  ("storage_identity", "agent_run_id", agent_runs), ("storage_identity", "lease_id", leases),
                  ("storage_identity", "huggingface_fetch_job_id", fetch_jobs),
                  ("catalog_key", "lease_id", leases), ("agent_run_attempt", "run_id", agent_runs),
-                 ("pipeline_step_run", "pipeline_run_id", pipeline_runs)]
+                 ("pipeline_step_run", "pipeline_run_id", pipeline_runs),
+                 ("step_output_part", "output_id", step_outputs), ("file_part", "upload_id", uploads), ("table_job_part", "job_id", table_jobs),
+                 ("step_file_opened", "pipeline_run_id", pipeline_runs), ("development_output", "sample_id", samples),
+                 ("development_output", "version_id", version_ids)]
         for k, v in run_passes(conn, first).items():
             deleted[k] = deleted.get(k, 0) + v
 
@@ -361,6 +378,13 @@ def purge(conn, plan: Plan, client=None) -> tuple[dict[str, int], list[str]]:
                       ("access_decision", "dataset_version_id", version_ids), ("derivation", "output_version_id", version_ids),
                       ("derivation", "dataset_id", dataset_ids), ("table_job", "dataset_id", dataset_ids),
                       ("dataset_source", "dataset_id", dataset_ids), ("huggingface_fetch_job", "dataset_id", dataset_ids),
+                      ("step_output", "pipeline_run_id", pipeline_runs), ("step_output", "version_id", version_ids),
+                      ("development_sample", "sample_version_id", version_ids), ("development_sample", "source_version_id", version_ids),
+                      ("development_data_declaration", "version_id", version_ids), ("file_person", "dataset_version_id", version_ids),
+                      ("file_upload", "dataset_id", dataset_ids), ("group_size_report", "dataset_version_id", version_ids),
+                      ("iceberg_projection_note", "dataset_version_id", version_ids), ("iceberg_table_ref", "dataset_version_id", version_ids),
+                      ("iceberg_table_ref", "dataset_id", dataset_ids), ("locked_column_lease", "dataset_version_id", version_ids),
+                      ("record_read_log", "version_id", version_ids), ("file_lease", "dataset_version_id", version_ids),
                       ("dataset_version", "id", version_ids)]
         for k, v in run_passes(conn, by_version).items():
             deleted[k] = deleted.get(k, 0) + v

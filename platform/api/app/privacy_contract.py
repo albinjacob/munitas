@@ -10,6 +10,8 @@ property, so the values are checked here: a misspelt treatment is the kind of mi
 
 from __future__ import annotations
 
+import re
+
 STANDARD_VERSION = "v3.2.0"
 VENDOR = "munitas"
 
@@ -31,7 +33,8 @@ def _profile(props: object) -> dict:
 
 
 def columns(doc: dict) -> list[dict]:
-    """Each column as {name, logicalType, classification, treatment, primaryKey, personIdentifier, reason, approvedBy}."""
+    """Each column as {name, logicalType, physicalType, options, classification, treatment, primaryKey, keyPosition, required, personIdentifier,
+    reason, approvedBy}. `options` is the standard's logicalTypeOptions, which says how a date or time is written and whether it has a time zone."""
     found = []
     objects = doc.get("schema") if isinstance(doc.get("schema"), list) else []
     for obj in objects[:1]:
@@ -41,11 +44,53 @@ def columns(doc: dict) -> list[dict]:
             p = _profile(prop.get("customProperties"))
             found.append({
                 "name": prop.get("name"), "logicalType": prop.get("logicalType") or "string",
+                "physicalType": prop.get("physicalType") or "", "options": prop.get("logicalTypeOptions") or {},
                 "classification": prop.get("classification"), "treatment": p.get("treatment"),
-                "primaryKey": bool(prop.get("primaryKey")), "personIdentifier": p.get("personIdentifier") is True,
+                "primaryKey": bool(prop.get("primaryKey")), "keyPosition": prop.get("primaryKeyPosition"),
+                "required": prop.get("required") is True, "personIdentifier": p.get("personIdentifier") is True,
                 "reason": p.get("treatmentReason"), "approvedBy": p.get("treatmentApprovedBy"),
             })
     return found
+
+
+def key_columns(doc: dict) -> list[str]:
+    """The columns that make up the primary key, in key order: by the position the contract gives each, else in the order they are written."""
+    keys = [c for c in columns(doc) if c["primaryKey"]]
+    return [c["name"] for c in sorted(keys, key=lambda c: (c["keyPosition"] if isinstance(c["keyPosition"], int) else 10 ** 6))]
+
+
+_DECIMAL = re.compile(r"decimal\(\s*(\d+)\s*,\s*(\d+)\s*\)", re.I)
+
+
+def table_field(col: dict) -> dict:
+    """A column as the table writer's field: its kind and what the kind needs (a decimal's precision and scale, whether a timestamp has a zone).
+
+    A `number` is a float unless the contract gives a physical type of decimal(precision, scale), which is what money should be.
+    """
+    logical, field = col["logicalType"], {"name": col["name"]}
+    if col["required"] or col["primaryKey"]:
+        field["required"] = True
+    if logical == "integer":
+        field["type"] = "int"
+    elif logical == "number":
+        found = _DECIMAL.fullmatch(col["physicalType"])
+        field["type"] = "decimal" if found else "float"
+        if found:
+            field["precision"], field["scale"] = int(found.group(1)), int(found.group(2))
+    elif logical == "boolean":
+        field["type"] = "bool"
+    elif logical == "date":
+        field["type"] = "date"
+    elif logical in ("timestamp", "datetime"):
+        field["type"] = "timestamp"
+        field["zone"] = bool(col["options"].get("timezone"))
+    elif logical == "array":
+        field["type"] = "list"
+    elif logical == "object":
+        field["type"] = "dict"
+    else:
+        field["type"] = "string"
+    return field
 
 
 def subject_rule(doc: dict) -> dict | None:
@@ -69,6 +114,11 @@ def counted_columns(doc: dict) -> list[str]:
 
 def erasable(doc: dict) -> bool:
     return _profile(doc.get("customProperties")).get("erasable", True) is not False
+
+
+def is_plain(doc: dict) -> bool:
+    """A table that is not about people: it says it cannot be erased and names nobody to find. Nothing in it is locked under a person's key."""
+    return not erasable(doc) and subject_rule(doc) is None
 
 
 def check(doc: object) -> list[str]:
@@ -113,8 +163,14 @@ def check(doc: object) -> list[str]:
         if treatment == "readable" and c["classification"] in SENSITIVE and not (c["reason"] and c["approvedBy"]):
             problems.append(f"column {name} is classified {c['classification']} and is left readable, which needs a recorded reason and the person who approved it")
     keys = [c["name"] for c in cols if c["primaryKey"]]
-    if len(keys) != 1:
+    if not is_plain(doc) and len(keys) != 1:
         problems.append("exactly one column must be the primary key, because each row's id is how it is found again" + (f" (found {len(keys)})" if keys else ""))
+    for c in cols:
+        if c["logicalType"] == "number" and c["physicalType"] and c["physicalType"].lower().startswith("decimal") and not _DECIMAL.fullmatch(c["physicalType"]):
+            problems.append(f"column {c['name']}: the physical type {c['physicalType']!r} must be written like decimal(12,2)")
+        elif (c["logicalType"] == "number" and _DECIMAL.fullmatch(c["physicalType"] or "")
+              and not 0 <= int(_DECIMAL.fullmatch(c["physicalType"]).group(2)) <= int(_DECIMAL.fullmatch(c["physicalType"]).group(1)) <= 38):
+            problems.append(f"column {c['name']}: a decimal needs a precision from 1 to 38 and a scale from 0 up to it")
 
     profile = _profile(doc.get("customProperties"))
     if "erasable" in profile and not isinstance(profile["erasable"], bool):

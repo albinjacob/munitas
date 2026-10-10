@@ -1,8 +1,8 @@
 """U149: a person opens the files of a version through the platform: listed, opened, played, logged, and stopped when the reason ends.
 
 A person is never given a key or a storage address. They ask the platform, which decides from what it holds why they may open a version's files
-(a sample drawn for them, recordings declared synthetic, what they made from either), unlocks a locked file with its patient's key inside the
-platform, and sends the bytes. Real recordings are not opened by a role alone. Every opening is in a log, and the key log for a locked file.
+(a sample drawn for them, files declared synthetic, what they made from either), unlocks a locked file with its patient's key inside the
+platform, and sends the bytes. Real files are not opened by a role alone. Every opening is in a log, and the key log for a locked file.
 
 Checked here one item at a time, against the live platform: who may open what and why not, that what comes back is exactly what was stored before
 it was locked, that a range opens exactly as the same bytes would in a whole read, what the handle can and cannot do, that a sample that ends or a
@@ -26,8 +26,8 @@ import httpx  # noqa: E402
 
 from common import API, CANARY, api, bearer_for, check, db, fixture_tenant, heading, require_api, summary  # noqa: E402
 from v128_person_keys_erasure import CUSTODIAN, ENGINEER, RESEARCHER, good_contract, identity, register_dataset, reset_keys, rows_for  # noqa: E402
-from v137_locked_recordings import KIND, make_wav, upload_whole  # noqa: E402
-from v140_custom_steps_and_recordings import complete_out, department, finish, opening, pass_for, put_out, reasons_of, step_call, upload_version  # noqa: E402
+from v137_locked_files import KIND, make_wav, upload_whole  # noqa: E402
+from v140_custom_steps_and_files import complete_out, department, finish, opening, pass_for, put_out, reasons_of, step_call, upload_version  # noqa: E402
 from v142_development_samples import ask, decide, open_run_as  # noqa: E402
 from v145_locked_outputs import YAML_BOTH, open_locked, send  # noqa: E402
 from app import person_keys  # noqa: E402
@@ -61,7 +61,7 @@ def main() -> int:
     tag = uuid.uuid4().hex[:8]
     service = person_keys.key_service()
 
-    heading("Six recordings of four patients, one of them long enough to span several chunks")
+    heading("Six files of four patients, one of them long enough to span several chunks")
     dataset = register_dataset(ENGINEER)
     patients = [f"D-{tag}-{i}" for i in range(4)]
     plan = [("r-0001", 0, 40_000), ("r-0002", 0, 52_000), ("r-0003", 1, 61_000), ("r-0004", 2, 70_000), ("r-0005", 3, 80_000), ("r-0006", 3, 2_600_000)]
@@ -69,25 +69,25 @@ def main() -> int:
     for record, p, size in plan:
         plain[record] = make_wav(size)
         upload_whole(dataset, f"{record}.wav", plain[record], patients[p])
-    sealed = api("POST", f"/datasets/{dataset}/seal-recordings", headers=bearer_for(ENGINEER))
+    sealed = api("POST", f"/datasets/{dataset}/seal-files", headers=bearer_for(ENGINEER))
     check("they seal", sealed.status_code == 201, sealed.text[:160])
     src = sealed.json()["id"]
     with db() as conn:
-        owners = {r["record_id"]: r["person_code"] for r in conn.execute("select record_id, person_code from recording_person where dataset_version_id = %s", (src,)).fetchall()}
+        owners = {r["record_id"]: r["person_code"] for r in conn.execute("select record_id, person_code from file_person where dataset_version_id = %s", (src,)).fetchall()}
 
-    heading("Real recordings are not opened by a role alone")
+    heading("Real files are not opened by a role alone")
     before = count("select count(*) as n from record_read_log where tenant_id = %s", (CANARY,))
     listed = records(src, ENGINEER)
     body = listed.json()
     check("an engineer may list them: the platform says what is there and that they may not open them, and why",
-          listed.status_code == 200 and body["basis"] == "none" and body["may_open"] is False and "lease" in " ".join(body["reasons"]) and body["total"] == 6, listed.text[:240])
-    check("the list names no patient, and carries each recording's size and whether it is locked",
+          listed.status_code == 200 and body["basis"] == "none" and body["may_open"] is False and "has allowed it" in " ".join(body["reasons"]) and body["total"] == 6, listed.text[:240])
+    check("the list names no patient, and carries each file's size and whether it is locked",
           not any(code in listed.text for code in owners.values()) and {r["record_id"]: r["bytes"] for r in body["records"]} == {k: len(v) for k, v in plain.items()}
           and all(r["locked"] and not r["erased"] for r in body["records"]))
     check("listing writes nothing to the log, because listing is not reading", count("select count(*) as n from record_read_log where tenant_id = %s", (CANARY,)) == before)
     for who, label in ((ENGINEER, "the engineer"), (CUSTODIAN, "the owning department's approver"), (RESEARCHER, "a researcher")):
         r = open_it(src, "r-0001", who)
-        check(f"{label} is refused when opening one, with the reason", r.status_code == 403 and "only under a lease" in reasons_of(r), f"{r.status_code} {reasons_of(r)[:160]}")
+        check(f"{label} is refused when opening one, with the reason", r.status_code == 403 and "has allowed it" in reasons_of(r), f"{r.status_code} {reasons_of(r)[:160]}")
     refusals = count("select count(*) as n from access_decision where tenant_id = %s and purpose = 'open a record' and allowed = false and dataset_version_id = %s", (CANARY, src))
     check("each refusal is written down, with who and why", refusals == 3, str(refusals))
     table_dataset = register_dataset(ENGINEER)
@@ -105,7 +105,7 @@ def main() -> int:
     heading("A sample drawn for the engineer: its files open, to them")
     sample = ask(ENGINEER, src, kind="debug", records=2, days=3, named=["r-0001", "r-0006"], purpose="listen to what the step makes of these two")
     approved = decide(CUSTODIAN, sample.json()["id"], "approve")
-    check("a debug sample of the short and the long recording is approved", approved.status_code == 200, approved.text[:160])
+    check("a debug sample of the short and the long file is approved", approved.status_code == 200, approved.text[:160])
     sver = approved.json()["sample_version_id"]
     body = records(sver, ENGINEER).json()
     check("on the sample the platform says why they may open it, and lists the two", body["basis"] == "own_sample" and body["may_open"] is True
@@ -114,11 +114,11 @@ def main() -> int:
     check("the approver, who approved it, may not open somebody else's sample: it is for the person it was drawn for", r["basis"] == "none" and r["may_open"] is False)
     check("nor may a researcher", records(sver, RESEARCHER).json()["may_open"] is False)
     short = open_it(sver, "r-0001", ENGINEER)
-    check("the engineer opens the short recording and is told its size and type", short.status_code == 200 and short.json()["bytes"] == len(plain["r-0001"]) and short.json()["content_type"] == "audio/wav"
+    check("the engineer opens the short file and is told its size and type", short.status_code == 200 and short.json()["bytes"] == len(plain["r-0001"]) and short.json()["content_type"] == "audio/wav"
           and short.json()["locked"] is True, f"{short.status_code} {short.text[:160]}")
     h_short = short.json()["handle"]
     whole = stream(h_short)
-    check("streamed whole, it is exactly the recording that was uploaded, unlocked inside the platform", whole.status_code == 200 and whole.content == plain["r-0001"])
+    check("streamed whole, it is exactly the file that was uploaded, unlocked inside the platform", whole.status_code == 200 and whole.content == plain["r-0001"])
     check("with the headers a player needs, and nothing that lets a browser cache it or guess its type", whole.headers.get("accept-ranges") == "bytes" and whole.headers.get("content-type") == "audio/wav"
           and whole.headers.get("cache-control") == "no-store" and whole.headers.get("x-content-type-options") == "nosniff" and int(whole.headers.get("content-length")) == len(plain["r-0001"]))
     r = stream(h_short, "bytes=100-199")
@@ -133,13 +133,13 @@ def main() -> int:
     h_big = big["handle"]
     r = stream(h_big, "bytes=1048000-1049999")
     check("a range that crosses the boundary between two locked chunks opens exactly as the same bytes would", r.status_code == 206 and r.content == plain["r-0006"][1048000:1050000], f"{r.status_code} {len(r.content)}")
-    check("the whole long recording streams, across all its chunks, exactly", stream(h_big).content == plain["r-0006"])
+    check("the whole long file streams, across all its chunks, exactly", stream(h_big).content == plain["r-0006"])
 
     heading("What the handle can and cannot do")
     check("a handle that is not a handle is refused", stream("not-a-handle").status_code == 401)
     r = httpx.get(f"{API}/datasets/{dataset}", headers={"x-task-credential": h_short}, timeout=30.0)
     check("a handle is refused by the routes that take a run's credential, and says what it is for", r.status_code == 401 and "handle to an opened file" in r.text, f"{r.status_code} {r.text[:160]}")
-    r = httpx.get(f"{API}/step/v1/recordings", headers={"Authorization": f"Bearer {h_short}"}, timeout=30.0)
+    r = httpx.get(f"{API}/step/v1/files", headers={"Authorization": f"Bearer {h_short}"}, timeout=30.0)
     check("nor does it open the step routes", r.status_code == 401, f"{r.status_code}")
 
     heading("Everything an opening does is written down")
@@ -168,7 +168,7 @@ def main() -> int:
     approved2 = decide(CUSTODIAN, sample2.json()["id"], "approve")
     sver2 = approved2.json()["sample_version_id"]
     h_four = open_it(sver2, "r-0004", ENGINEER).json()["handle"]
-    check("a handle for a recording of the patient to be erased works before", stream(h_four, "bytes=0-9").content == plain["r-0004"][:10])
+    check("a handle for a file of the patient to be erased works before", stream(h_four, "bytes=0-9").content == plain["r-0004"][:10])
     out = person_keys.erase_person(service, CANARY, KIND, patients[2], identity(CUSTODIAN, ["data_custodian"]), "asked to be forgotten")
     check("the patient is erased", out["key_destroyed"] is True)
     r = stream(h_four, "bytes=0-9")
@@ -176,8 +176,8 @@ def main() -> int:
     r = open_it(sver2, "r-0004", ENGINEER)
     check("it cannot be opened again", r.status_code == 410, f"{r.status_code} {reasons_of(r)[:160]}")
     listed2 = {x["record_id"]: x for x in records(sver2, ENGINEER).json()["records"]}
-    check("the list says that recording is erased and the other is not", listed2["r-0004"]["erased"] is True and listed2["r-0005"]["erased"] is False)
-    check("the other patient's recording still plays", stream(open_it(sver2, "r-0005", ENGINEER).json()["handle"]).content == plain["r-0005"])
+    check("the list says that file is erased and the other is not", listed2["r-0004"]["erased"] is True and listed2["r-0005"]["erased"] is False)
+    check("the other patient's file still plays", stream(open_it(sver2, "r-0005", ENGINEER).json()["handle"]).content == plain["r-0005"])
 
     heading("What a run made from the sample is the person's to open, while the sample is in force")
     decide(CUSTODIAN, sample2.json()["id"], "end")
@@ -212,17 +212,17 @@ def main() -> int:
     decide(CUSTODIAN, sample3.json()["id"], "end")
     check("when the sample it came from ends, the engineer no longer opens it either", records(ov, ENGINEER).json()["may_open"] is False and open_it(ov, "notes.txt", ENGINEER).status_code == 403)
 
-    heading("Recordings declared synthetic are open to those who work with them")
+    heading("Files declared synthetic are open to those who work with them")
     syn_dataset = register_dataset(ENGINEER)
     syn_wav = make_wav(50_000)
     upload_whole(syn_dataset, "s-0001.wav", syn_wav, f"SYN-{tag}")
-    syn = api("POST", f"/datasets/{syn_dataset}/seal-recordings", headers=bearer_for(ENGINEER)).json()["id"]
+    syn = api("POST", f"/datasets/{syn_dataset}/seal-files", headers=bearer_for(ENGINEER)).json()["id"]
     check("before the declaration they are real as far as the platform knows, and are not opened", open_it(syn, "s-0001", ENGINEER).status_code == 403)
     api("POST", f"/dataset-versions/{syn}/declare-synthetic", json={"note": "read aloud from invented scripts"}, headers=bearer_for(CUSTODIAN))
     check("after it, the engineer opens them, and they are exactly what was uploaded", stream(open_it(syn, "s-0001", ENGINEER).json()["handle"]).content == syn_wav)
     check("so does the approver", open_it(syn, "s-0001", CUSTODIAN).status_code == 200)
     r = open_it(syn, "s-0001", RESEARCHER)
-    check("a role that is not one of those that work with recordings does not", r.status_code == 403 and "holds no role" in reasons_of(r), f"{r.status_code} {reasons_of(r)[:160]}")
+    check("a role that is not one of those that work with files does not", r.status_code == 403 and "holds no role" in reasons_of(r), f"{r.status_code} {reasons_of(r)[:160]}")
 
     reset_keys()
     return summary("v146")

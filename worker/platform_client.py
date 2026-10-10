@@ -18,7 +18,7 @@ import httpx
 
 from . import config
 from .contracts import Contract
-from .recording_open import ControlPlaneError, RangeFile, RecordingErased, open_remote  # noqa: F401  (re-exported: steps catch them from here)
+from .locked_file_open import ControlPlaneError, RangeFile, FileErased, open_remote  # noqa: F401  (re-exported: steps catch them from here)
 
 
 def _post(path: str, payload: dict) -> dict:
@@ -88,11 +88,11 @@ def s3_scoped(task_credential: str, dataset_version_id: str, tenant_id: str,
         )
 
     creds = response.json()
-    # config.S3_ENDPOINT, not creds["endpoint"]: the API answers with its own
+    # config.MUNITAS_S3_ENDPOINT, not creds["endpoint"]: the API answers with its own
     # internal view of storage (the Docker-network hostname, "seaweedfs",
     # reachable from inside the containers it runs among), and this worker
     # runs on the host, which reaches the same SeaweedFS through a published
-    # port on localhost instead -- config.S3_ENDPOINT already knows which of
+    # port on localhost instead -- config.MUNITAS_S3_ENDPOINT already knows which of
     # those it is, the same way the writer below never trusts a caller-supplied
     # endpoint either.
     return boto3.client(
@@ -384,10 +384,10 @@ def read_json(client, bucket: str, key: str) -> object:
 _locked_versions: dict[str, bool] = {}
 
 
-def recordings_are_locked(version_id: str) -> bool:
+def files_are_locked(version_id: str) -> bool:
     """Whether this version's recordings are stored locked under their patients' keys. Asked once per version and remembered for the process."""
     if version_id not in _locked_versions:
-        response = httpx.get(f"{config.API}/internal/dataset-versions/{version_id}/locked-recordings", timeout=30.0,
+        response = httpx.get(f"{config.API}/internal/dataset-versions/{version_id}/locked-files", timeout=30.0,
                              headers={"x-worker-token": config.WORKER_TOKEN}, verify=config.api_verify())
         if response.status_code >= 400:
             raise ControlPlaneError(f"asking whether {version_id} is locked returned {response.status_code}: {response.text[:300]}")
@@ -395,7 +395,7 @@ def recordings_are_locked(version_id: str) -> bool:
     return _locked_versions[version_id]
 
 
-def open_recording(reader, bucket: str, key: str, *, version_id: str, record_id: str, tenant_id: str, principal: str, task_credential: str,
+def open_file(reader, bucket: str, key: str, *, version_id: str, record_id: str, tenant_id: str, principal: str, task_credential: str,
                    purpose: str, kind: str = "audio") -> RangeFile:
     """The recording (or its answer key) as a file to read, whether the version stores it plain or locked, and never written to this machine's disk.
 
@@ -404,7 +404,7 @@ def open_recording(reader, bucket: str, key: str, *, version_id: str, record_id:
     is read. The key never leaves the platform. A patient who was erased raises RecordingErased, at the opening or at any later read.
     Use it as `with open_recording(...) as audio:`.
     """
-    if recordings_are_locked(version_id):
+    if files_are_locked(version_id):
         return open_remote(principal=principal, tenant_id=tenant_id, task_credential=task_credential, version_id=version_id, record_id=record_id,
                            purpose=purpose, kind=kind)
 
@@ -421,7 +421,7 @@ def open_recording(reader, bucket: str, key: str, *, version_id: str, record_id:
 def read_answer_key(reader, bucket: str, key: str, *, version_id: str, record_id: str, tenant_id: str, principal: str, task_credential: str,
                     purpose: str) -> object:
     """A recording's answer key as parsed JSON, whether its version stores it plain or locked. A locked one is opened by the platform, like audio."""
-    if not recordings_are_locked(version_id):
+    if not files_are_locked(version_id):
         return read_json(reader, bucket, key)
     with open_remote(principal=principal, tenant_id=tenant_id, task_credential=task_credential, version_id=version_id, record_id=record_id,
                      purpose=purpose, kind="answer_key") as source:

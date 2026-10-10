@@ -26,8 +26,8 @@ import time
 from pathlib import Path
 
 # Run from the host, the checks' helpers need to be told where the stack is. In the container these are already set.
-os.environ.setdefault("PG_DSN", "postgresql://munitas:munitas@localhost:5432/platform")
-os.environ.setdefault("S3_ENDPOINT", "http://localhost:8333")
+os.environ.setdefault("MUNITAS_PG_DSN", "postgresql://munitas:munitas@localhost:5432/platform")
+os.environ.setdefault("MUNITAS_S3_ENDPOINT", "http://localhost:8333")
 os.environ.setdefault("MUNITAS_VERIFY_KRATOS", "http://localhost:4433")
 os.environ.setdefault("MUNITAS_VERIFY_KRATOS_ADMIN", "http://localhost:4434")
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -36,7 +36,7 @@ from common import ADMIN, api, bearer_for, bucket_for, check, db, fixture_tabula
 from lifecycle_fixture import ADMIN_A, ADMIN_B, drop_org, finish_org, make_org  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
-DISTRO = "Ubuntu-20.04"
+DISTRO = os.environ.get("MUNITAS_WSL_DISTRO", "Munitas")
 SHARED = "munitas-table-worker-1"
 WAIT = 420
 

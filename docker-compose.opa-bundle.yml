@@ -1,0 +1,58 @@
+# The policy engine takes its policy from a signed package kept in a store of its own, instead of from the folder. Added to docker-compose.yml by
+# Get-ComposePrefix when MUNITAS_OPA_POLICY_SOURCE is bundle (RUNBOOK.md, "The policy engine").
+#
+# The package is built, tested, signed and put in the store by publish-policy.ps1. The engine polls for it, checks the signature and that it compiles, and
+# switches to it in one step. A package that does not load is reported and the last good one keeps answering. The engine keeps the last package it accepted, so
+# it starts with a policy even when the store is not up; before the very first package has been published it has none and every decision is refused.
+#
+# The store (policy-store) is an object store that holds policy packages and nothing else. It is on a network of its own, shared with the engine and with no other
+# service, because the store's file service answers without a sign-in. The engine reads from it with a key that may read that one bucket and do nothing else. Nothing
+# on the platform's other networks can reach it, and the tenant data store does not know it exists. A package is put in from the host, by running a command in the
+# store's container, so there is no write key anywhere.
+#
+# In a real deployment the store is the organisation's own object storage or artifact registry, reached over a private path with a read-only identity (on OCI,
+# through a Service Gateway and an IAM policy that allows read on one bucket), and only the address and the credentials in platform/policy-bundle/opa.yaml change.
+services:
+  opa:
+    command:
+      - "run"
+      - "--server"
+      - "--addr=0.0.0.0:8181"
+      - "--log-level=info"
+      - "--authentication=token"
+      - "--authorization=basic"
+      - "--config-file=/etc/opa/config.yaml"
+      - "--set-file=keys.policy_signing.key=/etc/opa/signing-public.pem"
+    # The read-only key for the store (AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, which is how the engine's request signing is given them). Made by
+    # publish-policy.ps1 the first time, in the data folder, never in the repository.
+    env_file:
+      - ${MUNITAS_DATA:?set MUNITAS_DATA in .env, see .env.example}/policy-store/opa.env
+    volumes: !override
+      - ./platform/policy-bundle/opa.yaml:/etc/opa/config.yaml:ro
+      - ./platform/policy-bundle/signing-public.pem:/etc/opa/signing-public.pem:ro
+      # The last package the engine accepted, kept here so that it starts with a policy even when the store is not reachable yet. A real deployment gives it a
+      # volume of its own.
+      - ${MUNITAS_DATA:?set MUNITAS_DATA in .env, see .env.example}/opa-bundles:/var/opa
+    networks: !override [control, policy]
+    depends_on:
+      - policy-store
+
+  policy-store:
+    image: chrislusf/seaweedfs:3.71
+    restart: unless-stopped
+    command: >
+      server -dir=/data -master.volumeSizeLimitMB=64 -master.volumePreallocate=false
+      -volume.max=3 -filer -s3 -s3.config=/etc/seaweedfs/s3.json
+      -ip=policy-store
+    volumes:
+      - ${MUNITAS_DATA:?set MUNITAS_DATA in .env, see .env.example}/policy-store/data:/data
+      # Who may do what: one identity, which may read the policy-bundles bucket. Made by publish-policy.ps1 with the key above.
+      - ${MUNITAS_DATA:?set MUNITAS_DATA in .env, see .env.example}/policy-store/s3.json:/etc/seaweedfs/s3.json:ro
+    networks: [policy]
+    deploy:
+      resources:
+        limits:
+          memory: 384m
+
+networks:
+  policy:

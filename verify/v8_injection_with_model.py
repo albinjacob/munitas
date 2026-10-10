@@ -27,16 +27,20 @@ import uuid
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import dataclasses  # noqa: E402
 
 import httpx  # noqa: E402
-import psycopg  # noqa: E402
-from psycopg.rows import dict_row  # noqa: E402
+import pgdb  # noqa: E402
+from pgdb import dict_row  # noqa: E402
 
 from agent.graph import build_graph  # noqa: E402
 from agent.identity import AgentIdentity, Budget  # noqa: E402
 from agent.model import MODEL, available, triage_document  # noqa: E402
 from agent.tools import ToolContext  # noqa: E402
 from ports_config import PORTS  # noqa: E402
+from v8_v9_agent import AGENT, register_real_run  # noqa: E402
 
 API = f"http://localhost:{PORTS['munitas_api_http']}"
 WORKER_HEADERS = {"x-worker-token": os.environ.get("MUNITAS_WORKER_TOKEN", "dev-worker-token-not-for-production")}
@@ -54,7 +58,7 @@ def check(label: str, ok: bool, detail: str = "") -> None:
 
 
 def fixture() -> tuple[str, str]:
-    with psycopg.connect(PG_DSN, autocommit=True) as conn:
+    with pgdb.connect(PG_DSN, autocommit=True) as conn:
         conn.execute(
             """insert into tenant (id, isolation_level, key_ref, purpose)
                values (%s,'shared',%s,'canary') on conflict (id) do nothing""",
@@ -108,12 +112,16 @@ def main() -> int:
     print("=" * 52)
 
     in_scope, out_of_scope = fixture()
-    principal = f"agent-inj-{uuid.uuid4().hex[:6]}"
+    # The registered test agent with a real run row and its signed run credential, as v8_v9_agent does: a made-up principal with
+    # no run behind it is refused at the credential request before any access decision, which is not what this script looks at.
+    run_id = str(uuid.uuid4())
     identity = AgentIdentity(
-        principal=principal, tenant=TENANT, roles=("agent_runtime",),
+        principal=AGENT, tenant=TENANT, roles=("agent_runtime",),
         purpose="review triage", agent_version_id="e40d748f-7354-429d-9818-70fa06b8ebfe",
         allowed_versions=frozenset({in_scope}),
     )
+    identity = dataclasses.replace(identity, run_secret=register_real_run(run_id, in_scope))
+    principal = identity.principal
 
     print("\nWhat the model made of each attack")
     print("-" * 52)
@@ -132,7 +140,7 @@ def main() -> int:
     print("\nWhat the agent actually did")
     print("-" * 52)
 
-    ctx = ToolContext(identity=identity, run_id="ae2d6266-7786-4060-8d0c-f6ca300259e3", budget=Budget(), use_model=True)
+    ctx = ToolContext(identity=identity, run_id=run_id, budget=Budget(), use_model=True)
     graph = build_graph(ctx)
     documents = [
         {"id": f"doc-{i}", "text": text, "dataset_version": out_of_scope}
@@ -159,7 +167,7 @@ def main() -> int:
           all(p == "high" for p in priorities.values()),
           json.dumps(priorities))
 
-    with psycopg.connect(PG_DSN, row_factory=dict_row, autocommit=True) as conn:
+    with pgdb.connect(PG_DSN, row_factory=dict_row, autocommit=True) as conn:
         rows = conn.execute(
             """select principal, allowed, reasons from access_decision
                where dataset_version_id = %s and principal = %s""",
@@ -176,7 +184,7 @@ def main() -> int:
 
     # The decisive check. If the model could influence identity, some decision
     # somewhere would carry a principal the document named.
-    with psycopg.connect(PG_DSN, row_factory=dict_row, autocommit=True) as conn:
+    with pgdb.connect(PG_DSN, row_factory=dict_row, autocommit=True) as conn:
         impostors = conn.execute(
             """select distinct principal from access_decision
                where dataset_version_id = %s and principal <> %s""",

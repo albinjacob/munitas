@@ -91,7 +91,7 @@ on conflict (id) do nothing;
 -- something a person can watch happen rather than only a policy test.
 -- Hartley cannot approve access to Radiology's data and Okonjo cannot approve
 -- access to Cardiology's. Oncology and Orthopaedics exist because the three
--- consultation recordings in docs/audio-samples/ are about cardiology,
+-- consultation files in docs/audio-samples/ are about cardiology,
 -- oncology and orthopaedics, and each is seeded into the department it is
 -- about (scripts/seed/seed-health-example.py).
 insert into department (id, tenant_id, name, custodian) values

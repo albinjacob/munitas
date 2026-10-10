@@ -17,7 +17,7 @@ from __future__ import annotations
 import sys
 
 import httpx
-import psycopg
+import pgdb
 
 from common import api, bearer_for, check, db, heading, require_api, summary
 from lifecycle_fixture import ADMIN_A, ADMIN_B, drop_org, hold_body, make_org, move_dates
@@ -83,7 +83,7 @@ def main() -> int:
                 conn.execute("update legal_hold set status = 'active', decided_by = placed_by, decided_at = now() "
                              "where id = %s", (hold["id"],))
             direct = "accepted"
-        except psycopg.errors.CheckViolation:
+        except pgdb.errors.CheckViolation:
             direct = "refused"
         check("and the database refuses it even when the API is bypassed", direct == "refused", direct)
         r = api("POST", f"/lifecycle/holds/{hold['id']}/decide", headers=ravi, json={"approve": False})

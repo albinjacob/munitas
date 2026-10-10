@@ -345,7 +345,7 @@ def main() -> int:
     upload_ds = register(owning, "internal_regulated", source_kind="upload")
     upload_id = upload_ds.json()["id"]
     up = api("POST", f"/datasets/{upload_id}/files",
-             files={"file": ("recording.wav", io.BytesIO(tiny_wav()), "audio/wav")})
+             files={"file": ("file.wav", io.BytesIO(tiny_wav()), "audio/wav")})
     check("the upload itself succeeds", up.status_code == 201, f"HTTP {up.status_code}")
 
     row = dataset_row(upload_id)

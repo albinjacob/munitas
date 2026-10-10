@@ -53,8 +53,8 @@ import json
 import secrets
 
 import httpx
-import psycopg
-from psycopg.rows import dict_row
+import pgdb
+from pgdb import dict_row
 
 from . import config, db, grants, legal_export, logs, seaweed
 
@@ -67,7 +67,15 @@ log = logs.get_logger("purge")
 INDIRECT_TABLES: dict[str, tuple[str, str]] = {
     "dataset_source": ("dataset_id", "dataset"),
     "class_transition": ("dataset_version_id", "dataset_version"),
-    "huggingface_fetch_job": ("dataset_id", "dataset"),
+    "huggingface_fetch_job": ("dataset_id", "dataset"),    # Found by asking the database for every table with no tenant_id column that points at one that has it (2026-10-09). A purge or a delete that
+    # does not know a table cannot remove its parent, and stops with a foreign key error before anything is changed.
+    "agent_run_attempt": ("run_id", "agent_run"),
+    "external_credential": ("directory_id", "directory"),
+    "gate_leak": ("gate_decision_id", "gate_decision"),
+    "notebook_code_attempt": ("principal", "directory"),
+    "pipeline_step_run": ("pipeline_run_id", "pipeline_run"),
+    "pipeline_version": ("pipeline_id", "pipeline"),
+    "table_job_part": ("job_id", "table_job"),            # the parts of an upload that is still open, which hold the organisation's file
 }
 
 # Never deleted with the organisation: what is left behind on purpose. The audit rows are kept for
@@ -109,7 +117,7 @@ def _delete_all(conn, tables: list[str], tenant: str) -> dict[str, int]:
                 if cur.rowcount:
                     deleted[table] = cur.rowcount
                 progressed = True
-            except psycopg.errors.ForeignKeyViolation:
+            except pgdb.errors.ForeignKeyViolation:
                 still.append(table)
         if not progressed and still:
             parts = [f'd{i} as (delete from "{t}" where {_clause(t)} returning 1)' for i, t in enumerate(still)]
@@ -221,7 +229,7 @@ def purge_tenant(tenant_id: str, purged_by: str) -> dict:
                         "files": e["file_count"], "filtered_datasets": len(e["filters"] or []), "manifest_sha256": e["manifest_sha256"],
                         "produced_at": str(e["produced_at"]) if e["produced_at"] else None} for e in exports]
 
-    with psycopg.connect(config.PG_DSN, row_factory=dict_row) as conn:
+    with pgdb.connect(config.PG_DSN, row_factory=dict_row) as conn:
         with conn.transaction():
             # Named for the rewrite rules, and local to this transaction.
             conn.execute("select set_config('munitas.purge_tenant', %s, true)", (tenant_id,))

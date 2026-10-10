@@ -79,7 +79,7 @@ def main() -> int:
         check("it names the datasets that lack a table copy, and says why",
               {(l["dataset_name"], l["version"]) for l in mine["lacking"]} == {("a-table", 2), ("a-table", 3)}
               and all(l["reason"] for l in mine["lacking"]))
-        wide = api("GET", "/housekeeping/storage", headers=bearer_for("ops-priya")).json()["table_copies"]
+        wide = api("GET", "/housekeeping/storage", headers=bearer_for("canary-admin")).json()["table_copies"]
         ours = [l for l in wide["lacking"] if l["tenant_id"] == org.id]
         check("the platform-wide view lists the same two by organisation and never by dataset name",
               len(ours) == 2 and all("dataset_name" not in l for l in ours))

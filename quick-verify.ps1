@@ -16,7 +16,7 @@
 param(
     [string[]]$Only = @(),
     [switch]$List,
-    [string]$WslDistro = "Ubuntu-20.04"
+    [string]$WslDistro = "Munitas"
 )
 
 $ErrorActionPreference = "Stop"

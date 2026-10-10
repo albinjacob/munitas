@@ -74,11 +74,11 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 # expected clock a well-behaved run runs out.
 DEFAULT_TTL_SECONDS = 6 * 3600
 
-# `step_run` is a custom pipeline step's own pass, and `step_read` the handle to one recording it opened. They are kinds of their own so that nothing
+# `step_run` is a custom pipeline step's own pass, and `step_read` the handle to one file it opened. They are kinds of their own so that nothing
 # that accepts a run's credential (a read key, a write key) accepts either: customer code holds them, and they open the step's routes and nothing else.
 # `person_read` is the handle a person is given to the one file they opened: it carries the person and the file, lasts minutes, and opens the stream route and
 # nothing else.
-TASK_KINDS = ("agent_run", "action_run", "pipeline_run", "huggingface_fetch_job", "table_write_job", "step_run", "step_read", "person_read")
+TASK_KINDS = ("agent_run", "action_run", "pipeline_run", "huggingface_fetch_job", "table_write_job", "step_run", "step_read", "person_read", "notebook_files", "notebook_read")
 
 
 class InvalidTaskCredential(Exception):

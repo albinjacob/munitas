@@ -16,10 +16,10 @@ services:
     image: pgvector/pgvector:pg16
     <<: *restart
     environment:
-      POSTGRES_USER: ${PG_USER:-munitas}
-      POSTGRES_PASSWORD: ${PG_PASSWORD:-munitas}
+      POSTGRES_USER: ${MUNITAS_PG_USER:-munitas}
+      POSTGRES_PASSWORD: ${MUNITAS_PG_PASSWORD:-munitas}
       POSTGRES_DB: platform
-      POSTGRES_MULTIPLE_DATABASES: temporal,temporal_visibility,labelstudio,mlflow,kratos
+      POSTGRES_MULTIPLE_DATABASES: temporal,temporal_visibility,labelstudio,mlflow,kratos,hydra
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./infra/postgres/init-databases.sh:/docker-entrypoint-initdb.d/00-init-databases.sh:ro
@@ -43,11 +43,11 @@ services:
     # Every published port in this file is bound to this machine only, on both loopback addresses. `localhost` resolves to the IPv4 and the
     # IPv6 one, and a port published on only one of them makes the other attempt hang for a minute before the first one is tried.
     ports:
-      - "127.0.0.1:${PORT_POSTGRES:-5432}:5432"
-      - "[::1]:${PORT_POSTGRES:-5432}:5432"
+      - "127.0.0.1:${MUNITAS_PORT_POSTGRES:-5432}:5432"
+      - "[::1]:${MUNITAS_PORT_POSTGRES:-5432}:5432"
     networks: [control, data]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-munitas} -d platform"]
+      test: ["CMD-SHELL", "pg_isready -U ${MUNITAS_PG_USER:-munitas} -d platform"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -90,8 +90,8 @@ services:
       # the storage engine's own key names, which do not explain themselves.
       - ./infra/seaweedfs/master.toml:/etc/seaweedfs/master.toml:ro
     ports:
-      - "127.0.0.1:${PORT_SEAWEEDFS_S3:-8333}:8333"       # S3
-      - "[::1]:${PORT_SEAWEEDFS_S3:-8333}:8333"       # S3
+      - "127.0.0.1:${MUNITAS_PORT_SEAWEEDFS_S3:-8333}:8333"       # S3
+      - "[::1]:${MUNITAS_PORT_SEAWEEDFS_S3:-8333}:8333"       # S3
       # The filer (8888) and the master (9333) are not published. The filer answers without any sign-in and holds the identity document
       # with every organisation's storage keys, and the master controls volumes. Only the platform's own containers reach them, on the
       # data network. To look inside storage by hand, run a command in the container (docker exec munitas-seaweedfs-1 ...).
@@ -110,8 +110,8 @@ services:
     environment:
       DB: postgres12
       DB_PORT: 5432
-      POSTGRES_USER: ${PG_USER:-munitas}
-      POSTGRES_PWD: ${PG_PASSWORD:-munitas}
+      POSTGRES_USER: ${MUNITAS_PG_USER:-munitas}
+      POSTGRES_PWD: ${MUNITAS_PG_PASSWORD:-munitas}
       POSTGRES_SEEDS: postgres
       # Listen on every network this container is attached to. Left to
       # itself the server binds to whichever one address it finds first at
@@ -124,8 +124,8 @@ services:
       # commonly quoted path, and pointing at a missing one makes the server
       # exit at startup rather than fall back to defaults.
     ports:
-      - "127.0.0.1:${PORT_TEMPORAL:-7233}:7233"
-      - "[::1]:${PORT_TEMPORAL:-7233}:7233"
+      - "127.0.0.1:${MUNITAS_PORT_TEMPORAL:-7233}:7233"
+      - "[::1]:${MUNITAS_PORT_TEMPORAL:-7233}:7233"
     networks: [control, data]
     deploy:
       resources:
@@ -138,13 +138,17 @@ services:
     depends_on: [temporal]
     environment:
       TEMPORAL_ADDRESS: temporal:7233
-      TEMPORAL_CORS_ORIGINS: http://localhost:${PORT_TEMPORAL_UI:-8080}
+      TEMPORAL_CORS_ORIGINS: http://localhost:${MUNITAS_PORT_TEMPORAL_UI:-8080}
     ports:
-      - "127.0.0.1:${PORT_TEMPORAL_UI:-8080}:8080"
-      - "[::1]:${PORT_TEMPORAL_UI:-8080}:8080"
+      - "127.0.0.1:${MUNITAS_PORT_TEMPORAL_UI:-8080}:8080"
+      - "[::1]:${MUNITAS_PORT_TEMPORAL_UI:-8080}:8080"
     networks: [control]
 
-  # Policy decisions. Bundle is mounted read-only; the API calls /v1/data.
+  # Policy decisions; the API calls /v1/data. Two ways to give it the policy, chosen by MUNITAS_OPA_POLICY_SOURCE (RUNBOOK.md, "The policy engine"):
+  #   folder (the default): it reads platform/policy and reloads when a file changes. A change that does not compile is logged and the last good policy keeps
+  #     answering. The tests (*_test.rego) are not loaded, so a broken test cannot stop it starting.
+  #   bundle: it fetches a built, tested and signed package from the policy store (docker-compose.opa-bundle.yml, which Get-ComposePrefix adds). A change
+  #     reaches it only through publish-policy.ps1, which tests and builds first.
   opa:
     image: openpolicyagent/opa:0.68.0
     <<: *restart
@@ -153,12 +157,22 @@ services:
       - "--server"
       - "--addr=0.0.0.0:8181"
       - "--log-level=info"
+      - "--authentication=token"
+      - "--authorization=basic"
+      - "--watch"
+      - "--ignore=*_test.rego"
       - "/policy"
+    # The engine answers only a caller that presents this token, and then only for decisions (platform/policy/system_authz.rego). The API holds the same value.
+    # Left as the development value, a production start refuses it (platform/api/app/config.py).
+    environment:
+      MUNITAS_OPA_TOKEN: ${MUNITAS_OPA_TOKEN:-dev-opa-token-not-for-production}
+    labels:
+      munitas.policy-source: ${MUNITAS_OPA_POLICY_SOURCE:-folder}
     volumes:
       - ./platform/policy:/policy:ro
     ports:
-      - "127.0.0.1:${PORT_OPA:-8181}:8181"
-      - "[::1]:${PORT_OPA:-8181}:8181"
+      - "127.0.0.1:${MUNITAS_PORT_OPA:-8181}:8181"
+      - "[::1]:${MUNITAS_PORT_OPA:-8181}:8181"
     networks: [control]
     deploy:
       resources:
@@ -188,17 +202,17 @@ services:
       postgres:
         condition: service_healthy
     command: >
-      sh -c "pip install --no-cache-dir psycopg2-binary boto3 >/dev/null &&
+      sh -c "pip install --no-cache-dir pg8000==1.31.5 boto3 >/dev/null &&
              mlflow server --host 0.0.0.0 --port 5000
-             --backend-store-uri postgresql://${PG_USER:-munitas}:${PG_PASSWORD:-munitas}@postgres:5432/mlflow
+             --backend-store-uri postgresql+pg8000://${MUNITAS_PG_USER:-munitas}:${MUNITAS_PG_PASSWORD:-munitas}@postgres:5432/mlflow
              --default-artifact-root s3://munitas-mlflow/"
     environment:
       MLFLOW_S3_ENDPOINT_URL: http://seaweedfs:8333
-      AWS_ACCESS_KEY_ID: ${S3_ADMIN_KEY:-munitas-admin}
-      AWS_SECRET_ACCESS_KEY: ${S3_ADMIN_SECRET:-munitas-admin-secret}
+      AWS_ACCESS_KEY_ID: ${MUNITAS_S3_ADMIN_KEY:-munitas-admin}
+      AWS_SECRET_ACCESS_KEY: ${MUNITAS_S3_ADMIN_SECRET:-munitas-admin-secret}
     ports:
-      - "127.0.0.1:${PORT_MLFLOW:-5000}:5000"
-      - "[::1]:${PORT_MLFLOW:-5000}:5000"
+      - "127.0.0.1:${MUNITAS_PORT_MLFLOW:-5000}:5000"
+      - "[::1]:${MUNITAS_PORT_MLFLOW:-5000}:5000"
     networks: [control, data]
     deploy:
       resources:
@@ -214,12 +228,12 @@ services:
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
     ports:
-      - "127.0.0.1:${PORT_JAEGER_UI:-16686}:16686"          # UI
-      - "[::1]:${PORT_JAEGER_UI:-16686}:16686"          # UI
-      - "127.0.0.1:${PORT_JAEGER_OTLP_GRPC:-4317}:4317"     # OTLP gRPC
-      - "[::1]:${PORT_JAEGER_OTLP_GRPC:-4317}:4317"     # OTLP gRPC
-      - "127.0.0.1:${PORT_JAEGER_OTLP_HTTP:-4318}:4318"     # OTLP HTTP
-      - "[::1]:${PORT_JAEGER_OTLP_HTTP:-4318}:4318"     # OTLP HTTP
+      - "127.0.0.1:${MUNITAS_PORT_JAEGER_UI:-16686}:16686"          # UI
+      - "[::1]:${MUNITAS_PORT_JAEGER_UI:-16686}:16686"          # UI
+      - "127.0.0.1:${MUNITAS_PORT_JAEGER_OTLP_GRPC:-4317}:4317"     # OTLP gRPC
+      - "[::1]:${MUNITAS_PORT_JAEGER_OTLP_GRPC:-4317}:4317"     # OTLP gRPC
+      - "127.0.0.1:${MUNITAS_PORT_JAEGER_OTLP_HTTP:-4318}:4318"     # OTLP HTTP
+      - "[::1]:${MUNITAS_PORT_JAEGER_OTLP_HTTP:-4318}:4318"     # OTLP HTTP
     networks: [control, data, agentnet]
     deploy:
       resources:
@@ -236,8 +250,8 @@ services:
       - ./infra/otel/config.yaml:/etc/otel/config.yaml:ro
     depends_on: [jaeger]
     ports:
-      - "127.0.0.1:${PORT_OTEL_COLLECTOR_HTTP:-4319}:4318"
-      - "[::1]:${PORT_OTEL_COLLECTOR_HTTP:-4319}:4318"
+      - "127.0.0.1:${MUNITAS_PORT_OTEL_COLLECTOR_HTTP:-4319}:4318"
+      - "[::1]:${MUNITAS_PORT_OTEL_COLLECTOR_HTTP:-4319}:4318"
     networks: [control, data, agentnet]
     deploy:
       resources:
@@ -256,17 +270,17 @@ services:
     environment:
       DJANGO_DB: default
       POSTGRE_NAME: labelstudio
-      POSTGRE_USER: ${PG_USER:-munitas}
-      POSTGRE_PASSWORD: ${PG_PASSWORD:-munitas}
+      POSTGRE_USER: ${MUNITAS_PG_USER:-munitas}
+      POSTGRE_PASSWORD: ${MUNITAS_PG_PASSWORD:-munitas}
       POSTGRE_HOST: postgres
       POSTGRE_PORT: 5432
       LABEL_STUDIO_DISABLE_SIGNUP_WITHOUT_LINK: "false"
-      LABEL_STUDIO_HOST: http://localhost:${PORT_LABEL_STUDIO:-8081}
+      LABEL_STUDIO_HOST: http://localhost:${MUNITAS_PORT_LABEL_STUDIO:-8081}
     volumes:
       - labelstudio:/label-studio/data
     ports:
-      - "127.0.0.1:${PORT_LABEL_STUDIO:-8081}:8080"
-      - "[::1]:${PORT_LABEL_STUDIO:-8081}:8080"
+      - "127.0.0.1:${MUNITAS_PORT_LABEL_STUDIO:-8081}:8080"
+      - "[::1]:${MUNITAS_PORT_LABEL_STUDIO:-8081}:8080"
     networks: [control, data]
     deploy:
       resources:
@@ -286,13 +300,19 @@ services:
         condition: service_started
       temporal:
         condition: service_started
+    # Everything written in .env reaches the API, so a setting is changed by writing it there (docs/public/reference/configuration.html lists them
+    # all, and .env.example shows each one). The entries under `environment:` below win over the file: they are addresses inside the Compose network
+    # and values worked out from other settings, which a line in .env must not be able to change.
+    env_file:
+      - .env
     environment:
-      PG_DSN: postgresql://${PG_USER:-munitas}:${PG_PASSWORD:-munitas}@postgres:5432/platform
+      MUNITAS_PG_DSN: postgresql://${MUNITAS_PG_USER:-munitas}:${MUNITAS_PG_PASSWORD:-munitas}@postgres:5432/platform
       MUNITAS_OPA_URL: http://opa:8181
-      S3_ENDPOINT: http://seaweedfs:8333
+      MUNITAS_OPA_TOKEN: ${MUNITAS_OPA_TOKEN:-dev-opa-token-not-for-production}
+      MUNITAS_S3_ENDPOINT: http://seaweedfs:8333
       MUNITAS_FILER_URL: http://seaweedfs:8888
       # Fixed at this container's own internal port, on purpose, never at
-      # ${PORT_MUNITAS_API_HTTP}: a verify/ script run via `docker compose
+      # ${MUNITAS_PORT_MUNITAS_API_HTTP}: a verify/ script run via `docker compose
       # exec -T munitas-api ...` is already inside this container, so it
       # always means this container's own port 8000, regardless of which
       # host port config.json publishes it under. verify/common.py's own
@@ -303,7 +323,7 @@ services:
       # know: config.json is not mounted or built into this image, so this
       # is the one place that bridges the console's real host-published
       # port into platform/api/app/config.py's CORS allow-list.
-      CONSOLE_ORIGINS: http://localhost:${PORT_CONSOLE_PREVIEW:-3000},http://localhost:${PORT_CONSOLE_DEV:-5173}
+      MUNITAS_CONSOLE_ORIGINS: http://localhost:${MUNITAS_PORT_CONSOLE_PREVIEW:-3000},http://localhost:${MUNITAS_PORT_CONSOLE_DEV:-5173}
       # Display only, and never used to reach anything: the host path
       # SeaweedFS keeps its volume files in, so the housekeeping screen
       # can say where an organisation's files actually are rather than
@@ -316,12 +336,16 @@ services:
       # platform/api/app/config.py and compiled into the permissions document.
       # The same names the host scripts and the worker read, so .env sets each
       # once. Blank falls back to the development default.
-      S3_ADMIN_KEY: ${S3_ADMIN_KEY:-}
-      S3_ADMIN_SECRET: ${S3_ADMIN_SECRET:-}
-      S3_PIPELINE_KEY: ${S3_PIPELINE_KEY:-}
-      S3_PIPELINE_SECRET: ${S3_PIPELINE_SECRET:-}
-      TEMPORAL_ADDRESS: temporal:7233
+      MUNITAS_S3_ADMIN_KEY: ${MUNITAS_S3_ADMIN_KEY:-}
+      MUNITAS_S3_ADMIN_SECRET: ${MUNITAS_S3_ADMIN_SECRET:-}
+      MUNITAS_S3_PIPELINE_KEY: ${MUNITAS_S3_PIPELINE_KEY:-}
+      MUNITAS_S3_PIPELINE_SECRET: ${MUNITAS_S3_PIPELINE_SECRET:-}
+      MUNITAS_TEMPORAL_ADDRESS: temporal:7233
       MUNITAS_KRATOS_PUBLIC_URL: http://kratos:4433
+      # Hydra signs a notebook in on behalf of a person. The admin address stays private to the stack.
+      MUNITAS_HYDRA_ADMIN_URL: http://hydra:4445
+      MUNITAS_HYDRA_PUBLIC_URL: http://hydra:4444
+      MUNITAS_NOTEBOOK_SIGN_IN_HOURS: ${MUNITAS_NOTEBOOK_SIGN_IN_HOURS:-8}
       # Only a purge uses this, to remove the sign-in accounts of the organisation it deletes.
       MUNITAS_KRATOS_ADMIN_URL: http://kratos:4434
       # Iceberg (platform/api/app/iceberg.py). Newer S3 clients, pyarrow's
@@ -334,8 +358,8 @@ services:
       AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
       # The address a person's own tool uses to reach storage; the catalog
       # puts it in the table configuration it returns. The API itself reaches
-      # storage at S3_ENDPOINT, which only exists inside this network.
-      MUNITAS_PUBLIC_S3_ENDPOINT: http://localhost:${PORT_SEAWEEDFS_S3:-8333}
+      # storage at MUNITAS_S3_ENDPOINT, which only exists inside this network.
+      MUNITAS_PUBLIC_S3_ENDPOINT: http://localhost:${MUNITAS_PORT_SEAWEEDFS_S3:-8333}
       MUNITAS_ICEBERG_PROJECTION: ${MUNITAS_ICEBERG_PROJECTION:-on}
       MUNITAS_CATALOG_KEY_SECONDS: ${MUNITAS_CATALOG_KEY_SECONDS:-3600}
       MUNITAS_ICEBERG_ROW_GROUP_ROWS: ${MUNITAS_ICEBERG_ROW_GROUP_ROWS:-0}
@@ -350,12 +374,17 @@ services:
       # API starts, and only a seal against 'r2' is refused. Defaulted to
       # empty here so Compose does not warn about unset variables on the
       # many machines that will never set them.
-      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
-      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
-      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
-      R2_API_TOKEN: ${R2_API_TOKEN:-}
-      R2_BUCKET: ${R2_BUCKET:-}
+      MUNITAS_R2_ACCOUNT_ID: ${MUNITAS_R2_ACCOUNT_ID:-}
+      MUNITAS_R2_ACCESS_KEY_ID: ${MUNITAS_R2_ACCESS_KEY_ID:-}
+      MUNITAS_R2_SECRET_ACCESS_KEY: ${MUNITAS_R2_SECRET_ACCESS_KEY:-}
+      MUNITAS_R2_API_TOKEN: ${MUNITAS_R2_API_TOKEN:-}
+      # The one file every alert is written to, a line of JSON each, with a `category` saying which part of the platform raised it
+      # (platform/api/app/alerts.py). `/logs` is the logs folder below. Empty switches the file off; alerts still reach the log.
+      MUNITAS_ALERTS_FILE: ${MUNITAS_ALERTS_FILE-/logs/alerts.jsonl}
     volumes:
+      # The logs folder inside the data folder, where the worker's logs already are, so the alerts file is on this machine and
+      # moving the data folder (MUNITAS_DATA in .env) moves it too. The API writes only its alerts here.
+      - ${MUNITAS_DATA:?set MUNITAS_DATA in .env, see .env.example}/logs:/logs
       # Verification scripts run in here so they sign S3 requests properly and
       # see the same network the platform does.
       - ./verify:/verify:ro
@@ -364,6 +393,8 @@ services:
       - ./infra/secrets:/run/secrets:ro
       # The tool a recipient uses to open a legal export, so a check can use the real one.
       - ./scripts/client:/client:ro
+      # The one reader of a file that the client library uses and custom pipeline steps use, so a check can run the real library.
+      - ./worker/step_sdk:/step-sdk:ro
       # The canary-only tidy, so a check can prove it refuses everything that is not the canary tenant.
       - ./scripts/admin:/scripts-admin:ro
       # Who the canary seed creates, so the tidy's check can read the people it must never delete.
@@ -389,10 +420,10 @@ services:
       # "Local HTTPS between the worker and the API".
       - ./infra/tls/out:/tls:ro
     ports:
-      - "127.0.0.1:${PORT_MUNITAS_API_HTTP:-8000}:8000"
-      - "[::1]:${PORT_MUNITAS_API_HTTP:-8000}:8000"
-      - "127.0.0.1:${PORT_MUNITAS_API_HTTPS:-8443}:8443"
-      - "[::1]:${PORT_MUNITAS_API_HTTPS:-8443}:8443"
+      - "127.0.0.1:${MUNITAS_PORT_MUNITAS_API_HTTP:-8000}:8000"
+      - "[::1]:${MUNITAS_PORT_MUNITAS_API_HTTP:-8000}:8000"
+      - "127.0.0.1:${MUNITAS_PORT_MUNITAS_API_HTTPS:-8443}:8443"
+      - "[::1]:${MUNITAS_PORT_MUNITAS_API_HTTPS:-8443}:8443"
     # agentnet is added here, alongside jaeger and otel-collector (below),
     # for the same reason: a sandboxed agent run's own container is attached
     # only to agentnet (internal, no gateway to the internet) and needs a
@@ -448,9 +479,9 @@ services:
     environment:
       MUNITAS_API: http://munitas-api:8000
       MUNITAS_SANDBOX_API: http://munitas-api:8000
-      TEMPORAL_ADDRESS: temporal:7233
-      MUNITAS_PG_DSN: postgresql://${PG_USER:-munitas}:${PG_PASSWORD:-munitas}@postgres:5432/platform
-      S3_ENDPOINT: http://seaweedfs:8333
+      MUNITAS_TEMPORAL_ADDRESS: temporal:7233
+      MUNITAS_PG_DSN: postgresql://${MUNITAS_PG_USER:-munitas}:${MUNITAS_PG_PASSWORD:-munitas}@postgres:5432/platform
+      MUNITAS_S3_ENDPOINT: http://seaweedfs:8333
       MUNITAS_WORK: ${MUNITAS_HOST_WORK_DIR:-}
       # Compose prefixes network names with the project name (`name:
       # munitas` at the top of this file); worker/config.py's own
@@ -489,7 +520,7 @@ services:
         condition: service_started
     environment:
       MUNITAS_API: http://munitas-api:8000
-      TEMPORAL_ADDRESS: temporal:7233
+      MUNITAS_TEMPORAL_ADDRESS: temporal:7233
       # The control plane's own comment on these two explains them: SeaweedFS stores an upload's checksum trailer in the object.
       AWS_REQUEST_CHECKSUM_CALCULATION: when_required
       AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
@@ -512,13 +543,13 @@ services:
     <<: *restart
     environment:
       MUNITAS_API: http://munitas-api:8000
-      TEMPORAL_ADDRESS: temporal:7233
+      MUNITAS_TEMPORAL_ADDRESS: temporal:7233
       # Empty unless the script names an organisation. The worker refuses to start as a dedicated worker without one,
       # so it can never quietly join the shared pool.
       AWS_REQUEST_CHECKSUM_CALCULATION: when_required
       AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
       MUNITAS_TABLE_DEDICATED: "1"
-      MUNITAS_TABLE_TENANT: ${TABLE_WORKER_TENANT:-}
+      MUNITAS_TABLE_TENANT: ${MUNITAS_TABLE_WORKER_TENANT:-}
     networks: [control, data]
     deploy:
       resources:
@@ -540,7 +571,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      DSN: postgresql://${PG_USER:-munitas}:${PG_PASSWORD:-munitas}@postgres:5432/kratos?sslmode=disable
+      DSN: postgresql://${MUNITAS_PG_USER:-munitas}:${MUNITAS_PG_PASSWORD:-munitas}@postgres:5432/kratos?sslmode=disable
     volumes:
       - ./infra/kratos:/etc/config/kratos:ro
     command: -c /etc/config/kratos/kratos.yml migrate sql -e --yes
@@ -554,7 +585,7 @@ services:
       kratos-migrate:
         condition: service_completed_successfully
     environment:
-      DSN: postgresql://${PG_USER:-munitas}:${PG_PASSWORD:-munitas}@postgres:5432/kratos?sslmode=disable
+      DSN: postgresql://${MUNITAS_PG_USER:-munitas}:${MUNITAS_PG_PASSWORD:-munitas}@postgres:5432/kratos?sslmode=disable
     volumes:
       - ./infra/kratos:/etc/config/kratos:ro
     # --dev skips the HTTPS-only cookie requirement, matching every other
@@ -564,15 +595,64 @@ services:
     # plain-HTTP internal calls.
     command: serve -c /etc/config/kratos/kratos.yml --dev
     ports:
-      - "127.0.0.1:${PORT_KRATOS_PUBLIC:-4433}:4433"   # public API: self-service login/registration flows
-      - "[::1]:${PORT_KRATOS_PUBLIC:-4433}:4433"   # public API: self-service login/registration flows
-      - "127.0.0.1:${PORT_KRATOS_ADMIN:-4434}:4434"    # admin API: dev-only, the seed script runs from the host
-      - "[::1]:${PORT_KRATOS_ADMIN:-4434}:4434"    # admin API: dev-only, the seed script runs from the host
+      - "127.0.0.1:${MUNITAS_PORT_KRATOS_PUBLIC:-4433}:4433"   # public API: self-service login/registration flows
+      - "[::1]:${MUNITAS_PORT_KRATOS_PUBLIC:-4433}:4433"   # public API: self-service login/registration flows
+      - "127.0.0.1:${MUNITAS_PORT_KRATOS_ADMIN:-4434}:4434"    # admin API: dev-only, the seed script runs from the host
+      - "[::1]:${MUNITAS_PORT_KRATOS_ADMIN:-4434}:4434"    # admin API: dev-only, the seed script runs from the host
     networks: [control, data]
     deploy:
       resources:
         limits:
           memory: 256m
+
+  # Hydra, the OAuth 2.0 server that signs a notebook in on behalf of a person (a notebook shows a code, the person approves it in the console, the notebook
+  # receives a short-lived pass). It issues, renews and revokes that pass and holds nothing about who people are: Kratos still answers who somebody is, and
+  # the platform's own login and consent steps (platform/api/app/notebook_sign_in.py and the console's notebook sign-in pages) decide what the pass may do.
+  # Its own database in the same Postgres. The admin address (4445) is reachable only from the other services on these networks and is not published.
+  hydra-migrate:
+    image: oryd/hydra:v26.2.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DSN: postgres://${MUNITAS_PG_USER:-munitas}:${MUNITAS_PG_PASSWORD:-munitas}@postgres:5432/hydra?sslmode=disable
+    command: migrate sql -e --yes
+    networks: [control, data]
+    restart: "no"
+
+  hydra:
+    image: oryd/hydra:v26.2.0
+    <<: *restart
+    depends_on:
+      hydra-migrate:
+        condition: service_completed_successfully
+    environment:
+      DSN: postgres://${MUNITAS_PG_USER:-munitas}:${MUNITAS_PG_PASSWORD:-munitas}@postgres:5432/hydra?sslmode=disable
+      # Dev-only values, the same "not for production" posture as Kratos's secrets above. A real deployment generates this and keeps it out of the repository.
+      SECRETS_SYSTEM: ${MUNITAS_HYDRA_SYSTEM_SECRET:-dev-hydra-system-secret-not-for-production}
+      # Where the person's browser is sent: the address Hydra answers on, and the console pages that take the code, sign the person in and ask for approval.
+      URLS_SELF_ISSUER: http://localhost:${MUNITAS_PORT_HYDRA_PUBLIC:-4444}
+      URLS_SELF_PUBLIC: http://localhost:${MUNITAS_PORT_HYDRA_PUBLIC:-4444}
+      URLS_LOGIN: http://localhost:${MUNITAS_PORT_CONSOLE_DEV:-5173}/notebook-sign-in/login
+      URLS_CONSENT: http://localhost:${MUNITAS_PORT_CONSOLE_DEV:-5173}/notebook-sign-in/consent
+      URLS_LOGOUT: http://localhost:${MUNITAS_PORT_CONSOLE_DEV:-5173}/
+      URLS_DEVICE_VERIFICATION: http://localhost:${MUNITAS_PORT_CONSOLE_DEV:-5173}/notebook-sign-in/code
+      URLS_DEVICE_SUCCESS: http://localhost:${MUNITAS_PORT_CONSOLE_DEV:-5173}/notebook-sign-in/done
+      # How long a notebook's pass lasts: a short access token that the notebook renews, up to the longest a notebook sign-in may last.
+      TTL_ACCESS_TOKEN: ${MUNITAS_NOTEBOOK_ACCESS_TOKEN_MINUTES:-15}m
+      TTL_REFRESH_TOKEN: ${MUNITAS_NOTEBOOK_SIGN_IN_HOURS:-8}h
+    volumes:
+      - ./infra/hydra:/etc/config/hydra:ro
+    # --dev: plain HTTP, like every other service in this stack. Not a setting to carry into a real deployment unexamined.
+    command: serve all --config /etc/config/hydra/hydra.yml --dev
+    ports:
+      - "127.0.0.1:${MUNITAS_PORT_HYDRA_PUBLIC:-4444}:4444"   # public: the person's browser is sent here to type the code; the notebook never calls it directly
+      - "[::1]:${MUNITAS_PORT_HYDRA_PUBLIC:-4444}:4444"
+    networks: [control, data]
+    deploy:
+      resources:
+        limits:
+          memory: 192m
 
 volumes:
   pgdata:

@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from ports_config import PORTS  # noqa: E402
 
 API = os.environ.get("MUNITAS_API", f"http://localhost:{PORTS['munitas_api_http']}")
-TEMPORAL = os.environ.get("TEMPORAL_ADDRESS", f"localhost:{PORTS['temporal']}")
+TEMPORAL = os.environ.get("MUNITAS_TEMPORAL_ADDRESS", f"localhost:{PORTS['temporal']}")
 
 # A self-signed certificate this worker should trust for API, beyond the
 # system trust store -- set when MUNITAS_API points at the local TLS
@@ -50,7 +50,7 @@ def api_verify() -> bool | str:
     """
     return API_CA_CERT if Path(API_CA_CERT).is_file() else True
 MLFLOW = os.environ.get("MUNITAS_MLFLOW_URL", f"http://localhost:{PORTS['mlflow']}")
-S3_ENDPOINT = os.environ.get("S3_ENDPOINT", f"http://localhost:{PORTS['seaweedfs_s3']}")
+S3_ENDPOINT = os.environ.get("MUNITAS_S3_ENDPOINT", f"http://localhost:{PORTS['seaweedfs_s3']}")
 LABEL_STUDIO = os.environ.get("MUNITAS_LABEL_STUDIO_URL", f"http://localhost:{PORTS['label_studio']}")
 
 # No BUCKET constant. The worker used to hold one and fall back to it whenever
@@ -277,16 +277,16 @@ PIPELINE_ROLE = "pipeline_action"
 
 # 8 GB of VRAM is the binding constraint, so models load and unload in sequence
 # rather than staying resident. int8_float16 keeps large-v3 to roughly 3 to 4 GB.
-WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "large-v3")
-WHISPER_COMPUTE = os.environ.get("WHISPER_COMPUTE", "int8_float16")
+WHISPER_MODEL = os.environ.get("MUNITAS_WHISPER_MODEL", "large-v3")
+WHISPER_COMPUTE = os.environ.get("MUNITAS_WHISPER_COMPUTE", "int8_float16")
 # Passed straight to transcribe_backend.load_backend(), which is the only
 # thing that reads this value -- see that module's own docstring for which
 # devices are registered today ("cuda", "cpu") and what adding another one
 # (e.g. "mps") actually requires.
-WHISPER_DEVICE = os.environ.get("WHISPER_DEVICE", "cuda")
+WHISPER_DEVICE = os.environ.get("MUNITAS_WHISPER_DEVICE", "cuda")
 
-GLINER_MODEL = os.environ.get("GLINER_MODEL", "urchade/gliner_medium-v2.1")
-SPACY_MODEL = os.environ.get("SPACY_MODEL", "en_core_web_lg")
+GLINER_MODEL = os.environ.get("MUNITAS_GLINER_MODEL", "urchade/gliner_medium-v2.1")
+SPACY_MODEL = os.environ.get("MUNITAS_SPACY_MODEL", "en_core_web_lg")
 
 # Shared secret sent to GET /agents/{id}/versions/{id}/code (agent_upload.py).
 # Must match MUNITAS_WORKER_TOKEN on the munitas-api container, set once,

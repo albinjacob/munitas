@@ -32,8 +32,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import psycopg  # noqa: E402
-from psycopg.rows import dict_row  # noqa: E402
+import pgdb  # noqa: E402
+from pgdb import dict_row  # noqa: E402
 from temporalio.client import Client  # noqa: E402
 from temporalio.service import RPCError, RPCStatusCode  # noqa: E402
 
@@ -111,7 +111,7 @@ async def main() -> int:
           "; ".join(retried) if retried else "every activity ran once")
     print(f"  activities completed: {completions}")
 
-    with psycopg.connect(PG_DSN, row_factory=dict_row, autocommit=True) as conn:
+    with pgdb.connect(PG_DSN, row_factory=dict_row, autocommit=True) as conn:
         # Only this workflow's own steps. Without the join, every pipeline run
         # the database has ever held is counted, and "exactly one per step"
         # fails as soon as a second run exists.

@@ -20,7 +20,7 @@ key would make this a three-hour test:
     $env:MUNITAS_ICEBERG_FILE_BYTES = "6000"
     (restart the API with those set, as RUNBOOK describes)
 
-    .venv\\Scripts\\python.exe -m pip install duckdb numpy "pyiceberg[pyarrow]" boto3
+    .venv\\Scripts\\python.exe -m pip install -r worker\\requirements-host-checks.txt
     .venv\\Scripts\\python.exe verify\\v93_catalog_key_expiry.py
 
 About six minutes. With any other settings every check reports a skip and says
@@ -40,9 +40,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ports_config import PORTS  # noqa: E402
 
-os.environ.setdefault("PG_DSN", f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform")
+os.environ.setdefault("MUNITAS_PG_DSN", f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform")
 os.environ.setdefault("MUNITAS_VERIFY_KRATOS", f"http://localhost:{PORTS['kratos_public']}")
-os.environ.setdefault("S3_ENDPOINT", f"http://localhost:{PORTS['seaweedfs_s3']}")
+os.environ.setdefault("MUNITAS_S3_ENDPOINT", f"http://localhost:{PORTS['seaweedfs_s3']}")
 os.environ.setdefault("AWS_REQUEST_CHECKSUM_CALCULATION", "when_required")
 os.environ.setdefault("AWS_RESPONSE_CHECKSUM_VALIDATION", "when_required")
 sys.path.insert(0, str(Path(__file__).resolve().parent))

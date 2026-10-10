@@ -43,7 +43,7 @@ import json
 import secrets
 from datetime import datetime, timedelta, timezone
 
-import psycopg.errors
+import pgdb
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, Response
 
@@ -183,7 +183,7 @@ def catalog_principal(request: Request) -> dict:
     # on being able to record that it happened.
     try:
         db.execute("update catalog_token set last_used_at = now() where id = %s", (row["id"],))
-    except psycopg.errors.ReadOnlySqlTransaction:
+    except pgdb.errors.ReadOnlySqlTransaction:
         pass
     return {**person, "purpose": row["purpose"], "token_id": str(row["id"])}
 

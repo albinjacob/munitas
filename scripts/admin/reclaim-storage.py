@@ -61,17 +61,17 @@ from pathlib import Path
 
 import boto3
 import httpx
-import psycopg
+import pgdb
 from botocore.config import Config
-from psycopg.rows import dict_row
+from pgdb import dict_row
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from ports_config import PORTS  # noqa: E402
 
 PG_DSN = os.environ.get(
-    "PG_DSN", f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform"
+    "MUNITAS_PG_DSN", f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform"
 )
-S3_ENDPOINT = os.environ.get("S3_ENDPOINT", f"http://localhost:{PORTS['seaweedfs_s3']}")
+S3_ENDPOINT = os.environ.get("MUNITAS_S3_ENDPOINT", f"http://localhost:{PORTS['seaweedfs_s3']}")
 # Deleting an object in SeaweedFS marks it, it does not shrink the volume the
 # object sits in. The space comes back when the volume is vacuumed.
 #
@@ -80,14 +80,14 @@ S3_ENDPOINT = os.environ.get("S3_ENDPOINT", f"http://localhost:{PORTS['seaweedfs
 # so a script that reported "freed 613 MB" and stopped there would have been
 # stating something the disk flatly contradicted.
 # The storage master is not published on this machine, so the vacuum is run inside the storage container, through WSL where Docker lives.
-DISTRO = os.environ.get("MUNITAS_WSL_DISTRO", "Ubuntu-20.04")
+DISTRO = os.environ.get("MUNITAS_WSL_DISTRO", "Munitas")
 STORAGE_CONTAINER = os.environ.get("MUNITAS_STORAGE_CONTAINER", "munitas-seaweedfs-1")
 
 # The control plane's own identity. Reclamation is an administrative act on
 # storage the platform owns, not a read of anybody's data, so it does not go
 # through the credential path.
-ADMIN_KEY = os.environ.get("S3_ADMIN_KEY", "munitas-admin")
-ADMIN_SECRET = os.environ.get("S3_ADMIN_SECRET", "munitas-admin-secret")
+ADMIN_KEY = os.environ.get("MUNITAS_S3_ADMIN_KEY", "munitas-admin")
+ADMIN_SECRET = os.environ.get("MUNITAS_S3_ADMIN_SECRET", "munitas-admin-secret")
 
 RECLAIMABLE = ("canary", "retired")
 
@@ -201,7 +201,7 @@ def main() -> int:
     parser.add_argument("--by", default=os.environ.get("USERNAME", "operator"))
     args = parser.parse_args()
 
-    with psycopg.connect(PG_DSN, row_factory=dict_row, autocommit=True) as conn:
+    with pgdb.connect(PG_DSN, row_factory=dict_row, autocommit=True) as conn:
         if args.tenant:
             purpose = check_tenant(conn, args.tenant)
             print(f"tenant {args.tenant} ({purpose})")

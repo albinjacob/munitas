@@ -23,7 +23,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from . import auth, db
+from . import auth, db, models, readability, screens
 
 router = APIRouter(tags=["read"])
 
@@ -33,36 +33,57 @@ def _jsonable(rows: Any) -> Any:
     return json.loads(json.dumps(rows, default=str))
 
 
+# What the datasets list can be ordered by: the name a person sees, and the expression that orders it. "access" puts the most restricted first when
+# ascending, because that is the order the levels are drawn in everywhere else.
+_DATASET_SORTS = {
+    "name": "lower(name)",
+    "registered": "created_at",
+    "kind": "kind",
+    "format": "array_to_string(formats, ',')",
+    "structure": "structure",
+    "versions": "version_count",
+    "access": "case widest_class when 'RAW' then 0 when 'UNDER_REVIEW' then 1 when 'OPEN_FOR_ANNOTATION' then 2 "
+              "when 'OPEN_FOR_TRAINING' then 3 when 'PUBLISHED' then 4 end",
+}
+
+
 @router.get("/datasets")
 def list_datasets(
     q: str | None = None,
     widest_class: str | None = None,
-    modality: str | None = None,
+    kind: str | None = None,
+    format: str | None = None,
+    structure: str | None = None,
+    department_id: str | None = None,
     has_versions: bool | None = None,
+    state: str | None = None,
+    include_deleted: bool = False,
+    sort: str = "registered",
+    direction: str = "desc",
     limit: int = Query(100, le=1000),
     offset: int = Query(0, ge=0),
     identity: dict = Depends(auth.current_session),
 ) -> dict:
     """Datasets, filtered, with the total so the caller knows what is hidden.
 
-    Filtering happens here rather than in the browser because a console that
-    fetches everything and hides most of it is a console that gets slower as the
-    platform gets more useful.
+    Filtering happens here, not in the browser, so the list stays fast as the platform grows.
 
-    The class shown is the widest any version has reached. A dataset whose newest
-    version is raw but which has an older version released is not a raw dataset
-    from an exposure point of view, and showing the newest would understate it.
+    The class shown is the widest any version has reached. A dataset whose newest version is raw but which has an older version released is not
+    a raw dataset from an exposure point of view, and showing the newest would understate it.
 
-    Where the data came from travels with each row, with the licence a
-    HuggingFace fetch found and, when that licence corrected what was
-    registered, the original answer and when it changed. The console showed
-    a correction only at the moment of the fetch, so anybody arriving later
-    saw the corrected answer and no sign it had ever been different.
+    Where the data came from travels with each row: the licence a HuggingFace fetch found and, when that licence corrected what was registered,
+    the original answer and when it changed.
 
-    `has_versions` exists because a registered dataset with nothing in it is a
-    real and easily missed state: somebody created it and never uploaded, and it
-    otherwise sits in the list looking like a failure rather than an empty shelf.
+    `has_versions` marks a registered dataset with nothing in it, so an empty shelf is not mistaken for a failure.
+
+    Every dataset has a `state`, worked out from its versions. `registered`: it has no version yet. `active`: at least one of its versions still has
+    data that can be read, whether that data is files or a table. `deleted`: it has versions and the data of every one of them has been deleted; its
+    record, its versions and the decisions made about them are kept. The state is separate from the access level. Deleted datasets are left out of the
+    list unless `include_deleted` is true or `state` asks for them, and `deleted` always says how many deleted datasets match the other filters, so a
+    caller can offer them without a second request.
     """
+    if state is not None and state not in ("registered", "active", "deleted"):
+        raise HTTPException(422, {"reasons": ["state is registered, active or deleted"]})
     # One filter fragment, used by both queries below, so "how many rows
     # match" and "which page of them" can never quietly disagree the way two
     # hand-written copies of the same where clause could.
@@ -73,6 +94,7 @@ def list_datasets(
                  d.license_tag, d.license_export_unmodified, d.license_export_modified,
                  d.provenance_registered_as, d.provenance_overridden_at,
                  count(vc.dataset_version_id) as version_count,
+                 count(vc.dataset_version_id) filter (where vc.reclaimed_at is null) as readable_versions,
                  max(vc.version) as latest_version,
                  count(r.dataset_version_id) as tabled_versions,
                  count(n.dataset_version_id) filter (where n.outcome in ('skipped', 'failed')) as untabled_versions,
@@ -92,39 +114,85 @@ def list_datasets(
                    d.license_tag, d.license_export_unmodified, d.license_export_modified,
                    d.provenance_registered_as, d.provenance_overridden_at
         ),
-        filtered as (
+        file_kinds as (
+          -- What each dataset holds, from what was written against every file when its version was sealed. A version stored as a table counts as
+          -- one table, in the format "table", and not as the files its rows came from.
+          select dataset_id, array_agg(distinct kind) as kinds, array_agg(distinct fmt) as formats,
+                 array_agg(distinct format_structure(kind, fmt)) as structures,
+                 count(*) filter (where not is_table) as files, coalesce(sum(size), 0) as bytes
+            from (
+              select dv.dataset_id, manifest_kind(e) as kind, manifest_format(e) as fmt, false as is_table, coalesce((e ->> 'bytes')::bigint, 0) as size
+                from dataset_version dv cross join lateral jsonb_array_elements(dv.object_manifest) e
+               where dv.tenant_id = %(tenant)s and (e ->> 'key') not like '%%/iceberg/%%'
+                 and not exists (select 1 from iceberg_table_ref r where r.dataset_version_id = dv.id)
+                 and not exists (select 1 from iceberg_projection_note n
+                                  where n.dataset_version_id = dv.id and n.outcome in ('skipped', 'failed'))
+              union all
+              select dv.dataset_id, 'tabular', 'table', true, 0
+                from dataset_version dv
+               where dv.tenant_id = %(tenant)s
+                 and (exists (select 1 from iceberg_table_ref r where r.dataset_version_id = dv.id)
+                      or exists (select 1 from iceberg_projection_note n
+                                  where n.dataset_version_id = dv.id and n.outcome in ('skipped', 'failed')))
+            ) held
+           group by dataset_id
+        ),
+        matching as (
           select id, name, tenant_id, created_at, modality, provenance,
                  department_id, version_count, latest_version,
+                 case when version_count = 0 then 'registered' when readable_versions = 0 then 'deleted' else 'active' end as state,
                  tabled_versions, untabled_versions,
+                 -- What it holds. A dataset with nothing in it yet holds nothing: what its owner expected is not shown as though it were found.
+                 coalesce(fk.kinds, '{}') as kinds, coalesce(fk.formats, '{}') as formats, coalesce(fk.structures, '{}') as structures,
+                 case coalesce(cardinality(fk.kinds), 0) when 0 then null when 1 then fk.kinds[1] else 'multimodal' end as kind,
+                 case coalesce(cardinality(fk.structures), 0) when 0 then null when 1 then fk.structures[1] else 'mixed' end as structure,
+                 coalesce(fk.files, 0) as files, coalesce(fk.bytes, 0) as bytes,
                  (tabled_versions + untabled_versions > 0) as is_table,
                  (tabled_versions + untabled_versions > 0 and tabled_versions < version_count) as table_missing,
                  license_tag, license_export_unmodified, license_export_modified,
                  provenance_registered_as, provenance_overridden_at,
                  classes[1] as widest_class
-          from summary
+          from summary left join file_kinds fk on fk.dataset_id = summary.id
           where (%(q)s::text is null or name ilike '%%' || %(q)s || '%%')
             and (%(klass)s::text is null or classes[1] = %(klass)s)
-            and (%(modality)s::text is null or %(modality)s = any(modality))
+            and (%(kind)s::text is null or (%(kind)s = 'multimodal' and cardinality(fk.kinds) > 1) or (%(kind)s <> 'multimodal' and %(kind)s = any(fk.kinds)))
+            and (%(format)s::text is null or %(format)s = any(fk.formats))
+            and (%(structure)s::text is null
+                 or (%(structure)s = 'mixed' and cardinality(fk.structures) > 1)
+                 or (%(structure)s <> 'mixed' and %(structure)s = any(fk.structures)))
+            and (%(dept)s::text is null or department_id::text = %(dept)s)
             and (%(has)s::boolean is null
                  or (%(has)s = true and version_count > 0)
                  or (%(has)s = false and version_count = 0))
+        ),
+        filtered as (
+          select * from matching
+           where (%(state)s::text is null or state = %(state)s)
+             and (%(state)s::text is not null or %(include_deleted)s::boolean or state <> 'deleted')
         )
     """
     params = {
         "tenant": identity["tenant_id"], "q": q, "klass": widest_class,
-        "modality": modality, "has": has_versions, "limit": limit, "offset": offset,
+        "kind": kind, "format": format, "structure": structure, "dept": department_id, "has": has_versions, "limit": limit, "offset": offset,
+        "state": state, "include_deleted": include_deleted,
     }
+    if sort not in _DATASET_SORTS or direction not in ("asc", "desc"):
+        raise HTTPException(422, {"reasons": [f"sort is one of {', '.join(_DATASET_SORTS)}, and direction is asc or desc"]})
+    # The order is chosen from a fixed list, never taken from the request as text, and ends on the name and the id so that two datasets that tie
+    # always come in the same order and a page never repeats or skips one.
     rows = db.all_rows(
-        filtered_cte + "select * from filtered order by created_at desc "
+        filtered_cte + f"select * from filtered order by {_DATASET_SORTS[sort]} {direction} nulls last, lower(name), id "
         "limit %(limit)s offset %(offset)s",
         params,
     )
-    total = db.one(filtered_cte + "select count(*) as n from filtered", params)
+    total = db.one(
+        filtered_cte + "select (select count(*) from filtered) as n, (select count(*) from matching where state = 'deleted') as deleted", params)
 
     return _jsonable({
         "datasets": rows,
         "shown": len(rows),
         "total": total["n"],
+        "deleted": total["deleted"],
         "limit": limit,
         "offset": offset,
     })
@@ -137,12 +205,14 @@ def list_dataset_versions(
 ) -> list[dict]:
     """The versions inside one dataset.
 
-    Narrowed to the caller's own organisation, returning nothing rather than
-    refusing, for the reason given on `get_version` in `main.py`.
+    Narrowed to the caller's own organisation, returning nothing rather than refusing.
     """
     sql = """
         select vc.*, dv.content_hash, dv.record_count, dv.created_at, dv.sealed,
-               exists (select 1 from iceberg_table_ref r where r.dataset_version_id = dv.id) as table_copy
+               exists (select 1 from iceberg_table_ref r where r.dataset_version_id = dv.id) as table_copy,
+               -- What record_count counts: the rows of a table (written, or meant to be and not written), the files of anything else.
+               (exists (select 1 from iceberg_table_ref r where r.dataset_version_id = dv.id)
+                or exists (select 1 from iceberg_projection_note n where n.dataset_version_id = dv.id and n.outcome in ('skipped', 'failed'))) as holds_rows
         from version_class vc
         join dataset_version dv on dv.id = vc.dataset_version_id
         where vc.dataset_id = %s
@@ -180,6 +250,66 @@ def list_versions(
     ))
 
 
+@router.get("/dataset-versions/{version_id}/holds")
+def version_holds(version_id: str, identity: dict = Depends(auth.current_session)) -> dict:
+    """What one version holds: its kinds, its formats, its structure, how many files and how much, and how many rows when it is a table.
+
+    The same facts the datasets list shows for a whole dataset, for this one version. They are worked out from what was written against each
+    file when the version was sealed and, for an older version, from the file's name. `read_from` says which: "content" when every file was read,
+    "name" when none was (locked files cannot be read, and an older version was sealed before files were read), "mixed" otherwise. A version
+    stored as a table counts as one table in the format "table", not as the files its rows came from. File names are not returned, because a
+    name can identify a person. Narrowed to the caller's own organisation, answering 404 for anything else.
+    """
+    version = db.one("select id, tenant_id from dataset_version where id = %s", (version_id,))
+    if not version or version["tenant_id"] != identity["tenant_id"]:
+        raise HTTPException(404, "no such version")
+    ref = db.one("select record_count from iceberg_table_ref where dataset_version_id = %s", (version_id,))
+    note = db.one("select outcome from iceberg_projection_note where dataset_version_id = %s and outcome in ('skipped', 'failed')", (version_id,))
+    table = None
+    # A version of locked files has a table copy too, of its list of files. That is not what the version holds: it holds the files, which are locked, so
+    # they are counted by name (their content cannot be read) and the list that describes them is not counted as one of them.
+    of_files = db.one("select 1 as x from file_person where dataset_version_id = %s limit 1", (version_id,)) is not None
+    if (ref or note) and not of_files:
+        by_format = [{"format": "table", "kind": "tabular", "structure": "structured", "files": 0, "bytes": 0}]
+        files, size, read_from = 0, 0, "table"
+        table = {"present": bool(ref), "rows": ref["record_count"] if ref else None}
+    else:
+        rows = db.all_rows(
+            """select manifest_kind(e) as kind, manifest_format(e) as format, format_structure(manifest_kind(e), manifest_format(e)) as structure,
+                      count(*) as files, coalesce(sum(nullif(e ->> 'bytes', '')::bigint), 0) as bytes,
+                      count(*) filter (where e ->> 'kind_basis' = 'content') as from_content
+                 from dataset_version dv cross join lateral jsonb_array_elements(dv.object_manifest) e
+                where dv.id = %s and (e ->> 'key') not like '%%/iceberg/%%' and (not %s or (e ->> 'key') not like '%%/records.json')
+                group by 1, 2, 3 order by files desc, bytes desc, format""", (version_id, of_files))
+        by_format = [{"format": r["format"], "kind": r["kind"], "structure": r["structure"], "files": r["files"], "bytes": int(r["bytes"])} for r in rows]
+        files, size = sum(r["files"] for r in rows), sum(int(r["bytes"]) for r in rows)
+        from_content = sum(r["from_content"] for r in rows)
+        read_from = None if not files else "content" if from_content == files else "name" if from_content == 0 else "mixed"
+    kinds = sorted({b["kind"] for b in by_format})
+    structures = sorted({b["structure"] for b in by_format})
+    return _jsonable({
+        "kinds": kinds, "formats": sorted({b["format"] for b in by_format}), "structures": structures,
+        "kind": None if not kinds else kinds[0] if len(kinds) == 1 else "multimodal",
+        "structure": None if not structures else structures[0] if len(structures) == 1 else "mixed",
+        "files": files, "bytes": size, "by_format": by_format, "read_from": read_from, "table": table,
+    })
+
+
+@router.get("/dataset-versions/{version_id}/readability")
+def version_readability(version_id: str, identity: dict = Depends(auth.current_session)) -> dict:
+    """What is locked in this version and what a permission to read the whole of it is worth, in one answer for every screen and route.
+
+    `shape` is "files" (every file locked), "columns" (a table with locked columns) or "plain" (nothing locked); `reads` is what the whole-version
+    permission reads: "all", "readable_columns" or "nothing"; `says` is one sentence for the person looking, or null when nothing is locked.
+    Counts only. Narrowed to the caller's own organisation, answering 404 for anything else, as the other reads of one version do.
+    """
+    version = db.one("select id, tenant_id from dataset_version where id = %s", (version_id,))
+    if not version or version["tenant_id"] != identity["tenant_id"]:
+        raise HTTPException(404, "no such version")
+    found = readability.of(version_id)
+    return {"version_id": version_id, **found, "says": readability.says(found)}
+
+
 @router.get("/dataset-versions/{version_id}/table")
 def version_table(version_id: str, identity: dict = Depends(auth.current_session)) -> dict:
     """Whether this version is also stored as a table, and if it is not, why.
@@ -208,6 +338,47 @@ def version_table(version_id: str, identity: dict = Depends(auth.current_session
                       "it cannot say."}
 
 
+PREVIEW_MOST = 100
+
+
+@router.get("/dataset-versions/{version_id}/preview")
+def version_preview(version_id: str, limit: int = 20, identity: dict = Depends(auth.current_session)) -> dict:
+    """The first rows of a version's table, for somebody who may read it.
+
+    Who may is the answer the console already shows next to every version (a role that covers its class, or a lease): this asks the same question and
+    gives the same answer, so a person is never shown rows by one screen that another would refuse. The rows are the first ones in the table, at most
+    100 (20 unless asked for more), typed as stored: a decimal or a date is written as text so no digit is lost. Showing them is a read, so it is
+    recorded whether it is allowed or refused. A version that is not stored as a table has no rows to show, and a table of people is not shown here:
+    its locked columns are read through the locked-data requests, which are decided and counted row by row.
+    """
+    from . import access_preview, iceberg
+
+    limit = max(1, min(int(limit), PREVIEW_MOST))
+    version = db.one("select v.id, v.tenant_id, v.storage_backend, c.current_class from dataset_version v join version_class c on c.dataset_version_id = v.id "
+                     "where v.id = %s", (version_id,))
+    if not version or version["tenant_id"] != identity["tenant_id"]:
+        raise HTTPException(404, "no such version")
+    ref = db.one("select metadata_location, record_count from iceberg_table_ref where dataset_version_id = %s", (version_id,))
+    if not ref:
+        raise HTTPException(404, {"reasons": ["this version is not stored as a table, so there are no rows to show"]})
+    mark = access_preview.access_preview(models.AccessPreviewIn(version_ids=[version_id]), identity=identity)["versions"].get(version_id, {})
+    allowed = mark.get("mark") in access_preview._READABLE
+    reasons = [] if allowed else ["you do not hold access to read this version's rows yet. Ask for access from the version's page, and look again once it is given"]
+    db.execute(
+        """insert into access_decision (principal, principal_kind, principal_roles, tenant_id, dataset_version_id, requested_class, purpose, allowed, reasons, phase)
+           values (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'policy') returning principal""",
+        (identity["id"], identity.get("kind", "human"), identity["roles"], version["tenant_id"], version_id, version["current_class"],
+         "look at the first rows of the table", allowed, reasons))
+    if not allowed:
+        raise HTTPException(403, {"reasons": reasons})
+    from pyiceberg.table import StaticTable
+
+    table = StaticTable.from_metadata(ref["metadata_location"], properties=iceberg._file_io(version["tenant_id"], version["storage_backend"] or "seaweedfs"))
+    rows = table.scan(limit=limit).to_arrow().to_pylist()
+    return {"columns": [{"name": f.name, "type": str(f.field_type)} for f in table.schema().fields],
+            "rows": json.loads(json.dumps(rows, default=str)), "shown": len(rows), "rows_total": ref["record_count"], "limit": limit}
+
+
 @router.get("/dataset-versions/{version_id}/transitions")
 def list_transitions(
     version_id: str,
@@ -221,7 +392,7 @@ def list_transitions(
     a 404.
 
     `class_transition` carries no tenant of its own, so the version is joined for
-    the check rather than the column being copied onto it. Two places recording
+    the check rather than the column being copied onto it. Two places file
     which organisation something belongs to is two places that can disagree.
     """
     sql = """
@@ -290,38 +461,15 @@ def list_lease_requests(
     offset: int = Query(0, ge=0),
     identity: dict = Depends(auth.current_session),
 ) -> dict:
-    """Lease requests, with the department that owns what was asked for, and
-    the total for real page controls.
+    """Lease requests, with the department that owns what was asked for, and the total for page controls.
 
-    `custodian` narrows to requests that person can actually decide. Without it
-    a custodian's queue showed every pending request in the platform under a
-    heading naming their own department, including requests for data owned by
-    somebody else and for data owned by nobody. A queue that lists work you
-    cannot do is worse than an empty one.
+    `custodian` narrows to requests that person can actually decide, so a custodian's queue lists only work they can do. States come back
+    together by default, because the history of how earlier requests were decided tells a reviewer whether this one is unusual.
+    `exclude_pending` returns decided requests only, with a total that matches the rows.
 
-    States are returned together by default. A queue showing only pending
-    requests hides how the previous ones were decided, and that history is what
-    tells a reviewer whether this one is unusual.
-
-    `exclude_pending` exists for the console's own "what you have decided"
-    lists, which want a page of history without the still-open queue mixed
-    in. Filtering `state != "pending"` in the browser after the fact was
-    the old approach; it silently mis-paginates the moment only one page's
-    worth of rows is fetched at a time, since a pending row taking one of
-    the 15 slots on a page means fewer than 15 decided rows actually show,
-    and the reported total would count pending rows a "decided" page never
-    displays. A real query parameter keeps the count and the rows in
-    agreement, the same fix `/access-decisions`'s `resource` filter
-    already made for the same shape of problem.
-
-    `version` is returned because what is granted is one version, not a dataset.
-    Two versions of the same dataset can sit at different sensitivities, so a
-    request naming only the dataset asks the custodian to approve something
-    they cannot see the shape of.
-
-    `requested_by`/`requested_by_label` are set only when a human asked on a
-    workload's behalf; the reading principal stays `lr.principal` regardless,
-    since a workload's identity is never inferred from who invoked it.
+    `version` is returned because what is granted is one version, not a dataset: two versions of the same dataset can sit at different
+    sensitivities. `requested_by` and `requested_by_label` are set only when a person asked on a workload's behalf; the reading principal stays
+    `lr.principal`, because a workload's identity is never inferred from who invoked it.
     """
     where = (
         "where lr.tenant_id = %(tenant)s"
@@ -360,6 +508,11 @@ def list_lease_requests(
         {where}""",
         params,
     )
+    waiting_on = {str(r["dataset_version_id"]) for r in rows if r["state"] == "pending"}
+    gives = {v: readability.gives(readability.of(v)) for v in waiting_on}
+    for r in rows:
+        if r["state"] == "pending":
+            r["gives"] = gives.get(str(r["dataset_version_id"]))
     return {
         "lease_requests": _jsonable(rows),
         "shown": len(rows),
@@ -377,26 +530,15 @@ def list_leases(
     offset: int = Query(0, ge=0),
     identity: dict = Depends(auth.current_session),
 ) -> dict:
-    """Granted leases, with the total for real page controls.
+    """Granted leases, with the total for page controls.
 
-    `active_only` filters to leases that are neither revoked nor expired. It is
-    off by default, because an expired lease is evidence of who had access last
-    week and deleting it from view would break the audit story.
+    `active_only` filters to leases that are neither revoked nor expired. It is off by default, because an expired lease is evidence of who had
+    access last week.
 
-    `standing` marks a lease with no expiry, granted only ever to a workload
-    and lasting until revoked. `expires_at is null` is what "standing" means
-    everywhere in this system, including here: `active` treats a standing
-    lease as active until revoked, never as expired, which a bare
-    `expires_at > now()` would get backwards (NULL, not true) rather than
-    right.
+    `standing` marks a lease with no expiry, granted only to a workload and lasting until revoked. `expires_at is null` means "standing"
+    everywhere in the platform, and a standing lease counts as active until revoked, never as expired.
 
-    Called two shapes of way: `ResearcherHome`'s own "access you have been
-    given" paginates one principal's leases directly; `CustodianHome` calls
-    it with no `principal` and a large `limit` purely to build a lookup map
-    (which lease backs which decided request), never rendered as a list in
-    its own right -- that caller keeps asking for everything in one page
-    rather than paginating, since a lookup missing a later page's entries
-    would silently under-report which grants are still active.
+    A caller that needs to look up which lease backs which decided request asks for one large page with no `principal`.
     """
     where = (
         "where al.tenant_id = %(tenant)s"
@@ -449,7 +591,10 @@ def list_action_runs(
     Envelope shape matches `/datasets`/`/agents`: `{action_runs, shown,
     total, limit, offset}`, not a bare list, so one pagination component
     can front all three.
+
+    For data engineers and platform administrators.
     """
+    screens.require_screen("action_runs", identity)
     sql = """
         select ar.id, ar.status, ar.operator, ar.code_hash, ar.image_digest,
                ar.started_at, ar.ended_at, ar.output_version, ar.input_versions,
@@ -529,7 +674,10 @@ def list_agents(
     time. `useAgents()` and the two tests that read this response directly
     (`activation.spec.ts`, `real-auth.spec.ts`) were updated in the same
     change.
+
+    For data engineers and platform administrators.
     """
+    screens.require_screen("agents", identity)
     filtered_cte = """
         with filtered as (
           select a.id, a.name, a.purpose, a.principal_id, a.created_at,
@@ -630,7 +778,10 @@ def list_egress_approvals(
 
     Envelope shape matches `/datasets`/`/agents`/`/action-runs`:
     `{egress_approvals, shown, total, limit, offset}`.
+
+    For network architects, data engineers and platform administrators.
     """
+    screens.require_screen("egress_approvals", identity)
     where = " where ega.tenant_id = %s"
     args: list[Any] = [identity["tenant_id"]]
     if state:
@@ -695,25 +846,14 @@ def get_egress_approval(
 def list_services(identity: dict = Depends(auth.current_session)) -> dict:
     """What each workload has actually been doing, across every organisation.
 
-    Assembled from `action_run` and `access_decision` rather than from a status
-    the services report about themselves. A service claiming to be healthy and a
-    service that has successfully done something are different facts, and only
-    the second is worth an administrator's attention.
+    Assembled from the records of action runs and access decisions, not from a status the services report about themselves, because a service
+    claiming to be healthy and a service that has done something are different facts. Denials are counted separately: a workload accumulating
+    refusals is either misconfigured or reaching for something it should not.
 
-    Denials are counted separately. A workload accumulating refusals is either
-    misconfigured or reaching for something it should not, and both matter.
-
-    Platform-wide, not one organisation's own: `platform_admin` runs the
-    system and holds no standing access to any tenant's contents (the same
-    property `housekeeping.py`'s platform view keeps), and this is
-    telemetry about workloads, not customer data, so seeing it across every
-    tenant does not cross that line. The console's own nav already hides
-    this behind the same role; this is that check actually enforced.
+    Platform-wide, for the platform administrator only. That role runs the system and holds no standing access to any organisation's contents,
+    and this is information about workloads, not customer data.
     """
-    if "platform_admin" not in identity["roles"]:
-        raise HTTPException(403, {"reasons": [
-            "only platform_admin may see workload activity across every organisation"
-        ]})
+    screens.require_screen("services", identity)
     runs = db.all_rows("""
         select ar.operator,
                count(*) as runs,
@@ -740,33 +880,25 @@ def list_directory(
     purpose: str = "production",
     identity: dict = Depends(auth.current_session),
 ) -> list[dict]:
-    """The people and workloads the organisation registered.
+    """The people and workloads of the caller's own organisation.
 
-    Deliberately not scoped to the caller's own tenant: `IdentityContext`'s
-    own identity-resolution seam needs to find a session-resolved person in
-    whichever organisation they actually belong to, before their tenant is
-    known client-side, and every other organisation's roster is what a
-    custodian-chooser needs to render honestly (see the docstring below).
-    Authentication is still required -- only a real session may read it.
+    A session is required. Whatever role the caller holds, the list is the caller's own organisation and no other, and `purpose` does not
+    change that. The platform administrator runs the platform across organisations (legal holds, closing an organisation, the services
+    page), so the platform administrator is offered the people of every live organisation, or of every organisation with `purpose=all`.
 
-    This is the answer to "who exists", and it is the platform's answer rather
-    than the console's. Before this endpoint the console carried its own list,
-    which meant it could offer a custodian the database had never heard of and
-    every approval that person made would be refused by a foreign key.
+    Approvers carry the departments they answer for (`approver_of`, with the first of them as `department_name`). A department counts only while
+    the person can act for it right now: listed, not removed, not past the end of their cover, and still holding the data custodian role. It is
+    worked out from the same function the policy uses, on every request, so a label on a screen cannot outlive the right. A person who answers
+    for several departments is listed once.
 
-    Approvers carry the departments they answer for (`approver_of`, with the
-    first of them as `department_name`), because a custodian who answers for no
-    department can approve nothing and the console should be able to say so.
-    A person who answers for several departments is listed once: listing them
-    once per department is how a chooser ends up offering the same person as
-    two different people.
-
-    Only live tenants by default. Verification runs as its own principals in the
-    canary tenant, and offering those alongside real people would put "Canary
-    engineer" on the login screen of a customer's console. Pass `purpose=all` to
-    see every tenant, which is what an operator investigating the platform
-    itself wants.
+    For the platform administrator, only live organisations are listed by default. Verification runs as its own principals in a test
+    organisation, and those are not offered beside real people. Pass `purpose=all` to see every organisation.
     """
+    # Platform staff operate across organisations; everybody else is one organisation and sees only it.
+    operator = "platform_admin" in identity["roles"]
+    own_organisation = None if operator else identity["tenant_id"]
+    if not operator:
+        purpose = "all"
     sql = """
         select d.id, d.label, d.kind, d.roles, d.tenant_id,
                t.purpose as tenant_purpose,
@@ -780,35 +912,25 @@ def list_directory(
                    (array_agg(dept.name order by dept.name))[1] as first_name,
                    (array_agg(dept.id order by dept.name))[1] as first_id
               from department dept
-              join department_approver a on a.department_id = dept.id and a.removed_at is null
-                                        and (a.valid_until is null or a.valid_until > now())
-             where a.person_id = d.id and dept.tenant_id = d.tenant_id
+             where dept.tenant_id = d.tenant_id
+               and d.id = any(active_department_approvers(dept.id))
         ) ap on true
         where (%s::text is null or d.kind = %s)
           and (%s = 'all' or t.purpose = %s)
+          and (%s::text is null or d.tenant_id = %s)
         order by d.kind, d.id
     """
-    return _jsonable(db.all_rows(sql, (kind, kind, purpose, purpose)))
+    return _jsonable(db.all_rows(sql, (kind, kind, purpose, purpose, own_organisation, own_organisation)))
 
 
 @router.get("/policy/roles")
 def policy_roles() -> dict:
-    """The class floors and the approving roles, read from the policy engine.
+    """The class floors, the approving roles and what each role is called, read from the policy engine.
 
-    Not restated here. `role_floor` and `approver_roles` live in
-    platform/policy/access.rego, and anything that copies them acquires the
-    ability to disagree with them.
-
-    The shape of the policy, not any tenant's data -- the same rules apply
-    to every organisation, so this needs no session at all, unlike every
-    other endpoint in this file. Left unauthenticated on purpose: the
-    console's own `/roles` page is designed to explain what each role can do
-    to somebody who has not signed in yet (see `web/src/features/roles/
-    Roles.tsx`'s own module comment), and item 24's original security review
-    (which made every other endpoint here session-gated) never intended to
-    catch a page with no tenant data behind it -- confirmed live: the
-    unauthenticated case broke outright ("no active session") until this was
-    corrected.
+    `role_words` gives every role its console `label` and, for the roles people hold, `one` and `many` of them with their article ("a data engineer", "data
+    engineers"), the same words every refusal uses. The values are read, not restated here, so they cannot disagree with the policy. They describe the shape of the policy, not any
+    organisation's data: the same rules apply to every organisation, so this needs no session. That is deliberate, so the console's roles page
+    can explain what each role can do to somebody who has not signed in yet.
     """
     from . import opa
 
@@ -816,6 +938,7 @@ def policy_roles() -> dict:
         "class_order": opa.read_document("munitas/access/class_order"),
         "role_floor": opa.read_document("munitas/access/role_floor"),
         "approver_roles": opa.read_document("munitas/access/approver_roles"),
+        "role_words": opa.role_words(),
     }
 
 
@@ -970,35 +1093,48 @@ def get_agent_run(
     return _jsonable(out)
 
 
+def _gate_deciders(tenant_id: str) -> list[dict]:
+    """The people who may decide a de-identification result in this organisation right now: they hold a deciding role (as the policy names
+    them) or a live grant of one, and have not left. Whether one of them started a given run is applied per row."""
+    from . import opa
+    roles = list(opa.read_document("munitas/access/decider_roles") or [])
+    return db.all_rows(
+        """select d.id, d.label from directory d
+            where d.tenant_id = %s and d.kind = 'human' and d.ended_at is null
+              and exists (select 1 from unnest(%s::text[]) r where person_holds_live_role(d.id, r))
+            order by d.label, d.id""", (tenant_id, roles))
+
+
+def _say_who_decides(row: dict, deciders: list[dict], caller: str) -> None:
+    """Add `waiting_on` (pending only: the deciders other than whoever started the run) and `can_decide` (whether the caller is one of them)."""
+    # Not the person who started the run, and not the person who uploaded the version of the pipeline that made it.
+    out = {row.get("triggered_by"), row.pop("pipeline_uploaded_by", None)}
+    eligible = [{"id": p["id"], "label": p["label"]} for p in deciders if p["id"] not in out]
+    row["waiting_on"] = eligible if row["state"] == "pending" else []
+    row["can_decide"] = row["state"] == "pending" and any(p["id"] == caller for p in eligible)
+
+
 @router.get("/gate-decisions")
 def list_gate_decisions(
     state: str | None = None,
     reviewer: str | None = None,
+    started_by: str | None = None,
     limit: int = Query(100, le=500),
     offset: int = Query(0, ge=0),
     identity: dict = Depends(auth.current_session),
 ) -> dict:
-    """De-identification gate decisions, pending and past, with the total
-    for real page controls.
+    """De-identification gate decisions, pending and past, with the total for page controls.
 
-    States come back together by default, the same choice the lease queue
-    makes: a queue showing only what is pending hides how the previous ones
-    went, and that history is what tells a reviewer whether this one is
-    unusual.
+    All states come back together by default, because a queue showing only what is pending hides how the previous ones went. `reviewer`
+    narrows to decisions that person may actually make, which means excluding runs they started themselves. `started_by` narrows to the runs
+    one person started.
 
-    `reviewer` narrows to decisions that person may actually make, which today
-    means excluding runs they started themselves. A queue listing work you
-    cannot do is worse than an empty one.
+    Every row says who it is waiting on (`waiting_on`, pending rows only) and whether the caller may decide it (`can_decide`). Both come from
+    the rule the decision itself is checked against: the roles the policy names as deciders, held right now, and never the person who started
+    the run.
 
-    The leak identifiers are deliberately not in this list, only their count. A
-    queue is read at a glance and over shoulders, and the personal data lives
-    one further, deliberate click away.
-
-    Envelope shape matches every other list endpoint: `{gate_decisions,
-    shown, total, limit, offset}`. The total query filters `gate_decision`
-    alone, without the two joins the row query needs: `state` and
-    `reviewer` are both columns on `gd` itself, so the joins exist only to
-    fetch display columns, never to narrow which rows match.
+    The leak identifiers are not in this list, only their count, because a queue is read at a glance and the personal data is one deliberate
+    click further. The answer is `{gate_decisions, shown, total, limit, offset}`.
     """
     where = " where gd.tenant_id = %s"
     args: list[Any] = [identity["tenant_id"]]
@@ -1008,6 +1144,9 @@ def list_gate_decisions(
     if reviewer:
         where += " and (gd.triggered_by is null or gd.triggered_by <> %s)"
         args.append(reviewer)
+    if started_by:
+        where += " and gd.triggered_by = %s"
+        args.append(started_by)
 
     rows = db.all_rows(
         """
@@ -1016,6 +1155,8 @@ def list_gate_decisions(
                gd.recommendation_reason, gd.state, gd.triggered_by,
                gd.decided_by, gd.decided_at, gd.decision_reason, gd.created_at,
                gd.pipeline_run_id,
+               (select pv.uploaded_by from pipeline_run pr join pipeline_version pv on pv.id = pr.pipeline_version_id
+                 where pr.id = gd.pipeline_run_id) as pipeline_uploaded_by,
                d.name as dataset_name, dv.version, dv.visibility_class,
                trig.label as triggered_by_label,
                dec.label as decided_by_label,
@@ -1029,6 +1170,9 @@ def list_gate_decisions(
         """ + where + " order by gd.created_at desc limit %s offset %s",
         (*args, limit, offset),
     )
+    deciders = _gate_deciders(identity["tenant_id"])
+    for row in rows:
+        _say_who_decides(row, deciders, identity["id"])
     total = db.one("select count(*) as n from gate_decision gd" + where, tuple(args))
     return _jsonable({
         "gate_decisions": rows,
@@ -1037,6 +1181,32 @@ def list_gate_decisions(
         "limit": limit,
         "offset": offset,
     })
+
+
+def _run_that_produced(pipeline_run_id: str) -> dict | None:
+    """Which run made a result, and what it was made with: the pipeline and its version (who uploaded it, who approved its code to read files),
+    who started the run and how, when it ran, and the version of the data it was given. Everything a reviewer needs to trace a result back."""
+    run = db.one(
+        """select pr.id, pr.trigger_kind, pr.started_at, pr.ended_at, pr.source_version_id, trig.label as triggered_by_label,
+                  p.id as pipeline_id, p.name as pipeline_name, pv.id as pipeline_version_id, pv.version as pipeline_version,
+                  pv.created_at as uploaded_at, up.label as uploaded_by_label,
+                  sd.name as source_dataset_name, sv.version as source_version
+             from pipeline_run pr
+             left join directory trig on trig.id = pr.triggered_by
+             left join pipeline_version pv on pv.id = pr.pipeline_version_id
+             left join pipeline p on p.id = pv.pipeline_id
+             left join directory up on up.id = pv.uploaded_by
+             left join dataset_version sv on sv.id = pr.source_version_id
+             left join dataset sd on sd.id = sv.dataset_id
+            where pr.id = %s""", (pipeline_run_id,))
+    if not run:
+        return None
+    approval = db.one(
+        """select a.approved_at, d.label as approved_by_label from pipeline_version_approval a join directory d on d.id = a.approved_by
+            where a.pipeline_version_id = %s and a.withdrawn_at is null""", (run["pipeline_version_id"],)) if run["pipeline_version_id"] else None
+    run["approved_at"] = approval["approved_at"] if approval else None
+    run["approved_by_label"] = approval["approved_by_label"] if approval else None
+    return run
 
 
 @router.get("/gate-decisions/{decision_id}")
@@ -1075,6 +1245,11 @@ def get_gate_decision(
         raise HTTPException(404, "no such gate decision")
 
     out = dict(row)
+    uploader = db.one("select pv.uploaded_by from pipeline_run pr join pipeline_version pv on pv.id = pr.pipeline_version_id where pr.id = %s",
+                      (row["pipeline_run_id"],)) if row["pipeline_run_id"] else None
+    # A run that was not started from an uploaded pipeline version (a built-in one) has nobody who uploaded it.
+    out["pipeline_uploaded_by"] = uploader["uploaded_by"] if uploader else None
+    _say_who_decides(out, _gate_deciders(identity["tenant_id"]), identity["id"])
     out["leaks"] = db.all_rows(
         """select record_id, span_start, span_end, entity, identifier,
                   left_in_the_clear, coverage, direct, practice
@@ -1082,9 +1257,10 @@ def get_gate_decision(
             order by practice, direct desc, coverage asc""",
         (decision_id,),
     )
+    out["run"] = _run_that_produced(row["pipeline_run_id"]) if row["pipeline_run_id"] else None
     out["steps"] = db.all_rows(
         """select ar.id, ar.status, ar.started_at, ar.ended_at,
-                  da.name as action_name
+                  da.name as action_name, ar.params ->> 'step' as step_name
              from action_run ar
              join dataset_action da on da.id = ar.action_id
             where ar.pipeline_run_id = %s

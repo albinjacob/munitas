@@ -64,6 +64,14 @@ class DatasetVersionIn(BaseModel):
         "line, and any other name is a JSON list of rows. A JSON list is read whole and is limited to 32 MB; the other two are "
         "read in batches and are limited to 2 GB, so a large table is sent as one of them. Parquet columns are matched to the "
         "contract by name and must have a fitting type. Leave it out for a version made of files."))
+    # How the records file was written, when it is a text file the platform reads strictly (CSV, TSV, JSON lines or a JSON list, perhaps
+    # compressed). Left out, a JSON list or JSON lines file is read the way pipelines send them.
+    records_options: dict | None = Field(default=None, description=(
+        "How the records file was written, when it is a text file to be read strictly: delimiter (one character), encoding (utf-8 by default), "
+        "header (true by default), null_values (the words that mean a missing value, an empty field by default), compression (gzip, zstd or "
+        "none) and check_keys (true by default: refuse a primary key that repeats). The file's name says the format: .csv, .tsv, .jsonl, .ndjson "
+        "or .json, with .gz or .zst after it for a compressed file. A binary table file (.parquet, .avro, .orc, .arrow, .feather or .xlsx) is read the same way; for a workbook, sheet names the sheet. Every value is checked against the contract, and the version is refused "
+        "with every problem found, by row, line and column, when any is wrong."))
     # Whether this version must be a table. Left out, the platform's default applies: a version that names a records
     # file is refused when its table cannot be written because of the data or a fault, and nothing is left behind.
     # `false` seals the files without a table and records why not.
@@ -272,6 +280,9 @@ class VersionAccess(BaseModel):
     ended: Literal["expired", "revoked"] | None = None
     ended_at: datetime | None = None
     decider_label: str | None = None
+    # The version is made of locked files, which a role never opens: only a few of them, with an approver's permission. The mark then says what the
+    # person holds of that, and not what their role covers.
+    locked: bool = False
 
 
 class DatasetAccess(BaseModel):

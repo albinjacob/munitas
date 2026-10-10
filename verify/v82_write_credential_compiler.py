@@ -45,12 +45,12 @@ from common import (PIPELINE, api, bucket_for, check, fixture_contract,
 # not only at the API.
 #
 # `or`, not a get() default: this runs inside munitas-api, where Compose
-# passes S3_PIPELINE_KEY/SECRET through as an empty string when unset in
+# passes MUNITAS_S3_PIPELINE_KEY/SECRET through as an empty string when unset in
 # .env, never absent -- os.environ.get(name, default) only falls back on
 # absence, so it silently returned "" here and reused config.py's own exact
 # comment about this gotcha would have been better than rediscovering it.
-PIPELINE_S3_KEY = os.environ.get("S3_PIPELINE_KEY") or "pipeline-action"
-PIPELINE_S3_SECRET = os.environ.get("S3_PIPELINE_SECRET") or "pipeline-action-secret"
+PIPELINE_S3_KEY = os.environ.get("MUNITAS_S3_PIPELINE_KEY") or "pipeline-action"
+PIPELINE_S3_SECRET = os.environ.get("MUNITAS_S3_PIPELINE_SECRET") or "pipeline-action-secret"
 
 
 def _action_run(tenant: str, contract: str, operator: str) -> dict:

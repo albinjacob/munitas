@@ -27,5 +27,5 @@ def load() -> Config:
     queue = f"{SHARED_QUEUE}-{tenant}" if tenant else SHARED_QUEUE
     return Config(
         api=os.environ.get("MUNITAS_API", "http://munitas-api:8000").rstrip("/"),
-        temporal=os.environ.get("TEMPORAL_ADDRESS", "temporal:7233"),
+        temporal=os.environ.get("MUNITAS_TEMPORAL_ADDRESS", "temporal:7233"),
         tenant=tenant, queue=queue)

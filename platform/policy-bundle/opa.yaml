@@ -1,0 +1,30 @@
+# How the policy engine fetches its policy in bundle mode (docker-compose.opa-bundle.yml).
+services:
+  store:
+    url: http://policy-store:8333
+    # Signs each request with the read-only key the engine is given in its environment (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION).
+    credentials:
+      s3_signing:
+        environment_credentials: {}
+
+# Where the engine keeps the last package it accepted. With `persist` it starts from that package when the store cannot be reached, and replaces it
+# as soon as a newer one verifies.
+persistence_directory: /var/opa
+
+# The key that signed a package. Only the algorithm is here; the public key itself is the file platform/policy-bundle/signing-public.pem, given on the command
+# line. A package whose signature does not verify with it is refused, and the last good one keeps answering.
+keys:
+  policy_signing:
+    algorithm: RS256
+
+bundles:
+  policy:
+    service: store
+    resource: policy-bundles/policy.tar.gz
+    persist: true
+    signing:
+      keyid: policy_signing
+      scope: munitas-policy
+    polling:
+      min_delay_seconds: 2
+      max_delay_seconds: 5

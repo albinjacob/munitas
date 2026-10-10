@@ -34,7 +34,7 @@ from . import (auth, config, db, models, opa, storage, task_credential,
 
 router = APIRouter(tags=["ingest"])
 
-# Large enough for a consultation recording, small enough that one mistake does
+# Large enough for a consultation file, small enough that one mistake does
 # not fill the volume. A limit somebody hits and complains about beats no limit
 # and a full disk at three in the morning.
 MAX_UPLOAD_BYTES = 512 * 1024 * 1024
@@ -46,6 +46,20 @@ CLASSES = "^(RAW|UNDER_REVIEW|OPEN_FOR_ANNOTATION|OPEN_FOR_TRAINING|PUBLISHED)$"
 # than the platform would give you anyway, and being wrong costs an
 # inconvenience rather than an exposure.
 MOST_RESTRICTIVE = "RAW"
+
+
+def sealed_class(dataset: dict) -> str:
+    """The class a new version of this dataset is sealed at.
+
+    Nobody is believed before somebody else has agreed. A claim of anything less than the safe default is one person's judgement, so until an
+    approver of the owning department confirms it, a version is sealed at the safe default and read as that. Confirming raises the versions
+    sealed meanwhile to the claimed class (see `confirm`), and a version sealed after that is sealed at the claimed class straight away. Data
+    the platform fetched itself needs no confirmation: its origin is on record, so nobody was believed.
+    """
+    declared = dataset["declared_class"] or MOST_RESTRICTIVE
+    if declared == MOST_RESTRICTIVE or dataset["declaration_basis"] == "verified_source" or not dataset["declaration_basis"]:
+        return declared
+    return declared if dataset["classification_confirmed_by"] else MOST_RESTRICTIVE
 
 
 class RegisterDataset(BaseModel):
@@ -126,27 +140,17 @@ def get_dataset(dataset_id: str, tenant_id: str | None = Depends(auth.organisati
 def register(body: RegisterDataset, identity: dict = Depends(auth.current_session)) -> dict:
     """Register a dataset and say where it came from.
 
-    Registering exposes nothing, so it needs nobody's approval. It does need an
-    owning department, because that is who becomes accountable, and it does need
-    a provenance, because that is what decides whether the data may ever leave.
+    Registering exposes nothing, so it needs nobody's approval. It does need an owning department, because that is who becomes accountable, and
+    a provenance, because that decides whether the data may ever leave.
 
-    The sensitivity claim is recorded here rather than assumed. Asking for the
-    most restrictive class is not a claim and carries no basis. Asking for
-    anything less is one, and every claim starts out `asserted`: a person said
-    so, at registration, before any bytes have arrived.
+    The sensitivity claim is recorded, not assumed. Asking for the most restrictive class is not a claim and carries no basis. Asking for
+    anything less is one, and every claim starts out `asserted`: a person said so, at registration, before any bytes have arrived. Until an
+    approver of the owning department confirms it, what is sealed is sealed at the most restrictive class and read as that.
 
-    `verified_source` is not granted here, even when `source_kind` names
-    HuggingFace. That would trust a label the caller supplied instead of
-    checking anything, the same shape of bug this project has already fixed
-    three times over: identity or provenance taken from what was claimed
-    rather than from what was done. The basis is upgraded later, by
-    `fetch_huggingface`, and only once the platform has made the request
-    itself and can show the origin.
-
-    The `provenance` chosen here is provisional in exactly the same way when
-    `source_kind` is `huggingface`: `fetch_huggingface` looks up the repo's
-    actual licence and overwrites it once the fetch runs, the same as
-    `declared_class` is provisional until a custodian confirms it.
+    `verified_source` is never granted here, even when `source_kind` names HuggingFace, because that would trust a label the caller supplied.
+    The basis is upgraded later by `fetch_huggingface`, and only once the platform has made the request itself and can show the origin. The
+    `provenance` chosen here is provisional in the same way when `source_kind` is `huggingface`: the fetch looks up the repository's actual
+    licence and overwrites it, just as `declared_class` stays provisional until a custodian confirms it.
     """
     auth.must_be(identity, tenant_id=body.tenant_id, person=body.registered_by)
     _require_intake_role(identity)
@@ -212,9 +216,9 @@ def register(body: RegisterDataset, identity: dict = Depends(auth.current_sessio
         "needs_confirmation": basis == "asserted",
         "approvers": department["approvers"],
         "note": (
-            "Nothing is readable yet. It becomes readable when the data is sealed "
-            "and, if you declared it less sensitive than the default, when a "
-            "department approver agrees with you."
+            "Nothing is readable yet. It becomes readable when the data is sealed. "
+            "If you declared it less sensitive than the default, it stays at the most "
+            "restrictive level until a department approver agrees with you."
         ),
     }
 
@@ -224,7 +228,7 @@ ANSWER_KEY_SUFFIX = ".truth.json"
 
 
 def _audio_facts(filename: str, payload: bytes) -> dict:
-    """What the encounter_raw contract needs, taken from the bytes themselves.
+    """What the audio_raw contract needs, taken from the bytes themselves.
 
     Derived here because this is the one moment the platform holds the data and
     has an unambiguous right to look at it. A later job would have to ask for a
@@ -280,7 +284,7 @@ def _answer_key_facts(filename: str, payload: bytes) -> dict:
 
 
 @router.post("/datasets/{dataset_id}/files", status_code=201)
-async def upload(dataset_id: str, file: UploadFile = File(...), identity: dict = Depends(auth.current_session)) -> dict:
+def upload(dataset_id: str, file: UploadFile = File(...), identity: dict = Depends(auth.current_session)) -> dict:
     """Accept a file.
 
     The only endpoint in the platform that takes bytes from a person. It writes
@@ -293,7 +297,9 @@ async def upload(dataset_id: str, file: UploadFile = File(...), identity: dict =
     if dataset["department_id"] is None:
         raise HTTPException(400, {"reasons": ["this dataset has no owning department"]})
 
-    payload = await file.read()
+    # This handler is a plain `def`, which the framework runs in a worker thread: reading the file and writing it to storage on the event loop would
+    # hold up every other request to the platform until it finished.
+    payload = file.file.read()
     if len(payload) > MAX_UPLOAD_BYTES:
         raise HTTPException(
             413,
@@ -353,7 +359,7 @@ async def upload(dataset_id: str, file: UploadFile = File(...), identity: dict =
 # `format` hashed differently, so the worker registering the same contract made
 # a second row under the same name. Going through the model means a key added to
 # it later cannot reintroduce that.
-ENCOUNTER_RAW_FIELDS = [
+AUDIO_RAW_FIELDS = [
     models.Field_(name="record_id", type="string",
                   added_by="munitas-worker").model_dump(),
     models.Field_(name="audio_key", type="string",
@@ -402,7 +408,7 @@ def seal_audio(dataset_id: str,
 
     The ordinary seal uses a two-field contract because the platform does not
     know what an uploaded file is. This path does know, because the upload
-    endpoint read the audio, so it can claim encounter_raw honestly rather than
+    endpoint read the audio, so it can claim audio_raw honestly rather than
     asserting a shape nothing checked.
     """
     dataset = _dataset(dataset_id)
@@ -429,7 +435,7 @@ def seal_audio(dataset_id: str,
     for locked in sorted(f["locator"] for f in uploads if f["locked_person_code"]):
         reasons.append(
             f"{locked} was uploaded locked to the person it is about, so opening it as ordinary "
-            f"audio would read noise. Seal it with the locked-recordings seal instead"
+            f"audio would read noise. Seal it with the locked-files seal instead"
         )
     if not uploads:
         reasons.append("nothing has been uploaded to this dataset yet")
@@ -440,14 +446,14 @@ def seal_audio(dataset_id: str,
         )
     for stem in sorted(set(keys) - set(audio)):
         reasons.append(
-            f"{stem}{ANSWER_KEY_SUFFIX} is an answer key for a recording that "
+            f"{stem}{ANSWER_KEY_SUFFIX} is an answer key for a file that "
             f"was not uploaded. Upload {stem}{AUDIO_SUFFIX} or withdraw the key"
         )
     for other in sorted(f["locator"] for f in uploads
                         if not f["locator"].endswith(AUDIO_SUFFIX)
                         and not f["locator"].endswith(ANSWER_KEY_SUFFIX)):
         reasons.append(
-            f"{other} is neither a recording nor an answer key. Withdraw it, "
+            f"{other} is neither a file nor an answer key. Withdraw it, "
             f"or seal this dataset with the ordinary Seal instead"
         )
     if reasons:
@@ -474,7 +480,7 @@ def seal_audio(dataset_id: str,
     )
 
     contract = versions.register_contract(
-        dataset["tenant_id"], "encounter_raw", ENCOUNTER_RAW_FIELDS, ["record_id"]
+        dataset["tenant_id"], "audio_raw", AUDIO_RAW_FIELDS, ["record_id"]
     )
 
     # Full keys, matching what the pipeline's own ingest writes, because this
@@ -491,7 +497,7 @@ def seal_audio(dataset_id: str,
         visibility_class="RAW",
         storage_backend=dataset["storage_backend"] or "seaweedfs",
         object_manifest=manifest,
-        # The number of recordings, not the number of objects. An answer key is
+        # The number of files, not the number of objects. An answer key is
         # evidence about a record, not a record of its own, and the pipeline
         # sizes its own timeouts from this.
         record_count=len(records),
@@ -507,7 +513,7 @@ def withdraw_upload(dataset_id: str, source_id: str,
 
     The row stays, so the ledger continues to show the file was uploaded and by
     whom it was withdrawn. Deleting it would leave no answer to "what happened
-    to that recording", which is the question somebody asks precisely when a
+    to that file", which is the question somebody asks precisely when a
     file has gone missing.
 
     Withdrawing twice is not an error. The second call finds the row already
@@ -546,28 +552,12 @@ class FetchHuggingFace(BaseModel):
 
 @router.post("/datasets/{dataset_id}/fetch-huggingface", status_code=202)
 async def fetch_huggingface(dataset_id: str, body: FetchHuggingFace, identity: dict = Depends(auth.current_session)) -> dict:
-    """Start fetching files from a public HuggingFace dataset repo, in the
-    background.
+    """Start fetching files from a public HuggingFace dataset repository, in the background.
 
-    This used to do the whole fetch inline, one HTTP request holding the
-    connection until every file arrived. A real repo's single largest file
-    turned out to be several hundred megabytes, downloaded whole into memory
-    before this container's own 512MB limit, which got the process
-    OOM-killed mid-request; the browser had nothing to show but a dropped
-    connection. Buffering was fixed independently of this, but the deeper
-    problem was the shape: a slow or large fetch has no business holding a
-    browser tab, or living or dying with the same process that serves every
-    other request.
-
-    What happens here is only what can be checked before anything talks to
-    HuggingFace: the department exists, `fetched_by` is registered. Every
-    HuggingFace-specific fact (does the repo exist, is it gated, what licence
-    governs it, how many files it holds) is a network call, and none of that
-    belongs in something a browser is waiting on. It happens in
-    `worker/hf_ingest_workflow.py`, a Temporal workflow running in a separate
-    process, so a crash there is not a crash here. The job row this creates
-    is what the console polls instead of waiting on this request; see
-    `GET /datasets/{id}/huggingface-fetch-jobs`.
+    The request checks only what can be checked before anything talks to HuggingFace: that the department exists and that `fetched_by` is
+    registered. Everything specific to HuggingFace (whether the repository exists, whether it is gated, which licence governs it, how many files
+    it holds) is a network call, so it happens in a workflow running in a separate worker process, and a slow or large fetch never holds a
+    browser tab. The job row this creates is what the console polls: see `GET /datasets/{id}/huggingface-fetch-jobs`.
     """
     dataset = _dataset(dataset_id)
     _mine(dataset, identity)
@@ -645,12 +635,8 @@ async def fetch_huggingface(dataset_id: str, body: FetchHuggingFace, identity: d
 async def cancel_huggingface_fetch(dataset_id: str, job_id: str, identity: dict = Depends(auth.current_session)) -> dict:
     """Stop a running HuggingFace fetch.
 
-    Asks Temporal to cancel the workflow; the workflow itself
-    (`worker/hf_ingest_workflow.py`) is what marks the job row 'cancelled'
-    once the cancellation actually lands there, not this endpoint, so this
-    can return before that has happened. Files already recorded before the
-    cancellation reaches the workflow are not undone: a later fetch of the
-    same repo picks up from there.
+    Asks Temporal to cancel the workflow. The workflow marks the job 'cancelled' once the cancellation reaches it, so this can return before that
+    has happened. Files already recorded before then are not undone: a later fetch of the same repository picks up from there.
     """
     _mine(_dataset(dataset_id), identity)
     _require_intake_role(identity)
@@ -706,9 +692,9 @@ def seal(dataset_id: str, identity: dict = Depends(auth.current_session)) -> dic
     )
     locked = sorted(f["locator"] for f in files if f["locked_person_code"])
     if locked:
-        # A locked recording sealed here would be listed as an ordinary file, with nothing saying whose it is or that a key opens it.
+        # A locked file sealed here would be listed as an ordinary file, with nothing saying whose it is or that a key opens it.
         raise HTTPException(400, {"reasons": [
-            f"{name} was uploaded locked to the person it is about. Seal it with the locked-recordings seal, "
+            f"{name} was uploaded locked to the person it is about. Seal it with the locked-files seal, "
             f"or withdraw it and upload it as an ordinary file" for name in locked]})
     if not files:
         raise HTTPException(
@@ -754,7 +740,7 @@ def seal(dataset_id: str, identity: dict = Depends(auth.current_session)) -> dic
         tenant_id=dataset["tenant_id"],
         dataset_id=dataset_id,
         schema_id=schema_id,
-        visibility_class=dataset["declared_class"] or MOST_RESTRICTIVE,
+        visibility_class=sealed_class(dataset),
         storage_backend=dataset["storage_backend"] or "seaweedfs",
         object_manifest=manifest,
         record_count=len(manifest),
@@ -769,7 +755,8 @@ def confirm(dataset_id: str, body: ConfirmClassification, identity: dict = Depen
     Decided by the policy (`classification_confirmation_decision`): a data custodian who is a department approver of the owning department, never the
     person who made the claim. Any one approver may confirm, and nobody who is not an approver of the owning department. When the claimant is the
     department's only approver, the claim waits until a second approver is added. The person who made the claim is also refused by a check
-    constraint. Until this happens the data cannot be released above the class that was claimed for it.
+    constraint. Until this happens the data is sealed and read at the most restrictive class. Agreeing raises every version sealed meanwhile to the
+    class that was claimed, recorded as a decision by the approver with its time, and a version sealed afterwards starts at that class.
     """
     dataset = _dataset(dataset_id)
     _mine(dataset, identity)
@@ -814,7 +801,32 @@ def confirm(dataset_id: str, body: ConfirmClassification, identity: dict = Depen
             ) from exc
         raise
 
-    return {"dataset_id": dataset_id, "confirmed_by": body.confirmed_by}
+    raised = _raise_to_claim(dataset, body.confirmed_by)
+    return {"dataset_id": dataset_id, "confirmed_by": body.confirmed_by, "raised": raised}
+
+
+def _raise_to_claim(dataset: dict, confirmed_by: str) -> list[dict]:
+    """Raise the versions sealed while the claim was unconfirmed to the class that was claimed, through the one promotion every other widening uses.
+
+    Only a version still at the most restrictive class and never moved: a version a reviewer has already widened or narrowed is theirs to decide,
+    not this claim's.
+    """
+    from .main import _perform_promotion  # the one promotion, not a second copy of it
+
+    declared = dataset["declared_class"]
+    if not declared or declared == MOST_RESTRICTIVE:
+        return []
+    waiting = db.all_rows(
+        """select vc.dataset_version_id as id
+             from version_class vc
+            where vc.dataset_id = %s and vc.current_class = %s
+              and not exists (select 1 from class_transition t where t.dataset_version_id = vc.dataset_version_id)
+            order by vc.version""",
+        (str(dataset["id"]), MOST_RESTRICTIVE),
+    )
+    evidence = {"decision": "the claim about this data was confirmed", "claimed_class": declared,
+                "claimed_by": dataset["declared_by"], "confirmed_by": confirmed_by}
+    return [_perform_promotion(str(v["id"]), declared, confirmed_by, "human", evidence, []) for v in waiting]
 
 
 @router.get("/datasets/{dataset_id}/export")
@@ -825,28 +837,17 @@ def export(
 ) -> dict:
     """May this data leave, and where from.
 
-    Answered by provenance rather than by class. Two datasets at the same class
-    can differ here: a public corpus was already published, and de-identified
-    clinical data was not, because de-identification reduces re-identification
-    risk without removing it and the original consent did not cover
-    republishing.
+    Answered by provenance rather than by class. Two datasets at the same class can differ here: a public corpus was already published, and
+    de-identified personal data was not, because de-identification reduces re-identification risk without removing it and the original consent
+    did not cover republishing.
 
-    Returns object keys rather than bytes even when allowed. Streaming the data
-    through the control plane would make this endpoint the data plane, which is
-    the thing the design spent its effort avoiding.
+    Returns object keys rather than bytes even when allowed, so the control plane never becomes the data plane.
 
-    Whether a licensed dataset's export is allowed can depend on whether this
-    platform has modified it: a no-derivatives licence permits the data
-    exactly as fetched but not after a pipeline action has touched it. That
-    fact is already on record (`dataset_version.produced_by_run`, set only
-    when a version is a pipeline's output rather than an original ingest),
-    so it needs no new tracking, only reading.
+    For a licensed dataset the answer can depend on whether the platform has modified it: a no-derivatives licence permits the data exactly as
+    fetched but not after a pipeline action has touched it. That is read from `dataset_version.produced_by_run`, which is set only when a
+    version is a pipeline's output rather than an original ingest.
 
-    `principal` used to be a caller-supplied query parameter: anyone could
-    ask "may this leave" as anyone else, and if OPA said yes, the real
-    `access_decision` row it wrote down attributed the export to whichever
-    name the caller typed. Taken from the verified session instead, the
-    same fix `read_models.py`'s own endpoints already apply everywhere else.
+    The person asking is taken from the verified session, so the decision that is recorded names the real caller.
     """
     principal = identity["id"]
     dataset = _dataset(dataset_id)

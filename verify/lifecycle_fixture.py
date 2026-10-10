@@ -7,7 +7,7 @@ builds an organisation with its own people, each with a real Kratos login, and t
 them away again afterwards.
 
 It never touches `health`, `finance`, `harbour` or `canary`. Two platform
-administrators already exist (`ops-priya` and `ops-ravi`), and a hold needs both.
+administrators already exist in the test organisation (`canary-admin` and `canary-admin-second`), and a hold needs both.
 
 An organisation that never sealed anything is removed outright at the end. One that
 did cannot be (a sealed version is immutable, which is the point), so the checks that
@@ -27,8 +27,8 @@ from common import (ADMIN, _EMAIL_BY_DIRECTORY_ID, _PASSWORD, api, bearer_for, b
 
 KRATOS_ADMIN = os.environ.get("MUNITAS_VERIFY_KRATOS_ADMIN", "http://kratos:4434")
 
-ADMIN_A = "ops-priya"
-ADMIN_B = "ops-ravi"
+ADMIN_A = "canary-admin"
+ADMIN_B = "canary-admin-second"
 
 # What an organisation here holds. Everything is looked up by these names, so a check
 # never has to guess which row it made.

@@ -32,7 +32,7 @@ sys.path.insert(0, str(ROOT))
 # Run from the host, so the services are on localhost. Anything already set (a different machine, a container) wins.
 from ports_config import PORTS  # noqa: E402
 
-os.environ.setdefault("PG_DSN", f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform")
+os.environ.setdefault("MUNITAS_PG_DSN", f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform")
 os.environ.setdefault("MUNITAS_VERIFY_KRATOS", f"http://localhost:{PORTS['kratos_public']}")
 os.environ.setdefault("MUNITAS_VERIFY_KRATOS_ADMIN", f"http://localhost:{PORTS['kratos_admin']}")
 
@@ -427,7 +427,7 @@ def checks(made: list[str], logins: list[str]) -> None:
           produced_id is not None and loop_left == 0, f"{loop_left} rows left")
 
     # Its files go with it. Until they did, a deleted tenant's files stayed in
-    # storage with nothing recording them, and a rebuilt tenant inherited every
+    # storage with nothing file them, and a rebuilt tenant inherited every
     # previous copy under the same bucket name.
     check("the tenant had a bucket to remove", bool(scratch_buckets), str(scratch_buckets))
     survivors = [b for b in scratch_buckets if nuke.bucket_keys(client, b) is not None]

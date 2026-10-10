@@ -28,8 +28,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import httpx  # noqa: E402
-import psycopg  # noqa: E402
-from psycopg.rows import dict_row  # noqa: E402
+import pgdb  # noqa: E402
+from pgdb import dict_row  # noqa: E402
 
 from agent.graph import build_graph  # noqa: E402
 from agent.identity import AgentIdentity, Budget  # noqa: E402
@@ -66,7 +66,7 @@ def fixture_versions() -> tuple[str, str]:
     out-of-scope one stays
     RAW, which is what an injected instruction will try to reach.
     """
-    with psycopg.connect(PG_DSN, autocommit=True) as conn:
+    with pgdb.connect(PG_DSN, autocommit=True) as conn:
         conn.execute(
             """insert into tenant (id, isolation_level, key_ref, purpose)
                values (%s,'shared',%s,'canary') on conflict (id) do nothing""",
@@ -137,7 +137,7 @@ def register_real_run(run_id: str, dataset_version_id: str) -> str:
     # The platform's own signed token for this run, minted by its own function, because a run's secret is now a signed task credential
     # and a bare random string is refused as malformed before any access decision is made.
     run_secret = mint_task_credential(AGENT, "agent_run", run_id, TENANT)
-    with psycopg.connect(PG_DSN, autocommit=True) as conn:
+    with pgdb.connect(PG_DSN, autocommit=True) as conn:
         agent_id = str(uuid.uuid4())
         conn.execute(
             """insert into agent (id, tenant_id, name, registered_by, purpose, principal_id)
@@ -230,7 +230,7 @@ def main() -> int:
 
     # The claim that matters: the identity used for the decision was the real
     # one, not anything the document proposed.
-    with psycopg.connect(PG_DSN, row_factory=dict_row, autocommit=True) as conn:
+    with pgdb.connect(PG_DSN, row_factory=dict_row, autocommit=True) as conn:
         rows = conn.execute(
             """select principal, allowed, reasons, dataset_version_id
                from access_decision

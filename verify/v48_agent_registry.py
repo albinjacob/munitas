@@ -91,13 +91,13 @@ def main() -> int:
 
     heading("U48: registering an agent is scoped to its own tenant")
 
-    # eng-devi is registered in `health`, not `canary`. A caller naming the
+    # neighbour-engineer is registered in `neighbour`, not `canary`. A caller naming the
     # canary tenant while pointing at a directory row that actually belongs
     # to a different tenant must be refused, the same as deploy/start_run/
     # approve_run already refuse a cross-tenant directory lookup.
     cross_tenant = api("POST", "/agents/register", json={
         "tenant_id": TENANT, "name": f"agent-{uuid.uuid4().hex[:8]}",
-        "department_id": owning, "registered_by": "eng-devi",
+        "department_id": owning, "registered_by": "neighbour-engineer",
         "purpose": "verification fixture",
     })
     check("a registered_by from a different tenant is refused",

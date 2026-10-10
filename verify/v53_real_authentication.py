@@ -33,8 +33,8 @@ KRATOS = os.environ.get("MUNITAS_VERIFY_KRATOS", "http://kratos:4433")
 # values are duplicated here on purpose, the same way other verify scripts
 # hardcode known-seeded ids rather than importing the seed script that wrote
 # them.
-DIRECTORY_ID = "cust-hartley"
-EMAIL = "hartley@health.example"
+DIRECTORY_ID = "canary-custodian"
+EMAIL = "custodian@canary.example"
 PASSWORD = "dev-password-not-for-production"
 
 
@@ -110,7 +110,7 @@ def main() -> int:
     check("it resolves to the directory row the identity was linked to",
           body.get("id") == DIRECTORY_ID, body.get("id"))
     check("carrying that row's real tenant, not a claimed one",
-          body.get("tenant_id") == "health", body.get("tenant_id"))
+          body.get("tenant_id") == "canary", body.get("tenant_id"))
     check("and that row's real roles",
           body.get("roles") == ["data_custodian"], body.get("roles"))
     check("with a session id that is a real Kratos session, not invented",

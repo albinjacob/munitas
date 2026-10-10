@@ -201,9 +201,9 @@ def main() -> int:
     check("the refusal names the contract it found",
           any("uploaded_files" in r for r in said), f"reasons {said}")
     check("and says what to do instead",
-          any("Seal as recordings" in r for r in said), f"reasons {said}")
+          any("Seal as files" in r for r in said), f"reasons {said}")
 
-    heading("U61e: a recording with no answer key is refused, by name")
+    heading("U61e: a file with no answer key is refused, by name")
 
     keyless = register(owning)
     put(keyless, "synth-9200.wav", tiny_wav(0.5, 16000))
@@ -274,7 +274,7 @@ def main() -> int:
         check("the response names the run and its workflow",
               bool(run_id) and body.get("workflow_id", "").startswith("deid-"),
               f"run {run_id} workflow {body.get('workflow_id')}")
-        check("and says how many recordings it covers", body.get("records") == 1,
+        check("and says how many files it covers", body.get("records") == 1,
               f"records {body.get('records')}")
 
         # Read immediately, with no wait. This is the check that proves writing the
@@ -324,7 +324,7 @@ def main() -> int:
         "tenant_id": TENANT,
         "dataset_id": elsewhere,
         "schema_id": api("POST", "/schema-contracts", json={
-            "tenant_id": TENANT, "name": "encounter_raw",
+            "tenant_id": TENANT, "name": "audio_raw",
             "fields": [
                 {"name": "record_id", "type": "string", "sensitivity": "none",
                  "added_by": "munitas-worker"},

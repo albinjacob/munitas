@@ -1,0 +1,15 @@
+# What the checks that talk to Docker itself need (verify/v55_sandboxed_agent_run.py and verify/v76_activation_live.py).
+# Docker runs inside the WSL distro on this machine, not on Windows, so these checks run from inside the distro with their
+# own small venv, separate from sandbox-venv (the one the real sandbox worker runs in) so that nothing only a test uses
+# is added to the environment that runs agent code:
+#
+#   uv venv --python 3.12 ~/.munitas/docker-checks-venv
+#   uv pip install --python ~/.munitas/docker-checks-venv/bin/python -r worker/requirements-docker-checks.txt
+#
+# The pins match worker/requirements-sandbox.txt and worker/requirements.txt, so a check exercises the same libraries the
+# platform runs. boto3 is the one addition: the checks put a file into storage as part of their setup.
+
+docker==7.1.0            # Apache 2.0. Starts, inspects and removes the throwaway containers.
+httpx==0.27.2            # BSD. Talks to the control plane.
+pg8000==1.31.5   # BSD 3. Reads and writes the database rows the checks set up.
+boto3==1.35.24           # Apache 2.0. Puts the files the checks need into storage.

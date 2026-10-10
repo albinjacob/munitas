@@ -329,6 +329,9 @@ _SAMPLE_DECISION_PATH = "/v1/data/munitas/access/development_sample_decision"
 _SAMPLE_END_PATH = "/v1/data/munitas/access/development_sample_end_decision"
 _SYNTHETIC_PATH = "/v1/data/munitas/access/synthetic_declaration_decision"
 _OPEN_RECORD_PATH = "/v1/data/munitas/access/open_record_decision"
+_FILE_LEASE_REQUEST_PATH = "/v1/data/munitas/access/file_lease_request_decision"
+_FILE_LEASE_DECISION_PATH = "/v1/data/munitas/access/file_lease_decision"
+_FILE_LEASE_END_PATH = "/v1/data/munitas/access/file_lease_end_decision"
 
 
 def may_request_locked_lease(payload: dict) -> tuple[bool, list[str]]:
@@ -347,7 +350,7 @@ def may_revoke_locked_lease(payload: dict) -> tuple[bool, list[str]]:
 
 
 def may_approve_pipeline_version(payload: dict) -> tuple[bool, list[str]]:
-    """May this person move a pipeline version whose custom step reads the recordings or writes files to production? A department approver, never its uploader."""
+    """May this person move a pipeline version whose custom step reads the files or writes files to production? A department approver, never its uploader."""
     return _ask(_PIPELINE_VERSION_APPROVAL_PATH, payload)
 
 
@@ -362,12 +365,12 @@ def may_retire_pipeline_version(payload: dict) -> tuple[bool, list[str]]:
 
 
 def may_request_development_sample(payload: dict) -> tuple[bool, list[str]]:
-    """May this person ask for a development sample of recordings, of this kind, size and length of life?"""
+    """May this person ask for a development sample of files, of this kind, size and length of life?"""
     return _ask(_SAMPLE_REQUEST_PATH, payload)
 
 
 def may_decide_development_sample(payload: dict) -> tuple[bool, list[str]]:
-    """May this person decide somebody else's request for a sample? An approver of the department that owns the recordings."""
+    """May this person decide somebody else's request for a sample? An approver of the department that owns the files."""
     return _ask(_SAMPLE_DECISION_PATH, payload)
 
 
@@ -376,13 +379,28 @@ def may_end_development_sample(payload: dict) -> tuple[bool, list[str]]:
     return _ask(_SAMPLE_END_PATH, payload)
 
 
+def may_request_file_lease(payload: dict) -> tuple[bool, list[str]]:
+    """May this person ask to open this many real files, for this many hours, in the console or a notebook, for this purpose?"""
+    return _ask(_FILE_LEASE_REQUEST_PATH, payload)
+
+
+def may_decide_file_lease(payload: dict) -> tuple[bool, list[str]]:
+    """May this person decide somebody else's request to open real files? An approver of the department that owns them."""
+    return _ask(_FILE_LEASE_DECISION_PATH, payload)
+
+
+def may_end_file_lease(payload: dict) -> tuple[bool, list[str]]:
+    """May this person end a lease early? The department's approver, or the person it was granted to."""
+    return _ask(_FILE_LEASE_END_PATH, payload)
+
+
 def may_open_record(payload: dict) -> tuple[bool, list[str]]:
     """May this person open the files of this version, given why the platform finds they might (own sample, synthetic, own development output, none)?"""
     return _ask(_OPEN_RECORD_PATH, payload)
 
 
 def may_declare_synthetic(payload: dict) -> tuple[bool, list[str]]:
-    """May this person declare a version of recordings synthetic? An approver of the owning department, with a reason."""
+    """May this person declare a version of files synthetic? An approver of the owning department, with a reason."""
     return _ask(_SYNTHETIC_PATH, payload)
 
 
@@ -407,7 +425,7 @@ def may_decide_group_size_report(payload: dict) -> tuple[bool, list[str]]:
 
 def _decision(path: str, payload: dict) -> dict:
     try:
-        response = httpx.post(f"{config.OPA_URL}{path}", json={"input": payload}, timeout=5.0)
+        response = httpx.post(f"{config.OPA_URL}{path}", json={"input": payload}, headers=_headers(), timeout=5.0)
         response.raise_for_status()
         result = response.json().get("result")
     except httpx.HTTPError as exc:
@@ -434,7 +452,7 @@ def preview(payload: dict) -> dict:
     """
     try:
         response = httpx.post(
-            f"{config.OPA_URL}{_PREVIEW_PATH}", json={"input": payload}, timeout=5.0
+            f"{config.OPA_URL}{_PREVIEW_PATH}", json={"input": payload}, headers=_headers(), timeout=5.0
         )
         response.raise_for_status()
         result = response.json().get("result")
@@ -447,6 +465,14 @@ def preview(payload: dict) -> dict:
     return result
 
 
+def role_words() -> dict:
+    """What each role is called, from the policy's role table: its label, and for the roles people hold, one and many of them with their article."""
+    words = read_document("munitas/role_words/roles")
+    if not isinstance(words, dict) or not words:
+        raise PolicyUnavailable("the policy has no role table")
+    return words
+
+
 def read_document(path: str) -> object:
     """Read a plain document out of the policy bundle.
 
@@ -456,11 +482,42 @@ def read_document(path: str) -> object:
     screen, and this project has already had one drift.
     """
     try:
-        response = httpx.get(f"{config.OPA_URL}/v1/data/{path}", timeout=5.0)
+        response = httpx.get(f"{config.OPA_URL}/v1/data/{path}", headers=_headers(), timeout=5.0)
         response.raise_for_status()
         return response.json().get("result")
     except httpx.HTTPError as exc:
         raise PolicyUnavailable(f"policy engine unreachable: {exc}") from exc
+
+
+_SCREEN_PATH = "/v1/data/munitas/screens/screen_decision"
+_SCREENS_PATH = "/v1/data/munitas/screens/for_roles"
+
+
+def _headers() -> dict:
+    """The platform's token, which the policy engine requires on every request (platform/policy/system_authz.rego)."""
+    return {"Authorization": f"Bearer {config.OPA_TOKEN}"}
+
+
+def may_open_screen(screen: str, roles: list[str]) -> tuple[bool, list[str]]:
+    """May somebody who holds these roles open this page of the console?
+
+    A sixth question, and the only one about a page and not about data or an action. The answer comes from platform/policy/screens.rego, which is
+    the one place that says who a page is for.
+    """
+    return _ask(_SCREEN_PATH, {"screen": screen, "roles": roles})
+
+
+def screens_for(roles: list[str]) -> dict:
+    """Every page of the console, with whether somebody who holds these roles may open it and whether the menu offers it to them."""
+    try:
+        response = httpx.post(f"{config.OPA_URL}{_SCREENS_PATH}", json={"input": {"roles": roles}}, headers=_headers(), timeout=5.0)
+        response.raise_for_status()
+        result = response.json().get("result")
+    except httpx.HTTPError as exc:
+        raise PolicyUnavailable(f"policy engine unreachable: {exc}") from exc
+    if not isinstance(result, dict) or not result:
+        raise PolicyUnavailable("policy engine returned no list of pages; the bundle may have failed to load")
+    return result
 
 
 def _ask(path: str, payload: dict) -> tuple[bool, list[str]]:
@@ -468,7 +525,7 @@ def _ask(path: str, payload: dict) -> tuple[bool, list[str]]:
         response = httpx.post(
             f"{config.OPA_URL}{path}",
             json={"input": payload},
-            timeout=5.0,
+            headers=_headers(), timeout=5.0,
         )
         response.raise_for_status()
         result = response.json().get("result")

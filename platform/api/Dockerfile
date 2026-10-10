@@ -9,6 +9,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY api/app ./app
 COPY crypto ./crypto
+# The project's database layer over pg8000, shared with the worker (worker/pgdb.py is an identical copy).
+COPY pgdb.py ./pgdb.py
 # The library that writes a version's rows as a table: shared with the table worker, which has no database.
 COPY tablewriter ./tablewriter
 

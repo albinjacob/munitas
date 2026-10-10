@@ -47,15 +47,15 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
-import psycopg
-from psycopg.rows import dict_row
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))   # the repository's root: pgdb and ports_config are found there
+import pgdb  # noqa: E402
+from pgdb import dict_row  # noqa: E402
 from ports_config import PORTS  # noqa: E402
 
 KRATOS_ADMIN = os.environ.get("MUNITAS_KRATOS_ADMIN_URL", f"http://localhost:{PORTS['kratos_admin']}")
 PG_DSN = os.environ.get(
-    "PG_DSN", f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform"
+    "MUNITAS_PG_DSN", f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform"
 )
 PASSWORD = "dev-password-not-for-production"
 IDENTITIES_FILE = Path(__file__).resolve().parent / "identities.json"
@@ -134,7 +134,7 @@ def link(conn, seed: Seed) -> str:
 def main() -> int:
     seeds = load_seeds(IDENTITIES_FILE)
     results: list[str] = []
-    with psycopg.connect(PG_DSN, row_factory=dict_row, autocommit=True) as conn:
+    with pgdb.connect(PG_DSN, row_factory=dict_row, autocommit=True) as conn:
         for seed in seeds:
             results.append(link(conn, seed))
 

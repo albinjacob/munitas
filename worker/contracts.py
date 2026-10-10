@@ -108,7 +108,7 @@ class Contract:
 # treating them alike is how over-restriction starts.
 
 RAW_AUDIO = Contract(
-    name="encounter_raw",
+    name="audio_raw",
     fields=(
         FieldSpec("record_id", "string"),
         FieldSpec("audio_key", "string"),
@@ -119,7 +119,7 @@ RAW_AUDIO = Contract(
 )
 
 TRANSCRIBED = Contract(
-    name="encounter_transcribed",
+    name="audio_transcribed",
     fields=(
         FieldSpec("record_id", "string"),
         FieldSpec("audio_key", "string"),
@@ -131,7 +131,7 @@ TRANSCRIBED = Contract(
 )
 
 DETECTED = Contract(
-    name="encounter_detected",
+    name="audio_detected",
     fields=(
         FieldSpec("record_id", "string"),
         FieldSpec("transcript", "string", sensitivity="phi"),
@@ -143,7 +143,7 @@ DETECTED = Contract(
 )
 
 REDACTED = Contract(
-    name="encounter_redacted",
+    name="audio_redacted",
     fields=(
         FieldSpec("record_id", "string"),
         FieldSpec("redacted_transcript", "string", sensitivity="quasi"),

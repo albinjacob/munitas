@@ -29,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, "/app")
 sys.path.insert(0, "/")
 
-import psycopg  # noqa: E402
+import pgdb  # noqa: E402
 
 from common import CANARY, api, bearer_for, check, db, fixture_tenant, heading, require_api, summary  # noqa: E402
 from lifecycle_fixture import drop_org, make_org  # noqa: E402
@@ -146,14 +146,14 @@ def main() -> int:
         with db() as conn:
             conn.execute("update group_size_report set people_in_small_groups = 0 where dataset_version_id = %s", (version,))
         edited = "accepted"
-    except psycopg.errors.CheckViolation:
+    except pgdb.errors.CheckViolation:
         edited = "refused"
     check("the database refuses an edit to what was counted, even when the API is bypassed", edited == "refused", edited)
     try:
         with db() as conn:
             conn.execute("update group_size_report set decision = 'accepted', decided_by = 'x', decided_at = now(), decision_note = 'y' where dataset_version_id = %s", (version,))
         redecided = "accepted"
-    except psycopg.errors.CheckViolation:
+    except pgdb.errors.CheckViolation:
         redecided = "refused"
     check("and a second decision, the same way", redecided == "refused", redecided)
 

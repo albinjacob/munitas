@@ -1,6 +1,6 @@
 """Locking a whole file under a person's key, in chunks, so a file of any size is locked and opened without being held in memory.
 
-A recording is far too large to lock in one piece and is uploaded in parts that can each be sent again, so it is locked a chunk at a time. Each
+A file is far too large to lock in one piece and is uploaded in parts that can each be sent again, so it is locked a chunk at a time. Each
 chunk is its own AES-GCM message. The organisation, the person, the file's name, the file's total size, the chunk's number and whether it is the
 last chunk are bound in as additional authenticated data, which has three consequences that the checks in verify/v135 prove one by one:
 

@@ -87,7 +87,7 @@ def build_graph(ctx: ToolContext, checkpointer=None):
     right choice for a host-run script that invokes the graph once and reads
     the result, and the wrong one for the worker, which runs each invocation
     in its own activity process and must be able to pick a paused thread up
-    again days later. The worker passes a `PostgresSaver`; nothing else needs
+    again days later. The worker passes a `PgdbSaver` (worker/pg_saver.py); nothing else needs
     to care.
     """
 

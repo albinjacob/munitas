@@ -107,13 +107,13 @@ def main() -> int:
             env = {**os.environ, "MUNITAS_ENV": "production", **extra}
             return subprocess.run([sys.executable, "-c", "import app.config"], capture_output=True, text=True, env=env, cwd="/app")
 
-        refused = start(S3_ADMIN_SECRET="munitas-admin-secret", MUNITAS_WORKER_TOKEN="dev-worker-token-not-for-production")
+        refused = start(MUNITAS_S3_ADMIN_SECRET="munitas-admin-secret", MUNITAS_WORKER_TOKEN="dev-worker-token-not-for-production")
         check("with the published storage secret and worker token it will not start, and names them", refused.returncode != 0
-              and "S3_ADMIN_SECRET" in refused.stderr and "MUNITAS_WORKER_TOKEN" in refused.stderr, refused.stderr.strip()[-160:])
+              and "MUNITAS_S3_ADMIN_SECRET" in refused.stderr and "MUNITAS_WORKER_TOKEN" in refused.stderr and "MUNITAS_OPA_TOKEN" in refused.stderr, refused.stderr.strip()[-160:])
         check("and it does not print either value", "munitas-admin-secret" not in refused.stderr.split("RuntimeError:")[-1]
               and "dev-worker-token-not-for-production" not in refused.stderr.split("RuntimeError:")[-1])
-        check("with no worker token at all it will not start either", start(S3_ADMIN_SECRET="a-secret-of-my-own", MUNITAS_WORKER_TOKEN="").returncode != 0)
-        check("with a secret of its own for each it starts", start(S3_ADMIN_SECRET="a-secret-of-my-own", MUNITAS_WORKER_TOKEN="a-token-of-my-own").returncode == 0)
+        check("with no worker token at all it will not start either", start(MUNITAS_S3_ADMIN_SECRET="a-secret-of-my-own", MUNITAS_WORKER_TOKEN="", MUNITAS_OPA_TOKEN="an-opa-token-of-my-own").returncode != 0)
+        check("with a secret of its own for each it starts", start(MUNITAS_S3_ADMIN_SECRET="a-secret-of-my-own", MUNITAS_WORKER_TOKEN="a-token-of-my-own", MUNITAS_OPA_TOKEN="an-opa-token-of-my-own").returncode == 0)
         check("and outside production the published values are accepted, as they are on a laptop",
               subprocess.run([sys.executable, "-c", "import app.config"], capture_output=True, text=True, cwd="/app",
                              env={**os.environ, "MUNITAS_ENV": "development"}).returncode == 0)

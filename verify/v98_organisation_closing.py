@@ -49,8 +49,8 @@ def main() -> int:
         check("a new organisation is active", phase(org.id) == "active", phase(org.id))
         listing = api("GET", "/lifecycle/organisations", headers=admin).json()["organisations"]
         by_id = {o["tenant_id"]: o for o in listing}
-        check("a platform administrator sees every customer organisation and its phase",
-              by_id.get(org.id, {}).get("phase") == "active" and by_id.get("health", {}).get("phase") == "active",
+        check("a platform administrator sees every customer organisation and its phase, and no test organisation",
+              by_id.get(org.id, {}).get("phase") == "active" and "canary" not in by_id and "neighbour" not in by_id,
               ", ".join(sorted(by_id)[:6]))
         check("a member does not see the all-organisations view",
               api("GET", "/lifecycle/organisations", headers=member).status_code == 403)

@@ -19,12 +19,13 @@ Docker runs inside WSL2 on this machine, so every command goes through `wsl.exe`
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
 from pathlib import Path
 
-DISTRO = "Ubuntu-20.04"
+DISTRO = os.environ.get("MUNITAS_WSL_DISTRO", "Munitas")
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -55,7 +56,7 @@ def main() -> int:
 
     if args.action == "start":
         run(f"docker rm -f {name} >/dev/null 2>&1; true", check=False)
-        prefix = f"cd '{wsl_path(ROOT)}' && MUNITAS_DATA='/mnt/o/munitas-data' MUNITAS_HOST_WORK_DIR='' TABLE_WORKER_TENANT='{args.tenant}' docker compose"
+        prefix = f"cd '{wsl_path(ROOT)}' && MUNITAS_DATA='/mnt/o/munitas-data' MUNITAS_HOST_WORK_DIR='' MUNITAS_TABLE_WORKER_TENANT='{args.tenant}' docker compose"
         # The shared image is built with the stack. This does not rebuild it, so a worker started later runs the same code as the pool.
         run(f"{prefix} --profile dedicated run -d --no-deps --name {name} table-worker-dedicated")
         run(f"docker update --restart unless-stopped {name}")

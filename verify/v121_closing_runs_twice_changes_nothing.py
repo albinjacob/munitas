@@ -30,9 +30,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "verify"))
 sys.path.insert(0, str(ROOT))
 
-if "PG_DSN" not in os.environ:
+if "MUNITAS_PG_DSN" not in os.environ:
     from ports_config import PORTS
-    os.environ["PG_DSN"] = f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform"
+    os.environ["MUNITAS_PG_DSN"] = f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform"
 
 from common import CANARY, check, db, fixture_tenant, heading, summary  # noqa: E402
 

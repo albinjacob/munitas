@@ -2,7 +2,7 @@
 
 The claim is not that a file was stored. It is that the platform read the file
 and can therefore say what it is: an uploaded version sealed by this path
-carries the encounter_raw contract, and its duration and sample rate came from
+carries the audio_raw contract, and its duration and sample rate came from
 the bytes rather than from anything the caller asserted.
 
 Derived at upload rather than by a later job because that is the one moment the
@@ -178,7 +178,7 @@ def main() -> int:
         ).fetchone()
 
     # A real Kratos session, because the endpoint takes the acting person from
-    # the session rather than from the body. Recording who withdrew a file is
+    # the session rather than from the body. File who withdrew a file is
     # the point of keeping the row, so a claimed name would defeat it.
     engineer = bearer_for(ENGINEER)
     unauthenticated = api(
@@ -274,8 +274,8 @@ def main() -> int:
     check("the sealed version is RAW",
           row is not None and row["visibility_class"] == "RAW",
           f"class {row and row['visibility_class']}")
-    check("it carries encounter_raw, not uploaded_files",
-          row is not None and row["contract"] == "encounter_raw",
+    check("it carries audio_raw, not uploaded_files",
+          row is not None and row["contract"] == "audio_raw",
           f"contract {row and row['contract']}")
 
     heading("U60f: the version holds what the pipeline will look for")
@@ -299,7 +299,7 @@ def main() -> int:
     heading("U60g: the contract the API registers matches the one the worker uses")
 
     # The contract this version actually points at, not "the one named
-    # encounter_raw in this tenant". Canary accumulates artefacts on purpose,
+    # audio_raw in this tenant". Canary accumulates artefacts on purpose,
     # so a check that assumes a pristine count would report a stale row from
     # some earlier run as a defect in this one.
     with db() as conn:
@@ -324,12 +324,12 @@ def main() -> int:
     # comparing the API with itself. This one replays exactly what the worker
     # sends, worker/contracts.py's Contract.as_payload with FieldSpec.as_dict,
     # and asserts the platform hands back the row that already exists. If the
-    # two ever computed the digest differently, encounter_raw would quietly
+    # two ever computed the digest differently, audio_raw would quietly
     # exist twice under one name and the pipeline and the console would each
     # hold a different id for it.
     as_the_worker_sends = {
         "tenant_id": TENANT,
-        "name": "encounter_raw",
+        "name": "audio_raw",
         "fields": [
             {"name": "record_id", "type": "string", "sensitivity": "none",
              "added_by": "munitas-worker"},
@@ -342,24 +342,24 @@ def main() -> int:
         ],
         "primary_key": ["record_id"],
     }
-    def encounter_raw_rows() -> int:
+    def audio_raw_rows() -> int:
         with db() as conn:
             return conn.execute(
                 """select count(*) as n from schema_contract
-                   where tenant_id = %s and name = 'encounter_raw'""",
+                   where tenant_id = %s and name = 'audio_raw'""",
                 (TENANT,),
             ).fetchone()["n"]
 
-    before = encounter_raw_rows()
+    before = audio_raw_rows()
     replayed = api("POST", "/schema-contracts", json=as_the_worker_sends)
     check("the worker's own registration finds the existing row",
           replayed.status_code in (200, 201)
           and replayed.json().get("created") is False,
           f"created {replayed.json().get('created')} "
           f"(HTTP {replayed.status_code})")
-    check("so it adds no second encounter_raw under the same name",
-          encounter_raw_rows() == before,
-          f"{before} row(s) before, {encounter_raw_rows()} after")
+    check("so it adds no second audio_raw under the same name",
+          audio_raw_rows() == before,
+          f"{before} row(s) before, {audio_raw_rows()} after")
 
     return summary("U60")
 

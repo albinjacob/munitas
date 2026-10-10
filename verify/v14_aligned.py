@@ -26,10 +26,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import boto3  # noqa: E402
-from botocore.config import Config  # noqa: E402
-
+from common import ADMIN, s3_client  # noqa: E402
 from worker.align import Alignment  # noqa: E402
 from worker.scoring import (GATE_DIRECT_LEAKS, GATE_RECALL, ScoreCard,  # noqa: E402
                             evaluate_gate, score_record)
@@ -37,16 +36,13 @@ from ports_config import PORTS  # noqa: E402
 
 
 def get_json(key: str):
-    client = boto3.client(
-        "s3", endpoint_url=f"http://localhost:{PORTS['seaweedfs_s3']}",
-        aws_access_key_id="pipeline-action",
-        aws_secret_access_key="pipeline-action-secret",
-        config=Config(signature_version="s3v4"), region_name="us-east-1",
-    )
+    # The storage administrator, which the other checks read stored files with. The fixed `pipeline-action` credential this used to
+    # name does not exist on a stack set up today, so every read failed with InvalidAccessKeyId before any scoring.
+    client = s3_client(*ADMIN)
     # The bucket comes from the record that owns the key, not from a name:
     # the version whose prefix the key sits under, and its tenant's bucket.
-    import psycopg
-    with psycopg.connect(f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform") as conn:
+    import pgdb
+    with pgdb.connect(f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform") as conn:
         row = conn.execute(
             """select p.bucket from dataset_version v
                  join tenant_storage_provision p
@@ -135,7 +131,7 @@ def main() -> int:
 
     print("\nWhat this does not show")
     print("-" * 64)
-    print("  That any of it transfers to real recordings. This is synthesised")
+    print("  That any of it transfers to real files. This is synthesised")
     print("  speech, cleaner and more uniform than a consulting room, so the")
     print("  destruction rate here says little about real audio.")
     return 0

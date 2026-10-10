@@ -5,7 +5,7 @@ this machine's Docker daemon for the sandboxed script steps.
 
     .venv\\Scripts\\python.exe verify\\v66_pipeline_dag.py
 
-Needs PG_DSN, VERIFY_KRATOS and VERIFY_API pointing at the published localhost
+Needs MUNITAS_PG_DSN, VERIFY_KRATOS and VERIFY_API pointing at the published localhost
 ports, the same as v63.
 """
 

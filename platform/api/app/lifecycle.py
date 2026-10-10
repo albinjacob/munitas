@@ -30,7 +30,7 @@ one stands.
 One administrator records the notice and a different one approves it, so no single
 account can stop or allow a deletion on its own. A proposal also stops the purge
 until it is decided or lapses (HOLD_APPROVAL_DAYS), because a purge that could land
-between recording a hold and approving it would make the hold worthless.
+between file a hold and approving it would make the hold worthless.
 
 A hold names a temporary custodian, the person who answers for the preserved records
 while it stands, and that person acknowledges it. Releasing a hold restarts the

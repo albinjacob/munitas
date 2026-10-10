@@ -22,6 +22,7 @@ ends up written there.
 
 from __future__ import annotations
 
+import json
 import threading
 from contextlib import contextmanager
 
@@ -29,17 +30,14 @@ from . import config, db, opa, seaweed
 
 
 class UnsafeProjection(Exception):
-    """The computed document was refused before it could be written.
+    """The document could not be computed correctly, so there is nothing right to write.
 
-    A printer that writes the whole document can, if it is wrong, remove
-    everyone's access at once, where editing one line could only ever break one
-    line. That risk is created by this design rather than inherited from the
-    old one, so it gets a guard rather than care.
+    This is for the cases where the platform cannot work out what the list should be: the policy's roles cannot be read, or a role has no
+    configured key. Writing anything then would be a guess, so the update stops and says why. A list that can be computed is always
+    written, and anything odd about it is raised as an alert instead (see ALERT_UNEXPLAINED_AT).
 
-    `retryable` says whether trying again could succeed without a person doing
-    anything: true for a service that was unreachable or a lock that was busy,
-    false for the guard refusing a print or a role with no configured key,
-    which the activator therefore leaves for an administrator.
+    `retryable` says whether trying again could succeed without a person doing anything: true for a service that was unreachable or a lock
+    that was busy, false for a role with no configured key, which the activator therefore leaves for an administrator.
     """
 
     def __init__(self, message: str, *, retryable: bool = False):
@@ -54,30 +52,23 @@ class LockUnavailable(UnsafeProjection):
         super().__init__(message, retryable=True)
 
 
-# How much of the live lease-derived access one print may remove before it is
-# treated as a fault rather than as housekeeping. The first print is expected to
-# remove a great deal, because 224 expired leases have never been withdrawn, so
-# the guard is armed by the caller rather than always on.
+# What an update does when it notices something odd: it carries on, and says so.
 #
-# Set below the measured first-run shrink rather than above it. Re-measured on
-# this stack the first honest print removes 47.2% of prefix grants (2356 down to
-# 1244); the net is under half because floor-justified prefixes the projection
-# re-adds offset some of the expired-lease removals. A ceiling of 0.4 keeps the
-# first cleanup a deliberate, armed=False act, and lets routine reconciles, which
-# remove close to nothing, pass on their own.
+# An earlier version refused any update that would remove more than 40% of the folder grants. That protected nothing real and caused outages: the
+# list is rebuilt from the register, a wrong list only ever shuts doors (never opens one), and the next correct update overwrites it, because the
+# list is a file written through an internal address that needs no storage key. Meanwhile a refusal left the grants of ended leases open, and
+# stopped every new organisation's storage from switching on. Over 17,000 updates it refused 73 times for a shrink, and every one of those was
+# routine (a lease ending, data deleted) while no real mistake was ever caught. A percentage also means nothing when only two or eight grants exist.
 #
-# Lease expiry is exactly the shape this exists to tolerate as "routine" --
-# and it happens continuously by the clock, on every real deployment, not
-# only during a first cleanup or on a dev machine. `_reconcile()` therefore
-# checks a second time, only when this ceiling is first exceeded, whether
-# the excess traces entirely to leases that have since expired or been
-# revoked: if recomputing as though they had not brings the shrink back
-# under this same ceiling, the print proceeds without a person, recorded as
-# `auto_explained` rather than `reason`. Only a shrink this cannot account
-# for still stops here and waits for one.
-MAX_SHRINK = 0.4
-
-
+# So an update is always written, and what is odd about it is raised as an alert (alerts.py), which is recorded on the update's own row and
+# written to the alerts file. An alert is raised for:
+#   * a list with no bucket-wide permission at all, which would leave nothing able to read or write anything;
+#   * folder grants removed that nothing in the register explains, once there are ALERT_UNEXPLAINED_AT or more of them (a count, not a share, so
+#     a deployment with a handful of grants is not alarmed by a handful of removals);
+#   * a permission that does not trace back to a version in the register, or that sits in another organisation's bucket.
+# Removals that the register does explain (a lease that ended, data that was deleted) are routine and are only summarised on the update's row.
+ALERT_UNEXPLAINED_AT = 5
+ALERT_CATEGORY = "storage-permissions"
 def _buckets() -> list[str]:
     """Every bucket the platform writes to, which is every recorded one.
 
@@ -360,7 +351,7 @@ def _minted_identities(*, as_of=None) -> list[dict]:
         """select j.id::text as id, j.storage_prefix, p.bucket
              from table_job j
              join tenant_storage_provision p on p.tenant_id = j.tenant_id and p.backend = 'seaweedfs'
-            where j.status in ('pending', 'running') and j.expires_at > now()"""):
+            where j.status in ('pending', 'running') and j.expires_at > now() and j.ready"""):
         identities.append({
             "name": table_job_identity(row["id"]),
             "credentials": [{"accessKey": table_job_access_key(row["id"]), "secretKey": table_job_secret(row["id"])}],
@@ -563,6 +554,7 @@ def catalog_key_for(principal: str, tenant_id: str, version_id: str,
         "expires_at": (epoch + 2) * catalog_epoch_seconds(),
         "needs_print": needs_print,
     }
+
 
 
 # The platform's own key. Not a policy role: it provisions buckets and nothing
@@ -826,7 +818,7 @@ REQUEST_LOCK_WAIT_SECONDS = 5
 
 @contextmanager
 def _document_lock(wait: int = LOCK_WAIT_SECONDS):
-    import psycopg
+    import pgdb
 
     if not _THREAD_LOCK.acquire(timeout=wait):
         raise LockUnavailable(
@@ -834,11 +826,11 @@ def _document_lock(wait: int = LOCK_WAIT_SECONDS):
             f"{wait}s. Refusing rather than waiting indefinitely"
         )
     try:
-        with psycopg.connect(config.PG_DSN, autocommit=True, connect_timeout=5) as conn:
+        with pgdb.connect(config.PG_DSN, autocommit=True, connect_timeout=5) as conn:
             conn.execute(f"set lock_timeout = '{int(wait)}s'")
             try:
                 conn.execute("select pg_advisory_lock(%s)", (_ADVISORY_LOCK_ID,))
-            except psycopg.errors.LockNotAvailable as exc:
+            except pgdb.errors.LockNotAvailable as exc:
                 raise LockUnavailable(
                     f"another process held the document lock for over "
                     f"{wait}s. Refusing rather than waiting indefinitely"
@@ -851,14 +843,11 @@ def _document_lock(wait: int = LOCK_WAIT_SECONDS):
         _THREAD_LOCK.release()
 
 
-def reconcile(*, armed: bool = True, trigger: str = "manual") -> dict:
-    """Compute the document and write it, or refuse and say why.
+def reconcile(*, trigger: str = "manual") -> dict:
+    """Compute the document and write it, then say what was odd about it.
 
-    `armed` exists for the first run. 224 leases expired without ever being
-    withdrawn, so the first print legitimately removes close to half of the
-    lease-derived grants, which is exactly the shape the guard is meant to
-    catch. It is disarmed once, deliberately, by a person who has read the
-    numbers, and armed everywhere else.
+    A document that can be computed is always written. If it cannot be computed at all (`UnsafeProjection`), nothing is written and the
+    reason is recorded on the update's row.
     """
     wait = (REQUEST_LOCK_WAIT_SECONDS if trigger in ("request", "provision")
             else LOCK_WAIT_SECONDS)
@@ -866,7 +855,7 @@ def reconcile(*, armed: bool = True, trigger: str = "manual") -> dict:
         with _document_lock(wait):
             print_id = _start_print(trigger)
             try:
-                result = _reconcile(armed)
+                result = _reconcile()
             except UnsafeProjection as exc:
                 _finish_print(print_id, reason=str(exc), retryable=exc.retryable)
                 raise
@@ -878,7 +867,7 @@ def reconcile(*, armed: bool = True, trigger: str = "manual") -> dict:
                               retryable=True)
                 raise
             _finish_print(print_id, identities=result["identities"],
-                          auto_explained=result.get("auto_explained"))
+                          auto_explained=result.get("auto_explained"), alerts=result.get("alerts"))
             return result
     except LockUnavailable as exc:
         # Never got as far as starting a print, so record the attempt here.
@@ -886,74 +875,134 @@ def reconcile(*, armed: bool = True, trigger: str = "manual") -> dict:
         raise
 
 
-def _reconcile(armed: bool) -> dict:
-    # The live document is read only to measure the change for the guard
-    # below, never as an input to what is written.
+def _folder_grants(doc: dict) -> set[tuple[str, str]]:
+    """(identity, action) of every folder grant in a document: an action that names a folder inside a bucket."""
+    return {(i["name"], a) for i in doc.get("identities", []) for a in i.get("actions", []) if "/" in a}
+
+
+def _folder_of(action: str) -> tuple[str, str]:
+    """(bucket, folder) that a folder grant names: `Read:munitas-health/health/<id>/v1/*` is ("munitas-health", "health/<id>/v1")."""
+    named = action.split(":", 1)[-1]
+    bucket, _, rest = named.partition("/")
+    return bucket, rest.rstrip("*").rstrip("/")
+
+
+def _register_folders(folders: set[str]) -> dict[str, dict]:
+    """What the register says about each of these folders: the bucket it belongs in, and whether anything ever justified a grant on it.
+
+    A folder is a dataset version's own, one a table job reserved, or one a running task was given to write to. A folder in none of those is not in the
+    register at all.
+    """
+    if not folders:
+        return {}
+    found: dict[str, dict] = {}
+    for row in db.all_rows(
+        """select v.storage_prefix as folder, p.bucket,
+                  (exists (select 1 from access_lease l where l.dataset_version_id = v.id)
+                   or exists (select 1 from access_decision d where d.dataset_version_id = v.id and d.allowed)) as was_justified
+             from dataset_version v
+             left join tenant_storage_provision p on p.tenant_id = v.tenant_id and p.backend = v.storage_backend
+            where v.storage_prefix = any(%s)""", (sorted(folders),)):
+        found[row["folder"]] = {"bucket": row["bucket"], "was_justified": bool(row["was_justified"])}
+    for row in db.all_rows(
+        """select j.storage_prefix as folder, p.bucket
+             from table_job j
+             left join tenant_storage_provision p on p.tenant_id = j.tenant_id and p.backend = 'seaweedfs'
+            where j.storage_prefix = any(%s)""", (sorted(folders),)):
+        # A folder a table job reserved is explained by the job, even when a version it produced now stands there with no lease or decision of its own.
+        found.setdefault(row["folder"], {"bucket": row["bucket"], "was_justified": True})["was_justified"] = True
+    # The folder a running task was given to write its output to. No version exists there until the task seals one, so it is in the register only as
+    # the write the platform itself issued.
+    for row in db.all_rows(
+        """select rtrim(w.storage_prefix, '/') as folder, w.bucket
+             from write_grant w
+            where rtrim(w.storage_prefix, '/') = any(%s)""", (sorted(folders),)):
+        found.setdefault(row["folder"], {"bucket": row["bucket"], "was_justified": True})
+    return found
+
+
+def _reconcile() -> dict:
+    # The live document is read only to measure what the update changes, never as an input to what is written.
     live = seaweed.load_identities()
     want = desired_document()
 
     before = sum(len(i.get("actions", [])) for i in live.get("identities", []))
     after = sum(len(i["actions"]) for i in want["identities"])
 
-    structural = sum(
-        1 for i in want["identities"] for a in i["actions"] if "/" not in a
-    )
+    alerts: list[dict] = []
+    structural = sum(1 for i in want["identities"] for a in i["actions"] if "/" not in a)
     if structural == 0:
-        raise UnsafeProjection(
-            "the computed document has no bucket-wide grants at all, so "
-            "nothing could read or write anything. Refusing to write it"
-        )
+        alerts.append({
+            "event": "no-bucket-wide-permissions", "severity": "critical",
+            "message": "The new list of storage permissions has no bucket-wide permission at all, so nothing can read or write anything "
+                       "until a correct list is written. The list was written as computed.",
+            "details": {"identities": len(want["identities"])},
+        })
 
-    live_prefix = sum(
-        1 for i in live.get("identities", []) for a in i.get("actions", []) if "/" in a
-    )
-    want_prefix = sum(
-        1 for i in want["identities"] for a in i["actions"] if "/" in a
-    )
+    # What the update removes, and why: a lease that ended and a deletion are routine, anything else is not explained.
+    removed = _folder_grants(live) - _folder_grants(want)
+    explained = {"ended": 0, "deleted": 0, "unexplained": 0}
+    unexplained: list[str] = []
+    if removed:
+        register = _register_folders({_folder_of(a)[1] for _, a in removed})
+        for identity, action in sorted(removed):
+            known = register.get(_folder_of(action)[1])
+            if known is None:
+                explained["deleted"] += 1
+            elif known["was_justified"]:
+                explained["ended"] += 1
+            else:
+                explained["unexplained"] += 1
+                unexplained.append(f"{identity}: {action}")
+        if explained["unexplained"] >= ALERT_UNEXPLAINED_AT:
+            alerts.append({
+                "event": "unexplained-removal", "severity": "warning",
+                "message": f"The update removed {explained['unexplained']} folder permissions that nothing in the register explains, because no lease "
+                           "or allowed request was ever recorded for them. Someone should check how they came to be there.",
+                "details": {"removed": len(removed), **explained, "examples": unexplained[:10]},
+            })
+
+    # What the update adds or keeps: every folder grant must name a version (or a table job's folder) in the register, in that organisation's own bucket.
+    added = _folder_grants(want)
+    if added:
+        register = _register_folders({_folder_of(a)[1] for _, a in added})
+        unknown, elsewhere = [], []
+        for identity, action in sorted(added):
+            bucket, folder = _folder_of(action)
+            known = register.get(folder)
+            if known is None:
+                unknown.append(f"{identity}: {action}")
+            elif known["bucket"] != bucket:
+                elsewhere.append(f"{identity}: {action}")
+        if unknown:
+            alerts.append({
+                "event": "unjustified-permission", "severity": "critical",
+                "message": f"The new list holds {len(unknown)} permissions that name a folder belonging to no dataset version in the register. "
+                           "The list was written as computed.",
+                "details": {"count": len(unknown), "examples": unknown[:10]},
+            })
+        if elsewhere:
+            alerts.append({
+                "event": "permission-in-another-organisations-bucket", "severity": "critical",
+                "message": f"The new list holds {len(elsewhere)} permissions that open a version's folder in a bucket belonging to a different "
+                           "organisation from the one that owns the version. The list was written as computed.",
+                "details": {"count": len(elsewhere), "examples": elsewhere[:10]},
+            })
+
     auto_explained = None
-    if armed and live_prefix and (live_prefix - want_prefix) / live_prefix > MAX_SHRINK:
-        # Before refusing outright: how much of this shrink is routine lease
-        # lifecycle, rather than something the guard actually exists to
-        # catch? Recompute as of the last successful print -- a lease
-        # counts as valid if it had not yet expired or been revoked then,
-        # even if it has since. Bounded to that moment, not "ever": `live`
-        # already reflects every lease that had already lapsed before that
-        # print, so an unbounded "pretend nothing has ever expired" would
-        # resurrect the platform's entire lease history, not just what
-        # changed since. Never written; measured only, and thrown away
-        # either way.
-        as_of = last_success_started_at()
-        lenient = desired_document(as_of=as_of) if as_of else want
-        lenient_prefix = sum(
-            1 for i in lenient["identities"] for a in i["actions"] if "/" in a
-        )
-        unexplained = live_prefix - lenient_prefix
-        unexplained_shrink = unexplained / live_prefix
-        if unexplained_shrink > MAX_SHRINK:
-            raise UnsafeProjection(
-                f"this print would remove {live_prefix - want_prefix} of "
-                f"{live_prefix} prefix grants, more than the {MAX_SHRINK:.0%} a "
-                f"routine reconcile should ever remove. Refusing to write it"
-            )
-        # The gap between the strict and lenient counts is exactly the part
-        # of the shrink that traces to a lease that has since expired or
-        # been revoked; what's left (`unexplained`) is comfortably within
-        # the routine ceiling on its own, so the real (strict) document
-        # proceeds without a person's approval.
+    if removed:
         auto_explained = (
-            f"this print removes {live_prefix - want_prefix} of {live_prefix} "
-            f"prefix grants, over the {MAX_SHRINK:.0%} routine ceiling on its "
-            f"own; {live_prefix - want_prefix - unexplained} of those trace to "
-            f"leases that have since expired or been revoked, which alone "
-            f"would explain a print recomputed as if they had not "
-            f"(removing {unexplained} of {live_prefix}, {unexplained_shrink:.1%}, "
-            f"within the ceiling), so this proceeded without a person's approval"
+            f"This update removed {len(removed)} folder permissions: {explained['ended']} belonged to leases or requests that have ended, "
+            f"{explained['deleted']} to data that was deleted, and {explained['unexplained']} nothing in the register explains."
         )
 
     seaweed.save_identities(want)
+    from . import alerts as alerts_module
+    for alert in alerts:
+        alerts_module.raise_alert(ALERT_CATEGORY, alert["event"], alert["message"], severity=alert["severity"], **alert["details"])
     return {"identities": len(want["identities"]), "actions_before": before,
             "actions_after": after, "removed": before - after,
-            "auto_explained": auto_explained}
+            "auto_explained": auto_explained, "alerts": alerts}
 
 
 # ------------------------------------------------------ print history --
@@ -980,15 +1029,15 @@ def _start_print(trigger: str) -> int:
 
 def _finish_print(print_id: int, *, reason: str | None = None,
                   retryable: bool | None = None, identities: int | None = None,
-                  auto_explained: str | None = None) -> None:
+                  auto_explained: str | None = None, alerts: list | None = None) -> None:
     db.execute(
         """update storage_permission_print
               set finished_at = clock_timestamp(), succeeded = %s,
                   retryable = %s, reason = %s, identities = %s,
-                  auto_explained = %s
+                  auto_explained = %s, alerts = %s::jsonb
             where id = %s""",
         (reason is None, None if reason is None else retryable, reason, identities,
-         auto_explained, print_id),
+         auto_explained, json.dumps(alerts) if alerts else None, print_id),
     )
 
 
@@ -1123,6 +1172,11 @@ def activation_status() -> dict:
                or (not l.revoked and l.expires_at is not null and l.expires_at <= now()
                    and (%s::timestamptz is null or l.expires_at >= %s))""",
         (since, since, since, since))["n"]
+    # The newest update that raised alerts, if it was in the last day: what a person should look at, said once, with when.
+    noticed = db.one(
+        """select started_at, trigger, alerts from storage_permission_print
+            where alerts is not null and started_at > now() - interval '1 day'
+            order by started_at desc limit 1""")
     retry_due = None
     if latest and latest["retryable"]:
         retry_due = latest["finished_at"] + timedelta(seconds=retry_delay_seconds(len(failures)))
@@ -1142,5 +1196,6 @@ def activation_status() -> dict:
         "ended_runs": ended_runs,
         "parked_runs": parked["n"],
         "rotation_due": rotation,
+        "latest_alerts": ({"at": noticed["started_at"], "trigger": noticed["trigger"], "alerts": noticed["alerts"]} if noticed else None),
         "unserved": pending + parked["unserved"] + ended + ended_runs + ended_keys + (1 if rotation else 0),
     }

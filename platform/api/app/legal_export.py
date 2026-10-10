@@ -867,7 +867,7 @@ def sweep_exports() -> dict:
 
 def honour_deferred_erasures() -> list[str]:
     """Carry out an erasure that a legal hold held back, once no hold stands over the organisation."""
-    import psycopg
+    import pgdb
     done = []
     for r in db.all_rows("select record_id, tenant_id, reason, requested_by from deferred_erasure "
                          "where honoured_at is null and tenant_hold_state(tenant_id) = 'none'"):
@@ -879,7 +879,7 @@ def honour_deferred_erasures() -> list[str]:
                        (r["record_id"], r["tenant_id"], r["reason"], r["requested_by"]))
             db.execute("update deferred_erasure set honoured_at = now() where record_id = %s returning record_id", (r["record_id"],))
             done.append(r["record_id"])
-        except psycopg.errors.ReadOnlySqlTransaction:
+        except pgdb.errors.ReadOnlySqlTransaction:
             # The organisation is closed to writes. It is being deleted, which erases the record anyway.
             continue
     return done

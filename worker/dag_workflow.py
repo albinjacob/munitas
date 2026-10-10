@@ -258,9 +258,9 @@ class PipelineDagWorkflow:
                  # files through the platform, which refuses unless this version of the pipeline was approved for it.
                  **({"step_access": {"tenant": params["tenant"], "task_credential": params.get("pipeline_task_credential"), "step": step["name"],
                                      "writes_files": step.get("writes_files") is True}}
-                    if step.get("recordings") is True or step.get("writes_files") is True else {})},
+                    if step.get("reads_files") is True or step.get("writes_files") is True else {})},
                 # Fetching the recordings is part of the step, so a step given them has longer.
-                start_to_close_timeout=timedelta(minutes=30 if step.get("recordings") is True or step.get("writes_files") is True else 10),
+                start_to_close_timeout=timedelta(minutes=30 if step.get("reads_files") is True or step.get("writes_files") is True else 10),
                 heartbeat_timeout=STEP_HEARTBEAT,
                 task_queue=worker_config.DAG_SCRIPT_TASK_QUEUE,
                 retry_policy=STEP_WRITES if step.get("writes_files") is True else STEP_READS_ONLY,

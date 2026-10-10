@@ -101,11 +101,28 @@ SCRIPTS = [
     ("U133 a table is sealed from a contract file and a CSV file, and a bad file is refused with every problem listed", "v133_seal_table_from_files.py"),
     ("U134 a screen can ask what a person may do with a locked table, and the lease lists name people", "v134_locking_summary.py"),
     ("U136 a whole file is locked under a person's key in chunks, and a chunk that is moved, repeated, cut off or added to is refused", "v136_locked_file_stream.py"),
-    ("U137 a recording is uploaded in parts that can each be sent again, locked under its patient's key, sealed, and unreadable once the patient is erased", "v137_locked_recordings.py"),
-    ("U141 a custom pipeline step is given the recordings only when a second person approved its version, and the platform opens them for it", "v140_custom_steps_and_recordings.py"),
-    ("U148 what a step makes from a patient's recording is locked under that patient's key as it arrives, belongs to that patient, and sound without a source is refused", "v145_locked_outputs.py"),
+    ("U137 a file is uploaded in parts that can each be sent again, locked under its patient's key, sealed, and unreadable once the patient is erased", "v137_locked_files.py"),
+    ("U141 a custom pipeline step is given the files only when a second person approved its version, and the platform opens them for it", "v140_custom_steps_and_files.py"),
+    ("U148 what a step makes from a patient's file is locked under that patient's key as it arrives, belongs to that patient, and sound without a source is refused", "v145_locked_outputs.py"),
     ("U149 a person opens the files of a version through the platform, only for a reason the platform holds, unlocked inside it, logged, and stopped when the reason ends", "v146_record_door.py"),
-    ("U151 what was made for development ends with its sample or its days: the files are deleted, the row kept and marked, the real recordings untouched, a hold stops it", "v147_development_outputs.py"),
+    ("U163 a custom pipeline's run says which step waits for which (names, kinds and dependencies only, nothing else of the definition) so it can be drawn as a graph, and a run with no steps, a built-in run and another organisation's run are handled", "v156_run_graph.py"),
+    ("U164 a person opens a few of a version's real files only when an approver of the owning department, who is not them, has allowed it: the limits, who may ask and decide, files the platform draws and fixes, what the door lists, opens and refuses, a log that names the lease, a lease that ends or runs out stopping what was playing, and a lease never counting as development data", "v157_file_leases.py"),
+    ("U167 a notebook signs in on behalf of a person and the pass it receives can do only what a notebook may: it shows a code, the person types it in the console, is signed in by the console session and approves, and the notebook receives a short-lived pass; a code the platform did not start is refused, wrong codes are limited, the pass reaches only the routes the client library calls and is refused with a reason everywhere else (including deciding a request, for a custodian), renews with reuse detection, is ended at once by revoke or deny, runs out with its sign-in, is counted when used from another address, and is listed for the person and for the auditor only; the client library signs in, renews, signs out and refuses plain http", "v160_notebook_sign_in.py"),
+    ("U168 an organisation's limits on what people may ask for are settings with today's behaviour as their defaults: who may ask for locked-column rows, the most rows and days, the most files and hours in the page and in a notebook; the value in force is the one every screen and decision uses, a setting is never edited and says who set it and why, the most the platform allows holds even for a row put in by hand, and another organisation is not affected", "v161_access_rules.py"),
+    ("U170 the directory of people is one organisation's: whoever holds an ordinary role sees their own organisation and no other whatever they ask for, the platform administrator is offered every live organisation, a custodian's row still says which department they answer for, and nobody who is not signed in is given the list", "v163_directory_is_one_organisation.py"),
+    ("U172 a dataset is registered, active or deleted, worked out from its versions: deleted ones stay out of the list unless asked for and are counted, each state filter returns its own, a dataset with one readable version is active, the record of a deleted one is kept, and another organisation sees none of them", "v164_dataset_state.py"),
+    ("U173 the purge of an organisation knows every table that holds its data without an organisation column of its own, so the next new table is caught the day it is added", "v165_purge_knows_every_table.py"),
+    ("U174 a person brings in an ordinary table (a CSV, a TSV, a JSON list or a JSONL file) and it is sealed as a table nobody can read yet, with every problem named and nothing sealed by a refusal, and a contract that is neither a table of people nor an ordinary table is refused in words", "v166_plain_tables.py"),
+    ("U178 the limits on one person's uploads and on an organisation's tables count what they say, and turn a request away in words with a time to wait", "v170_table_upload_limits.py"),
+    ("U169 the locked data audit is read a page at a time and can be filtered: every list is walked page by page with none missing or twice, in time order, with a page past the end empty; the page size is held to its limits; person, table, date, result and free text each narrow only the lists that take them, alone and together, a percent sign is text and not a wildcard; only the privacy auditor and the data protection officer read it, each read and refusal is recorded, nothing outside the organisation or any file name appears", "v162_audit_filters.py"),
+    ("U166 a person reads the few real files an approver allowed them to open in a notebook, through the client library and nothing else: a lease for a notebook is separate from one for the page, the token is for one version and never outlives the lease, the library lists and reads exactly what the lease names (whole, by range, seeking), a file outside it is refused, every opening is in the log as a notebook's, and ending the lease or its time running out stops the next request", "v159_notebook_files.py"),
+    ("U165 the way to ask for a version follows what the version holds: what is locked and what a permission to read the whole of it is worth are one answer; a request to read the whole of a version of locked files is refused in words, also when it was already waiting, and an approver is told what approving gives; the mark of locked files says what the person holds of them; the file door does not blame a role where an approver decides", "v158_ways_to_ask.py"),
+    ("U161 a version says what it holds (kinds, formats, structure, files and size, or its rows when it is a table, and whether the platform read the files or went by their names), the same as the datasets list says, never names a file, and is not found by another organisation", "v155_version_holds.py"),
+    ("U159 a storage permission update is always written, and what is odd about it (no bucket-wide permission, removals nothing explains, a permission that traces to nothing) is raised as an alert in one file, on the update's own row, and on the status the console reads", "v153_storage_alerts.py"),
+    ("U157 what a dataset holds (kind, format, structure) is worked out from its files when each version is sealed, not declared, and the list shows and filters by it", "v152_data_kinds.py"),
+    ("U155 a result waiting for a decision can be looked at by the person who decides it, for a set number of files, with every file checked first, and cannot be released blind", "v151_release_review.py"),
+    ("U152 a de-identification result says who it is waiting on from the roles held now, and the departments a person approves for are only those they can act for now", "v148_waiting_on.py"),
+    ("U151 what was made for development ends with its sample or its days: the files are deleted, the row kept and marked, the real files untouched, a hold stops it", "v147_development_outputs.py"),
     ("U144 a pipeline version in development runs only on development data, and a development sample is drawn by the platform as pointers, never copies", "v142_development_samples.py"),
 ]
 
@@ -256,7 +273,7 @@ if ONLY is None:
     print("  only honest way to prove the pipeline stopped promoting, so it runs on")
     print("  the host where the worker package is importable:")
     print("    .venv\\Scripts\\python.exe verify\\v59_gate_decision.py")
-    print("  U62 runs a whole de-identification against three real recordings, so it")
+    print("  U62 runs a whole de-identification against three real files, so it")
     print("  needs the synthetic corpus, which lives on the host and is not mounted")
     print("  into this image, and the pipeline worker on the machine with the GPU.")
     print("  Several minutes:")
@@ -268,19 +285,49 @@ if ONLY is None:
     print("  U66 runs an operator-registered DAG's sandboxed script steps, which")
     print("  needs a live worker on this machine's Docker daemon:")
     print("    .venv\\Scripts\\python.exe verify\\v66_pipeline_dag.py")
-    print("  U68 runs a real recording with no answer key through the committed")
+    print("  U68 runs a real file with no answer key through the committed")
     print("  redact-without-scoring template -- real transcribe/detect/redact, so")
     print("  it needs python -m worker.main on the machine with the GPU. Several")
     print("  minutes:")
     print("    .venv\\Scripts\\python.exe verify\\v68_production_case_no_ground_truth.py")
     print("  U132 calls the practice step directly and loads the models, so it runs on the host with the graphics card, a couple of minutes:")
     print("    .venv\\Scripts\\python.exe verify\\v132_practice_run.py")
-    print("  U138 imports the worker's own client and opens locked recordings through the platform, so it runs on the host, about half a minute:")
-    print("    .venv\\Scripts\\python.exe verify\\v138_worker_opens_locked_recordings.py")
-    print("  U140 runs the whole de-identification over two patients' locked recordings and again after one is erased, so it needs the worker, about five minutes:")
-    print("    .venv\\Scripts\\python.exe verify\\v139_locked_recordings_pipeline.py")
-    print("  U142 runs a real custom pipeline step over locked recordings in the sandbox worker, so it needs both workers, about two minutes:")
-    print("    .venv\\Scripts\\python.exe verify\\v141_custom_step_given_locked_recordings.py")
+    print("  U138 imports the worker's own client and opens locked files through the platform, so it runs on the host, about half a minute:")
+    print("    .venv\\Scripts\\python.exe verify\\v138_worker_opens_locked_files.py")
+    print("  U140 runs the whole de-identification over two patients' locked files and again after one is erased, so it needs the worker, about five minutes:")
+    print("    .venv\\Scripts\\python.exe verify\\v139_locked_files_pipeline.py")
+    print("  U142 runs a real custom pipeline step over locked files in the sandbox worker, so it needs both workers, about two minutes:")
+    print("    .venv\\Scripts\\python.exe verify\\v141_custom_step_given_locked_files.py")
+    print("  U153 runs the pipeline's decision step itself and shows a development run is never put in front of a reviewer, so it runs on the host, seconds:")
+    print("    .venv\\Scripts\\python.exe verify\\v149_development_gate.py")
+    print("  U160 reads the repository (the compose file, the start scripts, every settings file), which the API container does not hold, so it runs on the host, no database, seconds:")
+    print("    .venv\\Scripts\\python.exe verify\\v154_settings_documented.py")
+    print("  U175 makes test tables in every format and proves they are reproducible, safe, realistic, correctly described and checkable, so it runs on the host, no database, under a minute:")
+    print("    .venv\\Scripts\\python.exe verify\\v167_testdata_generator.py")
+    print("  U176 sends the generated tables, in every text layout, through the person route and a worker job and compares the stored tables with their truth files, so it runs on the host, a few minutes:")
+    print("    .venv\\Scripts\\python.exe verify\\v168_table_text_formats.py")
+    print("  U177 brings a table in through the platform in parts, resumes, cancels, expires, refuses by limit and writes four tables two at a time, so it runs on the host, a few minutes:")
+    print("    .venv\\Scripts\\python.exe verify\\v169_table_upload.py")
+    print("  U182 sends the generated tables in every binary layout (Parquet, Arrow, Feather, ORC, Avro, Excel), their faulty copies and hostile files through the person route, so it runs on the host, about ten minutes:")
+    print("    .venv\\Scripts\\python.exe verify\\v172_binary_formats.py")
+    print("  U186 runs the database layer (pgdb, over pg8000) through every kind of value, refusal, transaction and pool use, and the agent's checkpointer, against the live database, so it runs on the host, about 30 seconds:")
+    print("    .venv\\Scripts\\python.exe verify\\v175_pgdb.py")
+    print("  U187 looks for a package under a copyleft licence in the repository's requirements and code and in every environment (this Python, the API and table worker images, the WSL environments), so it runs on the host, no database, about 20 seconds:")
+    print("    .venv\\Scripts\\python.exe verify\\v176_licences.py")
+    print("  U188 reads the page catalogue (platform/policy/screens.rego), the API's code and the committed reference to prove each route behind a limited page refuses through the catalogue, and that no route does so unnamed, so it runs on the host, no database, seconds:")
+    print("    .venv\\Scripts\\python.exe verify\\v177_screens_cover_routes.py")
+    print("  U189 reads the policy engine's two modes (folder and bundle) and proves the Compose override, the engine's config, the publish script and the start scripts name the same things, so it runs on the host, no database, seconds:")
+    print("    .venv\\Scripts\\python.exe verify\\v178_opa_policy_modes.py")
+    print("  U190 tries the policy engine's store from the platform's own networks (it cannot be reached) and from its own (the engine's key reads the one package and nothing else), so it runs against a stack in bundle mode with a package published, in the API container and in a throwaway container, seconds:")
+    print("    wsl -d Munitas -- bash verify/policy_store_check.sh")
+    print("  Also tried against a running stack in bundle mode, never part of a quick run: verify/policy_signing_attacks.sh (an unsigned, wrongly signed or altered package is refused) and verify/policy_persistence_check.sh (the engine starts from its saved package with the store down).")
+    print("  U183 reads the repository to prove the large tier (verify/large, run_large.py) is kept out of this suite and plans before it acts, so it runs on the host, no database, under a minute:")
+    print("    .venv\\Scripts\\python.exe verify\\v173_large_tier_guard.py")
+    print("  The large tier itself is never run here. verify\\run_large.py lists it and says what each check would cost.")
+    print("  U184 brings 10,000 people and 5,000 admissions in through the person route and a worker, locks them, reads them a page at a time, finds a lease's sample and erases one person, so it runs on the host, about four minutes:")
+    print("    .venv\\Scripts\\python.exe verify\\v174_people_tables.py")
+    print("  U180 reads tables that were brought in back through a real lease with DuckDB, PyIceberg and a notebook signed in through the real client, and looks at their first rows, so it runs on the host, a minute:")
+    print("    .venv\\Scripts\\python.exe verify\\v171_read_back.py")
     print("  U73 starts the worker entry points on Windows and inside WSL to prove")
     print("  they refuse a work directory they cannot use, so it runs on the host:")
     print("    .venv\\Scripts\\python.exe verify\\v73_work_dir_refused.py")

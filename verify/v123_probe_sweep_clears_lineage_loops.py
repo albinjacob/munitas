@@ -30,11 +30,11 @@ sys.path.insert(0, str(ROOT))
 
 from ports_config import PORTS  # noqa: E402
 
-os.environ.setdefault("PG_DSN", f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform")
-os.environ.setdefault("S3_ENDPOINT", f"http://localhost:{PORTS['seaweedfs_s3']}")
+os.environ.setdefault("MUNITAS_PG_DSN", f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform")
+os.environ.setdefault("MUNITAS_S3_ENDPOINT", f"http://localhost:{PORTS['seaweedfs_s3']}")
 
-import psycopg  # noqa: E402
-from psycopg.rows import dict_row  # noqa: E402
+import pgdb  # noqa: E402
+from pgdb import dict_row  # noqa: E402
 
 from common import api, check, db, fixture_contract, fixture_tenant, fixture_version, heading, require_api, summary  # noqa: E402
 
@@ -98,7 +98,7 @@ def bucket_exists(name: str) -> bool:
 
 def remove_probe(m: dict) -> None:
     """Remove a disposable probe through the sweep's own functions."""
-    with psycopg.connect(os.environ["PG_DSN"], row_factory=dict_row) as conn:
+    with pgdb.connect(os.environ["MUNITAS_PG_DSN"], row_factory=dict_row) as conn:
         if m["bucket"]:
             tp.empty_bucket(tp.s3(), m["bucket"])
         tp.delete_tenant(conn, m["tenant"])
@@ -119,7 +119,7 @@ def main() -> int:
               before["dataset_version"] >= 2 and before["pipeline_run"] == 1 and before["action_run"] == 1, str(before))
         check("and a bucket with a file in it", bucket_exists(a["bucket"]))
 
-        with psycopg.connect(os.environ["PG_DSN"], row_factory=dict_row) as conn:
+        with pgdb.connect(os.environ["MUNITAS_PG_DSN"], row_factory=dict_row) as conn:
             tp.empty_bucket(tp.s3(), a["bucket"])
             deleted = tp.delete_tenant(conn, a["tenant"])
             conn.commit()
@@ -163,7 +163,7 @@ def main() -> int:
         kept.append(keep)
         refused = None
         try:
-            with psycopg.connect(os.environ["PG_DSN"], row_factory=dict_row) as conn:
+            with pgdb.connect(os.environ["MUNITAS_PG_DSN"], row_factory=dict_row) as conn:
                 tp.delete_tenant(conn, keep)
         except RuntimeError as exc:
             refused = str(exc)

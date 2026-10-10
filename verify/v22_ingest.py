@@ -51,7 +51,7 @@ def register(**over) -> "object":
     return api("POST", "/datasets/register", json=body)
 
 
-def upload_a_file(dataset_id: str, name: str = "recording.wav") -> "object":
+def upload_a_file(dataset_id: str, name: str = "file.wav") -> "object":
     # A real wav when the name says wav. The upload endpoint reads what it is
     # given and refuses a file that contradicts its own name, so the words
     # "pretend audio bytes" under a .wav name would now be refused, correctly.
@@ -208,6 +208,10 @@ def main() -> int:
         did = registered.json()["id"]
         upload_a_file(did, f"{name}.wav")
         api("POST", f"/datasets/{did}/seal")
+        # A claim is held at the most restrictive class until the owning custodian agrees with it, so the export is asked for after they have.
+        agreed = api("POST", f"/datasets/{did}/confirm-classification", json={"confirmed_by": custodian})
+        check(f"the owning custodian agrees with the {name} claim", agreed.status_code == 200,
+              f"HTTP {agreed.status_code} {agreed.text[:100]}")
 
     public_export = api(
         "GET", f"/datasets/{public.json()['id']}/export",

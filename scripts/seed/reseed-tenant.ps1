@@ -37,7 +37,7 @@
 param(
     [Parameter(Mandatory = $true)][ValidateSet("health", "finance", "harbour")][string]$Tenant,
     [switch]$Force,
-    [string]$WslDistro = "Ubuntu-20.04"
+    [string]$WslDistro = "Munitas"
 )
 
 $ErrorActionPreference = "Stop"
@@ -63,8 +63,8 @@ if (-not (Test-Path $venvPython)) {
     throw "No .venv at $venvPython. Every step below runs on the host and needs it."
 }
 
-if (-not $env:PG_DSN) { $env:PG_DSN = "postgresql://munitas:munitas@localhost:$($Ports.postgres)/platform" }
-if (-not $env:S3_ENDPOINT) { $env:S3_ENDPOINT = "http://localhost:$($Ports.seaweedfs_s3)" }
+if (-not $env:MUNITAS_PG_DSN) { $env:MUNITAS_PG_DSN = "postgresql://munitas:munitas@localhost:$($Ports.postgres)/platform" }
+if (-not $env:MUNITAS_S3_ENDPOINT) { $env:MUNITAS_S3_ENDPOINT = "http://localhost:$($Ports.seaweedfs_s3)" }
 
 # SQL goes in on stdin, never on the command line. It travels through
 # PowerShell, then wsl, then bash, then docker, and every one of those has an
@@ -149,20 +149,26 @@ Write-Host "After:" -ForegroundColor Cyan
 $datasets = Get-Scalar "select count(*) from dataset where tenant_id = '$Tenant'"
 $versions = Get-Scalar "select count(*) from dataset_version where tenant_id = '$Tenant'"
 $pending = Get-Scalar "select count(*) from lease_request where tenant_id = '$Tenant' and state = 'pending'"
+$approved = Get-Scalar "select count(*) from lease_request where tenant_id = '$Tenant' and state = 'approved'"
 $linked = Get-Scalar "select count(*) from directory where tenant_id = '$Tenant' and kratos_identity_id is not null"
 $resolved = Get-Scalar "select coalesce(max(bucket), '(none)') from tenant_storage_provision where tenant_id = '$Tenant' and backend = 'seaweedfs'"
 
 Write-Host "  datasets           $datasets"
 Write-Host "  versions           $versions"
 Write-Host "  pending requests   $pending"
+Write-Host "  approved requests  $approved"
 Write-Host "  linked logins      $linked"
 Write-Host "  bucket             $resolved"
 
 $problems = @()
 if ([int]$datasets -eq 0) { $problems += "no datasets were created" }
 if ([int]$versions -eq 0) { $problems += "no versions were sealed" }
-# Harbour is shut down, not worked in, so it has no request waiting by design.
-if ($Tenant -ne "harbour" -and [int]$pending -eq 0) { $problems += "no access request is pending, so no custodian has anything to decide" }
+# What each example leaves in the request queue, as its own seed script does it (not what a demonstration might like):
+#   finance  two requests waiting, so a custodian has something to decide;
+#   health   one request already decided and approved, and none waiting unless seed-health-example.py is run with --sample-queue;
+#   harbour  none, because it is shut down and not worked in.
+if ($Tenant -eq "finance" -and [int]$pending -eq 0) { $problems += "no access request is pending, so no custodian has anything to decide" }
+if ($Tenant -eq "health" -and [int]$approved -eq 0) { $problems += "no access request was approved, so the earlier decided request is missing" }
 if ([int]$linked -eq 0) { $problems += "no login is connected to a person, so nobody can sign in as this tenant" }
 if ($resolved -eq "(none)") {
     $problems += "this tenant resolves to '$resolved' rather than a bucket of its own"

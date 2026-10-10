@@ -31,7 +31,7 @@ from common import CANARY, api, bearer_for, check, db, fixture_tenant, heading, 
 
 ENGINEER, CUSTODIAN, ELSEWHERE = "canary-engineer", "canary-custodian", "canary-elsewhere"
 DPO, RESEARCHER, REVIEWER, ARCHITECT = "canary-dpo", "canary-researcher", "canary-reviewer", "canary-architect"
-ADMIN, OTHER_ORG_ENGINEER = "ops-priya", "eng-devi"  # a platform administrator and a data engineer, both of the health organisation
+ADMIN, OTHER_ORG_ENGINEER = "canary-admin", "neighbour-engineer"  # a platform administrator of the test organisation, and a data engineer of another one
 
 INTAKE_REASON = "this person holds no role that may bring data in (a data engineer or a data custodian)"
 CODE_REASON = "this person holds no role that may register an agent or a pipeline (a data engineer)"
@@ -90,7 +90,7 @@ def main() -> int:
             r = register_dataset(who, verification)
             check(f"{who} may not, and is told why", r.status_code == 403 and INTAKE_REASON in reasons(r), f"{r.status_code} {reasons(r)}")
             check(f"nothing was registered for {who}", count("dataset", "registered_by", who) == name_before)
-        fake = register_dataset(ADMIN, str(uuid.uuid4()), tenant="health")
+        fake = register_dataset(ADMIN, str(uuid.uuid4()), tenant="canary")
         check("a platform administrator may not either", fake.status_code == 403 and INTAKE_REASON in reasons(fake), f"{fake.status_code} {reasons(fake)}")
 
         heading("The steps after registering are refused to the same roles")
@@ -147,7 +147,7 @@ def main() -> int:
                   "; ".join(f"{k}: {r.status_code}" for k, r in tries.items() if r.status_code != 403 or CODE_REASON not in reasons(r)))
             check(f"and nothing was registered for {who}",
                   count("agent", "registered_by", who) == agents_before and count("pipeline", "registered_by", who) == pipelines_before)
-        admin_try = call(ADMIN, "POST", "/agents/register", json={"tenant_id": "health", "name": "u126-admin", "registered_by": ADMIN, "purpose": "x"})
+        admin_try = call(ADMIN, "POST", "/agents/register", json={"tenant_id": "canary", "name": "u126-admin", "registered_by": ADMIN, "purpose": "x"})
         check("a platform administrator is refused too", admin_try.status_code == 403 and CODE_REASON in reasons(admin_try), f"{admin_try.status_code} {reasons(admin_try)}")
 
         heading("Confirming a claim made by an engineer")

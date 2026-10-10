@@ -32,7 +32,7 @@ the whole point of this file: seeing that mechanism work should never
 have required a GPU, and until this file existed it did.
 
 Dependency set: worker/requirements-lite.txt, the same shape as
-worker/requirements-sandbox.txt (temporalio, httpx, psycopg, docker) plus
+worker/requirements-sandbox.txt (temporalio, httpx, pg8000, docker) plus
 boto3, because this worker (unlike the WSL2 sandbox worker) reads and
 writes dataset versions through platform_client.py.
 

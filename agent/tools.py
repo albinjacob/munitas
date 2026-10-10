@@ -37,7 +37,7 @@ OPA = os.environ.get("MUNITAS_OPA_URL", f"http://localhost:{PORTS['opa']}")
 # which keys are the grant's to say; how to reach the storage is local
 # knowledge, so it is read from the environment the same way the worker reads
 # its own.
-S3_ENDPOINT = os.environ.get("S3_ENDPOINT", f"http://localhost:{PORTS['seaweedfs_s3']}")
+S3_ENDPOINT = os.environ.get("MUNITAS_S3_ENDPOINT", f"http://localhost:{PORTS['seaweedfs_s3']}")
 
 
 class BudgetExceeded(Exception):
@@ -466,7 +466,7 @@ def list_review_queue(ctx: ToolContext, version_id: str,
     # distinction above this function's own module docstring: a SeaweedFS
     # grant's own endpoint is a container-internal address that does not
     # resolve on the host, where this native-path code runs, so that case
-    # still uses this module's own S3_ENDPOINT override. R2's endpoint is
+    # still uses this module's own MUNITAS_S3_ENDPOINT override. R2's endpoint is
     # a real public address, valid from anywhere, so it is always safe to
     # use directly. aws_session_token=None is accepted by boto3 identically
     # to omitting the argument, so this is safe for SeaweedFS's grants,

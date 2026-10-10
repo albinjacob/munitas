@@ -87,7 +87,7 @@ def main() -> int:
         check("a throwaway organisation left as production is named too", org in third.stdout, third.stdout[-300:])
 
         heading("When it cannot look")
-        blind = run_script({"PG_DSN": "postgresql://nobody:nothing@127.0.0.1:1/none"})
+        blind = run_script({"MUNITAS_PG_DSN": "postgresql://nobody:nothing@127.0.0.1:1/none"})
         check("it exits 2, not 0", blind.returncode == 2, f"exit {blind.returncode}")
         check("and says nothing is known", "Nothing is known" in blind.stdout, blind.stdout[-200:])
     finally:

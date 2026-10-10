@@ -7,7 +7,7 @@ containers via `worker/sandbox_run.py`, which needs `python -m worker.main`
 running with Docker reachable, not something the API container can do.
 
 Run from inside the WSL distro, not the Windows host directly: this
-project's Docker engine runs inside `Ubuntu-20.04`, not Docker Desktop, and
+project's Docker engine runs inside the WSL distro (`Munitas` here), not Docker Desktop, and
 the U55 orphan-reaping check drives `docker` directly (both the CLI, via a
 raw `subprocess.run(["docker", ...])`, and `worker.sandbox_run`'s own
 `docker.from_env()`), which only resolves to a real engine from inside that
@@ -16,9 +16,10 @@ Windows `.venv`, since it is otherwise only HTTP calls to `localhost:8000`
 -- that is what made the gap easy to miss for a while (see item 30/32's
 notes in SESSION_STATUS.md).
 
-    PG_DSN=postgresql://munitas:munitas@localhost:5432/platform \\
-    VERIFY_KRATOS=http://localhost:4433 S3_ENDPOINT=http://localhost:8333 \\
-    $HOME/.munitas/verify-venv/bin/python verify/v55_sandboxed_agent_run.py
+    MUNITAS_PG_DSN=postgresql://munitas:munitas@localhost:5432/platform \\
+    MUNITAS_VERIFY_KRATOS=http://localhost:4433 MUNITAS_S3_ENDPOINT=http://localhost:8333 \\
+    MUNITAS_DATA=/mnt/c/Work/munitas/data \\
+    $HOME/.munitas/docker-checks-venv/bin/python verify/v55_sandboxed_agent_run.py
 
 Four things this proves, each with its own fixture project:
   1. The uploaded code is what runs, not `agent/graph.py`, proven by a
@@ -37,6 +38,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import subprocess
 import sys
 import time
@@ -47,6 +49,9 @@ from pathlib import Path
 from common import (CANARY, ADMIN, CUSTODIAN, ENGINEER, api, bucket_for,
                     bearer_for, check, db, fixture_contract, fixture_version,
                     heading, require_api, s3_client, skip, summary)
+
+# Docker runs inside the WSL distro on this machine, not on Windows, so every docker command goes through it.
+DOCKER = ["wsl.exe", "-d", os.environ.get("MUNITAS_WSL_DISTRO", "Munitas"), "--", "docker"]
 
 TENANT = CANARY
 DEPARTMENT = "Verification"
@@ -193,7 +198,7 @@ def sandbox_containers() -> int:
     worker never reports back.
     """
     out = subprocess.run(
-        ["docker", "ps", "-a", "-q", "--filter", "ancestor=python:3.11-slim"],
+        [*DOCKER, "ps", "-a", "-q", "--filter", "ancestor=python:3.11-slim"],
         capture_output=True, text=True, timeout=60,
     )
     return len([line for line in out.stdout.splitlines() if line.strip()])
@@ -325,7 +330,7 @@ def main() -> int:
 
     fixture_run_id = f"verify-orphan-{uuid.uuid4().hex[:8]}"
     launch = subprocess.run(
-        ["docker", "run", "-d",
+        [*DOCKER, "run", "-d",
          "--label", "munitas.sandbox=true",
          "--label", f"munitas.run_id={fixture_run_id}",
          "python:3.11-slim", "sleep", "60"],
@@ -337,7 +342,7 @@ def main() -> int:
 
     try:
         listed = subprocess.run(
-            ["docker", "ps", "-a", "-q", "--no-trunc", "--filter",
+            [*DOCKER, "ps", "-a", "-q", "--no-trunc", "--filter",
              f"label=munitas.run_id={fixture_run_id}"],
             capture_output=True, text=True, timeout=60,
         )
@@ -352,14 +357,14 @@ def main() -> int:
               removed >= 1, removed)
 
         after_reap = subprocess.run(
-            ["docker", "ps", "-a", "-q", "--filter",
+            [*DOCKER, "ps", "-a", "-q", "--filter",
              f"label=munitas.run_id={fixture_run_id}"],
             capture_output=True, text=True, timeout=60,
         )
         check("the fixture orphan container is actually gone afterward",
               after_reap.stdout.strip() == "", after_reap.stdout.strip())
     finally:
-        subprocess.run(["docker", "rm", "-f", orphan_id], capture_output=True, text=True,
+        subprocess.run([*DOCKER, "rm", "-f", orphan_id], capture_output=True, text=True,
                        timeout=60)
 
     heading("U58: a version declared data_access='copy' gets its real content staged")

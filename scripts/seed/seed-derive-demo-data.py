@@ -1,6 +1,7 @@
 """Tabular demo data for the "make a new dataset from a query" demo.
 
     python scripts/seed/seed-derive-demo-data.py   (from the repo root, with the .venv active)
+    python scripts/seed/seed-derive-demo-data.py --tenant finance   (one organisation only)
 
 Four datasets, two in each example organisation, every row synthetic:
 
@@ -200,23 +201,30 @@ def seed(*, tenant: str, engineer: str, custodian: str, dept: str, name: str, co
 
 
 def main() -> int:
+    # `--tenant health` or `--tenant finance` seeds that organisation only, so rebuilding one example does not touch the other.
+    only = sys.argv[sys.argv.index("--tenant") + 1] if "--tenant" in sys.argv else None
+    if only not in (None, "health", "finance"):
+        print("--tenant must be health or finance")
+        return 2
     print("Seeding tabular demo data (every row is synthetic)")
-    cardiology = department("health", "Cardiology", "eng-devi")
-    seed(tenant="health", engineer="eng-devi", custodian="cust-hartley", dept=cardiology,
-         name="admissions", contract_name="admission", fields=ADMISSION_FIELDS, pk="admission_id",
-         rows=admissions(), klass="RAW")
-    seed(tenant="health", engineer="eng-devi", custodian="cust-hartley", dept=cardiology,
-         name="diagnosis_codes", contract_name="diagnosis_code", fields=DIAGNOSIS_FIELDS, pk="code",
-         rows=diagnosis_codes(), klass="PUBLISHED")
+    if only in (None, "health"):
+        cardiology = department("health", "Cardiology", "eng-devi")
+        seed(tenant="health", engineer="eng-devi", custodian="cust-hartley", dept=cardiology,
+             name="admissions", contract_name="admission", fields=ADMISSION_FIELDS, pk="admission_id",
+             rows=admissions(), klass="RAW")
+        seed(tenant="health", engineer="eng-devi", custodian="cust-hartley", dept=cardiology,
+             name="diagnosis_codes", contract_name="diagnosis_code", fields=DIAGNOSIS_FIELDS, pk="code",
+             rows=diagnosis_codes(), klass="PUBLISHED")
 
-    fraud = department("finance", "Fraud Operations", "eng-lena")
-    risk = department("finance", "Risk & Compliance", "eng-lena")
-    seed(tenant="finance", engineer="eng-lena", custodian="cust-marcus", dept=fraud,
-         name="transactions", contract_name="transaction", fields=TRANSACTION_FIELDS, pk="txn_id",
-         rows=transactions(), klass="RAW")
-    seed(tenant="finance", engineer="eng-lena", custodian="cust-naomi", dept=risk,
-         name="merchants", contract_name="merchant", fields=MERCHANT_FIELDS, pk="merchant_id",
-         rows=merchants(), klass="PUBLISHED")
+    if only in (None, "finance"):
+        fraud = department("finance", "Fraud Operations", "eng-lena")
+        risk = department("finance", "Risk & Compliance", "eng-lena")
+        seed(tenant="finance", engineer="eng-lena", custodian="cust-marcus", dept=fraud,
+             name="transactions", contract_name="transaction", fields=TRANSACTION_FIELDS, pk="txn_id",
+             rows=transactions(), klass="RAW")
+        seed(tenant="finance", engineer="eng-lena", custodian="cust-naomi", dept=risk,
+             name="merchants", contract_name="merchant", fields=MERCHANT_FIELDS, pk="merchant_id",
+             rows=merchants(), klass="PUBLISHED")
     return 0
 
 

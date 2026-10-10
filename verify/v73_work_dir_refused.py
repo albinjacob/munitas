@@ -31,14 +31,14 @@ import sys
 import tempfile
 from pathlib import Path
 
-# common.py reads PG_DSN at import. This check opens no connection, so any
+# common.py reads MUNITAS_PG_DSN at import. This check opens no connection, so any
 # value will do; an existing one is left alone.
-os.environ.setdefault("PG_DSN", "unused-by-v73")
+os.environ.setdefault("MUNITAS_PG_DSN", "unused-by-v73")
 sys.path.insert(0, str(Path(__file__).parent))
 from common import check, heading, skip, summary  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
-WSL_DISTRO = os.environ.get("MUNITAS_VERIFY_WSL_DISTRO", "Ubuntu-20.04")
+WSL_DISTRO = os.environ.get("MUNITAS_VERIFY_WSL_DISTRO", "Munitas")
 WSL_PYTHON = "$HOME/.munitas/sandbox-venv/bin/python"
 
 WORK_CALL = "import worker.config as c; print(c.require_work_dir())"

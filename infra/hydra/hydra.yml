@@ -1,0 +1,32 @@
+# Ory Hydra config for the notebook sign-in. Everything that depends on a port, a secret or a lifetime comes from the environment in docker-compose.yml
+# (DSN, SECRETS_SYSTEM, URLS_*, TTL_*), so this file holds only what does not change.
+#
+# Hydra holds no people. It issues, renews and revokes a short-lived pass for a notebook; who the person is comes from the console's own session (Kratos),
+# and what the pass may do is decided by the platform's API, which checks it on every request.
+serve:
+  cookies:
+    same_site_mode: Lax
+
+strategies:
+  # Opaque, not signed tokens: they can be revoked at once, and the API asks Hydra about each one.
+  access_token: opaque
+
+oidc:
+  subject_identifiers:
+    supported_types:
+      - public
+
+ttl:
+  # How long a person has to type the code shown in the notebook.
+  device_user_code: 10m
+
+oauth2:
+  device_authorization:
+    # Only a hint to the notebook: Hydra does not enforce it. The platform's own routes answer a notebook and limit how often it may ask.
+    token_polling_interval: 5s
+    user_code:
+      entropy_preset: medium
+
+log:
+  level: info
+  leak_sensitive_values: false

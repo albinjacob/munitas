@@ -197,6 +197,8 @@ create table if not exists schema_contract (
   content_hash  text not null unique,
   created_at    timestamptz not null default now()
 );
+-- Why a table that is not about people cannot be erased, as the person who brought it in wrote it. Empty for a table that can be.
+alter table schema_contract add column if not exists not_erasable_reason text;
 
 -- ------------------------------------------------------------- datasinks --
 
@@ -308,6 +310,34 @@ end $$;
 -- registered before this existed, and the console says "not recorded" rather
 -- than picking one.
 alter table dataset add column if not exists modality text[];
+
+-- What one file of a version is: its kind, its format, and from those its structure. The platform reads each file when it seals a version and writes
+-- the kind and the format into the version's own list of files (`kinds.py`), so a version sealed since then says what it holds as a fact. A version
+-- sealed before that has neither written against its files, and is told by the file's name, which is all there is to go on. Nothing here is declared by
+-- whoever uploaded the data. The lists of extensions below are the same as in `kinds.py`, and a check compares the two.
+create or replace function manifest_format(entry jsonb) returns text language sql immutable as $$
+  select coalesce(entry ->> 'format', nullif(lower(substring(entry ->> 'key' from '\.([^./]+)$')), ''), 'unknown')
+$$;
+
+create or replace function manifest_kind(entry jsonb) returns text language sql immutable as $$
+  select coalesce(entry ->> 'kind',
+    case manifest_format(entry)
+      when 'wav' then 'audio' when 'mp3' then 'audio' when 'flac' then 'audio' when 'ogg' then 'audio' when 'oga' then 'audio'
+      when 'opus' then 'audio' when 'm4a' then 'audio' when 'aac' then 'audio'
+      when 'png' then 'image' when 'jpg' then 'image' when 'jpeg' then 'image' when 'gif' then 'image' when 'webp' then 'image'
+      when 'bmp' then 'image' when 'tif' then 'image' when 'tiff' then 'image'
+      when 'csv' then 'tabular' when 'tsv' then 'tabular' when 'parquet' then 'tabular' when 'feather' then 'tabular'
+      when 'arrow' then 'tabular' when 'xlsx' then 'tabular'
+      when 'txt' then 'text' when 'md' then 'text' when 'json' then 'text' when 'jsonl' then 'text' when 'ndjson' then 'text'
+      when 'xml' then 'text' when 'html' then 'text' when 'yaml' then 'text' when 'yml' then 'text' when 'log' then 'text'
+      else 'other' end)
+$$;
+
+create or replace function format_structure(kind text, format text) returns text language sql immutable as $$
+  select case when kind = 'tabular' or format = 'table' then 'structured'
+              when format in ('json', 'jsonl', 'ndjson', 'xml', 'html', 'yaml', 'yml') then 'semi-structured'
+              else 'unstructured' end
+$$;
 
 -- What a HuggingFace licence actually permits, once the platform has fetched
 -- it and looked the tag up (see `licenses.py`). Null for manual uploads and
@@ -674,13 +704,16 @@ create table if not exists access_decision (
   primary key (id, at)
 ) partition by range (at);
 
+-- The file a refusal to open a file was about, so an audit can say who tried to open one file. Null for every other decision.
+alter table access_decision add column if not exists record_id text;
+
 create table if not exists access_decision_2026 partition of access_decision
   for values from ('2026-01-01') to ('2027-01-01');
 create table if not exists access_decision_2027 partition of access_decision
   for values from ('2027-01-01') to ('2028-01-01');
 
 -- A credential request has two outcomes that can disagree: what policy decided,
--- and whether the grant it authorised could actually be applied. Recording only
+-- and whether the grant it authorised could actually be applied. File only
 -- the first lets the log say "allowed" when nothing was granted.
 --
 -- Both are written, as separate rows, because the alternative is worse in both
@@ -784,6 +817,65 @@ create table if not exists key_use_log (
 );
 create index if not exists key_use_log_tenant_idx on key_use_log (tenant_id, at);
 
+-- Which dataset a key line is about, read from the line's own text when the line is written (the dataset it names, or the version, lease or decision it names), so the audit
+-- can ask for the keys of one table without reading every line. A line that names none has no row. The log itself is not touched.
+create table if not exists key_use_dataset (
+  key_use_id bigint primary key,
+  tenant_id  text not null,
+  dataset_id uuid not null
+);
+create index if not exists key_use_dataset_idx on key_use_dataset (tenant_id, dataset_id);
+
+create or replace function key_use_dataset_of(p_tenant text, p_purpose text) returns uuid language plpgsql stable as $$
+declare
+  txt text := coalesce(p_purpose, '');
+  raw text;
+  found uuid;
+begin
+  begin
+    raw := substring(txt from '\(dataset ([0-9a-fA-F-]{36})\)');
+    if raw is not null then
+      select d.id into found from dataset d where d.tenant_id = p_tenant and d.id = raw::uuid;
+      if found is not null then return found; end if;
+    end if;
+    raw := substring(txt from ' of version ([0-9a-fA-F-]{36}) \(');
+    if raw is not null then
+      select v.dataset_id into found from dataset_version v where v.tenant_id = p_tenant and v.id = raw::uuid;
+      if found is not null then return found; end if;
+    end if;
+    raw := substring(txt from 'lease ([0-9a-fA-F-]{36})');
+    if raw is not null then
+      select v.dataset_id into found from locked_column_lease l join dataset_version v on v.id = l.dataset_version_id where l.tenant_id = p_tenant and l.id = raw::uuid;
+      if found is not null then return found; end if;
+    end if;
+    raw := substring(txt from 'decision ([0-9a-fA-F-]{36})');
+    if raw is not null then
+      select v.dataset_id into found from gate_decision g join dataset_version v on v.id = g.dataset_version_id where g.tenant_id = p_tenant and g.id = raw::uuid;
+    end if;
+  exception when invalid_text_representation then
+    return null;
+  end;
+  return found;
+end $$;
+
+create or replace function key_use_dataset_write() returns trigger language plpgsql as $$
+declare d uuid;
+begin
+  d := key_use_dataset_of(new.tenant_id, new.purpose);
+  if d is not null then
+    insert into key_use_dataset (key_use_id, tenant_id, dataset_id) values (new.id, new.tenant_id, d) on conflict do nothing;
+  end if;
+  return null;
+end $$;
+
+drop trigger if exists key_use_log_dataset on key_use_log;
+create trigger key_use_log_dataset after insert on key_use_log for each row execute function key_use_dataset_write();
+
+-- The lines written before the lookup existed. Safe to run again: a line already looked up is left as it is.
+insert into key_use_dataset (key_use_id, tenant_id, dataset_id)
+  select s.id, s.tenant_id, s.d from (select id, tenant_id, key_use_dataset_of(tenant_id, purpose) as d from key_use_log where purpose is not null) s
+   where s.d is not null on conflict do nothing;
+
 -- The privacy contract a table was sealed under: an Open Data Contract Standard document with the Munitas profile. The version it governs
 -- points at it through the schema contract's id, which both rows share.
 create table if not exists privacy_contract (
@@ -880,12 +972,12 @@ $$ language plpgsql;
 drop trigger if exists group_size_report_guard on group_size_report;
 create trigger group_size_report_guard before update on group_size_report for each row execute function group_size_report_guard();
 
--- ------------------------------------ recordings locked per person ---------
+-- ------------------------------------ files locked per person ---------
 
--- A recording is one person's, and it is stored locked under that person's key, in chunks, so erasing the person makes it unreadable.
+-- A file is one person's, and it is stored locked under that person's key, in chunks, so erasing the person makes it unreadable.
 -- It is sent in parts that can each be sent again: an upload is opened first (naming the file, its size and its person), then each part is
 -- sent on its own, then the upload is completed. Only the person's person code is kept here, never the identifier that found them.
-create table if not exists recording_upload (
+create table if not exists file_upload (
   id               uuid primary key,
   tenant_id        text not null references tenant(id),
   dataset_id       uuid not null references dataset(id),
@@ -895,18 +987,18 @@ create table if not exists recording_upload (
   storage_key      text not null,
   storage_upload   text not null,           -- the storage backend's own id for the upload in progress
   status           text not null default 'open' check (status in ('open','complete','aborted','expired')),
-  facts            jsonb,                   -- what the first part says about the file: for a recording, its length and sample rate
+  facts            jsonb,                   -- what the first part says about the file: for a file, its length and sample rate
   created_by       text not null references directory(id),
   created_at       timestamptz not null default now(),
   expires_at       timestamptz not null,
   finished_at      timestamptz,
   source_id        uuid,                    -- the dataset_source row made when the upload completed
-  constraint recording_upload_finished_together check ((status = 'open') = (finished_at is null))
+  constraint file_upload_finished_together check ((status = 'open') = (finished_at is null))
 );
-create index if not exists recording_upload_dataset_idx on recording_upload (dataset_id, status);
+create index if not exists file_upload_dataset_idx on file_upload (dataset_id, status);
 
-create table if not exists recording_part (
-  upload_id      uuid not null references recording_upload(id),
+create table if not exists file_part (
+  upload_id      uuid not null references file_upload(id),
   part_number    int not null check (part_number >= 1),
   tenant_id      text not null references tenant(id),
   stored_bytes   bigint not null,
@@ -915,9 +1007,9 @@ create table if not exists recording_part (
   primary key (upload_id, part_number)
 );
 
--- Which person a recording in a sealed version is about, by person code only. Erasing the person destroys their key and leaves this row, as
+-- Which person a file in a sealed version is about, by person code only. Erasing the person destroys their key and leaves this row, as
 -- it leaves the person code in a sealed table: the code names nobody.
-create table if not exists recording_person (
+create table if not exists file_person (
   dataset_version_id uuid not null references dataset_version(id),
   record_id          text not null,
   tenant_id          text not null references tenant(id),
@@ -926,11 +1018,11 @@ create table if not exists recording_person (
   format             text not null,
   primary key (dataset_version_id, record_id)
 );
--- The recording's answer key is locked under the same person's key, and opened the same way; null when none was uploaded.
-alter table recording_person add column if not exists answer_key_bytes bigint;
-create index if not exists recording_person_person_idx on recording_person (tenant_id, person_code);
+-- The file's answer key is locked under the same person's key, and opened the same way; null when none was uploaded.
+alter table file_person add column if not exists answer_key_bytes bigint;
+create index if not exists file_person_person_idx on file_person (tenant_id, person_code);
 
--- An upload that was locked under a person's key is marked on the file it became, so the two ways of sealing recordings can refuse each
+-- An upload that was locked under a person's key is marked on the file it became, so the two ways of sealing files can refuse each
 -- other's files: opened as audio, locked bytes would be noise, and sealed as locked, plain bytes would not be locked.
 alter table dataset_source add column if not exists locked_person_code text;
 alter table dataset_source add column if not exists locked_format text;
@@ -1003,7 +1095,7 @@ begin
     'lease_request','access_lease','department','project','directory',
     'record_key','tombstone','datasink','write_grant',
     'org_key','subject_lookup','subject_key','privacy_contract','locked_column_lease','group_size_report',
-    'recording_upload','recording_part','recording_person'
+    'file_upload','file_part','file_person'
   ] loop
     execute format('drop trigger if exists %I on %I', 'refuse_retired_' || t, t);
     execute format(
@@ -1435,7 +1527,7 @@ create table if not exists agent_version (
 create index if not exists agent_version_agent_idx on agent_version (agent_id);
 
 -- Where this version's own code lives, when the platform is the one that
--- runs it, rather than merely recording a claim about it.
+-- runs it, rather than merely file a claim about it.
 --
 -- Nullable, and that nullability is the distinction: a version registered
 -- through the CLI path (scripts/admin/register-agent-version.py, for an agent this
@@ -1748,7 +1840,7 @@ alter table pipeline_run add column if not exists pipeline_version_id uuid
 -- Who uploaded a version, so the person who approves it can be somebody else. Null for versions uploaded before this was kept.
 alter table pipeline_version add column if not exists uploaded_by text references directory(id);
 
--- A pipeline version whose custom step asks for the recordings is approved by a second person before a run may start: the department's approver,
+-- A pipeline version whose custom step asks for the files is approved by a second person before a run may start: the department's approver,
 -- never the person who uploaded it. An approval can be withdrawn, and the row stays as the record of who approved and when.
 create table if not exists pipeline_version_approval (
   id                  uuid primary key,
@@ -1803,13 +1895,13 @@ create table if not exists step_output_part (
   primary key (output_id, part_number)
 );
 
--- A file a step wrote from a person's recording is locked under that person's key as it arrives, like the recording itself. The step names the
--- recording and says the file's size up front (the lock is fitted to it), and the platform checks the step opened that recording in this run.
+-- A file a step wrote from a person's file is locked under that person's key as it arrives, like the file itself. The step names the
+-- file and says the file's size up front (the lock is fitted to it), and the platform checks the step opened that file in this run.
 alter table step_output add column if not exists person_code text;
 alter table step_output add column if not exists source_record text;
 alter table step_output add column if not exists plain_bytes bigint;
 
--- Every time a person opened a file of a version (a recording, or what a step made) through the platform: who, which file, and why the platform let
+-- Every time a person opened a file of a version (a file, or what a step made) through the platform: who, which file, and why the platform let
 -- them. `bytes_served` grows as the file is streamed. It carries no trigger for a retired organisation: reading must not depend on being able to
 -- record that it happened, as the same is true of a catalog token's last use.
 create table if not exists record_read_log (
@@ -1828,8 +1920,8 @@ create table if not exists record_read_log (
 create index if not exists record_read_log_version_idx on record_read_log (tenant_id, version_id, at);
 create index if not exists record_read_log_person_idx on record_read_log (tenant_id, principal, at);
 
--- The recordings a step opened in a run, which is what lets it say that a file was made from one.
-create table if not exists step_recording_opened (
+-- The files a step opened in a run, which is what lets it say that a file was made from one.
+create table if not exists step_file_opened (
   pipeline_run_id uuid not null references pipeline_run(id),
   step            text not null,
   record_id       text not null,
@@ -1839,10 +1931,10 @@ create table if not exists step_recording_opened (
   primary key (pipeline_run_id, step, record_id)
 );
 
--- A development sample: a small set of recordings drawn from a sealed version of locked recordings, for building and testing a pipeline version that is
+-- A development sample: a small set of files drawn from a sealed version of locked files, for building and testing a pipeline version that is
 -- still in development. A person asks (a kind, a purpose, how many, for how many days), a department approver who is not that person decides, and the
--- platform draws the recordings and seals a new version that names the same stored files, so no audio is copied and nothing is stored in the clear.
--- A debug sample names the recordings instead of drawing them. `chosen_records` and `salt` are kept so the draw can be reproduced and shown not to
+-- platform draws the files and seals a new version that names the same stored files, so no audio is copied and nothing is stored in the clear.
+-- A debug sample names the files instead of drawing them. `chosen_records` and `salt` are kept so the draw can be reproduced and shown not to
 -- have been hand-picked. A sample that has run out is marked ended; the row stays as the record.
 create table if not exists development_sample (
   id                uuid primary key,
@@ -1884,7 +1976,7 @@ create table if not exists development_data_declaration (
   declared_at timestamptz not null default now()
 );
 
--- What was made for development ends: a development sample's own version, and what a run made on a sample or on synthetic recordings. It ends at the
+-- What was made for development ends: a development sample's own version, and what a run made on a sample or on synthetic files. It ends at the
 -- earlier of a number of days and the end of the sample it came from, and then its files are deleted and the version's row is kept, with a
 -- storage_reclamation record that says why. A sealed version is never edited, so this is a record of its own.
 create table if not exists development_output (
@@ -1898,12 +1990,48 @@ create table if not exists development_output (
 );
 create index if not exists development_output_due_idx on development_output (expires_at) where expired_at is null;
 
+-- A lease on real files: a person who is not building a pipeline opens a few of a sealed version's locked files for a few hours, for a stated purpose. They ask
+-- (a kind, a purpose, how many files, for how many hours), a department approver who is not that person decides and may grant less, and the platform draws the
+-- files and fixes them: `records` is the list the lease opens, kept with the salt so the draw can be reproduced and shown not to have been hand-picked, and it is
+-- never drawn again. A lease for the console is for listening in the page; one for a notebook is for reading through the client library, with larger caps.
+-- Nothing is copied: the lease names files of the version it is about. A lease that has run out is marked ended; the row stays as the record.
+create table if not exists file_lease (
+  id                 uuid primary key,
+  tenant_id          text not null references tenant(id),
+  dataset_version_id uuid not null references dataset_version(id),
+  principal          text not null references directory(id),
+  kind               text not null check (kind in ('console', 'notebook')),
+  purpose            text not null,
+  requested_count    int not null check (requested_count >= 1),
+  hours              int not null check (hours >= 1),
+  status             text not null default 'requested' check (status in ('requested', 'approved', 'declined', 'ended')),
+  granted_count      int,
+  granted_hours      int,
+  records            jsonb,
+  method             text,
+  salt               text,
+  strata             jsonb,
+  decided_by         text references directory(id),
+  decided_at         timestamptz,
+  decision_note      text,
+  expires_at         timestamptz,
+  ended_by           text references directory(id),
+  ended_at           timestamptz,
+  requested_at       timestamptz not null default now()
+);
+create unique index if not exists file_lease_live_idx
+  on file_lease (principal, dataset_version_id, kind) where status in ('requested', 'approved');
+create index if not exists file_lease_version_idx on file_lease (tenant_id, dataset_version_id);
+
+-- Which lease an opening was made under, in the read log, so an auditor can see what each lease was used for.
+alter table record_read_log add column if not exists file_lease_id uuid references file_lease(id);
+
 -- The retired-tenant rule for the tables created since the first block above, which runs before they exist: a trigger cannot be put on a table
 -- that is not there yet, and a database built from this file from nothing stops at the first one that is missing.
 do $$
 declare t text;
 begin
-  foreach t in array array['pipeline_version_approval','pipeline_version_retirement','step_output','step_output_part','step_recording_opened','development_sample','development_data_declaration','development_output'] loop
+  foreach t in array array['pipeline_version_approval','pipeline_version_retirement','step_output','step_output_part','step_file_opened','development_sample','development_data_declaration','development_output','file_lease'] loop
     execute format('drop trigger if exists %I on %I', 'refuse_retired_' || t, t);
     execute format(
       'create trigger %I before insert or update on %I
@@ -1948,7 +2076,7 @@ create table if not exists gate_decision (
   created_at            timestamptz not null default now()
 );
 
--- A third value, for a run nothing measured: real recordings have no answer key, and `fail` read as "measured and found wanting". The
+-- A third value, for a run nothing measured: real files have no answer key, and `fail` read as "measured and found wanting". The
 -- constraint was made with the table as it was first written, so an existing database is brought up to date here, and this file stays safe to run
 -- over one that already has it.
 do $$
@@ -2004,7 +2132,7 @@ create table if not exists gate_leak (
 create index if not exists gate_leak_decision_idx
   on gate_leak (gate_decision_id);
 
--- A leak found by a practice run, on recordings made for the purpose whose contents are known, and not in the batch the gate is about. Kept
+-- A leak found by a practice run, on files made for the purpose whose contents are known, and not in the batch the gate is about. Kept
 -- apart so nobody reads one as the other: a practice run says what the method does, and says nothing about the batch.
 alter table gate_leak add column if not exists practice boolean not null default false;
 
@@ -2038,7 +2166,7 @@ alter table dataset_source add column if not exists truth_has_hazard boolean;
 
 -- Taking one upload out of the pending set without erasing that it happened.
 -- Exists so that "the set must be coherent before sealing" holds with no
--- exceptions: without it, one permanently unreadable recording blocks a
+-- exceptions: without it, one permanently unreadable file blocks a
 -- dataset forever, which is the kind of dead end that gets worked around
 -- outside the platform.
 alter table dataset_source add column if not exists withdrawn_at timestamptz;
@@ -2282,16 +2410,19 @@ create table if not exists storage_permission_print (
   succeeded    boolean,            -- null while the print is running
   retryable    boolean,            -- set on failure: false means retrying cannot fix it
   trigger      text not null check (trigger in
-                 ('request', 'provision', 'promotion', 'start-up', 'activator', 'manual', 'revocation')),
+                 ('request', 'provision', 'promotion', 'start-up', 'activator', 'manual', 'revocation', 'table-job')),
   identities   int,
   reason       text
 );
 -- A lease that is revoked prints at once, so its key stops working then and not at the
 -- next unrelated print. Applied to an existing table too, because the list above is
--- only read when the table is first created.
+-- only read when the table is first created. A table job that ends prints too, so its key stops working then ('table-job').
 alter table storage_permission_print drop constraint if exists storage_permission_print_trigger_check;
 alter table storage_permission_print add constraint storage_permission_print_trigger_check
-  check (trigger in ('request', 'provision', 'promotion', 'start-up', 'activator', 'manual', 'revocation'));
+  check (trigger in ('request', 'provision', 'promotion', 'start-up', 'activator', 'manual', 'revocation', 'table-job'));
+-- What an update noticed that a person should look at, written when the update finishes and kept with it. The update is always written; this
+-- is where its alerts are recorded durably, beside the alerts file, which is for people and tools and rotates.
+alter table storage_permission_print add column if not exists alerts jsonb;
 create index if not exists storage_permission_print_success_idx
   on storage_permission_print (started_at desc) where succeeded;
 
@@ -3096,6 +3227,28 @@ create table if not exists table_job (
   reason          text
 );
 
+-- The problems a refusal listed, one sentence each, so the person who brought the rows in can read them from the job.
+alter table table_job add column if not exists problems jsonb;
+
+-- A person's upload is a job that is waiting for its file. `ready` is false while the file is being sent in parts: the job holds the version
+-- number and folder but is not handed to a worker, and its storage key is not made. `upload` holds what the upload says about itself (the file
+-- name, its size, the storage upload that takes the parts); `created_by` is the person; `progress` is what the worker last said it had done.
+alter table table_job add column if not exists ready boolean not null default true;
+alter table table_job add column if not exists created_by text;
+alter table table_job add column if not exists upload jsonb;
+-- When an upload was finished, which is when its key first goes into the storage permissions. A key is asked for only after that, and whether it is in force
+-- is judged from here, not from when the upload was opened: a print in between would otherwise be taken for one that holds the key.
+alter table table_job add column if not exists ready_at timestamptz;
+alter table table_job add column if not exists progress jsonb;
+create table if not exists table_job_part (
+  job_id       uuid not null references table_job(id) on delete cascade,
+  part_number  integer not null,
+  etag         text not null,
+  bytes        bigint not null,
+  received_at  timestamptz not null default now(),
+  primary key (job_id, part_number)
+);
+
 -- One job at a time holds a version number of a dataset.
 create unique index if not exists table_job_reserved on table_job (dataset_id, version)
   where status in ('pending', 'running');
@@ -3231,3 +3384,84 @@ select
 from dataset_version dv
 join dataset d           on d.id = dv.dataset_id
 left join department dept on dept.id = d.department_id;
+
+-- ------------------------------------------------ notebook sign-in ---------------
+-- A notebook signs in on behalf of a person: it shows a code, the person approves it in the console, and the notebook receives a short-lived pass from Hydra.
+-- Hydra holds no people and keeps no useful record of a sign-in, so this is the record: who, what the notebook called itself, from where, when, until when, when
+-- last used, and whether the address changed. Codes and device codes are kept only as hashes. A row is `pending` from the notebook's first request, `approved` or
+-- `denied` by the person, and ends `revoked` (the person), `expired` (nobody approved in time) or by running out (`expires_at`).
+create table if not exists notebook_sign_in (
+  id                     uuid primary key,
+  tenant_id              text references tenant(id),
+  principal              text references directory(id),
+  user_code_hash         text not null,
+  device_code_hash       text not null unique,
+  label                  text not null,
+  status                 text not null default 'pending' check (status in ('pending', 'approved', 'denied', 'revoked', 'expired')),
+  consent_request_id     text,
+  created_at             timestamptz not null default now(),
+  created_ip             text,
+  created_user_agent     text,
+  code_accepted_at       timestamptz,
+  approved_at            timestamptz,
+  expires_at             timestamptz,
+  last_poll_at           timestamptz,
+  first_ip               text,
+  first_user_agent       text,
+  last_used_at           timestamptz,
+  last_ip                text,
+  last_user_agent        text,
+  address_changes        int not null default 0,
+  ended_at               timestamptz,
+  ended_by               text references directory(id),
+  constraint notebook_sign_in_approved_has_an_end check (status <> 'approved' or (principal is not null and approved_at is not null and expires_at is not null))
+);
+-- Hydra's own id for the one approval this sign-in came from. It is what lets one sign-in be ended without ending the person's others.
+alter table notebook_sign_in add column if not exists consent_request_id text;
+alter table notebook_sign_in drop column if exists consent_challenge_hash;
+create index if not exists notebook_sign_in_principal_idx on notebook_sign_in (principal, created_at desc);
+create index if not exists notebook_sign_in_tenant_idx on notebook_sign_in (tenant_id, created_at desc);
+create index if not exists notebook_sign_in_user_code_idx on notebook_sign_in (user_code_hash);
+create index if not exists notebook_sign_in_address_idx on notebook_sign_in (created_ip, created_at);
+
+-- The codes a person has typed, right or wrong, so wrong ones can be limited.
+create table if not exists notebook_code_attempt (
+  id        bigserial primary key,
+  principal text not null references directory(id),
+  at        timestamptz not null default now(),
+  ok        boolean not null
+);
+create index if not exists notebook_code_attempt_idx on notebook_code_attempt (principal, at desc);
+
+-- The retired-tenant rule, for the notebook sign-in table: a retired organisation's sign-ins are readable and nothing more is written to them.
+drop trigger if exists refuse_retired_notebook_sign_in on notebook_sign_in;
+create trigger refuse_retired_notebook_sign_in
+  before insert or update on notebook_sign_in
+  for each row execute function refuse_write_to_retired_tenant();
+
+-- ------------------------------------------------ access rules -------------------
+-- What an organisation has set for the limits on what people may ask for (platform/api/app/access_rules.py): who may ask to read locked rows, the most rows and days,
+-- the most files and hours to open locked files in the page and in a notebook. One row for each time a rule was set, never edited: the value in force is the latest row,
+-- or the default when there is none, and the rows are the history. `set_by` is a name a person gave (until the page edits and the platform knows who), `source` says how.
+create table if not exists access_rule_version (
+  id        bigserial primary key,
+  tenant_id text not null references tenant(id),
+  rule      text not null,
+  value     jsonb not null,
+  reason    text not null check (reason <> ''),
+  set_by    text not null check (set_by <> ''),
+  source    text not null default 'operator script',
+  set_at    timestamptz not null default now()
+);
+create index if not exists access_rule_version_idx on access_rule_version (tenant_id, rule, set_at desc);
+
+create or replace function refuse_edit_of_access_rule() returns trigger as $$
+begin
+  raise exception 'a rule that was set is never edited: set it again, and the latest is the one in force' using errcode = 'read_only_sql_transaction';
+end;
+$$ language plpgsql;
+drop trigger if exists access_rule_version_no_update on access_rule_version;
+create trigger access_rule_version_no_update before update on access_rule_version for each row execute function refuse_edit_of_access_rule();
+
+drop trigger if exists refuse_retired_access_rule_version on access_rule_version;
+create trigger refuse_retired_access_rule_version before insert on access_rule_version for each row execute function refuse_write_to_retired_tenant();

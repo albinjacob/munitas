@@ -60,7 +60,7 @@ def main() -> int:
         check("one note was written, and no pointer to a table that is not there", notes == 1 and refs == 0, f"{notes} note, {refs} pointer")
 
         heading("A failure raises an alert on the housekeeping screen")
-        wide = api("GET", "/housekeeping/storage", headers=bearer_for("ops-priya")).json()["table_copies"]
+        wide = api("GET", "/housekeeping/storage", headers=bearer_for("canary-admin")).json()["table_copies"]
         check("the platform-wide view counts it as failed and raises the alert",
               wide["alert"] is True and any(l["dataset_version_id"] == sealed["id"] and l["outcome"] == "failed" for l in wide["lacking"]),
               f"{wide['failed']} failed")

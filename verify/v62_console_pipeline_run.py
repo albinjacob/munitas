@@ -1,7 +1,7 @@
 """U62: a whole de-identification, started by a person, end to end.
 
 U61 proves every way a run is refused. This proves the one that is not: three
-real consultation recordings uploaded, sealed as recordings, de-identified from
+real consultation files uploaded, sealed as files, de-identified from
 the console's own endpoint, and left waiting for a reviewer who is not the
 person who started it.
 
@@ -13,7 +13,7 @@ nothing in it to de-identify.
 
     .venv\\Scripts\\python.exe verify\\v62_console_pipeline_run.py
 
-Needs PG_DSN, VERIFY_KRATOS and S3_ENDPOINT pointing at the published
+Needs MUNITAS_PG_DSN, VERIFY_KRATOS and MUNITAS_S3_ENDPOINT pointing at the published
 localhost ports, the same as U59, since verify/common.py defaults them to the
 container hostnames, which do not resolve outside the Compose network. It also
 needs `python -m worker.main` running on the machine with the graphics card,
@@ -122,8 +122,11 @@ def put(dataset_id: str, name: str, payload: bytes):
 
 def main() -> int:
     require_api()
+    # The pipeline's steps are registered per organisation; the test organisation has them only once something has registered them.
+    from worker.run_pipeline import ensure_actions
+    ensure_actions(CANARY)
 
-    heading("U62a: three real recordings are brought in and sealed as recordings")
+    heading("U62a: three real files are brought in and sealed as files")
 
     if not CORPUS.exists():
         check("the synthetic corpus is present", False, f"{CORPUS} is missing")
@@ -153,11 +156,11 @@ def main() -> int:
         key = put(dataset, f"{record_id}.truth.json", answer_key(item["record"]))
         if wav.status_code == 201 and key.status_code == 201:
             uploaded += 1
-    check("every recording and its answer key uploaded",
+    check("every file and its answer key uploaded",
           uploaded == RECORDS, f"{uploaded} of {RECORDS} pairs")
 
     sealed = api("POST", f"/datasets/{dataset}/seal-audio", headers=engineer)
-    check("the set seals as recordings", sealed.status_code == 201,
+    check("the set seals as files", sealed.status_code == 201,
           f"HTTP {sealed.status_code} {sealed.text[:200]}")
     if sealed.status_code != 201:
         return summary("U62")
@@ -266,7 +269,7 @@ def main() -> int:
             (run_id,),
         ).fetchall()
     wanted = str(department("Verification"))
-    check(f"all {len(owners)} steps' datasets belong to the department of the recordings they started from",
+    check(f"all {len(owners)} steps' datasets belong to the department of the files they started from",
           len(owners) == 4 and all(o["department"] == wanted for o in owners),
           str([(o["step"], o["department"]) for o in owners]))
 

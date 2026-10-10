@@ -52,7 +52,11 @@ insert into directory (id, tenant_id, label, kind, roles) values
   -- this, but it does not yet actually take effect (SESSION_STATUS.md),
   -- so at least one real holder is seeded, the same bootstrap every role
   -- needs before self-service can work at all.
-  ('canary-architect',  'canary', 'Canary architect',   'human', '{network_architect}')
+  ('canary-architect',  'canary', 'Canary architect',   'human', '{network_architect}'),
+  -- The platform administrator the console tests act as. Health's administrator is for walkthroughs only; tests run here.
+  ('canary-admin',      'canary', 'Canary administrator', 'human', '{platform_admin,hybridops}'),
+  -- A second one, because closing an organisation or placing a legal hold takes two different administrators.
+  ('canary-admin-second', 'canary', 'Canary administrator, second', 'human', '{platform_admin,hybridops}')
 on conflict (id) do nothing;
 
 insert into directory (id, tenant_id, label, kind, roles) values
@@ -68,4 +72,22 @@ on conflict (id) do nothing;
 insert into department (id, tenant_id, name, custodian) values
   ('d0000000-0000-4000-8000-0000000000c1', 'canary', 'Verification', 'canary-custodian'),
   ('d0000000-0000-4000-8000-0000000000c2', 'canary', 'Elsewhere',    'canary-elsewhere')
+on conflict (tenant_id, name) do nothing;
+
+-- A second test organisation, `neighbour`. The checks that prove one organisation cannot reach another need somebody from somewhere else, and that used to
+-- be the demonstration organisation (health), which is for walkthroughs only. Nothing here is a walkthrough: it holds a custodian, an engineer, a
+-- researcher and an administrator, and what a check puts in it for itself.
+insert into tenant (id, isolation_level, key_ref, purpose, note)
+values ('neighbour', 'shared', 'key/neighbour', 'canary', 'Another test organisation, so a check can act as somebody from somewhere else')
+on conflict (id) do update set note = excluded.note;
+
+insert into directory (id, tenant_id, label, kind, roles) values
+  ('neighbour-custodian',  'neighbour', 'Neighbour custodian',  'human', '{data_custodian}'),
+  ('neighbour-engineer',   'neighbour', 'Neighbour engineer',   'human', '{pipeline_operator}'),
+  ('neighbour-researcher', 'neighbour', 'Neighbour researcher', 'human', '{notebook_explore}'),
+  ('neighbour-admin',      'neighbour', 'Neighbour administrator', 'human', '{platform_admin,hybridops}')
+on conflict (id) do nothing;
+
+insert into department (id, tenant_id, name, custodian) values
+  ('d0000000-0000-4000-8000-0000000000c3', 'neighbour', 'Neighbouring', 'neighbour-custodian')
 on conflict (tenant_id, name) do nothing;

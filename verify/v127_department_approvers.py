@@ -25,7 +25,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import psycopg.errors  # noqa: E402
+import pgdb  # noqa: E402
 
 from common import api, bearer_for, check, db, heading, require_api, summary  # noqa: E402
 from lifecycle_fixture import drop_org, give_login, make_org  # noqa: E402
@@ -210,7 +210,7 @@ def main() -> int:
                 conn.execute("update department_approver set removed_by = %s, removed_at = now(), removal_reason = 'direct' "
                              "where department_id = %s and person_id = %s and removed_at is null", (c1, cardiology, c1))
             guarded = False
-        except psycopg.errors.CheckViolation as exc:
+        except pgdb.errors.CheckViolation as exc:
             guarded = "department_keeps_a_permanent_approver" in str(exc.diag.constraint_name)
         check("and the database refuses it too, whatever the route does", guarded)
 
@@ -223,7 +223,7 @@ def main() -> int:
             with db() as conn:
                 conn.execute("update department_approver set reason = 'rewritten' where department_id = %s and person_id = %s", (cardiology, c1))
             edited = True
-        except psycopg.errors.CheckViolation:
+        except pgdb.errors.CheckViolation:
             edited = False
         check("a row cannot be edited, only removed", not edited)
         check("a removed approver can be added again, as a new row",

@@ -5,7 +5,7 @@
 The host worker (worker/main.py) runs the pipeline, HuggingFace ingestion and
 native agent runs on Windows, next to the GPU. It cannot start a sandboxed
 agent run: that needs Docker, and the Docker Engine on this machine lives
-inside the Ubuntu-20.04 WSL2 distro, reachable only over the distro's own unix
+inside the WSL2 distro, reachable only over the distro's own unix
 socket. There is no TCP listener the Windows side could point DOCKER_HOST at,
 and opening one would expose root-equivalent control of the machine to anything
 local. So the Docker-dependent half runs here instead, next to the socket.
@@ -20,7 +20,7 @@ workflows themselves, native agent runs, the pipeline, ingestion, stays on
 Windows. The Docker socket never leaves the distro.
 
 Its dependency set is deliberately slim (worker/requirements-sandbox.txt):
-temporalio, docker, httpx, psycopg, and nothing else. It never imports the
+temporalio, docker, httpx, pg8000, and nothing else. It never imports the
 pipeline's ML stack or agent.graph, which is the whole reason
 sandbox_run_activities.py takes _db from worker/db.py rather than from
 agent_run_activities.py. The distro's system Python is 3.8; this runs in a

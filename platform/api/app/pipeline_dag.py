@@ -68,16 +68,16 @@ def steps_writing_files(config: dict) -> list[str]:
 
 
 def steps_needing_approval(config: dict) -> list[str]:
-    """The script steps whose version must be approved by a second person before a run may start: those given the recordings, and those that write
+    """The script steps whose version must be approved by a second person before a run may start: those given the files, and those that write
     files, because code the platform did not write reads the sound or makes what is stored."""
-    asking, writing = steps_asking_for_recordings(config), steps_writing_files(config)
+    asking, writing = steps_asking_for_files(config), steps_writing_files(config)
     return [s["name"] for s in config.get("steps", []) if s["name"] in asking or s["name"] in writing]
 
 
-def steps_asking_for_recordings(config: dict) -> list[str]:
-    """The names of the script steps that declare `recordings: true`: they are given the run's recordings as files, so the version holding them is
+def steps_asking_for_files(config: dict) -> list[str]:
+    """The names of the script steps that declare `reads_files: true`: they are given the run's files as files, so the version holding them is
     approved by a second person before a run may start."""
-    return [s["name"] for s in config.get("steps", []) if s.get("kind") == "script" and s.get("recordings") is True]
+    return [s["name"] for s in config.get("steps", []) if s.get("kind") == "script" and s.get("reads_files") is True]
 
 
 def validate_dag(config: dict, script_names: set[str]) -> list[str]:
@@ -151,13 +151,13 @@ def validate_dag(config: dict, script_names: set[str]) -> list[str]:
                 problems.append(f"step {step['name']!r} sets 'writes_files' to {step['writes_files']!r}, and it must be true or false")
             elif step["writes_files"] and not re.match(r"^[a-zA-Z0-9_]+$", str(step["name"])):
                 problems.append(f"step {step['name']!r} writes files, and the dataset they become is named after the step: use letters, digits and underscores")
-        if "recordings" in step:
+        if "reads_files" in step:
             if kind != "script":
-                problems.append(f"step {step['name']!r} sets 'recordings', which only a script step may: a built-in step already reads the recordings it needs")
-            elif not isinstance(step["recordings"], bool):
-                problems.append(f"step {step['name']!r} sets 'recordings' to {step['recordings']!r}, and it must be true or false")
-            elif step["recordings"] and {"recordings", "recordings_skipped"} & set(step.get("inputs") or {}):
-                problems.append(f"step {step['name']!r} is given the recordings under the names 'recordings' and 'recordings_skipped', so it cannot also take inputs of those names")
+                problems.append(f"step {step['name']!r} sets 'reads_files', which only a script step may: a built-in step already reads the files it needs")
+            elif not isinstance(step["reads_files"], bool):
+                problems.append(f"step {step['name']!r} sets 'reads_files' to {step['reads_files']!r}, and it must be true or false")
+            elif step["reads_files"] and {"files", "files_skipped"} & set(step.get("inputs") or {}):
+                problems.append(f"step {step['name']!r} is given the files under the names 'files' and 'files_skipped', so it cannot also take inputs of those names")
         elif kind == "gate":
             if not step.get("to_class"):
                 problems.append(f"gate step {step['name']!r} needs a to_class")

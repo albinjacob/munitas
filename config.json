@@ -16,6 +16,7 @@
   "munitas_api_https": 8443,
   "kratos_public": 4433,
   "kratos_admin": 4434,
+  "hydra_public": 4444,
   "console_dev": 5173,
   "console_preview": 3000
 }

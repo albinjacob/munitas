@@ -23,7 +23,7 @@
 # removes what is older than -TidyCanaryOlderThanHours (2), so the run just made is still there to look at. -NoTidyCanary skips it.
 
 param(
-    [string]$WslDistro = "Ubuntu-20.04",
+    [string]$WslDistro = "Munitas",
     [int]$ReclaimOlderThanDays = 1,
     [switch]$NoReclaim,
     [int]$TidyCanaryOlderThanHours = 2,

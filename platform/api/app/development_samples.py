@@ -1,20 +1,20 @@
-"""Development samples: the small set of recordings a pipeline version in development is allowed to run on.
+"""Development samples: the small set of files a pipeline version in development is allowed to run on.
 
 A pipeline version with a custom step is in development until a second person moves it to production, and in development it may run only on
-development data: recordings declared synthetic, or a sample of real ones that a department approver approved for the person who asked.
+development data: files declared synthetic, or a sample of real ones that a department approver approved for the person who asked.
 
-A person asks for a sample (a kind, a purpose, how many recordings, for how many days). An approver of the department that owns the recordings, who
-is not that person, decides. The platform then draws the recordings and seals a new version that names the same stored files, so no audio is
-copied and nothing is stored in the clear. Erasing a person makes their recording unreadable in the sample too, because it is the same file under
-the same key. A debug sample names the recordings that went wrong instead of drawing them.
+A person asks for a sample (a kind, a purpose, how many files, for how many days). An approver of the department that owns the files, who
+is not that person, decides. The platform then draws the files and seals a new version that names the same stored files, so no audio is
+copied and nothing is stored in the clear. Erasing a person makes their file unreadable in the sample too, because it is the same file under
+the same key. A debug sample names the files that went wrong instead of drawing them.
 
 The draw is the platform's. It is reproducible from the salt kept with the sample, so anyone can see that it was not hand-picked:
-  1. leave out recordings of erased people;
-  2. one recording for each person, the one whose hash ranks first;
+  1. leave out files of erased people;
+  2. one file for each person, the one whose hash ranks first;
   3. three length bands, each a third of what is left;
   4. the number asked for divided across the bands in proportion, the remainder going to the shorter bands first;
   5. in each band, the people whose hash ranks first.
-The hash is SHA-256 of the salt, the person's code and the recording's identifier, so the same person asking for the same purpose of the same version
+The hash is SHA-256 of the salt, the person's code and the file's identifier, so the same person asking for the same purpose of the same version
 gets the same sample, and asking again does not collect a different one.
 """
 
@@ -25,9 +25,9 @@ import json
 import uuid
 from datetime import timezone
 
-import psycopg
+import pgdb
 
-from . import db, opa, recordings, storage, versions
+from . import db, opa, locked_files, storage, versions
 from .locked_leases import approvers_of
 from .person_errors import LeaseConflict, NoSuchSample, NoSuchVersion, NotPermitted, Refused
 
@@ -50,10 +50,10 @@ def salt_for(version_id: str, principal: str, kind: str) -> str:
 
 
 def draw(candidates: list[dict], count: int, salt: str, *, bands: int = BANDS, per_person: int = 1) -> dict:
-    """Choose `count` recordings from `candidates` (each `record_id`, `person_code`, `bytes`), by the method in the module note.
+    """Choose `count` files from `candidates` (each `record_id`, `person_code`, `bytes`), by the method in the module note.
 
     A pure function of its arguments, so that it can be tested alone and reproduced from the salt. The caller has already left out erased people.
-    Returns the chosen identifiers, how many came from each band, and how many recordings and people there were to choose from.
+    Returns the chosen identifiers, how many came from each band, and how many files and people there were to choose from.
     """
     by_person: dict[str, list[dict]] = {}
     for c in candidates:
@@ -127,10 +127,10 @@ def _version(version_id: str, tenant_id: str) -> dict:
 
 
 def _source(version_id: str, tenant_id: str) -> dict:
-    """A sealed version of locked recordings that is not itself a sample, since a sample drawn from a sample would collect a set by stages."""
+    """A sealed version of locked files that is not itself a sample, since a sample drawn from a sample would collect a set by stages."""
     row = _version(version_id, tenant_id)
-    if not recordings.is_locked_version(version_id):
-        raise NoSuchVersion(f"{version_id} holds no locked recordings")
+    if not locked_files.is_locked_version(version_id):
+        raise NoSuchVersion(f"{version_id} holds no locked files")
     if db.one("select 1 as x from development_sample where sample_version_id = %s", (version_id,)):
         raise Refused(["this version is a development sample already, and a sample is not drawn from a sample"])
     return row
@@ -138,7 +138,7 @@ def _source(version_id: str, tenant_id: str) -> dict:
 
 def _candidates(version_id: str) -> list[dict]:
     return [{"record_id": r["record_id"], "person_code": r["person_code"], "bytes": int(r["plain_bytes"]), "erased": bool(r["erased"])} for r in db.all_rows(
-        "select r.record_id, r.person_code, r.plain_bytes, p.destroyed_at is not null as erased from recording_person r "
+        "select r.record_id, r.person_code, r.plain_bytes, p.destroyed_at is not null as erased from file_person r "
         "left join subject_key p on p.tenant_id = r.tenant_id and p.person_code = r.person_code "
         "where r.dataset_version_id = %s order by r.record_id", (version_id,))]
 
@@ -180,20 +180,20 @@ def request_sample(identity: dict, version_id: str, kind: str, purpose: str, day
     candidates = _candidates(version_id)
     by_id = {c["record_id"]: c for c in candidates}
     if kind == "debug":
-        problems = [f"{n} is not a recording of this version" for n in named if n not in by_id]
-        problems += [f"{n} is a recording about a person who was erased" for n in named if n in by_id and by_id[n]["erased"]]
+        problems = [f"{n} is not a file of this version" for n in named if n not in by_id]
+        problems += [f"{n} is a file about a person who was erased" for n in named if n in by_id and by_id[n]["erased"]]
         if problems:
             raise Refused(problems)
     elif not any(not c["erased"] for c in candidates):
-        raise Refused(["every recording in this version is about a person who was erased, so there is nothing to draw"])
+        raise Refused(["every file in this version is about a person who was erased, so there is nothing to draw"])
     try:
         row = db.execute(
             """insert into development_sample (id, tenant_id, source_version_id, principal, kind, purpose, requested_count, days, named_records)
                values (%s, %s, %s, %s, %s, %s, %s, %s, %s) returning *""",
             (str(uuid.uuid4()), identity["tenant_id"], version_id, identity["id"], kind, purpose.strip(), records, days,
              json.dumps(named) if kind == "debug" else None))
-    except psycopg.errors.UniqueViolation as exc:
-        raise LeaseConflict([f"you already have a sample for {'debugging' if kind == 'debug' else 'developing'} on these recordings, waiting or in force"]) from exc
+    except pgdb.errors.UniqueViolation as exc:
+        raise LeaseConflict([f"you already have a sample for {'debugging' if kind == 'debug' else 'developing'} on these files, waiting or in force"]) from exc
     return _labels([_shape(row)])[0]
 
 
@@ -225,7 +225,7 @@ def decide(identity: dict, sample_id: str, approve: bool, note: str | None, reco
     count = records if records is not None else sample["requested_count"]
     length = days if days is not None else sample["days"]
     if not 1 <= count <= sample["requested_count"] or not 1 <= length <= sample["days"]:
-        raise Refused([f"an approver may lower what was asked for, never raise it: {sample['requested_count']} recordings for {sample['days']} days was asked for"])
+        raise Refused([f"an approver may lower what was asked for, never raise it: {sample['requested_count']} files for {sample['days']} days was asked for"])
     version = _source(str(sample["source_version_id"]), identity["tenant_id"])
     candidates = [c for c in _candidates(str(sample["source_version_id"])) if not c["erased"]]
     salt = salt_for(str(sample["source_version_id"]), sample["principal"], sample["kind"])
@@ -238,7 +238,7 @@ def decide(identity: dict, sample_id: str, approve: bool, note: str | None, reco
         drawn = draw(candidates, count, salt)
         chosen, strata = drawn["chosen"], drawn["strata"]
     if not chosen:
-        raise Refused(["nothing is left to give: every recording asked for is about a person who was erased"])
+        raise Refused(["nothing is left to give: every file asked for is about a person who was erased"])
     sample_version = _make_version(sample, version, chosen, identity)
     row = db.execute(
         """update development_sample
@@ -256,13 +256,13 @@ def decide(identity: dict, sample_id: str, approve: bool, note: str | None, reco
 def _read_index(version: dict) -> list[dict]:
     entry = next((m for m in version["object_manifest"] if m["key"].endswith("/records.json")), None)
     if entry is None:
-        raise Refused(["the recordings have no list to draw from"])
+        raise Refused(["the files have no list to draw from"])
     client = storage.admin_client_for(version["storage_backend"], version["tenant_id"])
     return json.loads(client.get_object(Bucket=storage.bucket_for(version["storage_backend"], version["tenant_id"]), Key=entry["key"])["Body"].read())
 
 
 def _make_version(sample: dict, source: dict, chosen: list[str], identity: dict) -> str:
-    """Seal a version that names the chosen recordings and the stored files they already are. Nothing is copied and nothing is written but a small list."""
+    """Seal a version that names the chosen files and the stored files they already are. Nothing is copied and nothing is written but a small list."""
     from . import ingest
     tenant, backend = source["tenant_id"], source["storage_backend"] or "seaweedfs"
     name = f"{source['dataset_name']}-dev-sample-{str(sample['id'])[:8]}"
@@ -270,12 +270,12 @@ def _make_version(sample: dict, source: dict, chosen: list[str], identity: dict)
     chosen_set = set(chosen)
     index = [r for r in _read_index(source) if r["record_id"] in chosen_set]
     rows = {r["record_id"]: r for r in db.all_rows(
-        "select record_id, person_code, plain_bytes, format, answer_key_bytes from recording_person where dataset_version_id = %s and record_id = any(%s)",
+        "select record_id, person_code, plain_bytes, format, answer_key_bytes from file_person where dataset_version_id = %s and record_id = any(%s)",
         (str(source["id"]), list(chosen_set)))}
     by_name = {m["key"].rsplit("/", 1)[-1]: m for m in source["object_manifest"]}
     manifest = []
     for rid in sorted(chosen_set):
-        for suffix in (recordings.WAV, recordings.ANSWER_KEY):
+        for suffix in (locked_files.WAV, locked_files.ANSWER_KEY):
             entry = by_name.get(f"{rid}{suffix}")
             if entry:
                 manifest.append(dict(entry))
@@ -283,7 +283,7 @@ def _make_version(sample: dict, source: dict, chosen: list[str], identity: dict)
     payload = json.dumps(index).encode("utf-8")
     storage.admin_client_for(backend, tenant).put_object(Bucket=storage.bucket_for(backend, tenant), Key=f"{prefix}/records.json", Body=payload)
     manifest.append({"key": f"{prefix}/records.json", "bytes": len(payload), "sha256": hashlib.sha256(payload).hexdigest()})
-    contract = versions.register_contract(tenant, "encounter_raw", ingest.ENCOUNTER_RAW_FIELDS, ["record_id"])
+    contract = versions.register_contract(tenant, "audio_raw", ingest.AUDIO_RAW_FIELDS, ["record_id"])
 
     action = db.one("select id from dataset_action where tenant_id = %s and name = 'development_sample'", (tenant,))
     if not action:
@@ -300,7 +300,7 @@ def _make_version(sample: dict, source: dict, chosen: list[str], identity: dict)
                             object_manifest=manifest, record_count=len(index), produced_by_run=run_id, records_key=f"{prefix}/records.json")
     for rid in sorted(chosen_set):
         r = rows[rid]
-        db.execute("insert into recording_person (dataset_version_id, record_id, tenant_id, person_code, plain_bytes, format, answer_key_bytes) "
+        db.execute("insert into file_person (dataset_version_id, record_id, tenant_id, person_code, plain_bytes, format, answer_key_bytes) "
                    "values (%s, %s, %s, %s, %s, %s, %s) returning record_id",
                    (version["id"], rid, tenant, r["person_code"], r["plain_bytes"], r["format"], r["answer_key_bytes"]))
     return version["id"]
@@ -328,12 +328,12 @@ def declare_synthetic(identity: dict, version_id: str, note: str) -> dict:
     if not allowed:
         raise NotPermitted(reasons)
     if db.one("select 1 as x from development_sample where sample_version_id = %s", (version_id,)):
-        raise Refused(["this version is a development sample, so it holds real recordings and cannot be declared synthetic"])
+        raise Refused(["this version is a development sample, so it holds real files and cannot be declared synthetic"])
     try:
         row = db.execute("insert into development_data_declaration (version_id, tenant_id, declared_by, note) values (%s, %s, %s, %s) returning *",
                          (version_id, identity["tenant_id"], identity["id"], note.strip()))
-    except psycopg.errors.UniqueViolation as exc:
-        raise LeaseConflict(["these recordings were declared synthetic already"]) from exc
+    except pgdb.errors.UniqueViolation as exc:
+        raise LeaseConflict(["these files were declared synthetic already"]) from exc
     return _declaration(row)
 
 
@@ -346,9 +346,9 @@ def _declaration(row: dict | None) -> dict | None:
 
 
 def for_version(identity: dict, version_id: str) -> dict:
-    """What a screen needs on a version of recordings: this person's samples, the requests waiting for them as an approver, what they may do, the limits.
+    """What a screen needs on a version of files: this person's samples, the requests waiting for them as an approver, what they may do, the limits.
 
-    Never a recording or a person. A person who is an approver sees the counts of what was drawn, band by band, and nothing more.
+    Never a file or a person. A person who is an approver sees the counts of what was drawn, band by band, and nothing more.
     """
     sweep()
     version = _version(version_id, identity["tenant_id"])
@@ -371,7 +371,7 @@ def for_version(identity: dict, version_id: str) -> dict:
         "requester": {"id": identity["id"], "roles": identity["roles"]},
         "request": {"principal": identity["id"], "kind": "develop", "purpose": "x", "days": 1, "records": 1, "named": 0}})
     may_declare, _ = opa.may_declare_synthetic({"actor": {"id": identity["id"], "roles": identity["roles"]}, "request": {"note": "x"}, "dataset": {"approvers": approvers}})
-    locked = recordings.is_locked_version(version_id)
+    locked = locked_files.is_locked_version(version_id)
     live = {r["kind"] for r in mine if r["status"] in ("requested", "approved")}
     return {
         "version_id": version_id,

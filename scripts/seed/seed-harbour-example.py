@@ -88,9 +88,9 @@ def seed_table(session: dict, department: str) -> None:
     where.raise_for_status()
     key = f"{where.json()['storage_prefix']}/records.json"
     body = json.dumps(APPOINTMENTS).encode("utf-8")
-    store = boto3.client("s3", endpoint_url=os.environ.get("S3_ENDPOINT", f"http://localhost:{PORTS['seaweedfs_s3']}"),
-                         aws_access_key_id=os.environ.get("S3_ADMIN_KEY") or "munitas-admin",
-                         aws_secret_access_key=os.environ.get("S3_ADMIN_SECRET") or "munitas-admin-secret",
+    store = boto3.client("s3", endpoint_url=os.environ.get("MUNITAS_S3_ENDPOINT", f"http://localhost:{PORTS['seaweedfs_s3']}"),
+                         aws_access_key_id=os.environ.get("MUNITAS_S3_ADMIN_KEY") or "munitas-admin",
+                         aws_secret_access_key=os.environ.get("MUNITAS_S3_ADMIN_SECRET") or "munitas-admin-secret",
                          config=Config(signature_version="s3v4"), region_name="us-east-1")
     store.put_object(Bucket=f"munitas-{TENANT}", Key=key, Body=body)
     sealed = httpx.post(f"{API}/dataset-versions", timeout=60.0, headers=WORKER_HEADERS, json={

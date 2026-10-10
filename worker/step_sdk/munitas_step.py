@@ -1,14 +1,14 @@
-"""munitas_step: how a custom pipeline step reads its recordings and returns its result.
+"""munitas_step: how a custom pipeline step reads its files and returns its result.
 
-A script step that says `recordings: true` in its pipeline file runs in a container with no internet, no storage and no keys. The platform hands it a
+A script step that says `reads_files: true` in its pipeline file runs in a container with no internet, no storage and no keys. The platform hands it a
 short-lived pass for this one step and a way to reach the platform's step routes, and nothing else. This library is the way to use them:
 
     import munitas_step as step
 
-    for item in step.list_recordings():              # [{"record_id": "visit-7", "bytes": 4349894, "erased": False}, ...]
+    for item in step.list_files():              # [{"record_id": "visit-7", "bytes": 4349894, "erased": False}, ...]
         if item["erased"]:
             continue                                 # the person was erased: it cannot be opened, and is left out
-        audio = step.open_recording(item["record_id"])   # a file you can read, seek in and pass to audio libraries
+        audio = step.open_file(item["record_id"])   # a file you can read, seek in and pass to audio libraries
         ...
     step.result({"recommendation": "not_measured", "reason": "..."})   # the step's small JSON result, printed as its last line
 
@@ -23,15 +23,15 @@ Nothing written is a version until the step ends. If it succeeds, the platform s
 `<the run's dataset>-<the step's name>`, "under review", so nobody can use it until a person has looked. If it fails, or leaves a file unfinished (a
 `with` block that raised), everything it wrote is thrown away. A step writes at most 500 files, 512 MiB each and 1 GiB together.
 
-Three ways to read one recording, whichever the script needs:
+Three ways to read one file, whichever the script needs:
 
-    f = step.open_recording(id)           # a seekable file: asks the platform for 8 MiB blocks as they are needed, holds two, never the whole file
-    data = step.read_recording(id)        # all of it, as bytes in memory
-    step.save_recording(id, "/tmp/x.wav") # to a path inside this container (/tmp is memory-backed and size-limited, and goes with the container)
+    f = step.open_file(id)           # a seekable file: asks the platform for 8 MiB blocks as they are needed, holds two, never the whole file
+    data = step.read_file(id)        # all of it, as bytes in memory
+    step.save_file(id, "/tmp/x.wav") # to a path inside this container (/tmp is memory-backed and size-limited, and goes with the container)
 
 The platform decides every time, not only the first: whether the pass is real, whether the run is still going, whether the version of the pipeline was
-approved to be given the recordings, and whether the person was erased. Erasing a person while their recording is being read makes the next block
-raise RecordingErased. Opening a recording is written to the platform's key log, naming this step.
+approved to be given the files, and whether the person was erased. Erasing a person while their file is being read makes the next block
+raise FileErased. Opening a file is written to the platform's key log, naming this step.
 
 Standard library only. It is the one implementation of the reader: the platform's own workers import the same class.
 """
@@ -55,16 +55,16 @@ class StepError(Exception):
     """The platform refused, or could not be reached."""
 
 
-class RecordingErased(StepError):
-    """The person this recording is about was erased, so it cannot be opened."""
+class FileErased(StepError):
+    """The person this file is about was erased, so it cannot be opened."""
 
 
 class RangeFile(io.RawIOBase):
-    """A recording, read as if it were an ordinary file, without ever being a file.
+    """A file, read as if it were an ordinary file, without ever being a file.
 
     It can be read and jumped around in, so audio libraries take it where they would take a path. Each read that is not already held becomes a request
-    for one block of the recording (8 MiB), and the last two blocks are kept for the reads that follow. Only what is being read is held in memory,
-    however long the recording is. `fetch(offset, length)` returns exactly that many bytes of the opened recording.
+    for one block of the file (8 MiB), and the last two blocks are kept for the reads that follow. Only what is being read is held in memory,
+    however long the file is. `fetch(offset, length)` returns exactly that many bytes of the opened file.
     """
 
     def __init__(self, size: int, fetch: Callable[[int, int], bytes], *, block: int = BLOCK, on_close: Callable[[], None] | None = None) -> None:
@@ -85,7 +85,7 @@ class RangeFile(io.RawIOBase):
     def seek(self, offset: int, whence: int = io.SEEK_SET) -> int:
         target = {io.SEEK_SET: offset, io.SEEK_CUR: self._pos + offset, io.SEEK_END: self._size + offset}[whence]
         if target < 0:
-            raise ValueError("a recording has no bytes before its start")
+            raise ValueError("a file has no bytes before its start")
         self._pos = target
         return self._pos
 
@@ -129,7 +129,7 @@ def _settings() -> tuple[str, str]:
         return os.environ["MUNITAS_STEP_API"].rstrip("/"), os.environ["MUNITAS_STEP_PASS"]
     except KeyError as exc:
         raise StepError(f"{exc.args[0]} is not set: this step was not started with a pass, which a step gets only when its pipeline file says "
-                        "`recordings: true`") from None
+                        "`reads_files: true`") from None
 
 
 def _call(method: str, path: str, headers: dict | None = None, data: bytes | None = None) -> tuple[int, dict, bytes]:
@@ -156,27 +156,27 @@ def _call(method: str, path: str, headers: dict | None = None, data: bytes | Non
 
 def _refusal(status: int, body: bytes, record_id: str, what: str) -> Exception:
     if status == 410:
-        return RecordingErased(record_id)
+        return FileErased(record_id)
     return StepError(f"{what} {record_id} returned {status}: {body[:300].decode('utf-8', 'replace')}")
 
 
-def list_recordings() -> list[dict]:
-    """The recordings this step may be given: each one's `record_id`, its `bytes` once opened, and whether its person was `erased`."""
-    status, _, body = _call("GET", "/step/v1/recordings")
+def list_files() -> list[dict]:
+    """The files this step may be given: each one's `record_id`, its `bytes` once opened, and whether its person was `erased`."""
+    status, _, body = _call("GET", "/step/v1/files")
     if status != 200:
-        raise StepError(f"listing the recordings returned {status}: {body[:300].decode('utf-8', 'replace')}")
-    return json.loads(body)["recordings"]
+        raise StepError(f"listing the files returned {status}: {body[:300].decode('utf-8', 'replace')}")
+    return json.loads(body)["files"]
 
 
-def open_recording(record_id: str) -> RangeFile:
-    """A recording as a file to read. Opening it is written to the platform's key log. Raises RecordingErased when its person was erased."""
-    status, _, body = _call("POST", f"/step/v1/recordings/{record_id}/open")
+def open_file(record_id: str) -> RangeFile:
+    """A file as a file to read. Opening it is written to the platform's key log. Raises FileErased when its person was erased."""
+    status, _, body = _call("POST", f"/step/v1/files/{record_id}/open")
     if status != 200:
         raise _refusal(status, body, record_id, "opening")
     opened = json.loads(body)
 
     def fetch(offset: int, length: int) -> bytes:
-        status, _, data = _call("GET", f"/step/v1/recordings/{record_id}/range?offset={offset}&length={length}", {"x-handle": opened["handle"]})
+        status, _, data = _call("GET", f"/step/v1/files/{record_id}/range?offset={offset}&length={length}", {"x-handle": opened["handle"]})
         if status != 200:
             raise _refusal(status, data, record_id, "reading")
         return data
@@ -184,16 +184,16 @@ def open_recording(record_id: str) -> RangeFile:
     return RangeFile(int(opened["bytes"]), fetch)
 
 
-def read_recording(record_id: str) -> bytes:
-    """The whole recording, as bytes in memory."""
-    with open_recording(record_id) as source:
+def read_file(record_id: str) -> bytes:
+    """The whole file, as bytes in memory."""
+    with open_file(record_id) as source:
         return source.read()
 
 
-def save_recording(record_id: str, path: str) -> int:
-    """The whole recording, written to `path` in pieces. Returns its size. Use a path under /tmp: it is the only place a step may write."""
+def save_file(record_id: str, path: str) -> int:
+    """The whole file, written to `path` in pieces. Returns its size. Use a path under /tmp: it is the only place a step may write."""
     total = 0
-    with open_recording(record_id) as source, open(path, "wb") as out:
+    with open_file(record_id) as source, open(path, "wb") as out:
         while True:
             piece = source.read(BLOCK)
             if not piece:
@@ -210,7 +210,7 @@ class OutputFile(io.RawIOBase):
     def __init__(self, name: str, from_record: str | None = None, size: int | None = None) -> None:
         super().__init__()
         if from_record is not None and (size is None or size < 1):
-            raise StepError(f"a file made from recording {from_record} needs its size in bytes up front, at least 1: the platform fits the lock to it")
+            raise StepError(f"a file made from file {from_record} needs its size in bytes up front, at least 1: the platform fits the lock to it")
         payload = json.dumps({"source_record": from_record, "size": size}).encode("utf-8") if from_record is not None else None
         status, _, body = _call("POST", f"/step/v1/outputs/{name}", {"Content-Type": "application/json"} if payload else None, payload)
         if status != 201:
@@ -269,8 +269,8 @@ class OutputFile(io.RawIOBase):
 def write_output(name: str, from_record: str | None = None, size: int | None = None) -> OutputFile:
     """A file to write to, sent to the platform as it is written. Use it as `with write_output("name.wav") as out:`.
 
-    A file made from a recording says which one and how many bytes it will be: `write_output("x.wav", from_record="r-0001", size=n)`. The platform then
-    locks it under that recording's person as it arrives. Sound made from a recording must be written this way.
+    A file made from a file says which one and how many bytes it will be: `write_output("x.wav", from_record="r-0001", size=n)`. The platform then
+    locks it under that file's person as it arrives. Sound made from a file must be written this way.
     """
     return OutputFile(name, from_record, size)
 

@@ -1,17 +1,17 @@
 """What a custom pipeline step is given, through the platform and nowhere else.
 
-A script step of an operator's own pipeline can say `recordings: true` (it is given the run's recordings) and `writes_files: true` (what it writes
+A script step of an operator's own pipeline can say `reads_files: true` (it is given the run's files) and `writes_files: true` (what it writes
 becomes a version that waits for review). Its container has no storage, no key and no way to reach anything but one small gateway, which forwards
 only the routes in this file. The step holds a pass for this one step of this one run, and the platform asks four questions of every request, not
 only the first:
 
   * is the pass real, unexpired, and made for a step (not for a run, a credential route, or anything else)?
   * is the pipeline run it belongs to still going?
-  * does the version of the pipeline that run came from declare this step, for what it is now asking to do (read recordings, or write files)?
+  * does the version of the pipeline that run came from declare this step, for what it is now asking to do (read files, or write files)?
   * does an approver's approval of that version still stand?
 
-A recording is opened before it is read. Opening it is the one write to the key log, naming the step, the pipeline and its version, and it returns a
-handle that every read of that recording must carry, so a read cannot skip the opening. A person who was erased is refused (410) at the opening
+A file is opened before it is read. Opening it is the one write to the key log, naming the step, the pipeline and its version, and it returns a
+handle that every read of that file must carry, so a read cannot skip the opening. A person who was erased is refused (410) at the opening
 and at any later read, because the person's key is checked every time. The key never leaves the platform.
 """
 
@@ -19,13 +19,14 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import Response
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 from crypto import NotOpenable
 
-from . import auth, dag_pipelines, db, development_samples, recordings, step_outputs, task_credential
+from . import auth, dag_pipelines, db, development_samples, locked_files, step_outputs, task_credential
 from .person_errors import NoSuchVersion
-from .recording_routes import _body, _service
+from .locked_file_routes import _body, _service
 
 router = APIRouter(tags=["custom steps"])
 
@@ -60,28 +61,28 @@ def run_context(pipeline_run_id: str, tenant_id: str, step: str) -> dict:
     version = db.one("""select pv.id, pv.version, pv.dag_config, p.name from pipeline_version pv join pipeline p on p.id = pv.pipeline_id
                          where pv.id = %s""", (run["pipeline_version_id"],)) if run["pipeline_version_id"] else None
     declared = [x for x in (version["dag_config"]["steps"] if version else [])
-                if x.get("name") == step and x.get("kind") == "script" and (x.get("recordings") is True or x.get("writes_files") is True)]
+                if x.get("name") == step and x.get("kind") == "script" and (x.get("reads_files") is True or x.get("writes_files") is True)]
     if not declared:
-        raise HTTPException(403, {"reasons": [f"step {step!r} of this run does not declare that it is given the recordings or writes files"]})
+        raise HTTPException(403, {"reasons": [f"step {step!r} of this run does not declare that it is given the files or writes files"]})
     stage = dag_pipelines.version_stage(str(version["id"]), version["dag_config"])
     if stage == "retired":
         raise HTTPException(403, {"reasons": ["this version of the pipeline was retired"]})
     if stage == "development" and not development_samples.is_development_data(tenant_id, run["triggered_by"], str(run["source_version_id"]) if run["source_version_id"] else None):
-        raise HTTPException(403, {"reasons": ["this version of the pipeline is in development, or was returned to it, and only a version in production may be given recordings that "
-                                              "are not development data. The recordings this run reads are neither declared synthetic nor a development sample that is in force "
+        raise HTTPException(403, {"reasons": ["this version of the pipeline is in development, or was returned to it, and only a version in production may be given files that "
+                                              "are not development data. The files this run reads are neither declared synthetic nor a development sample that is in force "
                                               "for the person who started it"]})
     return {"source_version_id": str(run["source_version_id"]) if run["source_version_id"] else None,
-            "recordings": declared[0].get("recordings") is True, "writes_files": declared[0].get("writes_files") is True,
+            "files": declared[0].get("reads_files") is True, "writes_files": declared[0].get("writes_files") is True,
             "label": f"custom step {step} of pipeline {version['name']} version {version['version']}"}
 
 
 def _needs(step: dict, what: str) -> None:
     """The step must have declared the specific thing it is now asking to do."""
     if not step[what]:
-        wording = "given the recordings" if what == "recordings" else "allowed to write files"
+        wording = "given the files" if what == "files" else "allowed to write files"
         raise HTTPException(403, {"reasons": [f"step {step['claim'].step!r} of this run does not declare that it is {wording}"]})
-    if what == "recordings" and not step["source_version_id"]:
-        raise HTTPException(403, {"reasons": ["this run was not started from a version of recordings"]})
+    if what == "files" and not step["source_version_id"]:
+        raise HTTPException(403, {"reasons": ["this run was not started from a version of files"]})
 
 
 @router.post("/internal/dag-step/pass", include_in_schema=False)
@@ -113,30 +114,30 @@ def _step_pass(authorization: str | None = Header(default=None)) -> dict:
     return {"claim": claim, **run_context(claim.task_id, claim.tenant_id, claim.step)}
 
 
-@router.get("/step/v1/recordings")
-def list_recordings(step: dict = Depends(_step_pass)) -> dict:
-    """The recordings this step may be given: each one's id, its size when opened, and whether its person was erased. Lists; opens nothing."""
-    _needs(step, "recordings")
+@router.get("/step/v1/files")
+def list_files(step: dict = Depends(_step_pass)) -> dict:
+    """The files this step may be given: each one's id, its size when opened, and whether its person was erased. Lists; opens nothing."""
+    _needs(step, "files")
     try:
-        return {"recordings": recordings.list_for_step(step["source_version_id"])}
+        return {"files": locked_files.list_for_step(step["source_version_id"])}
     except NoSuchVersion as exc:
         raise HTTPException(404, {"reasons": [str(exc)]}) from exc
 
 
-@router.post("/step/v1/recordings/{record_id}/open")
-def open_recording(record_id: str, step: dict = Depends(_step_pass)) -> dict:
-    """Open one recording to be read a range at a time. This is the opening that is written to the key log, once, naming the step.
+@router.post("/step/v1/files/{record_id}/open")
+def open_file(record_id: str, step: dict = Depends(_step_pass)) -> dict:
+    """Open one file to be read a range at a time. This is the opening that is written to the key log, once, naming the step.
 
-    Returns the recording's size and a handle that every read of it must carry. A person who was erased is refused (410).
+    Returns the file's size and a handle that every read of it must carry. A person who was erased is refused (410).
     """
-    _needs(step, "recordings")
+    _needs(step, "files")
     claim = step["claim"]
     try:
-        size = recordings.begin_recording(_service(), version_id=step["source_version_id"], record_id=record_id, run=f"step_run {claim.task_id}",
-                                          purpose=f"open a recording for {step['label']}", plain_ok=True)
+        size = locked_files.begin_file(_service(), version_id=step["source_version_id"], record_id=record_id, run=f"step_run {claim.task_id}",
+                                          purpose=f"open a file for {step['label']}", plain_ok=True)
     except NoSuchVersion as exc:
         raise HTTPException(404, {"reasons": [str(exc)]}) from exc
-    except recordings.PersonErased as exc:
+    except locked_files.PersonErased as exc:
         raise HTTPException(410, {"reasons": [str(exc)]}) from exc
     step_outputs.note_opening(claim.tenant_id, claim.task_id, claim.step, step["source_version_id"], record_id)
     handle = task_credential.mint(principal=claim.principal, task_kind="step_read", task_id=claim.task_id, tenant_id=claim.tenant_id,
@@ -144,28 +145,28 @@ def open_recording(record_id: str, step: dict = Depends(_step_pass)) -> dict:
     return {"bytes": size, "handle": handle}
 
 
-@router.get("/step/v1/recordings/{record_id}/range")
+@router.get("/step/v1/files/{record_id}/range")
 def read_range(record_id: str, offset: int = Query(ge=0), length: int = Query(ge=0, le=MAX_RANGE), x_handle: str | None = Header(default=None),
                step: dict = Depends(_step_pass)) -> Response:
-    """A range of an opened recording, opened. The handle from opening it must come with the request, and the person's key is checked every time:
-    a recording being read stops the moment the person is erased (410)."""
-    _needs(step, "recordings")
+    """A range of an opened file, opened. The handle from opening it must come with the request, and the person's key is checked every time:
+    a file being read stops the moment the person is erased (410)."""
+    _needs(step, "files")
     claim = step["claim"]
     try:
         held = task_credential.verify(x_handle or "")
     except task_credential.InvalidTaskCredential as exc:
-        raise HTTPException(403, {"reasons": [f"this recording was not opened for this step: {exc}. Open it first"]}) from exc
+        raise HTTPException(403, {"reasons": [f"this file was not opened for this step: {exc}. Open it first"]}) from exc
     if held.task_kind != "step_read" or held.task_id != claim.task_id or held.step != claim.step or held.scope != record_id:
-        raise HTTPException(403, {"reasons": ["this handle is for another recording, step or run. Open this recording first"]})
+        raise HTTPException(403, {"reasons": ["this handle is for another file, step or run. Open this file first"]})
     try:
-        size, data = recordings.read_recording_range(_service(), version_id=step["source_version_id"], record_id=record_id, run=f"step_run {claim.task_id}",
+        size, data = locked_files.read_file_range(_service(), version_id=step["source_version_id"], record_id=record_id, run=f"step_run {claim.task_id}",
                                                      offset=offset, length=length, plain_ok=True)
     except NoSuchVersion as exc:
         raise HTTPException(404, {"reasons": [str(exc)]}) from exc
-    except recordings.PersonErased as exc:
+    except locked_files.PersonErased as exc:
         raise HTTPException(410, {"reasons": [str(exc)]}) from exc
     except NotOpenable as exc:
-        raise HTTPException(409, {"reasons": [f"the stored recording does not open: {exc}"]}) from exc
+        raise HTTPException(409, {"reasons": [f"the stored file does not open: {exc}"]}) from exc
     return Response(content=data, media_type="application/octet-stream", headers={"x-plain-bytes": str(size)})
 
 
@@ -180,7 +181,7 @@ def _refused(exc: step_outputs.Refused) -> HTTPException:
 def open_output(name: str, body: OpenOutputIn | None = None, step: dict = Depends(_step_pass)) -> dict:
     """Open one file to be written, in parts of at most 8 MiB. Opening a name again replaces the earlier file of that name.
 
-    A file made from a recording says which one (`source_record`) and its size in bytes (`size`), and is then locked under that recording's person as
+    A file made from a file says which one (`source_record`) and its size in bytes (`size`), and is then locked under that file's person as
     it arrives. Nothing is a version yet. The files a step finished are sealed together, "under review", when the step ends successfully, and thrown
     away when it fails.
     """
@@ -199,8 +200,11 @@ async def put_output_part(name: str, part_number: int, request: Request, step: d
     _needs(step, "writes_files")
     claim = step["claim"]
     data = await _body(request, step_outputs.PART)
+    service = _service()
     try:
-        return step_outputs.put_part(service=_service(), pipeline_run_id=claim.task_id, step=claim.step, name=name, part_number=part_number, data=data)
+        # In a worker thread, for the reason given on the locked file upload route: the write to storage must not hold up the other requests.
+        return await run_in_threadpool(step_outputs.put_part, service=service, pipeline_run_id=claim.task_id, step=claim.step, name=name,
+                                       part_number=part_number, data=data)
     except step_outputs.Refused as exc:
         raise _refused(exc) from exc
 
@@ -211,7 +215,7 @@ def complete_output(name: str, step: dict = Depends(_step_pass)) -> dict:
     _needs(step, "writes_files")
     claim = step["claim"]
     try:
-        return step_outputs.complete_output(pipeline_run_id=claim.task_id, step=claim.step, name=name, reads_recordings=bool(step["recordings"]))
+        return step_outputs.complete_output(pipeline_run_id=claim.task_id, step=claim.step, name=name, reads_files=bool(step["files"]))
     except step_outputs.Refused as exc:
         raise _refused(exc) from exc
 

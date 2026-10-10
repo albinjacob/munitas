@@ -33,7 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, "/app")
 sys.path.insert(0, "/")
 
-import psycopg  # noqa: E402
+import pgdb  # noqa: E402
 
 from common import CANARY, api, bearer_for, check, db, fixture_tenant, heading, require_api, summary  # noqa: E402
 from lifecycle_fixture import drop_org, make_org  # noqa: E402
@@ -135,7 +135,7 @@ def main() -> int:
         with db() as conn:
             conn.execute("update locked_column_lease set status = 'approved', decided_by = principal, expires_at = now() + interval '1 day' where id = %s", (lease,))
         direct = "accepted"
-    except psycopg.errors.CheckViolation:
+    except pgdb.errors.CheckViolation:
         direct = "refused"
     check("the database refuses a self-approval even when the API is bypassed", direct == "refused", direct)
     r = decide(CUSTODIAN, lease)
@@ -214,6 +214,12 @@ def main() -> int:
     check("it shows who made, opened and destroyed keys", {"make_person", "unwrap", "destroy"} <= {x["action"] for x in ev.get("key_uses", [])})
     check("it shows the leases with their purposes and who decided them", any(x["purpose"].startswith("devise the rule") and x["decided_by"] == CUSTODIAN for x in ev.get("leases", [])))
     check("it shows the treatment of each column in the contract", any(c["name"] == "patient_name" and c["treatment"] == "lock" for k in ev.get("contracts", []) for c in k["treatments"]))
+    with db() as conn:
+        mine = conn.execute("select d.name, v.version, v.schema_id from dataset_version v join dataset d on d.id = v.dataset_id where v.id = %s", (version,)).fetchone()
+    under = [k for k in ev.get("contracts", []) if k["schema_id"] == str(mine["schema_id"])]
+    check("each contract names the tables sealed under it: the table above is named, with its version, under its own contract",
+          len(under) == 1 and f'{mine["name"]}, version {mine["version"]}' in under[0]["tables"] and under[0]["table_count"] >= 1 and len(under[0]["tables"]) <= 5,
+          str(under)[:240])
     check("it shows the erasure", any(x["record_id"].startswith("person:") for x in ev.get("erasures", [])))
     text = json.dumps(ev)
     leaked = [w for w in (list(names)[:10] + [numbers[k] for k in list(numbers)[:10]] + ["Zzexample", f"dx-001-{tag}"]) if w in text]

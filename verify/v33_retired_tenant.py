@@ -23,9 +23,9 @@ from __future__ import annotations
 import sys
 import uuid
 
-import psycopg
+import pgdb
 
-from common import (CANARY, ENGINEER, WORKER_HEADERS, api, bearer_for, check, db,
+from common import (CANARY, CANARY_ADMIN, ENGINEER, WORKER_HEADERS, api, bearer_for, check, db,
                      fixture_contract, fixture_tenant, fixture_version,
                      heading, require_api, summary)
 
@@ -46,6 +46,9 @@ EXEMPT = {
     # Opening a person's locked columns in a closed organisation records which key was used, so this log must still be written. It holds
     # no key and no record, only who used which person's key and when, and it is removed only with the organisation.
     "key_use_log",
+    # Which dataset each line of the key log is about, written by a trigger on the log above in the same statement, so it must be writable under the same
+    # conditions. It holds two ids and nothing else, and is removed only with the organisation.
+    "key_use_dataset",
     # The log of who opened which file of a version through the platform. Opening a locked file also writes the key log above, which is exempt for the same reason,
     # so this log must be writable under the same conditions. It holds no file and no key, and is removed only with the organisation.
     "record_read_log",
@@ -162,7 +165,7 @@ def run_checks(RETIRED: str) -> int:
                 "insert into dataset (id, tenant_id, name) values (%s, %s, %s)",
                 (str(uuid.uuid4()), RETIRED, f"direct-{uuid.uuid4().hex[:8]}"),
             )
-        except psycopg.Error as exc:
+        except pgdb.Error as exc:
             direct = exc
     check("and so does the database, to somebody bypassing the API",
           direct is not None, type(direct).__name__ if direct else "the insert succeeded")
@@ -211,8 +214,10 @@ def run_checks(RETIRED: str) -> int:
 
     heading("U33: it is not offered as somebody to act as")
 
+    # The platform administrator is the one role offered more than its own organisation, so the question of who is offered across
+    # organisations is asked of that role.
     people = api("GET", "/directory", params={"kind": "human"},
-                headers=bearer_for(ENGINEER))
+                headers=bearer_for(CANARY_ADMIN))
     tenants = {p["tenant_id"] for p in people.json()} if people.status_code == 200 else set()
     check("the chooser offers nobody from a closed tenant",
           RETIRED not in tenants, ", ".join(sorted(tenants)) or "nobody")
@@ -220,7 +225,7 @@ def run_checks(RETIRED: str) -> int:
           len(tenants) > 0, f"{len(people.json())} people")
 
     everyone = api("GET", "/directory", params={"kind": "human", "purpose": "all"},
-                   headers=bearer_for(ENGINEER))
+                   headers=bearer_for(CANARY_ADMIN))
     check("they are still findable when somebody asks for every tenant",
           everyone.status_code == 200
           and len(everyone.json()) >= len(people.json()),

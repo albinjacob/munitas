@@ -1,6 +1,6 @@
 """U136: a whole file is locked under a person's key in chunks, and a chunk that is moved, repeated, cut off or added to is refused.
 
-A recording is far too large to lock in one piece, and it is uploaded in parts that can each be sent again. So each part is locked on its own, a
+A file is far too large to lock in one piece, and it is uploaded in parts that can each be sent again. So each part is locked on its own, a
 chunk at a time, from its number and the file's stated size alone. This checks the module that does that, one item at a time, with no database and
 no storage (the bytes are made up here):
 
@@ -35,7 +35,7 @@ from common import check, heading, summary  # noqa: E402
 from crypto import stream  # noqa: E402
 from crypto.stream import CHUNK, OVERHEAD, PART, NotOpenable  # noqa: E402
 
-KEY, TENANT, PERSON, NAME = os.urandom(32), "health", "T-0123456789abcdef", "visit-0007.wav"
+KEY, TENANT, PERSON, NAME = os.urandom(32), "canary", "T-0123456789abcdef", "visit-0007.wav"
 
 
 def lock_all(data: bytes, order=None, **who) -> list[bytes]:
@@ -119,7 +119,7 @@ def main() -> int:
     heading("A file for someone or something else")
     check("another person's code does not open it", refused(lambda: open_all(stored, st, person="T-ffffffffffffffff")))
     check("another organisation does not open it", refused(lambda: open_all(stored, st, tenant="finance")))
-    check("another file name does not open it (a recording cannot be given another recording's name)", refused(lambda: open_all(stored, st, name="visit-0008.wav")))
+    check("another file name does not open it (a file cannot be given another file's name)", refused(lambda: open_all(stored, st, name="visit-0008.wav")))
     check("another stated size does not open it", refused(lambda: open_all(stored, st + 1)) and refused(lambda: open_all(stored, st - 1)))
     check("another key does not open it", refused(lambda: open_all(stored, st, key=os.urandom(32))))
 

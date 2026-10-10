@@ -25,14 +25,14 @@ import os
 import sys
 from pathlib import Path
 
-import psycopg
-from psycopg.rows import dict_row
+import pgdb
+from pgdb import dict_row
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from ports_config import PORTS  # noqa: E402
 
 PG_DSN = os.environ.get(
-    "PG_DSN", f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform"
+    "MUNITAS_PG_DSN", f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform"
 )
 
 
@@ -43,7 +43,7 @@ def main() -> int:
                         help="skip the typed confirmation, for scripted use")
     args = parser.parse_args()
 
-    with psycopg.connect(PG_DSN, row_factory=dict_row, autocommit=True) as conn:
+    with pgdb.connect(PG_DSN, row_factory=dict_row, autocommit=True) as conn:
         row = conn.execute(
             "select purpose from tenant where id = %s", (args.tenant,)
         ).fetchone()

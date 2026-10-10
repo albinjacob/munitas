@@ -21,7 +21,7 @@ from pydantic import BaseModel
 from . import config, db, opa, seaweed
 from . import auth
 from .auth import current_session
-from .pipeline_dag import (DagConfigError, parse_dag_config, steps_asking_for_recordings, steps_needing_approval, steps_writing_files,
+from .pipeline_dag import (DagConfigError, parse_dag_config, steps_asking_for_files, steps_needing_approval, steps_writing_files,
                            validate_dag)
 
 router = APIRouter(tags=["pipelines"])
@@ -90,7 +90,7 @@ def register(body: RegisterPipeline, identity: dict = Depends(current_session)) 
 
 
 @router.post("/pipelines/{pipeline_id}/versions/upload", status_code=201)
-async def upload_version(
+def upload_version(
     pipeline_id: str,
     config_file: UploadFile = File(...),
     scripts: UploadFile = File(...),
@@ -114,7 +114,7 @@ async def upload_version(
             403, {"reasons": [f"{registered_by!r} is not in this pipeline's directory"]}
         )
 
-    yaml_bytes = await config_file.read()
+    yaml_bytes = config_file.file.read()
     if not yaml_bytes or len(yaml_bytes) > MAX_UPLOAD_BYTES:
         raise HTTPException(400, {"reasons": ["the config file is empty or too large"]})
 
@@ -123,7 +123,7 @@ async def upload_version(
     except DagConfigError as exc:
         raise HTTPException(400, {"reasons": [str(exc)]}) from exc
 
-    zip_bytes = await scripts.read()
+    zip_bytes = scripts.file.read()
     if len(zip_bytes) > MAX_UPLOAD_BYTES:
         raise HTTPException(413, {"reasons": [
             f"the scripts archive is over the {MAX_UPLOAD_BYTES} byte limit"
@@ -168,7 +168,7 @@ async def upload_version(
     return {
         "id": version_id, "pipeline_id": pipeline_id, "version": version,
         "config_hash": config_hash, "sealed": True, "step_count": len(dag_config["steps"]),
-        "steps_given_recordings": steps_asking_for_recordings(dag_config), "steps_writing_files": steps_writing_files(dag_config),
+        "steps_given_files": steps_asking_for_files(dag_config), "steps_writing_files": steps_writing_files(dag_config),
         "needs_promotion": bool(needing), "stage": "development" if needing else "production",
     }
 
@@ -179,20 +179,9 @@ def list_pipelines(
     offset: int = Query(0, ge=0),
     identity: dict = Depends(current_session),
 ) -> dict:
-    """Every pipeline in the caller's own tenant, with the total for real
-    page controls.
+    """Every pipeline in the caller's own organisation, with the total for page controls.
 
-    Previously took a caller-supplied `tenant_id` with no session at all --
-    any tenant's full pipeline list, names, departments and who registered
-    them, readable by guessing the tenant id. Scoped to the session's own
-    tenant now, the same fix every read endpoint in `read_models.py`
-    already has for this exact shape of gap.
-
-    Also previously had no `limit`/`offset` at all, unlike every other list
-    endpoint -- missed in the console-wide pagination pass this was found
-    during, since nothing had ever flagged it as unbounded before an
-    organisation actually had enough pipelines for that to matter. Same
-    `{pipelines, shown, total, limit, offset}` envelope as the rest.
+    A session is required, and the list is scoped to it. The answer is `{pipelines, shown, total, limit, offset}`, like the other lists.
     """
     tenant_id = identity["tenant_id"]
     rows = db.all_rows(
@@ -229,10 +218,7 @@ def list_pipelines(
 def read_pipeline(
     pipeline_id: str, identity: dict = Depends(current_session)
 ) -> dict:
-    """One pipeline and its versions, scoped to the caller's own tenant.
-
-    Previously took no session at all: any pipeline's config and version
-    history, by anyone who knew or guessed its id, cross-tenant.
+    """One pipeline and its versions, scoped to the caller's own organisation. A session is required.
     """
     pipeline = _pipeline(pipeline_id, identity["tenant_id"])
     versions = db.all_rows(
@@ -249,7 +235,7 @@ def read_pipeline(
         (pipeline_id,),
     )
     for v in versions:
-        v["steps_given_recordings"] = steps_asking_for_recordings(v["dag_config"])
+        v["steps_given_files"] = steps_asking_for_files(v["dag_config"])
         v["steps_writing_files"] = steps_writing_files(v["dag_config"])
         v["needs_promotion"] = bool(steps_needing_approval(v["dag_config"]))
         v["stage"] = _stage(retired=v["retired_at"] is not None, promoted=v["promoted_by"] is not None, needs_promotion=v["needs_promotion"])
@@ -268,7 +254,7 @@ def is_retired(pipeline_version_id: str) -> bool:
 def _stage(*, retired: bool, promoted: bool, needs_promotion: bool) -> str:
     """The stage of a pipeline version: retired for good, in production, or in development.
 
-    A version with custom steps that read the recordings or write files is in production while a second person's promotion stands, and in
+    A version with custom steps that read the files or write files is in production while a second person's promotion stands, and in
     development otherwise. A version made only of the platform's own steps is in production from the start: there is no code to look at, and
     what it may run on is not yet limited to development data, which comes with the declaration of a development sample.
     """
@@ -302,10 +288,10 @@ def _approvers(pipeline: dict) -> list[str]:
 
 @router.post("/pipelines/{pipeline_id}/versions/{version_id}/promote")
 def promote_version(pipeline_id: str, version_id: str, body: Decision, identity: dict = Depends(current_session)) -> dict:
-    """Move a version whose custom step is given the recordings, or writes files, from development to production. The department's approver,
+    """Move a version whose custom step is given the files, or writes files, from development to production. The department's approver,
     never the person who uploaded it.
 
-    Until this is done a run of the version is refused, and the recordings are refused to its steps if a run somehow started.
+    Until this is done a run of the version is refused, and the files are refused to its steps if a run somehow started.
     """
     pipeline, version = _version_of(pipeline_id, version_id, identity)
     if is_retired(version_id):
@@ -371,9 +357,8 @@ def download_code(
 ):
     """Stream a version's scripts.zip back, for the worker only.
 
-    Gated the same way agent_upload.py's own download_code is: a shared
-    secret, not a directory identity, because the caller is the worker
-    process itself. Never reachable from agentnet.
+    Gated with a shared secret, not a directory identity, because the caller is the worker process itself, as for the agent code download.
+    Never reachable from the agent network.
     """
     if not config.WORKER_TOKEN or x_worker_token != config.WORKER_TOKEN:
         raise HTTPException(403, {"reasons": ["missing or wrong worker token"]})

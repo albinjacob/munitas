@@ -1,0 +1,103 @@
+code,description,mean_stay_days,cost_factor,weight
+A09,Other gastroenteritis and colitis of infectious and unspecified origin,2,0.8,40
+A41.9,"Sepsis, unspecified organism",9,2.6,25
+A49.9,"Bacterial infection, unspecified",4,1.0,10
+B34.9,"Viral infection, unspecified",2,0.7,12
+B99,Other and unspecified infectious diseases,3,0.9,4
+C18.9,"Malignant neoplasm of colon, unspecified",8,2.4,10
+C34.9,"Malignant neoplasm of bronchus or lung, unspecified",7,2.2,14
+C50.9,"Malignant neoplasm of breast, unspecified",3,1.9,12
+C61,Malignant neoplasm of prostate,3,1.8,9
+C79.9,"Secondary malignant neoplasm, unspecified",8,2.3,8
+D50.9,"Iron deficiency anaemia, unspecified",3,0.9,12
+D64.9,"Anaemia, unspecified",3,0.9,10
+D69.6,"Thrombocytopenia, unspecified",4,1.1,3
+E03.9,"Hypothyroidism, unspecified",2,0.7,3
+E10.10,Type 1 diabetes mellitus with ketoacidosis without coma,4,1.5,6
+E11.9,Type 2 diabetes mellitus without complications,3,0.9,22
+E11.65,Type 2 diabetes mellitus with hyperglycaemia,5,1.3,12
+E66.9,"Obesity, unspecified",2,0.8,3
+E86.0,Dehydration,3,0.8,18
+E87.1,Hypo-osmolality and hyponatraemia,4,1.0,8
+F03,Unspecified dementia,12,1.6,10
+F10.0,Acute alcohol intoxication,2,0.9,6
+F20.9,"Schizophrenia, unspecified",18,2.0,3
+F32.9,"Depressive episode, unspecified",6,1.2,6
+F41.9,"Anxiety disorder, unspecified",2,0.8,4
+G40.9,"Epilepsy, unspecified",3,1.1,8
+G43.9,"Migraine, unspecified",1,0.7,4
+G45.9,"Transient cerebral ischaemic attack, unspecified",3,1.2,6
+H81.1,Benign paroxysmal vertigo,2,0.7,3
+I10,Essential (primary) hypertension,2,0.7,20
+I20.0,Unstable angina,3,1.6,8
+I21.9,"Acute myocardial infarction, unspecified",5,2.4,14
+I25.1,Atherosclerotic heart disease,3,1.5,10
+I26.9,Pulmonary embolism without acute cor pulmonale,6,1.7,8
+I48.9,"Atrial fibrillation, unspecified",3,1.1,16
+I50.0,Congestive heart failure,7,1.8,18
+I63.9,"Cerebral infarction, unspecified",11,2.2,12
+I64,"Stroke, not specified as haemorrhage or infarction",11,2.2,4
+I80.2,Phlebitis and thrombophlebitis of other deep vessels of lower extremities,4,1.1,5
+I95.9,"Hypotension, unspecified",2,0.8,4
+J06.9,"Acute upper respiratory infection, unspecified",1,0.6,6
+J15.9,"Bacterial pneumonia, unspecified",6,1.5,6
+J18.9,"Pneumonia, unspecified organism",6,1.5,28
+J20.9,"Acute bronchitis, unspecified",2,0.8,8
+J22,Unspecified acute lower respiratory infection,3,0.9,6
+J44.1,Chronic obstructive pulmonary disease with acute exacerbation,5,1.4,24
+J45.9,"Asthma, unspecified",2,0.9,10
+J96.0,Acute respiratory failure,8,2.5,7
+K21.9,Gastro-oesophageal reflux disease without oesophagitis,1,0.6,3
+K29.7,"Gastritis, unspecified",2,0.8,4
+K35.8,Acute appendicitis other and unspecified,3,1.6,14
+K40.9,"Unilateral inguinal hernia, without obstruction or gangrene",1,1.2,7
+K52.9,"Noninfective gastroenteritis and colitis, unspecified",2,0.8,8
+K56.6,Other and unspecified intestinal obstruction,6,1.9,8
+K57.3,Diverticular disease of large intestine without perforation or abscess,4,1.1,7
+K59.0,Constipation,1,0.6,4
+K80.2,Calculus of gallbladder without cholecystitis,2,1.4,9
+K85.9,"Acute pancreatitis, unspecified",6,1.6,8
+K92.2,"Gastrointestinal haemorrhage, unspecified",5,1.4,9
+L03.1,Cellulitis of other parts of limb,5,1.0,14
+L89.9,"Pressure ulcer, unspecified",10,1.3,4
+M16.9,"Osteoarthritis of hip, unspecified",5,2.6,11
+M17.9,"Osteoarthritis of knee, unspecified",4,2.4,12
+M54.5,Low back pain,2,0.7,7
+M80.9,Unspecified osteoporosis with pathological fracture,8,1.8,5
+N10,Acute pyelonephritis,4,1.1,7
+N17.9,"Acute kidney failure, unspecified",6,1.7,12
+N18.9,"Chronic kidney disease, unspecified",4,1.2,6
+N20.0,Calculus of kidney,2,1.2,6
+N39.0,"Urinary tract infection, site not specified",3,0.9,22
+N40,Benign prostatic hyperplasia,2,1.3,5
+O20.0,Threatened abortion,1,0.7,3
+O21.0,Mild hyperemesis gravidarum,2,0.8,3
+O80,Single spontaneous delivery,2,1.1,30
+O82,Single delivery by caesarean section,4,1.8,12
+P07.3,Other preterm infants,14,2.8,3
+P59.9,"Neonatal jaundice, unspecified",3,0.8,4
+Q21.0,Ventricular septal defect,7,3.0,1
+R06.0,Dyspnoea,2,0.9,9
+R07.4,"Chest pain, unspecified",1,0.8,24
+R10.4,Other and unspecified abdominal pain,1,0.7,20
+R11,Nausea and vomiting,1,0.6,6
+R31,"Haematuria, unspecified",1,0.7,3
+R42,Dizziness and giddiness,1,0.6,6
+R50.9,"Fever, unspecified",2,0.7,7
+R51,Headache,1,0.6,5
+R55,Syncope and collapse,2,0.9,12
+S06.0,Concussion,1,0.9,5
+S42.0,Fracture of clavicle,1,1.1,4
+S52.5,Fracture of lower end of radius,1,1.2,8
+S72.0,Fracture of neck of femur,10,2.9,12
+S82.6,Fracture of lateral malleolus,2,1.4,6
+T14.9,"Injury, unspecified",1,0.7,3
+T40.1,Poisoning by heroin,2,1.2,2
+T78.2,"Anaphylactic shock, unspecified",1,1.0,3
+T81.4,Infection following a procedure,7,1.7,4
+Z03.9,"Observation for suspected disease or condition, unspecified",1,0.6,3
+Z09,Follow-up examination after completed treatment,1,0.5,3
+Z38.0,"Single liveborn infant, born in hospital",2,0.9,20
+Z47.1,Aftercare following joint replacement surgery,2,0.9,4
+Z51.1,Encounter for antineoplastic chemotherapy,1,1.3,15
+Z51.5,Palliative care,9,1.4,5

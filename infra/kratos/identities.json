@@ -30,7 +30,19 @@
         { "directory_id": "canary-dpo", "email": "dpo@canary.example", "name": "Canary oversight" },
         { "directory_id": "canary-reviewer", "email": "reviewer@canary.example", "name": "Canary reviewer" },
         { "directory_id": "canary-auditor", "email": "auditor@canary.example", "name": "Canary privacy auditor" },
-        { "directory_id": "canary-architect", "email": "architect@canary.example", "name": "Canary architect" }
+        { "directory_id": "canary-architect", "email": "architect@canary.example", "name": "Canary architect" },
+        { "directory_id": "canary-admin", "email": "admin@canary.example", "name": "Canary administrator" },
+        { "directory_id": "canary-admin-second", "email": "admin-second@canary.example", "name": "Canary administrator, second" }
+      ]
+    },
+    {
+      "tenant": "neighbour",
+      "source": "infra/postgres/seed-canary.sql",
+      "identities": [
+        { "directory_id": "neighbour-custodian", "email": "custodian@neighbour.example", "name": "Neighbour custodian" },
+        { "directory_id": "neighbour-engineer", "email": "engineer@neighbour.example", "name": "Neighbour engineer" },
+        { "directory_id": "neighbour-researcher", "email": "researcher@neighbour.example", "name": "Neighbour researcher" },
+        { "directory_id": "neighbour-admin", "email": "admin@neighbour.example", "name": "Neighbour administrator" }
       ]
     },
     {

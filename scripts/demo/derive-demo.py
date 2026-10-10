@@ -18,6 +18,9 @@ Needs the stack up, the workers running, the query image built, and the demo dat
 seeded (scripts/seed/seed-derive-demo-data.py). Needs httpx and duckdb.
 
 --pause    wait for Enter between steps, for showing it live
+--sync DIR  after every step write DIR/after-<n>.ready and wait for DIR/after-<n>.go, so another program (the walkthrough capture) can use the
+            console between two steps and then let the session go on
+--console-asks  the request for access and its approval are made in the console by the capture, so the session only waits for the lease to work
 --fresh    end any lease left from an earlier run before starting (the default)
 """
 
@@ -52,7 +55,10 @@ SCENARIOS = {
                 "cust-hartley": "Dr Hartley, the custodian of the Cardiology department",
                 "eng-devi": "Devi, a pipeline engineer in the Health organisation"},
         "raw": "admissions", "lookup": "diagnosis_codes",
-        "raw_what": "hospital admissions, with patient names",
+        "raw_what": "hospital admissions, one row for each stay, with the age and the diagnosis of each patient",
+        "lowering": False,
+        "held": ("With a lease the table opens. Each row is one hospital stay, with the age and the diagnosis of a patient, which is the reason "
+                 "it is restricted. Anything made from it has to stay as careful as it is."),
         "purpose": "readmission study",
         "justification": "Compare readmission rates for older patients with a chronic heart condition.",
         "target": "older-chronic-cardiac-patients", "pk": "admission_id",
@@ -61,7 +67,7 @@ SCENARIOS = {
                 "       a.length_of_stay_days, a.readmitted_30d\n"
                 "FROM a JOIN d ON d.code = a.diagnosis_code\n"
                 "WHERE a.age > 65 AND d.chronic"),
-        "peek": 'SELECT admission_id, patient_name, age, diagnosis_code FROM lake."admissions".v1 LIMIT 3',
+        "peek": 'SELECT admission_id, age, diagnosis_code, length_of_stay_days FROM lake."admissions".v1 LIMIT 3',
         "lower": ("SELECT admission_id, age FROM a", "age"),
         "result_peek": ('SELECT admission_id, age, description, length_of_stay_days, readmitted_30d '
                         'FROM lake."{target}".v1 ORDER BY age DESC LIMIT 5'),
@@ -96,8 +102,8 @@ SCENARIOS = {
 class Stage:
     """Runs and records the steps of the demo."""
 
-    def __init__(self, pause: bool):
-        self.pause, self.scenes, self.secrets, self.ns = pause, [], [], {}
+    def __init__(self, pause: bool, sync: str | None = None):
+        self.pause, self.sync, self.scenes, self.secrets, self.ns = pause, sync, [], [], {}
 
     def scrub(self, text: str) -> str:
         for secret in self.secrets:
@@ -111,10 +117,6 @@ class Stage:
         scene = {"step": n, "title": title, "who": who, "where": where, "say": say, "blocks": []}
         self.scenes.append(scene)
         return scene
-
-    # Who types a step unless a block says otherwise. Everything is the researcher's
-    # except the colleague's refusal in step 10.
-    TYPED_BY = {10: "colleague"}
 
     def run(self, scene: dict, code: str, expect_error: bool = False, who: str | None = None) -> str:
         """Show this code, run exactly this code, and record what it printed and who typed it.
@@ -141,12 +143,21 @@ class Stage:
             raise SystemExit("\nThis step printed nothing, so it did not do what the demo says it does.")
         print(textwrap.indent(text, "    ") if text else "    (no output)")
         scene["blocks"].append({"code": code, "output": text,
-                                "who": who or self.TYPED_BY.get(scene["step"], "researcher")})
+                                "who": who or "researcher"})
         return text
 
     def wait(self):
         if self.pause:
             input("\n    [press Enter for the next step] ")
+        if self.sync:
+            n = len(self.scenes)
+            folder = Path(self.sync)
+            (folder / f"after-{n}.ready").write_text("ready", encoding="utf-8")
+            deadline = time.time() + 900
+            while not (folder / f"after-{n}.go").exists():
+                if time.time() > deadline:
+                    raise SystemExit(f"\nNobody let the session go on after step {n} within 15 minutes.")
+                time.sleep(0.5)
 
 
 def main() -> int:
@@ -155,6 +166,8 @@ def main() -> int:
     ap.add_argument("--pause", action="store_true")
     ap.add_argument("--name", help="what to call the new dataset (default: a name for this story)")
     ap.add_argument("--transcript", help="save everything shown, as JSON")
+    ap.add_argument("--sync", help="a folder: after every step, wait there for a program to say go (see the top of this file)")
+    ap.add_argument("--console-asks", action="store_true", help="the request and its approval are made in the console, not in this session")
     args = ap.parse_args()
     cfg = SCENARIOS[args.tenant]
     if args.name:
@@ -164,7 +177,7 @@ def main() -> int:
         return Munitas(API, bearer_for(person)["Authorization"].split()[1])
 
     me, custodian, colleague = login(cfg["researcher"]), login(cfg["custodian"]), login(cfg["colleague"])
-    stage = Stage(args.pause)
+    stage = Stage(args.pause, args.sync)
     stage.ns.update(me=me, custodian=custodian, colleague=colleague, api=API, time=time, MunitasError=MunitasError)
 
     # Housekeeping, not part of the story: a lease left by an earlier run would
@@ -180,7 +193,7 @@ def main() -> int:
             ended += 1
         except MunitasError:
             pass  # a lease on another department's data is not this custodian's to end
-    # The name ends in the month, day, hour and minute of the run, so a second recording never meets a name that is taken. A counter
+    # The name ends in the month, day, hour and minute of the run, so a second file never meets a name that is taken. A counter
     # follows only if two runs start in the same minute.
     target = f"{cfg['target']}-{datetime.now():%m%d-%H%M}"
     for suffix in [""] + [f"-{n}" for n in range(2, 50)]:
@@ -194,6 +207,10 @@ def main() -> int:
     if target != cfg["target"]:
         print(f"(housekeeping: this run makes {target})")
     stage.ns["target"] = target
+    if args.sync:
+        # So the capture that works between the steps knows what the new dataset is called before the transcript is written at the end.
+        Path(args.sync).mkdir(parents=True, exist_ok=True)
+        (Path(args.sync) / "target.txt").write_text(target, encoding="utf-8")
     purpose, tenant = cfg["purpose"], cfg["tenant"]
 
     # ------------------------------------------------------------------ 1 --
@@ -228,35 +245,55 @@ def main() -> int:
     stage.wait()
 
     # ------------------------------------------------------------------ 3 --
-    s = stage.scene(
-        "Ask for access, and the custodian decides", cfg["who"][cfg["researcher"]] + ", then " + cfg["who"][cfg["custodian"]],
-        "Notebook (client library)",
-        f"The person asks for access and gives a purpose and a reason. A different person, the custodian of the "
-        f"{cfg['department']} department, approves it. Nobody can approve their own request.")
-    stage.run(s, f'''
-        request = me.request_access("{cfg["raw"]}", purpose="{purpose}",
-                                    justification="{cfg["justification"]}", hours=2)
-        print("Request filed:", request[:8])
-    ''')
-    stage.run(s, '''
-        lease = custodian.approve(request)
-        print("Approved by the custodian. Lease:", lease[:8])
-    ''', who="custodian")
-    stage.run(s, f'''
-        for _ in range(20):                      # storage takes a few seconds to learn of new access
-            try:
-                print(con.sql('SELECT count(*) AS {cfg["raw"]} FROM lake."{cfg["raw"]}".v1'))
-                break
-            except Exception:
-                time.sleep(3)
-    ''')
-    stage.wait()
+    if args.console_asks:
+        # The request and the approval happened on screen, in the console. Find the lease that came of it (the story does not show this line), then
+        # wait for storage to learn of it.
+        found = custodian._call("GET", "/leases", params={"principal": cfg["researcher"], "active_only": "true"}).get("leases", [])
+        stage.ns["lease"] = found[0]["id"]
+        s = stage.scene(
+            "Wait for the new access to work", cfg["who"][cfg["researcher"]], "Notebook (DuckDB)",
+            f"The custodian of the {cfg['department']} department has approved the request in the console. Storage takes a few seconds to learn of new "
+            f"access, so the same question is asked again until it is answered.")
+        stage.run(s, f'''
+            for _ in range(20):                      # storage takes a few seconds to learn of new access
+                try:
+                    print(con.sql('SELECT count(*) AS {cfg["raw"]} FROM lake."{cfg["raw"]}".v1'))
+                    break
+                except Exception:
+                    time.sleep(3)
+        ''')
+        stage.wait()
+    else:
+        s = stage.scene(
+            "Ask for access, and the custodian decides", cfg["who"][cfg["researcher"]] + ", then " + cfg["who"][cfg["custodian"]],
+            "Notebook (client library)",
+            f"The person asks for access and gives a purpose and a reason. A different person, the custodian of the "
+            f"{cfg['department']} department, approves it. Nobody can approve their own request.")
+        stage.run(s, f'''
+            request = me.request_access("{cfg["raw"]}", purpose="{purpose}",
+                                        justification="{cfg["justification"]}", hours=2)
+            print("Request filed:", request[:8])
+        ''')
+        stage.run(s, '''
+            lease = custodian.approve(request)
+            print("Approved by the custodian. Lease:", lease[:8])
+        ''', who="custodian")
+        stage.run(s, f'''
+            for _ in range(20):                      # storage takes a few seconds to learn of new access
+                try:
+                    print(con.sql('SELECT count(*) AS {cfg["raw"]} FROM lake."{cfg["raw"]}".v1'))
+                    break
+                except Exception:
+                    time.sleep(3)
+        ''')
+        stage.wait()
+
 
     # ------------------------------------------------------------------ 4 --
     s = stage.scene(
         "Look at what the restricted data holds", cfg["who"][cfg["researcher"]], "Notebook (DuckDB)",
-        "With a lease the table opens. It holds names and other identifying details, which is the reason it is "
-        "restricted. Anything made from it has to stay as careful as it is.")
+        cfg.get("held", "With a lease the table opens. It holds names and other identifying details, which is the reason it is "
+                "restricted. Anything made from it has to stay as careful as it is."))
     stage.run(s, f'''print(con.sql("""{cfg["peek"]}"""))''')
     stage.wait()
 
@@ -277,22 +314,25 @@ def main() -> int:
     ''')
     stage.wait()
 
-    # ------------------------------------------------------------------ 6 --
-    s = stage.scene(
-        "A sensitivity cannot be lowered by the person who wrote the query", cfg["who"][cfg["researcher"]],
-        "Notebook (client library)",
-        "A column computed from a sensitive column may not be marked as less sensitive. Raising a label is "
-        "allowed. Lowering one is a claim that needs somebody else to agree, so it is refused.")
-    low_sql, low_col = cfg["lower"]
-    stage.run(s, f'''
-        probe = me.draft(inputs={json.dumps(cfg["inputs"][:1])}, sql="{low_sql}", name="{target}-probe",
-                         primary_key=["{cfg["pk"]}"], purpose="{purpose}")
-        try:
-            me.confirm(probe, sensitivities={{"{low_col}": "none"}})
-        except MunitasError as exc:
-            print("Refused:", exc)
-    ''')
-    stage.wait()
+    # Only where a column of the restricted table carries a label above none: lowering a label that is already the lowest is not a refusal.
+    if cfg.get("lowering", True):
+        # ------------------------------------------------------------------ 6 --
+        s = stage.scene(
+            "A sensitivity cannot be lowered by the person who wrote the query", cfg["who"][cfg["researcher"]],
+            "Notebook (client library)",
+            "A column computed from a sensitive column may not be marked as less sensitive. Raising a label is "
+            "allowed. Lowering one is a claim that needs somebody else to agree, so it is refused.")
+        low_sql, low_col = cfg["lower"]
+        stage.run(s, f'''
+            probe = me.draft(inputs={json.dumps(cfg["inputs"][:1])}, sql="{low_sql}", name="{target}-probe",
+                             primary_key=["{cfg["pk"]}"], purpose="{purpose}")
+            try:
+                me.confirm(probe, sensitivities={{"{low_col}": "none"}})
+            except MunitasError as exc:
+                print("Refused:", exc)
+        ''')
+        stage.wait()
+
 
     # ------------------------------------------------------------------ 7 --
     s = stage.scene(
@@ -347,7 +387,7 @@ def main() -> int:
             print(other.sql('SELECT count(*) FROM lake."{target}".v1'))
         except Exception as exc:
             print("Refused:", exc)
-    ''', expect_error=True)
+    ''', expect_error=True, who="colleague")
     stage.secrets.append(stage.ns["colleague_token"])
     stage.wait()
 
@@ -384,6 +424,8 @@ def main() -> int:
             except Exception as exc:
                 print(f"{{name}}: refused, {{str(exc).split('message ')[-1]}}")
     ''')
+
+    stage.wait()
 
     print(f"\n{'=' * 78}\nDone. {len(stage.scenes)} steps.")
     if args.transcript:

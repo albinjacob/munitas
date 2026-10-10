@@ -1,12 +1,12 @@
 """What is made from development data ends with the data it was made from.
 
-A development sample, and whatever a run makes on a sample or on synthetic recordings, is for building and testing. Left alone it would pile up: copies
+A development sample, and whatever a run makes on a sample or on synthetic files, is for building and testing. Left alone it would pile up: copies
 of real person data, derived from a sample, each one more thing to find when a person asks to be erased, and each outliving the permission that let
 the input be read. So each ends, at the earlier of a number of days (7, `development_output_days` in the policy) and the end of the sample it came from.
 
 When one ends the platform deletes its files and keeps its row. The version is sealed and never edited or deleted, so the row stays, with a
 `storage_reclamation` record that says its files were freed and why (the same record the legal export reads to explain an empty version), and a
-`development_output` record that says it ended. A sample's own files are only a short list and a small table: the stored recordings its list names
+`development_output` record that says it ended. A sample's own files are only a short list and a small table: the stored files its list names
 belong to the original version and are never touched, because only objects under the version's own folder are deleted.
 
 Nothing is deleted while a legal hold stands over the organisation, or in an organisation that is retired or closing: a deletion that cannot be
@@ -18,9 +18,9 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timedelta, timezone
 
-import psycopg
+import pgdb
 
-from . import config, db, development_samples, logs, opa, recordings
+from . import config, db, development_samples, logs, opa, locked_files
 
 log = logs.get_logger("development_outputs")
 
@@ -36,7 +36,7 @@ def note(tenant_id: str, version_id: str, kind: str, sample_id: str | None, expi
 def note_output(tenant_id: str, pipeline_run_id: str, version_id: str) -> None:
     """A step has sealed a version. If the run that made it read development data, the version is a development output and ends with it.
 
-    A run on real recordings (a version in production) is not: what it makes is held under review until a reviewer decides, and does not expire.
+    A run on real files (a version in production) is not: what it makes is held under review until a reviewer decides, and does not expire.
     """
     run = db.one("select source_version_id, triggered_by from pipeline_run where id = %s", (pipeline_run_id,))
     if not run or not run["source_version_id"]:
@@ -99,7 +99,7 @@ def expire(row: dict) -> bool:
     tenant, backend = row["tenant_id"], row["storage_backend"] or "seaweedfs"
     if _held(tenant):
         return False
-    client, bucket = recordings._storage({"backend": backend, "tenant": tenant})
+    client, bucket = locked_files._storage({"backend": backend, "tenant": tenant})
     prefix = row["storage_prefix"].rstrip("/") + "/"
     objects: list[dict] = []
     token = None
@@ -120,9 +120,9 @@ def expire(row: dict) -> bool:
                       values (%s, %s, %s, %s, 'platform', %s) on conflict do nothing returning dataset_version_id""",
                    (row["version_id"], tenant, freed, len(objects),
                     "made for development, so it ended with the sample it came from or after its days, and its files were deleted" if row["kind"] == "output"
-                    else "a development sample, which ended: its list was deleted, and the recordings it named were not touched"))
+                    else "a development sample, which ended: its list was deleted, and the files it named were not touched"))
         db.execute("update development_output set expired_at = now() where version_id = %s returning version_id", (row["version_id"],))
-    except psycopg.errors.ReadOnlySqlTransaction:
+    except pgdb.errors.ReadOnlySqlTransaction:
         return False
     return True
 

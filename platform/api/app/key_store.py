@@ -35,6 +35,20 @@ class PostgresKeyStore:
         db.execute("insert into subject_key (tenant_id, person_code, wrapped_key) values (%s, %s, %s) returning person_code",
                    (tenant_id, person_code, wrapped))
 
+    def get_person_keys(self, tenant_id: str, person_codes: list[str]) -> dict[str, tuple[bytes | None, datetime | None]]:
+        if not person_codes:
+            return {}
+        rows = db.all_rows("select person_code, wrapped_key, destroyed_at from subject_key where tenant_id = %s and person_code = any(%s)", (tenant_id, person_codes))
+        return {r["person_code"]: ((bytes(r["wrapped_key"]) if r["wrapped_key"] is not None else None), r["destroyed_at"]) for r in rows}
+
+    def put_person_keys(self, tenant_id: str, wrapped: dict[str, bytes]) -> None:
+        if not wrapped:
+            return
+        codes = list(wrapped)
+        with db.cursor(commit=True) as cur:
+            cur.execute("insert into subject_key (tenant_id, person_code, wrapped_key) select %s, c, k from unnest(%s::text[], %s::bytea[]) as t(c, k)",
+                        (tenant_id, codes, [wrapped[c] for c in codes]))
+
     def destroy_person_key(self, tenant_id: str, person_code: str) -> bool:
         row = db.execute(
             "update subject_key set wrapped_key = null, destroyed_at = now() "

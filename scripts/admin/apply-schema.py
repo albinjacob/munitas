@@ -17,7 +17,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import psycopg
+import pgdb
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from ports_config import PORTS  # noqa: E402
@@ -28,7 +28,7 @@ SCHEMA = Path(__file__).resolve().parents[2] / "platform" / "schema.sql"
 
 def main() -> int:
     sql = SCHEMA.read_text(encoding="utf-8")
-    with psycopg.connect(DSN, autocommit=True, connect_timeout=10) as conn:
+    with pgdb.connect(DSN, autocommit=True, connect_timeout=10) as conn:
         conn.execute(sql)
         have = {r[0] for r in conn.execute(
             "select table_name from information_schema.tables where table_schema = 'public'"

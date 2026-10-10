@@ -100,3 +100,10 @@ scripts/admin/purge-dataset-versions.py
 # password in plain text; services.html names every internal service URL
 # and port this machine is actually running. Regenerate either locally
 # any time with that same script.
+
+# A built policy package is output, not source: publish-policy.ps1 makes it (RUNBOOK.md, "The policy engine").
+platform/policy-bundle/published/*
+!platform/policy-bundle/published/.gitkeep
+
+# Playwright output at the repository root
+test-results/

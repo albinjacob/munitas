@@ -46,7 +46,7 @@ import threading
 
 import tablewriter
 from tablewriter import (  # noqa: F401  (re-exported: callers and checks name these here)
-    CHUNK, FORMAT_VERSION, JSON_LIST, NDJSON, PARQUET, TABLE_DIR, Abandoned, Projection, Skipped, build,
+    CHUNK, FORMAT_VERSION, JSON_LIST, NDJSON, PARQUET, TABLE_DIR, Abandoned, Projection, Refused, Skipped, build,
     records_format)
 
 from . import config, db, logs, storage
@@ -59,9 +59,9 @@ class TableRequired(Exception):
 
     Raised before anything is written to the register, so the version number is unused and a retry takes it."""
 
-    def __init__(self, outcome: str, reason: str):
+    def __init__(self, outcome: str, reason: str, problems: list[str] | None = None):
         super().__init__(reason)
-        self.outcome, self.reason = outcome, reason
+        self.outcome, self.reason, self.problems = outcome, reason, list(problems or [])
 
 
 def table_name_for(version: int) -> str:
@@ -151,6 +151,7 @@ def project(
     records_key: str,
     produced_by_run: str | None,
     cancel: "threading.Event | None" = None,
+    records_options: dict | None = None,
 ) -> Projection:
     """Write one version's records as an Iceberg table under its own prefix, in this process.
 
@@ -168,7 +169,7 @@ def project(
         table_name=table_name_for(version), contract=contract, records_key=records_key,
         summary_base=summary_base(tenant_id=tenant_id, dataset_id=dataset_id, version_id=version_id, version=version,
                                   produced_by_run=produced_by_run),
-        cfg=settings(), cancel=cancel)
+        cfg=settings(), cancel=cancel, records_options=records_options)
 
 
 def record(version_id: str, tenant_id: str, dataset_id: str, projection: Projection) -> None:
@@ -205,6 +206,10 @@ def try_project(**kwargs) -> tuple[Projection | None, tuple[str, str, bool] | No
         cancel.set()
         log.error("writing a version as an Iceberg table took too long; giving up", extra=where)
         return None, ("failed", f"Writing the table did not finish within {config.ICEBERG_TIMEOUT_SECONDS} seconds, so it was given up on.", True)
+    except Refused as why:
+        # The rows do not fit the contract. The problems are sentences of ours (rows, lines and columns, never a value from the file).
+        log.info("rows refused as a table", extra={**where, "count": why.total})
+        return None, ("refused", f"The rows were not accepted: {why.total:,} problem{'s' if why.total != 1 else ''} found.", True, why.problems)
     except Skipped as why:
         log.info("version not written as an Iceberg table", extra={**where, "reason": str(why)})
         return None, ("skipped", f"The table was not written: {why}." + _cleanup_note(why), why.blocking)
@@ -230,7 +235,7 @@ def enforce(why: tuple[str, str, bool] | None, table_required: bool | None) -> N
         return
     required = config.ICEBERG_FAIL_CLOSED if table_required is None else table_required
     if required:
-        raise TableRequired(why[0], why[1])
+        raise TableRequired(why[0], why[1], why[3] if len(why) > 3 else None)
 
 
 def record_note(version_id: str, tenant_id: str, why: tuple) -> None:

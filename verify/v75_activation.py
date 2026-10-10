@@ -60,7 +60,7 @@ def failing_print(exc: Exception) -> dict:
     """Make one print fail with `exc`, in this process only, and return its row."""
     real = app_grants._reconcile
 
-    def broken(armed):
+    def broken(*_):
         raise exc
 
     app_grants._reconcile = broken
@@ -166,7 +166,7 @@ def checks() -> None:
     # suite has already exhausted once.
     real_active, real_compile = app_grants.ingest_is_active, app_grants._reconcile
 
-    def storage_down(armed):
+    def storage_down(*_):
         raise app_seaweed.StorageUnavailable("U75 simulated filer outage")
 
     app_grants.ingest_is_active = lambda tenant_id: False
@@ -207,7 +207,7 @@ def checks() -> None:
 
     # --- U75f: a failure retrying cannot fix is left for a person ---------
     heading("U75f: a failure retrying cannot fix alerts at once and is not retried")
-    failed = failing_print(app_grants.UnsafeProjection("U75 simulated guard refusal"))
+    failed = failing_print(app_grants.UnsafeProjection("U75 simulated refusal: the list could not be computed"))
     status = app_grants.activation_status()
     check("the failure is recorded as not retryable",
           failed["succeeded"] is False and failed["retryable"] is False)
@@ -249,7 +249,7 @@ def checks() -> None:
     lock = app_grants.LockUnavailable("x")
     guard = app_grants.UnsafeProjection("x")
     check("a busy lock is retryable", lock.retryable is True)
-    check("a guard refusal is not", guard.retryable is False)
+    check("a list that could not be computed is not", guard.retryable is False)
 
 
 if __name__ == "__main__":

@@ -39,6 +39,16 @@ def refuses(call) -> str | None:
 def main() -> int:
     require_api()
 
+    heading("The tidy knows every table that points at what it deletes")
+    with db() as conn:
+        pointing = {r["tbl"] for r in conn.execute(
+            """select distinct c.conrelid::regclass::text as tbl from pg_constraint c
+                where c.contype = 'f' and c.confrelid::regclass::text in
+                      ('dataset_version', 'dataset', 'pipeline_run', 'action_run', 'step_output', 'development_sample', 'file_upload')""").fetchall()}
+    missing = sorted(pointing - canary.COVERED_TABLES)
+    check("every table with a foreign key onto a dataset, a version or a run is one the tidy deletes from first, so a new one cannot stop it",
+          not missing, ", ".join(missing) or f"{len(pointing)} tables")
+
     heading("Each guard refuses what it is there to refuse")
     check("G2 refuses a tenant row that is not canary", refuses(lambda: canary.check_tenant_row({"id": "health", "purpose": "canary"})) is not None)
     check("G2 refuses the canary tenant if its purpose is not canary", refuses(lambda: canary.check_tenant_row({"id": "canary", "purpose": "production"})) is not None)
@@ -84,30 +94,9 @@ def main() -> int:
     check("a link to something that is not a canary dataset pulls nothing in",
           sorted(sorted(g) for g in canary.group_old({"a": old_time}, [("a", "health-dataset-id")], cutoff)) == [["a"]])
 
-    heading("The reprint relaxes the platform's guard only when it can prove the shrink is canary's deleted datasets")
+    heading("The reprint is a plain reprint")
     import _canary_reprint as reprint
-
-    gone, there = str(uuid.uuid4()), str(uuid.uuid4())
-    canary_folder = lambda d: f"Read:munitas-canary/canary/{d}/v1/*"  # noqa: E731
-    check("a canary folder grant of a dataset that no longer exists is accepted",
-          reprint.problems_with({"lease-abc": {canary_folder(gone)}}, {"lease-abc": set()}, existing=set()) == [])
-    check("R1: a grant in another organisation's bucket is refused",
-          any(p.startswith("R1") for p in reprint.problems_with({"lease-abc": {f"Read:munitas-health/health/{gone}/v1/*"}}, {"lease-abc": set()}, set())))
-    check("R2: a bucket-wide grant is refused",
-          any(p.startswith("R2") for p in reprint.problems_with({"lease-abc": {"Read:munitas-canary"}}, {"lease-abc": set()}, set())))
-    check("R2: a folder grant that names no dataset is refused",
-          any(p.startswith("R2") for p in reprint.problems_with({"lease-abc": {"Read:munitas-canary/canary/somewhere"}}, {"lease-abc": set()}, set())))
-    check("R3: a grant of a dataset that still exists is refused",
-          any(p.startswith("R3") for p in reprint.problems_with({"lease-abc": {canary_folder(there)}}, {"lease-abc": set()}, existing={there})))
-    for name in ("pipeline_action~canary", "agent_runtime~canary", "munitas-admin", "ingest-canary"):
-        check(f"R4: the identity {name} disappearing is refused",
-              any(p.startswith("R4") for p in reprint.problems_with({name: set()}, {}, set())))
-    check("R4: a lease, catalog, task or table job key disappearing is accepted",
-          all(reprint.problems_with({n: set()}, {}, set()) == [] for n in ("lease-abc", "cat-abc", "run-abc", "tj-abc")))
-    check("a task key that disappears with its row is accepted even if its grants name datasets that still exist",
-          reprint.problems_with({"run-abc": {canary_folder(there)}}, {}, existing={there}) == [])
-    check("but not if one of its grants is in another organisation's bucket",
-          any(p.startswith("R1") for p in reprint.problems_with({"run-abc": {f"Read:munitas-health/health/{there}/v1/*"}}, {}, {there})))
+    check("the reprint script has no proof machinery left to get past: it only prints", not hasattr(reprint, "problems_with") and callable(reprint.main))
 
     heading("The agent and people stages refuse what they must")
     protected = canary.seeded_ids()

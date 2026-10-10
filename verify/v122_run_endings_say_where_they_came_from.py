@@ -30,11 +30,11 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "verify"))
 sys.path.insert(0, str(ROOT))
 
-if "PG_DSN" not in os.environ:
+if "MUNITAS_PG_DSN" not in os.environ:
     from ports_config import PORTS
-    os.environ["PG_DSN"] = f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform"
+    os.environ["MUNITAS_PG_DSN"] = f"postgresql://munitas:munitas@localhost:{PORTS['postgres']}/platform"
 
-import psycopg  # noqa: E402
+import pgdb  # noqa: E402
 from temporalio.api.workflowservice.v1 import DescribeNamespaceRequest  # noqa: E402
 from temporalio.client import Client  # noqa: E402
 
@@ -72,7 +72,7 @@ def refused(sql: str, params: tuple) -> str | None:
             raise _Undo()
     except _Undo:
         return None
-    except psycopg.errors.CheckViolation as exc:
+    except pgdb.errors.CheckViolation as exc:
         return exc.diag.constraint_name or str(exc)
 
 

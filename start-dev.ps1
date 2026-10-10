@@ -21,7 +21,7 @@
 # Desktop's, still aimed at a pipe nothing listens on, so `docker compose`
 # has to run inside the distro instead. Everything else in this script stays
 # on Windows, because WSL2 forwards the published ports to `localhost`.
-# Pass `-WslDistro` if yours is not named Ubuntu-20.04; `wsl -l -v` lists them.
+# Pass `-WslDistro` if yours is not named Munitas; `wsl -l -v` lists them.
 #
 # One line per component by default -- "Backend containers: started
 # (Postgres, SeaweedFS, ...)", "Control plane: up (http://...)" -- not a
@@ -32,7 +32,7 @@
 param(
     [switch]$NoWorker,
     [switch]$NoConsole,
-    [string]$WslDistro = "Ubuntu-20.04",
+    [string]$WslDistro = "Munitas",
     # Off by default: one line per component (see Write-Component in
     # wsl-docker.ps1) is the normal report. Pass this for docker compose's
     # own streamed per-container output and the previous step-by-step
@@ -64,7 +64,7 @@ Measure-Step "WSL keepalive check" { Confirm-WslStaysUp -WslDistro $WslDistro }
 $compose = Get-ComposePrefix -WslDistro $WslDistro -ProjectRoot $PSScriptRoot
 
 # config.json is the one file a person edits to resolve a port conflict;
-# this turns it into .env's PORT_* block (docker-compose.yml's own ${VAR}
+# this turns it into .env's MUNITAS_PORT_* block (docker-compose.yml's own ${VAR}
 # substitution) and infra/kratos/kratos.yml (Kratos has no ${VAR} support
 # of its own, so that file is rendered fresh from kratos.yml.template every
 # time too). Needs only the standard library, so plain `python` works even
@@ -226,12 +226,19 @@ if (-not $NoWorker) {
         Write-Component "Host worker" "skipped, no .venv at $venvPython" "see worker/requirements.txt" -Warn
     } else {
         $sw = [System.Diagnostics.Stopwatch]::StartNew()
-        # The worker reads no .env of its own, so the data folder is handed
-        # to it here: its corpus and work folders sit under it.
+        # The worker reads no .env of its own, so what it needs from the file is handed to it here: the data folder (its corpus and work
+        # folders sit under it) and every other setting its own code reads, by name. Never the whole file: .env also holds secrets the
+        # worker is built not to hold, such as the storage administrator's secret, and whatever the worker starts would inherit them.
+        # The names come from the same scan the documentation is checked against (docs/tools/settings_scan.py), so the two cannot drift.
         $dataRoot = Get-DataRoot -ProjectRoot $PSScriptRoot
+        $workerSettings = @(& $venvPython (Join-Path $PSScriptRoot "docs/tools/settings_scan.py") --worker-names | Where-Object { $_ })
+        if ($workerSettings.Count -eq 0) {
+            Write-Component "Host worker settings" "none read from .env" "the list of settings the worker reads could not be produced, so the worker uses its defaults" -Warn
+        }
         $workerProc = Start-Process powershell -PassThru -ArgumentList @(
             "-NoExit", "-Command",
-            "Set-Location '$PSScriptRoot'; `$env:MUNITAS_DATA = '$dataRoot'; & '$venvPython' -m worker.main"
+            ("Set-Location '$PSScriptRoot'; . '$PSScriptRoot\wsl-docker.ps1'; `$null = Import-DotEnv -Path '$PSScriptRoot\.env' -Only ('" +
+             ($workerSettings -join ",") + "' -split ','); `$env:MUNITAS_DATA = '$dataRoot'; & '$venvPython' -m worker.main")
         )
         $workerWindowId = $workerProc.Id
         $workerStarted = $true

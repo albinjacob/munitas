@@ -1,9 +1,9 @@
-"""U148: what a step makes from a patient's recording is locked under that patient's key as it arrives, and never stored in the clear.
+"""U148: what a step makes from a patient's file is locked under that patient's key as it arrives, and never stored in the clear.
 
-A redacted recording still carries the patient's voice, so it is the patient's data. A step that is given recordings and writes files says which
-recording a file was made from and how big the file will be. The platform checks that the step opened that recording in this run, locks each part
+A redacted file still carries the patient's voice, so it is the patient's data. A step that is given files and writes files says which
+file a file was made from and how big the file will be. The platform checks that the step opened that file in this run, locks each part
 under that patient's key as it arrives, and records the file as belonging to that patient. Erasing the patient then makes it unreadable, with the
-recording itself. A file that is sound, from a step that was given recordings, and says nothing of where it came from, is refused and thrown away.
+file itself. A file that is sound, from a step that was given files, and says nothing of where it came from, is refused and thrown away.
 
 Checked here one item at a time, against the live platform: what a step may say, the sizes, what is stored, that it opens with the patient's key and
 only with it, what is recorded of it, and the refusal of plain sound.
@@ -25,13 +25,13 @@ sys.path.insert(0, "/")
 
 from common import ADMIN, CANARY, api, bearer_for, bucket_for, check, db, fixture_tenant, heading, require_api, s3_client, summary  # noqa: E402
 from v128_person_keys_erasure import CUSTODIAN, ENGINEER, identity, register_dataset, reset_keys  # noqa: E402
-from v137_locked_recordings import KIND, make_wav, upload_whole  # noqa: E402
-from v140_custom_steps_and_recordings import (YAML, YAML_WRITES, complete_out, department, finish, listing, open_run, opening, pass_for, put_out, reasons_of,  # noqa: E402
+from v137_locked_files import KIND, make_wav, upload_whole  # noqa: E402
+from v140_custom_steps_and_files import (YAML, YAML_WRITES, complete_out, department, finish, listing, open_run, opening, pass_for, put_out, reasons_of,  # noqa: E402
                                               step_call, upload_version)
 from app import person_keys  # noqa: E402
 from crypto import DestroyedKeyError, read_range, stream  # noqa: E402
 
-YAML_BOTH = YAML.replace("    recordings: true\n", "    recordings: true\n    writes_files: true\n")
+YAML_BOTH = YAML.replace("    reads_files: true\n", "    reads_files: true\n    writes_files: true\n")
 
 
 def open_locked(token: str, name: str, source: str | None, size: int | None):
@@ -68,17 +68,17 @@ def main() -> int:
     tag = uuid.uuid4().hex[:8]
     service = person_keys.key_service()
 
-    heading("Three recordings of two patients, and a version whose step reads them and writes files")
+    heading("Three files of two patients, and a version whose step reads them and writes files")
     dataset = register_dataset(ENGINEER)
     patients = [f"O-{tag}-a", f"O-{tag}-b"]
     wavs = {"r-0001": make_wav(40_000), "r-0002": make_wav(55_000), "r-0003": make_wav(70_000)}
     for record, p in (("r-0001", 0), ("r-0002", 0), ("r-0003", 1)):
         upload_whole(dataset, f"{record}.wav", wavs[record], patients[p])
-    sealed = api("POST", f"/datasets/{dataset}/seal-recordings", headers=bearer_for(ENGINEER))
-    check("the recordings seal", sealed.status_code == 201, sealed.text[:160])
+    sealed = api("POST", f"/datasets/{dataset}/seal-files", headers=bearer_for(ENGINEER))
+    check("the files seal", sealed.status_code == 201, sealed.text[:160])
     src = sealed.json()["id"]
     with db() as conn:
-        owners = {r["record_id"]: r["person_code"] for r in conn.execute("select record_id, person_code from recording_person where dataset_version_id = %s", (src,)).fetchall()}
+        owners = {r["record_id"]: r["person_code"] for r in conn.execute("select record_id, person_code from file_person where dataset_version_id = %s", (src,)).fetchall()}
     pipeline = api("POST", "/pipelines/register", json={"tenant_id": CANARY, "name": f"u148-{tag}", "department_id": department(), "registered_by": ENGINEER}, headers=bearer_for(ENGINEER))
     pid = pipeline.json()["id"]
     both = upload_version(pid, YAML_BOTH).json()["id"]
@@ -88,25 +88,25 @@ def main() -> int:
     run = open_run(src, both)
     token = pass_for(run)
 
-    heading("What a step may say when it opens a file made from a recording")
+    heading("What a step may say when it opens a file made from a file")
     r = open_locked(token, "a.bin", "r-0001", 1000)
-    check("a step that has not opened that recording cannot say a file was made from it", r.status_code == 400 and "has not opened recording r-0001" in reasons_of(r), f"{r.status_code} {reasons_of(r)[:160]}")
-    check("it opens the recording first", opening(token, "r-0001").status_code == 200 and opening(token, "r-0003").status_code == 200)
+    check("a step that has not opened that file cannot say a file was made from it", r.status_code == 400 and "has not opened file r-0001" in reasons_of(r), f"{r.status_code} {reasons_of(r)[:160]}")
+    check("it opens the file first", opening(token, "r-0001").status_code == 200 and opening(token, "r-0003").status_code == 200)
     with db() as conn:
-        seen = {r["record_id"] for r in conn.execute("select record_id from step_recording_opened where pipeline_run_id = %s and step = 'inspect'", (run["id"],)).fetchall()}
-    check("the platform recorded which recordings this step opened in this run", seen == {"r-0001", "r-0003"}, str(seen))
+        seen = {r["record_id"] for r in conn.execute("select record_id from step_file_opened where pipeline_run_id = %s and step = 'inspect'", (run["id"],)).fetchall()}
+    check("the platform recorded which files this step opened in this run", seen == {"r-0001", "r-0003"}, str(seen))
     r = open_locked(token, "a.bin", "r-0002", 1000)
-    check("a recording it did not open still cannot be named", r.status_code == 400 and "has not opened recording r-0002" in reasons_of(r))
+    check("a file it did not open still cannot be named", r.status_code == 400 and "has not opened file r-0002" in reasons_of(r))
     r = open_locked(token, "a.bin", "r-0001", None)
-    check("a file made from a recording must say its size", r.status_code == 400 and "size in bytes up front" in reasons_of(r), f"{r.status_code} {reasons_of(r)[:160]}")
+    check("a file made from a file must say its size", r.status_code == 400 and "size in bytes up front" in reasons_of(r), f"{r.status_code} {reasons_of(r)[:160]}")
     check("a size of nothing is refused, since nothing is locked", open_locked(token, "a.bin", "r-0001", 0).status_code == 400)
     check("a size above the limit is refused", open_locked(token, "a.bin", "r-0001", 600 * 1024 * 1024).status_code == 400)
     r = step_call("POST", "/step/v1/outputs/a.bin", token, json={"size": 10}, headers={"Content-Type": "application/json"})
-    check("a size with no recording is refused: it is for a file that is locked", r.status_code == 400 and "only for a file made from a recording" in reasons_of(r), f"{r.status_code} {reasons_of(r)[:160]}")
+    check("a size with no file is refused: it is for a file that is locked", r.status_code == 400 and "only for a file made from a file" in reasons_of(r), f"{r.status_code} {reasons_of(r)[:160]}")
     plain_open = step_call("POST", "/step/v1/outputs/plain.txt", token)
-    check("a file that says nothing of a recording opens as before, and is not locked", plain_open.status_code == 201 and plain_open.json()["locked"] is False)
+    check("a file that says nothing of a file opens as before, and is not locked", plain_open.status_code == 201 and plain_open.json()["locked"] is False)
 
-    heading("A file made from a recording is locked, part by part, under that patient's key")
+    heading("A file made from a file is locked, part by part, under that patient's key")
     plain_a = os.urandom(300_000)
     opened = open_locked(token, "r-0001.silenced.bin", "r-0001", len(plain_a))
     check("it opens, and says it is locked", opened.status_code == 201 and opened.json()["locked"] is True, f"{opened.status_code} {opened.text[:160]}")
@@ -122,7 +122,7 @@ def main() -> int:
     blob = stored(row["storage_key"])
     check("what is stored is the locked file, which is longer than what was sent by exactly the lock's overhead", blob is not None and len(blob) == stream.stored_size(len(plain_a)) == row["bytes"], f"{len(blob or b'')} {stream.stored_size(len(plain_a))}")
     check("none of what was sent is in what is stored", blob is not None and plain_a[:64] not in blob and plain_a[1000:1064] not in blob)
-    check("the record says whose it is, which recording it was made from and how big it is", row["person_code"] == owners["r-0001"] and row["source_record"] == "r-0001" and row["plain_bytes"] == len(plain_a))
+    check("the record says whose it is, which file it was made from and how big it is", row["person_code"] == owners["r-0001"] and row["source_record"] == "r-0001" and row["plain_bytes"] == len(plain_a))
     import hashlib
     check("the fingerprint is of what is stored", hashlib.sha256(blob).hexdigest() == row["sha256"])
     key = service.unwrap(CANARY, owners["r-0001"], "verify", "check a locked output opens", False)
@@ -139,9 +139,9 @@ def main() -> int:
         lines = [r["purpose"] for r in conn.execute("select purpose from key_use_log where tenant_id = %s and action = 'unwrap' and actor = %s and purpose like %s", (CANARY, f"step_run {run['id']}", "lock part%")).fetchall()]
     check("locking the part is in the key log, naming the part, the file and the step", len(lines) == 1 and "lock part 1 of output r-0001.silenced.bin for custom step inspect" in lines[0], str(lines))
 
-    heading("A file of more than one part, and one made from another patient's recording")
+    heading("A file of more than one part, and one made from another patient's file")
     big = os.urandom(stream.PART + 123_456)
-    check("it opens for a second recording", open_locked(token, "r-0003.big.bin", "r-0003", len(big)).status_code == 201)
+    check("it opens for a second file", open_locked(token, "r-0003.big.bin", "r-0003", len(big)).status_code == 201)
     answers = send(token, "r-0003.big.bin", big)
     check("both parts are taken, and a part sent again is simply replaced", all(a.status_code == 200 for a in answers) and put_out(token, "r-0003.big.bin", 1, big[:stream.PART]).status_code == 200)
     r = complete_out(token, "r-0003.big.bin")
@@ -167,19 +167,19 @@ def main() -> int:
     out_version = body["output_version_id"]
     with db() as conn:
         version = conn.execute("select visibility_class, object_manifest from dataset_version where id = %s", (out_version,)).fetchone()
-        owned = {r["record_id"]: (r["person_code"], r["plain_bytes"], r["format"]) for r in conn.execute("select record_id, person_code, plain_bytes, format from recording_person where dataset_version_id = %s", (out_version,)).fetchall()}
+        owned = {r["record_id"]: (r["person_code"], r["plain_bytes"], r["format"]) for r in conn.execute("select record_id, person_code, plain_bytes, format from file_person where dataset_version_id = %s", (out_version,)).fetchall()}
     check("it is under review", version["visibility_class"] == "UNDER_REVIEW")
     check("the two locked files belong to their patients, with their plain sizes and the lock's format, and the plain file to nobody",
           owned == {"r-0001.silenced.bin": (owners["r-0001"], len(plain_a), "stream:v1"), "r-0003.big.bin": (owners["r-0003"], len(big), "stream:v1")}, str(owned))
     names = {m["key"].rsplit("/", 1)[1]: m for m in version["object_manifest"]}
     check("the manifest holds the sizes and fingerprints of what is stored, locked or not", names["r-0001.silenced.bin"]["bytes"] == stream.stored_size(len(plain_a)) and names["plain.txt"]["bytes"] == 5)
     listed = person_keys.still_made_from(CANARY, owners["r-0001"])
-    check("erasing the first patient lists the version among those that hold their recordings", out_version in listed["recording_versions"], str(listed)[:200])
+    check("erasing the first patient lists the version among those that hold their files", out_version in listed["file_versions"], str(listed)[:200])
 
-    heading("Erasing the patient makes what was made from their recording unreadable")
+    heading("Erasing the patient makes what was made from their file unreadable")
     run5 = open_run(src, both)
     token5 = pass_for(run5)
-    check("another run opens that patient's other recording before the patient is erased", opening(token5, "r-0002").status_code == 200)
+    check("another run opens that patient's other file before the patient is erased", opening(token5, "r-0002").status_code == 200)
     erased = person_keys.erase_person(service, CANARY, KIND, patients[0], identity(CUSTODIAN, ["data_custodian"]), "asked to be forgotten")
     check("the patient is erased", erased["key_destroyed"] is True)
     try:
@@ -190,19 +190,19 @@ def main() -> int:
     check("their key is gone, so the locked file cannot be opened by anybody, though it is still in storage", readable is False and stored(row["storage_key"]) is not None)
     check("the other patient's file still opens", read_range(service.unwrap(CANARY, owners["r-0003"], "verify", "check", False), CANARY, owners["r-0003"], "r-0003.big.bin", len(big),
                                                              lambda off, n: big_blob[off:off + n], 0, 1000) == big[:1000])
-    check("the recordings listing says the erased patient's recordings are erased", all(x["erased"] for x in listing(token5).json()["recordings"] if x["record_id"] in ("r-0001", "r-0002")))
+    check("the files listing says the erased patient's files are erased", all(x["erased"] for x in listing(token5).json()["files"] if x["record_id"] in ("r-0001", "r-0002")))
     r = open_locked(token5, "late.bin", "r-0002", 100)
-    check("a step that opened that recording earlier cannot make a new file from it: the patient was erased", r.status_code == 400 and "was erased" in reasons_of(r), f"{r.status_code} {reasons_of(r)[:160]}")
+    check("a step that opened that file earlier cannot make a new file from it: the patient was erased", r.status_code == 400 and "was erased" in reasons_of(r), f"{r.status_code} {reasons_of(r)[:160]}")
 
     heading("Sound that does not say where it came from is refused")
     run3 = open_run(src, both)
     token3 = pass_for(run3)
     wav_plain = make_wav(30_000)
     open_out_r = step_call("POST", "/step/v1/outputs/leak.wav", token3)
-    check("a step opens a file for sound without saying a recording", open_out_r.status_code == 201)
+    check("a step opens a file for sound without saying a file", open_out_r.status_code == 201)
     send(token3, "leak.wav", wav_plain)
     refused = complete_out(token3, "leak.wav")
-    check("it cannot finish it: sound from a step given recordings must say which recording, and the answer says how", refused.status_code == 400 and "must say which recording" in reasons_of(refused), f"{refused.status_code} {reasons_of(refused)[:200]}")
+    check("it cannot finish it: sound from a step given files must say which file, and the answer says how", refused.status_code == 400 and "must say which file" in reasons_of(refused), f"{refused.status_code} {reasons_of(refused)[:200]}")
     with db() as conn:
         gone = conn.execute("select storage_key, status from step_output where pipeline_run_id = %s and name = 'leak.wav'", (run3["id"],)).fetchone()
     check("what was stored of it is thrown away at once, and the file is marked aborted", gone["status"] == "aborted" and stored(gone["storage_key"]) is None, str(gone))
@@ -216,7 +216,7 @@ def main() -> int:
     step_call("POST", "/step/v1/outputs/music.wav", token4)
     send(token4, "music.wav", wav_plain)
     r = complete_out(token4, "music.wav")
-    check("a step that was not given recordings may write sound: it cannot have made it from a patient's recording", r.status_code == 200 and r.json()["locked"] is False, f"{r.status_code} {reasons_of(r)[:160]}")
+    check("a step that was not given files may write sound: it cannot have made it from a patient's file", r.status_code == 200 and r.json()["locked"] is False, f"{r.status_code} {reasons_of(r)[:160]}")
 
     reset_keys()
     return summary("v145")

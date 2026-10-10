@@ -46,7 +46,7 @@ def _code_prefix(tenant_id: str, agent_id: str, version: int) -> str:
 
 
 @router.post("/agents/{agent_id}/versions/upload", status_code=201)
-async def upload_version(
+def upload_version(
     agent_id: str,
     zip: UploadFile = File(...),
     model_id: str = Form(...),
@@ -58,13 +58,8 @@ async def upload_version(
 ) -> dict:
     """Upload a project as this agent's next version, sealed on arrival.
 
-    `code_hash` is not a claim here, unlike the declare-only path: it is
-    computed from the bytes actually received, the same discipline
-    `ingest.py` already applies to dataset uploads via `dataset_source.
-    checksum`. `tool_scope` arrives as a comma-separated string because this
-    is a plain multipart form, not JSON, parsed and sorted the same way
-    `scripts/admin/register-agent-version.py` already sorts its own `--tool` flags before
-    sending them.
+    The code hash is computed from the bytes received, not claimed by the caller. `tool_scope` arrives as a comma-separated string, because this
+    is a plain multipart form, and it is parsed and sorted before it is stored.
     """
     agent = _agent(agent_id)
     if agent["tenant_id"] != identity["tenant_id"]:
@@ -89,7 +84,7 @@ async def upload_version(
             ]},
         )
 
-    payload = await zip.read()
+    payload = zip.file.read()
     if len(payload) > MAX_UPLOAD_BYTES:
         raise HTTPException(
             413,

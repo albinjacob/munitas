@@ -11,7 +11,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
-from . import auth, person_keys, recordings, record_door, task_credential
+from . import auth, person_keys, locked_files, record_door, task_credential
 from .person_errors import NoSuchVersion, NotPermitted
 
 router = APIRouter(tags=["record files"])
@@ -51,7 +51,7 @@ def open_record(version_id: str, record_id: str, identity: dict = Depends(auth.c
         return record_door.open_record(_service(), identity, version_id, record_id)
     except NotPermitted as exc:
         raise HTTPException(403, {"reasons": exc.reasons}) from exc
-    except recordings.PersonErased as exc:
+    except locked_files.PersonErased as exc:
         raise HTTPException(410, {"reasons": [str(exc)]}) from exc
     except (NoSuchVersion, record_door.NoSuchRecord) as exc:
         raise HTTPException(404, "no such version or file") from exc

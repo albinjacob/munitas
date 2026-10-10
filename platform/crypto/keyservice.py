@@ -43,13 +43,23 @@ class KeyService(ABC):
     def unwrap(self, tenant_id: str, person_code: str, actor: str, purpose: str, audit: bool = True) -> bytes:
         """Open a person's key. Raises DestroyedKeyError once destroyed, UnknownRecordError when never made.
 
-        Every opening is written to the key log. `audit=False` is for the later reads of something already opened and logged (a recording read a
+        Every opening is written to the key log. `audit=False` is for the later reads of something already opened and logged (a file read a
         block at a time): the key is still checked for destruction every time, and the log is not filled with one line per block.
         """
 
     @abstractmethod
     def unwrap_many(self, tenant_id: str, person_codes: list[str], actor: str, purpose: str) -> dict[str, bytes | None]:
         """Open several people's keys in one call. A destroyed key is None, not an error, so one erased person never fails a whole table."""
+
+    def make_person_keys(self, tenant_id: str, person_codes: list[str], actor: str, purpose: str | None = None) -> dict[str, bytes]:
+        """Make a key for each of these people and return them, for the one operation that needs them. A service that can make many in one round trip
+        overrides this and writes one line to the key log for the lot; this default makes them one at a time."""
+        return {code: self.make_person_key(tenant_id, code, actor) for code in dict.fromkeys(person_codes)}
+
+    def unwrap_batch(self, tenant_id: str, person_codes: list[str], actor: str, purpose: str) -> dict[str, bytes | None]:
+        """Open many people's keys for one operation on a batch of rows. A destroyed key is None. A service that can do this in one round trip
+        overrides it and writes one line to the key log, carrying the count, for the whole batch; this default is `unwrap_many`."""
+        return self.unwrap_many(tenant_id, person_codes, actor, purpose)
 
     @abstractmethod
     def destroy(self, tenant_id: str, person_code: str, actor: str) -> bool:
@@ -68,6 +78,10 @@ class KeyStore(Protocol):
         """Store the wrapped organisation key unless one exists. Returns whichever is stored, so two racing callers agree."""
     def get_person_key(self, tenant_id: str, person_code: str) -> tuple[bytes | None, datetime | None] | None: ...
     def put_person_key(self, tenant_id: str, person_code: str, wrapped: bytes) -> None: ...
+    def get_person_keys(self, tenant_id: str, person_codes: list[str]) -> dict[str, tuple[bytes | None, datetime | None]]:
+        """Many people's stored keys at once. A person with no key is left out."""
+    def put_person_keys(self, tenant_id: str, wrapped: dict[str, bytes]) -> None:
+        """Store many people's wrapped keys at once."""
     def destroy_person_key(self, tenant_id: str, person_code: str) -> bool: ...
     def log(self, tenant_id: str, person_code: str | None, action: str, actor: str, purpose: str | None) -> None: ...
 
@@ -131,6 +145,31 @@ class BuiltInKeyService(KeyService):
         if audit:
             self._store.log(tenant_id, person_code, "unwrap", actor, purpose)
         return key
+
+    def make_person_keys(self, tenant_id: str, person_codes: list[str], actor: str, purpose: str | None = None) -> dict[str, bytes]:
+        """Many keys in one round trip to the store and one line in the key log, which carries the count and the purpose."""
+        org_key = self._org_key(tenant_id, actor)
+        codes = list(dict.fromkeys(person_codes))
+        keys = {code: os.urandom(KEY_BYTES) for code in codes}
+        if codes:
+            self._store.put_person_keys(tenant_id, {code: _seal(org_key, key, _aad("person", tenant_id, code)) for code, key in keys.items()})
+            self._store.log(tenant_id, None, "make_person", actor, f"{len(codes)} people" + (f": {purpose}" if purpose else ""))
+        return keys
+
+    def unwrap_batch(self, tenant_id: str, person_codes: list[str], actor: str, purpose: str) -> dict[str, bytes | None]:
+        """Open many keys in one round trip and write one line to the key log, carrying the count. A key that was never made is an error, as it is for one."""
+        org_key = self._org_key(tenant_id, actor)
+        codes = list(dict.fromkeys(person_codes))
+        stored = self._store.get_person_keys(tenant_id, codes)
+        out: dict[str, bytes | None] = {}
+        for code in codes:
+            if code not in stored:
+                raise UnknownRecordError(f"no key was ever made for {code}")
+            wrapped, _ = stored[code]
+            out[code] = None if wrapped is None else _open(org_key, wrapped, _aad("person", tenant_id, code))
+        if codes:
+            self._store.log(tenant_id, None, "unwrap", actor, f"{len(codes)} people: {purpose}")
+        return out
 
     def unwrap_many(self, tenant_id: str, person_codes: list[str], actor: str, purpose: str) -> dict[str, bytes | None]:
         org_key = self._org_key(tenant_id, actor)

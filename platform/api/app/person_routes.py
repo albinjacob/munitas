@@ -6,10 +6,10 @@ directly as well. Erasing a person has no route yet: it is an internal operation
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
-from . import auth, group_sizes, locked_leases, person_keys, table_files
+from . import audit_pages, auth, group_sizes, locked_leases, person_keys, privacy_contract, table_files
 from .person_errors import AlreadyDecided, LeaseConflict, NoSuchLease, NoSuchVersion, NotPermitted, Refused
 
 router = APIRouter(tags=["person keys"])
@@ -71,32 +71,52 @@ def seal_table(dataset_id: str, body: SealTableIn, identity: dict = Depends(auth
 
 
 @router.post("/datasets/{dataset_id}/seal-table-files", status_code=201)
-async def seal_table_files(dataset_id: str, contract: UploadFile = File(...), rows: UploadFile = File(...),
-                           identity: dict = Depends(auth.current_session)) -> dict:
-    """Seal a table from two files: the privacy contract (YAML or JSON) and the rows (a CSV with a header).
+def seal_table_files(dataset_id: str, contract: UploadFile = File(...), rows: UploadFile = File(...),
+                     delimiter: str | None = Form(default=None), encoding: str | None = Form(default=None), header: bool = Form(default=True),
+                     null_values: str | None = Form(default=None), identity: dict = Depends(auth.current_session)) -> dict:
+    """Seal a table from two files: the privacy contract (YAML or JSON) and the rows.
 
+    The rows are a CSV or TSV with a header, a JSON list of rows, or a JSONL file with one row per line; the ending of the file's name says which,
+    with .gz or .zst after it for a compressed file. A CSV is read with the delimiter and encoding it declares (`delimiter`, `encoding`), with or
+    without a header (`header`), and the words that mean a missing value (`null_values`, separated by commas; an empty field by default).
     Pressing this is the check: when anything is wrong in either file, nothing is sealed and every problem is listed together, each naming
-    its row and column. Values are read as the types the contract declares. At most 20,000 rows and 5 MB; larger tables are sealed another way.
+    its row, its line and its column. Values are read as the types the contract declares, strictly. A table about people sealed here is at most 20,000 rows
+    and 5 MB; an ordinary table is at most 5 MB. Larger tables are sealed another way.
+
+    A contract that names how to find the person each row is about seals a table of people, with the identifying columns locked under each
+    person's own key. A contract that says the table cannot be erased and names nobody seals an ordinary table, with nothing locked, that can be
+    queried like any other; the answer then carries `"plain": true` and no people. Either way the version starts at the most restricted level.
     """
     service = _service()
     # Who may seal is answered before a byte is read, so a person who may not learns that and nothing about their files.
     person_keys.intake_dataset(dataset_id, identity)
+    declared = {k: v for k, v in (("delimiter", delimiter), ("encoding", encoding), ("header", header),
+                                  ("null_values", [w for w in null_values.split(",")] if null_values is not None else None)) if v is not None}
     try:
-        doc, parsed = table_files.build(await contract.read(table_files.MAX_CONTRACT_BYTES + 1), await rows.read(table_files.MAX_BYTES + 1))
+        contract_bytes, rows_bytes = contract.file.read(table_files.MAX_CONTRACT_BYTES + 1), rows.file.read(table_files.MAX_BYTES + 1)
+        doc = table_files.parse_contract(contract_bytes)
+        if privacy_contract.is_plain(doc):
+            dataset = person_keys.intake_dataset(dataset_id, identity)
+            return person_keys.seal_plain_file(dataset=dataset, dataset_id=dataset_id, identity=identity, contract=doc, raw=rows_bytes,
+                                               filename=rows.filename, options=declared)
+        doc, parsed = table_files.build(contract_bytes, rows_bytes, rows.filename)
         return person_keys.seal_table(service, dataset_id=dataset_id, identity=identity, contract=doc, rows=parsed)
     except Refused as exc:
         raise HTTPException(400, {"reasons": exc.reasons}) from exc
 
 
 @router.get("/dataset-versions/{version_id}/person-rows")
-def person_rows(version_id: str, identity: dict = Depends(auth.current_session)) -> dict:
+def person_rows(version_id: str, cursor: str | None = None, limit: int | None = None, identity: dict = Depends(auth.current_session)) -> dict:
     """The rows of a table sealed under a privacy contract, with the locked columns opened for somebody the policy lets.
 
     The owning department's approvers read every row ("mode": "full"). Anybody else reads only the fixed sample their current lease opens
     ("mode": "sample"). A person who was erased has an erased marker where their locked values were. The decision is recorded either way.
+
+    A table stored as a table is read a page at a time: `limit` rows (200 unless asked, at most 1,000) from where `cursor` says, and the answer's `next` is
+    the cursor for the page after, or null at the end. The key log gets one line per page, with the count of people opened. `total` is the table's row count.
     """
     service = _service()
-    result = _refusals(lambda: person_keys.read_locked(service, version_id=version_id, identity=identity))
+    result = _refusals(lambda: person_keys.read_locked(service, version_id=version_id, identity=identity, cursor=cursor, limit=limit))
     return {**result, "count": len(result["rows"])}
 
 
@@ -140,12 +160,32 @@ def revoke_lease(lease_id: str, identity: dict = Depends(auth.current_session)) 
 
 
 @router.get("/audit/locked-columns")
-def audit_locked_columns(limit: int = 200, identity: dict = Depends(auth.current_session)) -> dict:
-    """How locking was used in the caller's organisation: reads and refusals, key uses, leases, contract treatments and erasures.
+def audit_locked_columns(
+    limit: int = 200,
+    section: str | None = None,
+    person: str | None = None,
+    table: str | None = None,
+    file: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    result: str | None = None,
+    q: str | None = None,
+    page: int = 1,
+    page_size: int | None = None,
+    identity: dict = Depends(auth.current_session),
+) -> dict:
+    """How locking was used in the caller's organisation, for locked columns and locked files.
 
-    For the privacy auditor and the data protection officer. Never a name, a value or an identifier.
+    Without `section`, the latest lines of every list: reads and refusals, key uses, leases, contract treatments, erasures, and the opening of locked files.
+    With `section` (reads, column_leases, file_reads, file_leases, keys, erasures, small_groups or contracts), one list a page at a time, newest first, narrowed by
+    `person`, `table`, `file` (part of a file name), `date_from` and `date_to` (date and time; to is exclusive), `result` and `q`, with the number of lines that match. Each list accepts only
+    some of the filters, and says which.
+
+    For the privacy auditor and the data protection officer. Never a name, a value, a file name or an identifier.
     """
-    return _refusals(lambda: locked_leases.audit_evidence(identity, limit))
+    if section is None:
+        return _refusals(lambda: locked_leases.audit_evidence(identity, limit))
+    return _refusals(lambda: audit_pages.audit_page(identity, section, person=person, table=table, file=file, date_from=date_from, date_to=date_to, result=result, q=q, page=page, page_size=page_size))
 
 
 @router.get("/dataset-versions/{version_id}/group-size-report")

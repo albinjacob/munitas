@@ -1,6 +1,6 @@
 """U131: a gate can say "not measured", which is not a pass and not a fail.
 
-A de-identification run on real recordings has no answer key, so nothing measured whether it worked. Until now the gate could only say `pass`
+A de-identification run on real files has no answer key, so nothing measured whether it worked. Until now the gate could only say `pass`
 or `fail`, and the run said `fail`, which reads as "measured and found wanting". `not_measured` says what happened: nobody measured this
 batch, so a person has to judge it. This checks, one item at a time:
 
@@ -21,7 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, "/app")
 
-import psycopg  # noqa: E402
+import pgdb  # noqa: E402
 
 from common import CANARY, check, db, fixture_contract, fixture_tenant, fixture_version, heading, require_api, summary  # noqa: E402
 
@@ -51,7 +51,7 @@ def main() -> int:
             with db() as conn:
                 insert_gate(conn, version, value)
             took = True
-        except psycopg.errors.CheckViolation:
+        except pgdb.errors.CheckViolation:
             took = False
         check(f"a gate decision recommending {value!r} is accepted", took)
     for value in ("maybe", "", "NOT_MEASURED", "not measured"):
@@ -59,7 +59,7 @@ def main() -> int:
             with db() as conn:
                 insert_gate(conn, version, value)
             took = True
-        except psycopg.errors.CheckViolation:
+        except pgdb.errors.CheckViolation:
             took = False
         check(f"and {value!r} is refused", not took)
     with db() as conn:

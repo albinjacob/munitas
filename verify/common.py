@@ -18,8 +18,8 @@ import wave
 from pathlib import Path
 
 import httpx
-import psycopg
-from psycopg.rows import dict_row
+import pgdb
+from pgdb import dict_row
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from ports_config import PORTS  # noqa: E402
@@ -34,8 +34,8 @@ from markers import COUNTS_MARKER  # noqa: E402
 # from the host, where the host-published port is the right one to fall
 # back to.
 API = os.environ.get("MUNITAS_VERIFY_API", f"http://localhost:{PORTS['munitas_api_http']}")
-PG_DSN = os.environ["PG_DSN"]
-S3_ENDPOINT = os.environ.get("S3_ENDPOINT", "http://seaweedfs:8333")
+PG_DSN = os.environ["MUNITAS_PG_DSN"]
+S3_ENDPOINT = os.environ.get("MUNITAS_S3_ENDPOINT", "http://seaweedfs:8333")
 
 _results: list[tuple[str, bool | None, str]] = []
 
@@ -100,7 +100,7 @@ def summary(name: str) -> int:
 def db():
     # Bounded, so a database that stops answering fails the check rather than
     # hanging it: 10 s to connect, 2 minutes for any one statement.
-    return psycopg.connect(PG_DSN, row_factory=dict_row, autocommit=True,
+    return pgdb.connect(PG_DSN, row_factory=dict_row, autocommit=True,
                            connect_timeout=10, options="-c statement_timeout=120000")
 
 
@@ -254,6 +254,15 @@ TRAINER = "canary-trainer"
 AGENT = "canary-agent"
 ANNOTATION = "canary-annotation"
 
+CANARY_ADMIN = "canary-admin"  # platform_admin + hybridops, the test organisation's administrator
+
+# A second test organisation, for checks that need somebody from another one (seeded by infra/postgres/seed-canary.sql).
+NEIGHBOUR = "neighbour"
+NEIGHBOUR_CUSTODIAN = "neighbour-custodian"
+NEIGHBOUR_ENGINEER = "neighbour-engineer"
+NEIGHBOUR_RESEARCHER = "neighbour-researcher"
+NEIGHBOUR_ADMIN = "neighbour-admin"
+
 DEPARTMENT = "Verification"
 
 KRATOS = os.environ.get("MUNITAS_VERIFY_KRATOS", "http://kratos:4433")
@@ -283,6 +292,12 @@ _EMAIL_BY_DIRECTORY_ID = {
     "canary-reviewer": "reviewer@canary.example",
     "canary-auditor": "auditor@canary.example",
     "canary-architect": "architect@canary.example",
+    "canary-admin": "admin@canary.example",
+    "canary-admin-second": "admin-second@canary.example",
+    "neighbour-custodian": "custodian@neighbour.example",
+    "neighbour-engineer": "engineer@neighbour.example",
+    "neighbour-researcher": "researcher@neighbour.example",
+    "neighbour-admin": "admin@neighbour.example",
     "rev-imani": "imani@health.example",
     "aud-marlow": "marlow@health.example",
 }

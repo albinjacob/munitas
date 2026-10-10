@@ -187,7 +187,7 @@ def roles_held(session: dict = Depends(current_session)) -> dict:
     no cross-organisation question here: roles are held inside one.
     """
     grants = db.all_rows(
-        """select g.id, g.principal, d.label, g.role, g.approved_by,
+        """select g.id, g.principal, d.label, g.role, g.approved_by, g.created_at,
                   g.expires_at, g.attested_at, g.attested_by, g.revoked,
                   g.expires_at < now() as expired
              from role_grant g
@@ -263,16 +263,11 @@ def end_appointment(
 ) -> dict:
     """Stop somebody acting here, or let them act again.
 
-    Removing somebody's ability to act is the safe direction: it grants
-    nothing, so it does not need the two-person rule that granting does. It
-    still refuses the caller's own id, because an account that can lock
-    itself out is a support call waiting to happen and no security gain.
+    Removing somebody's ability to act grants nothing, so it does not need the two-person rule that granting does. It still refuses the
+    caller's own id, because an account that can lock itself out gains nothing in security.
 
-    This does not touch the identity provider, and that is deliberate rather
-    than an omission. Signing in is that system's question: a person
-    deactivated there cannot get a session at all, which `auth.py` already
-    depends on. This is the other half, so that somebody who has left stops
-    acting here even in the window before the identity provider is updated.
+    This does not change the identity provider, by design. Signing in is that system's question: a person deactivated there cannot get a
+    session at all. This is the other half, so that somebody who has left stops acting here even before the identity provider is updated.
     """
     if directory_id == session["id"]:
         _refuse(["an account cannot end its own appointment"])

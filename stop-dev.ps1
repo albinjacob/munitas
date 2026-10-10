@@ -62,7 +62,7 @@
 
 [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
 param(
-    [string]$WslDistro = "Ubuntu-20.04",
+    [string]$WslDistro = "Munitas",
     [switch]$NoContainers,
     [switch]$NoWorker,
     [switch]$NoConsole,
