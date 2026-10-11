@@ -838,6 +838,12 @@ Use `scripts/seed/reseed-tenant.ps1` to rebuild one worked example,
 `scripts/admin/cleanup-dataset.py` to clear one dataset, or
 `scripts/admin/reclaim-storage.py` to free storage, instead.
 
+A rebuild with `reseed-tenant.ps1` keeps the people that another organisation's records point at, and with them the organisation's own row, and deletes everything else
+(`scripts/admin/nuke-tenant.py --keep-referenced-people`). The platform administrator is one person kept in one organisation who acts in the others, and a legal hold
+placed in another organisation names that person, so the database refuses to delete them; the seed then fills in everything else around them. Run a script through
+`scripts/run-logged.ps1 -Name <what> -Command "<the command>"` when it can fail: it keeps all of the output in `docs/internal/run-logs/`, so a failure is read from the
+file and not found by running the script again.
+
 ```powershell
 .\scripts\seed\reset-platform.ps1
 ```
@@ -935,8 +941,9 @@ proves nothing.
 
 **When to use it:** you are changing the rules in `platform/policy`, preparing a deployment, calling the policy engine (`opa`) by hand, or it is not answering.
 
-**What it does when it is down.** Every decision is asked of the engine, and the platform refuses when it cannot get an answer. Pages that check who may open
-them answer 503 with the reason "policy engine unreachable", and the console shows nothing for them rather than a wrong answer. Nobody is let in by default.
+**What it does when it is down.** Every decision is asked of the engine, and the platform refuses when it cannot get an answer. Every route that asks it answers 503 with
+one plain sentence ("The platform's policy engine did not answer, so this was refused. Try again in a moment."), the console shows nothing for the pages that check who
+may open them rather than a wrong answer, and what went wrong is in the API's log under the request's reference. Nobody is let in by default.
 
 ### Who may call the engine
 
@@ -1805,6 +1812,20 @@ An organisation's limits on requests for real values are settings, not constants
 - **How it is kept.** Each change is a new row in `access_rule_version`, never an edit (the database refuses one). The latest row for a rule is in force. It is held to the platform's maximum again every time it is read, so a row written by hand cannot exceed it. A lease already granted keeps what it was granted.
 - **Where it is used.** `locked_leases.py` and `file_leases.py` hand the values in force to the policy engine as `input.limits`; `access.rego` falls back to the default when none is given. The defaults in `access_rules.py` and the constants in `access.rego` must agree; U168 compares them.
 - **Check:** U168 (`verify/v161_access_rules.py`, 39 checks, against the live platform and policy engine). The console test is `web/tests/access-rules.spec.ts`. The design, and what is not built yet, is `docs/internal/design/access-rules.html`.
+
+
+## Release bars: what a de-identified result is held to
+
+The bar a de-identified result must meet before it is released is the organisation's decision, not the platform's. A **release bar** is a named set of limits (for example "Public release" or "Project A, closed research team"): one overall figure for how much identifying detail was removed, and for each kind of identifier (names, dates, phone numbers and the others) the least removed and the most left in the clear. A limit left empty is not applied.
+
+- **See them.** The console page Release bars (under The organisation) lists the organisation's bars at their latest version, each with who set it, when and why, and the earlier versions. Everyone signed in can read it.
+- **Set one.** Only the data protection officer creates a bar or adds a version to one (`POST /release-bars`, `POST /release-bars/{id}/versions`). The rule is `set_release_bar_decision` in `access.rego`, and the platform refuses anybody else and says why in the words of the role table. A new bar in the console starts from the Platform default bar, so making one never drops a limit it has.
+- **The Platform default bar.** It is not stored: it is `default_bars()` in `platform/gate_bars.py` (98 percent overall, and none left in the clear of the kinds that name a person directly). It is a starting point to argue with, not a standard. It is the bar a run's own recommendation is made under when the run finishes, and the bar used when nobody chooses another.
+- **Choosing one.** The person who decides a waiting result chooses a bar on the De-identification results page. The recommendation under it is worked out by the platform when the decision is made, from the counts for each kind of identifier that the run kept (`GET /gate-decisions/{id}/judgement` shows it without recording anything), and a bar the caller names is the only thing taken from the caller. A result nothing measured stays "not measured" under every bar. A result measured before the counts were kept can only be judged by the Platform default bar, and says so.
+- **What a decision keeps.** The bar's name and version, its limits as they were, the recommendation under it and the recommendation the run recorded, on the decision row (`purpose_name`, `purpose_version`, `bars_used`, `release_recommendation`, `release_reason`). A later version of a bar never changes what an earlier decision says.
+- **How a bar is kept.** `gate_purpose` holds the name, which is never changed, and `gate_purpose_version` holds each version, never edited (the database refuses an edit). An existing database gets the tables by applying `platform/schema.sql`, which is safe to run again; the policy engine must be restarted to read the changed `access.rego` and `screens.rego` when they were edited from Windows, because `--watch` does not see those edits.
+- **The judgement is shared.** `platform/gate_bars.py` and `worker/gate_bars.py` are the same file, because the API image and the worker are built from different folders. `scripts/check_pins_agree.py` fails when they differ.
+- **Checks:** U192 (`verify/v181_release_bars.py`, in the API container: the judgement, who may set a bar, versions, the judgement of a waiting result, and what a decision keeps), U193 (`verify/v182_gate_records_per_kind.py`, on the host: a run keeps the counts for each kind and is judged by the Platform default bar) and U194 (`web/tests/release-bars.spec.ts`, the console).
 
 
 ## The two audit pages

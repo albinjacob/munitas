@@ -1,7 +1,7 @@
 r"""Render docs/public/reference/openapi.json into docs/public/reference/api-reference.html.
 
 A hand-authored renderer rather than a vendored Swagger UI/Redoc bundle,
-because this repo doesn't pull anything from a CDN anywhere else in its
+because this repo does not pull anything from a CDN anywhere else in its
 docs, and a self-contained page needs no exception for its API reference.
 Regenerate after regenerating docs/public/reference/openapi.json:
 
@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import html
 import json
+import re
 from pathlib import Path
 
 DOCS = Path(__file__).resolve().parent.parent
@@ -51,6 +52,7 @@ TAG_LABELS = {
     "notebook files": "Reading the few real files a notebook was allowed to open, with the token made for them",
     "notebook sign-in": "A notebook signing in on behalf of a person: the code, the approval, the short-lived pass, renewing it and ending it",
     "access rules": "What people in an organisation may ask for and how much: the rules in force, and what would happen to a request of a given size",
+    "release bars": "How much identifying detail a de-identified result may hold, for the audience it is released to: the bars an organisation keeps, and what a waiting result would be recommended under one",
     "iceberg": "Iceberg catalog (for DuckDB, PyIceberg and other standard tools)",
 }
 TAG_ORDER = list(TAG_LABELS.keys())
@@ -58,6 +60,17 @@ TAG_ORDER = list(TAG_LABELS.keys())
 
 def esc(s: object) -> str:
     return html.escape(str(s), quote=True)
+
+
+def rich(text: str) -> str:
+    """A description as HTML: one paragraph per blank line, and `backticked` words as code. Everything else is escaped."""
+    paragraphs = []
+    for block in str(text).strip().split("\n\n"):
+        words = " ".join(block.split())
+        if words:
+            coded = re.sub(r"`([^`]+)`", r"<code>\1</code>", esc(words))
+            paragraphs.append(f'<p class="op-desc">{coded}</p>')
+    return "".join(paragraphs)
 
 
 def resolve_ref(schema: dict, ref: str) -> tuple[str, dict]:
@@ -162,7 +175,7 @@ def render_operation(schema: dict, path: str, method: str, op: dict) -> str:
     <span class="path mono">{esc(path)}</span>
   </div>
   <h3>{esc(summary)}</h3>
-  {f'<p class="op-desc">{esc(desc)}</p>' if desc else ""}
+  {rich(desc) if desc else ""}
   {params_html}
   {body_html}
   <div class="block-label">Responses</div>
@@ -277,7 +290,7 @@ def main() -> None:
     color: var(--ink-faint); font-weight: 700; margin-bottom: 6px;
   }}
   .nav-group a {{
-    display: flex; align-items: center; gap: 8px; padding: 4px 6px;
+    display: flex; align-items: flex-start; gap: 8px; padding: 4px 6px; overflow-wrap: anywhere;
     border-radius: 6px; color: var(--ink-soft); text-decoration: none;
     font-size: 12.5px; font-family: ui-monospace, "SF Mono", Consolas, monospace;
   }}
@@ -319,6 +332,7 @@ def main() -> None:
   .path {{ font-size: 14px; color: var(--ink-soft); }}
   article.op h3 {{ margin: 0 0 6px; font-size: 16px; }}
   .op-desc {{ color: var(--ink-soft); font-size: 14px; margin: 0 0 12px; }}
+  .op-desc code {{ font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 12.5px; }}
   .block-label {{
     font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
     color: var(--ink-faint); font-weight: 700; margin: 14px 0 6px;
@@ -399,7 +413,7 @@ def main() -> None:
       <code>python platform/api/generate_openapi.py &amp;&amp; python docs/tools/generate_api_reference.py</code>.
       The interactive Swagger UI at <code>/docs</code> on a running instance
       covers the same routes with a "try it" console this static page
-      deliberately doesn't attempt.
+      deliberately does not attempt.
     </footer>
   </main>
 </div>

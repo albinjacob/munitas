@@ -22,6 +22,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from . import gate_bars
 from .align import Alignment, coverage
 
 # A detector must cover this much of an identifier for the span itself to count.
@@ -44,10 +45,7 @@ HARMLESS_RESIDUE = {
 # and only identify in combination. The gate treats them differently because
 # leaving a town in a transcript and leaving a patient's name in one are not the
 # same failure.
-DIRECT = {
-    "PERSON", "PERSON_PATIENT", "PERSON_CLINICIAN",
-    "MEDICAL_RECORD_NUMBER", "NATIONAL_ID", "PHONE_NUMBER", "EMAIL",
-}
+DIRECT = set(gate_bars.DIRECT_ENTITY_CODES)
 
 
 def residue_is_harmless(residue: str) -> bool:
@@ -250,27 +248,29 @@ def _failure_shape(leak: dict) -> str:
 # These values are a proposal and should be argued with. The recall figure is
 # set above the 0.95 the pipeline currently reaches, so the gate refuses until
 # the span-boundary problem is fixed rather than being tuned to pass today.
-GATE_RECALL = 0.98
+# They are the platform's starting values: the bar a result is released under is
+# the customer's, kept as a named purpose (see gate_bars.py), and this is the bar
+# of the built-in "Platform default" purpose that the run's own recommendation uses.
+GATE_RECALL = gate_bars.GATE_RECALL
 GATE_DIRECT_LEAKS = 0
 
 
 def evaluate_gate(card: ScoreCard,
                   recall_threshold: float = GATE_RECALL,
-                  max_direct_leaks: int = GATE_DIRECT_LEAKS) -> tuple[bool, str]:
-    """Decide whether a version may be promoted, and say why if not."""
+                  max_direct_leaks: int = GATE_DIRECT_LEAKS,
+                  bars: dict | None = None) -> tuple[bool, str]:
+    """Decide whether a version may be promoted, and say why if not.
+
+    With `bars` (a purpose's limits, see gate_bars.py) the result is judged kind by kind. Without, it is judged by the two figures the run
+    was started with: the overall recall and the most direct identifiers left in the clear, over all the direct kinds together.
+    """
+    if bars is not None:
+        return gate_bars.evaluate(card.per_entity, bars)
     reasons = []
     if card.recall_effective < recall_threshold:
-        reasons.append(
-            f"recall {card.recall_effective:.3f} is below {recall_threshold:.3f} "
-            f"({card.leaked} of {card.survived} surviving identifiers left in the clear)"
-        )
+        reasons.append(gate_bars.say_overall_short(card.recall_effective, recall_threshold, card.leaked, card.survived))
     if card.direct_leaks > max_direct_leaks:
-        reasons.append(
-            f"{card.direct_leaks} direct identifiers leaked, limit is {max_direct_leaks}"
-        )
+        reasons.append(gate_bars.say_too_many(None, card.direct_leaks, max_direct_leaks))
     if reasons:
         return False, "; ".join(reasons)
-    return True, (
-        f"recall {card.recall_effective:.3f}, {card.direct_leaks} direct leaks, "
-        f"{card.quasi_leaks} quasi-identifier leaks"
-    )
+    return True, gate_bars.say_clear(card.recall_effective, card.direct_leaks, card.quasi_leaks)

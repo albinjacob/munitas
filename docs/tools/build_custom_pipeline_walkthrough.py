@@ -13,7 +13,33 @@ in. The page, its look and the wording check come from walkthrough_kit.py.
 """
 from __future__ import annotations
 
+import re
+
 from walkthrough_kit import SHOTS_ROOT, Page, series_entry, write
+
+def _step_one() -> dict:
+    """The words of step 1, chosen from what its picture shows: the empty list a clean organisation has, or the list of an organisation that already holds pipelines
+    (a capture run again on the same organisation, which sees the pipelines the earlier run and the pages after it made)."""
+    sidecar = SHOTS_ROOT / "custom-pipeline" / "01-pipelines-list.txt"
+    shown = sidecar.read_text(encoding="utf-8", errors="replace") if sidecar.exists() else ""
+    if "No pipelines." in shown:
+        return {
+            "text": "The page lists the pipelines registered in the Health organisation, each with an owning department and a version number. "
+                    "Nobody in Health has registered one yet, so the list is empty and the page says so.",
+            "note": "The page says <strong>No pipelines.</strong> and, under it, <strong>Nobody has registered one in this organisation "
+                    "yet.</strong> The button <strong>Register a pipeline</strong> is on the page, and the sentence under the heading says that "
+                    "each version is sealed on upload and cannot be changed afterwards.",
+        }
+    count = re.search(r"Showing (\d+) of (\d+)\.", shown)
+    said = f"<strong>{count.group(0)}</strong> and gives" if count else "and gives"
+    return {
+        "text": "The page lists the pipelines registered in the Health organisation, each with an owning department and a version number. "
+                "Devi will add one more, for the Cardiology department, with the button at the top.",
+        "note": f"The list says {said} each pipeline its department, <strong>Cardiology</strong>, and its version, <strong>v1 sealed</strong>. "
+                "The button <strong>Register a pipeline</strong> is on the page, and the sentence under the heading says that each version is "
+                "sealed on upload and cannot be changed afterwards.",
+    }
+
 
 STEPS = [
     {
@@ -26,13 +52,7 @@ STEPS = [
                 "quality reporting requires, so Devi registers a pipeline for that."),
         "title": "Devi opens the Pipelines page",
         "screen": "Pipelines &middot; /pipelines",
-        "text": "The page lists the pipelines registered in the Health organisation, each with an owning "
-                "department and a version number. Nobody in Health has registered one yet, so the list is empty "
-                "and the page says so.",
-        "note": "The page says <strong>No pipelines.</strong> and, under it, <strong>Nobody has registered one in this "
-                "organisation yet.</strong> The button <strong>Register a pipeline</strong> is on the page, and "
-                "the sentence under the heading says that each version is sealed on upload and cannot be changed "
-                "afterwards.",
+        **_step_one(),
     },
     {
         "file": "02-names-it-and-its-department.png", "actor": "devi",

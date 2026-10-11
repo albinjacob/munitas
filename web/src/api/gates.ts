@@ -77,6 +77,12 @@ export interface GateRow {
   /** When it was decided, or null while it waits. */
   decided_at: string | null;
   decision_reason: string | null;
+  /** The release bar the result was judged by when it was decided, and what that bar asked then. Empty on a decision made before bars were chosen. */
+  purpose_name: string | null;
+  purpose_version: number | null;
+  bars_used: Record<string, unknown> | null;
+  release_recommendation: "pass" | "fail" | "not_measured" | null;
+  release_reason: string | null;
   created_at: string;
   pipeline_run_id: string | null;
   leak_count: number;
@@ -161,10 +167,10 @@ export function useGateDecision(decisionId: string | undefined) {
   });
 }
 
-export function useReview(decisionId: string | undefined) {
+export function useReview(decisionId: string | undefined, releaseBarId: string | null = null) {
   return useQuery({
-    queryKey: ["gate-review", decisionId],
-    queryFn: () => api.get<ReviewEvidence>(`/gate-decisions/${decisionId}/review`),
+    queryKey: ["gate-review", decisionId, releaseBarId],
+    queryFn: () => api.get<ReviewEvidence>(`/gate-decisions/${decisionId}/review`, releaseBarId ? { release_bar_id: releaseBarId } : undefined),
     enabled: Boolean(decisionId),
     retry: false,
   });
@@ -173,10 +179,10 @@ export function useReview(decisionId: string | undefined) {
 export function useDecideGate(decisionId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: { outcome: "promote" | "refuse"; reason: string }) =>
+    mutationFn: (body: { outcome: "promote" | "refuse"; reason: string; releaseBarId?: string | null }) =>
       api.post<{ decided: boolean; state: string }>(
         `/gate-decisions/${decisionId}/${body.outcome}`,
-        { reason: body.reason },
+        { reason: body.reason, release_bar_id: body.releaseBarId ?? null },
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["gate-decision", decisionId] });

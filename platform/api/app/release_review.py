@@ -138,11 +138,15 @@ def evidence(service, identity: dict, decision: dict) -> Evidence:
                     opened=review_access.opened_by(identity["id"], version_id), limit=review_access.limit())
 
 
-def blockers(found: Evidence, decision: dict) -> list[str]:
-    """What stops this caller releasing the result now, in words, from the same evidence the page shows. Empty when nothing does."""
+def blockers(found: Evidence, decision: dict, recommendation: str | None = None) -> list[str]:
+    """What stops this caller releasing the result now, in words, from the same evidence the page shows. Empty when nothing does.
+
+    `recommendation` is the one under the release bar the person chose; without it, the recommendation the run recorded.
+    """
+    recommendation = recommendation or decision["recommendation"]
     reasons = list(found["blocking"])
-    if found["files"] and decision["recommendation"] != "pass" and not found["opened"]:
-        what = "No automatic measurement was made of this result" if decision["recommendation"] == "not_measured" else "Its automatic measurement did not pass"
+    if found["files"] and recommendation != "pass" and not found["opened"]:
+        what = "No automatic measurement was made of this result" if recommendation == "not_measured" else "Its automatic measurement did not pass"
         reasons.append(f"{what}, so you must open at least one of its files before you can release it.")
     return reasons
 

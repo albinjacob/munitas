@@ -47,6 +47,11 @@ catalogue := {
 		"menu": {"deid_reviewer", "dpo", "pipeline_operator", "platform_admin"},
 		"why": "Everyone can see what waits and who it waits on. Each row says whether the caller may decide it, and only a reviewer can.", "api": [],
 	},
+	"release_bars": {
+		"path": "/release-bars", "label": "Release bars", "open_to": "everyone",
+		"menu": {"deid_reviewer", "dpo", "pipeline_operator", "privacy_auditor", "platform_admin"},
+		"why": "A result is released under a bar the organisation chose, so everyone can see what each bar asks. Only the data protection officer sets one, and the platform refuses the rest.", "api": [],
+	},
 	"locked_requests": {
 		"path": "/locked-column-access", "label": "Locked data requests", "open_to": "everyone",
 		"menu": {"data_custodian", "pipeline_operator", "deid_reviewer", "privacy_auditor", "dpo"},

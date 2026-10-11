@@ -644,16 +644,26 @@
   <h3>Removing personal information: accuracy</h3>
   <p class="measure">
     These figures come from comparing the pipeline's output against a known answer
-    key. Two of them set the recommendation the reviewer is shown when deciding
-    whether a result may be released to a wider audience. The rest are recorded to
-    explain a poor score.
+    key. The recommendation the reviewer is shown when deciding whether a result may
+    be released to a wider audience is made by comparing them with a release bar.
+    A release bar is a set of limits the organisation chooses: one for all
+    identifiers together, and one for each kind of identifier (names, dates, phone
+    numbers and the others). A bar is kept under a name for the audience it is for,
+    such as a closed research team or a public release, and whoever releases a
+    result chooses which bar to judge it by. Every organisation starts with the
+    Platform default bar: at least 98 percent of identifiers removed, and no name,
+    phone number or email address left in the clear. That is a starting point, not a
+    standard. Only the organisation's data protection officer sets a bar, and every
+    change is kept as a new version with who made it and why. The rest of the figures
+    are recorded to explain a poor score.
   </p>
   <div class="tablewrap">
     <table>
       <thead><tr><th>Measure</th><th>What it tells you</th><th>Used for</th></tr></thead>
       <tbody>
-        <tr><td>Recall after transcription</td><td>Of the identifiers that were still readable in the transcript, the share the pipeline removed. This is the fairest measure of the pipeline's own work, because it excludes names the speech recognition had already garbled beyond recognition.</td><td class="tabular">Below 0.98 and the recommendation is fail</td></tr>
-        <tr><td>Names left fully readable</td><td>Identifying text that survived completely intact, such as a full name or an email address still in plain sight.</td><td class="tabular">Above 0 and the recommendation is fail</td></tr>
+        <tr><td>Recall after transcription</td><td>Of the identifiers that were still readable in the transcript, the share the pipeline removed. This is the fairest measure of the pipeline's own work, because it excludes names the speech recognition had already garbled beyond recognition.</td><td class="tabular">Below the bar's overall limit (98 percent in the Platform default bar) and the recommendation is fail</td></tr>
+        <tr><td>Recall for each kind of identifier</td><td>The same share, counted separately for names, dates, phone numbers and every other kind of identifier, so that a good overall figure cannot hide one kind that is being missed.</td><td class="tabular">Below the bar's limit for that kind, where it sets one, and the recommendation is fail</td></tr>
+        <tr><td>Names left fully readable</td><td>Identifying text that survived completely intact, such as a full name or an email address still in plain sight.</td><td class="tabular">Above the bar's limit for that kind (none in the Platform default bar) and the recommendation is fail</td></tr>
         <tr><td>Recall against everything spoken</td><td>The same share, but measured against every identifier actually said aloud, including ones the speech recognition destroyed by accident. Always the lower of the two figures.</td><td>Recorded only</td></tr>
         <tr><td>Partial fragments left behind</td><td>Identifiers that were damaged but might still be pieced back together, such as a surname with two letters changed.</td><td>Recorded only</td></tr>
         <tr><td>Share destroyed by transcription</td><td>How many identifiers the speech recognition had already mangled before the pipeline saw them.</td><td>Explains a score</td></tr>
@@ -662,11 +672,13 @@
     </table>
   </div>
   <p class="measure" style="font-size:0.9rem;">
-    These numbers are stored on the decision record itself, not only in the
-    experiment tracker, so the reason a dataset was released stays available even
-    if the older run history is cleared out. The bar is set deliberately high, and
-    a run that falls short is stopped and shown to a reviewer as a fail
-    recommendation rather than released automatically.
+    These numbers, with the counts for each kind of identifier, are stored on the
+    decision record itself, not only in the experiment tracker, so the reason a
+    dataset was released stays available even if the older run history is cleared
+    out. The decision also records which bar it was judged by, that bar's version
+    and its limits as they were, so a later change to a bar never changes what an
+    earlier decision says. A run that falls short of its bar is not released
+    automatically: it is shown to a reviewer as a fail recommendation.
   </p>
   <p class="measure" style="font-size:0.9rem;">
     The recommendation is advice, and the pipeline acts on none of it. It stops
@@ -774,12 +786,15 @@
 
 <section id="personas">
   <p class="eyebrow">09 &middot; Who uses it</p>
-  <h2 class="measure">Six kinds of role, shown through one example organisation</h2>
+  <h2 class="measure">The roles people hold, shown through one example organisation</h2>
   <p class="measure">
-    Every organisation on Munitas is staffed by people in these same kinds of
-    role: someone who brings data in, someone accountable for each department's
-    data, someone who asks to read it, an administrator who runs the platform
-    itself, and so on. The table below shows one worked example, the cast from
+    Munitas has ten roles that people hold: data custodian, network architect,
+    data engineer, de-identification reviewer, privacy auditor, analyst,
+    researcher, data protection officer, support and reliability, and platform
+    administrator. Every organisation is staffed from these same roles: someone
+    who brings data in, someone accountable for each department's data, someone
+    who asks to read it, an administrator who runs the platform itself, and so
+    on. The table below shows one worked example using six of them, the cast from
     the health organisation used throughout this page: Hartley and Okonjo are each a data custodian for a different department (Cardiology and Radiology), Devi brings
     data in, Sam asks to read it, Priya administers the platform, Nakamura
     oversees data protection, and Imani reviews what the de-identification
@@ -1192,6 +1207,7 @@
       <li><a href="people-arrive-walkthrough.html">Bring in patient data, locked under a key for each patient</a></li>
       <li><a href="read-a-few-rows-walkthrough.html">Read five locked rows, with an approver's say</a></li>
       <li><a href="open-a-few-files-walkthrough.html">Open two of the recordings, with an approver's say</a></li>
+      <li><a href="release-bars-walkthrough.html">Set the bars a result is released under</a></li>
       <li><a href="de-identify-and-release-walkthrough.html">Remove names from the recordings, and a reviewer decides</a></li>
       <li><a href="evidence-without-names-walkthrough.html">See how locked data was used, without seeing a name</a></li>
       <li><a href="people-administration-walkthrough.html">Ask for a role, and see who may grant it</a></li>

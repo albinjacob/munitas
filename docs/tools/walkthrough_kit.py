@@ -116,13 +116,19 @@ SERIES = [
                 "permission, the files close again.",
      "you_see": "A request for files, a custodian allowing fewer, a recording playing in the page, and the files closing "
                 "when the permission ends"},
+    {"slug": "release-bars", "org": "health", "stage": "Locked patient data", "title": "Set the bars a result is released under",
+     "summary": "The data protection officer writes down how much identifying detail a de-identified result may still hold, once for each "
+                "audience it is released to, as named sets of limits. Everyone in the organisation can read them, and nobody else can "
+                "set one.",
+     "you_see": "A first bar written, saved with who made it and when, a stricter second bar, and a reviewer who can read both and "
+                "cannot change either"},
     {"slug": "de-identify-and-release", "org": "health", "stage": "Locked patient data", "title": "Remove names from the recordings, and a reviewer decides",
      "summary": "The built-in pipeline removes names, dates and addresses from the three locked recordings and is scored "
                 "against their answer keys. The person who started the run cannot decide the result, and neither can the "
-                "custodian of the owning department. The de-identification reviewer decides, with a written reason, and a "
-                "release widens access by one step.",
-     "you_see": "A run on real speech, two people refused for different reasons, a reviewer's measurement and decision, and a "
-                "researcher who still cannot read the released result"},
+                "custodian of the owning department. The de-identification reviewer chooses the release bar for the audience, "
+                "decides with a written reason, and a release widens access by one step.",
+     "you_see": "A run on real speech, two people refused for different reasons, the same measurement checked against two bars, a "
+                "reviewer's decision that keeps the bar it was judged by, and a researcher who still cannot read the released result"},
     {"slug": "evidence-without-names", "org": "health", "stage": "Locked patient data", "title": "See how locked data was used, without seeing a name",
      "summary": "The privacy auditor and the data protection officer read the record of everything that happened to the "
                 "locked data: who read, who was refused, what was done to each column, and which key was opened and why. "
@@ -131,7 +137,7 @@ SERIES = [
     {"slug": "people-administration", "org": "health", "stage": "Roles and approvers", "title": "Ask for a role, and see who may grant it",
      "summary": "A researcher asks to hold a role and cannot decide the request alone. The person who runs "
                 "Munitas is refused when trying to grant it, and the custodian of a department grants it instead.",
-     "you_see": "A request for a role, a refusal with its reason, and a grant that starts as never checked"},
+     "you_see": "A request for a role, a refusal with its reason, and a grant that nobody has yet confirmed is still needed"},
     {"slug": "department-approvers", "org": "health", "stage": "Roles and approvers", "title": "Cover a department while its custodian is away",
      "summary": "The custodian of Cardiology names a colleague from another department as cover. The cover "
                 "confirms a claim about Cardiology's data on their own, then the custodian ends the cover. The "
@@ -314,6 +320,9 @@ WORDS = {
     "sealed": ("Sealed", "Finished and closed for good, so that it can never be edited."),
     "role": ("Role", "A named set of permissions that a person can hold, such as the permission to decide who may read "
                      "a department&rsquo;s data."),
+    "release_bar": ("Release bar", "A set of limits an organisation chooses for how much identifying detail a result may still hold, "
+                                   "kept under a name for the audience the result is released to. A change adds a new version and "
+                                   "the earlier ones stay."),
     "deid_reviewer": ("De-identification reviewer", "A role that allows a person to review data from which identifying "
                                                     "details have been removed, and to decide whether it may be released."),
     "platform_admin": ("Platform administrator", "The person who runs Munitas itself. The role gives no say over who "

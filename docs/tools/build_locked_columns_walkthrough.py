@@ -49,9 +49,9 @@ STEPS = [
     },
     {
         "file": "03-a-bad-file-is-refused.png", "actor": "devi",
-        "title": "A rows file with two mistakes is refused, with both listed",
+        "title": "A file of rows with two mistakes is refused, with both listed",
         "screen": "Bring data into a dataset &middot; the table option",
-        "text": "Devi chooses the contract and a rows file in which one date has been replaced by the words &lsquo;not "
+        "text": "Devi chooses the contract and a file of rows in which one date has been replaced by the words &lsquo;not "
                 "a date&rsquo; and one patient number has been removed. Pressing <strong>Seal as a table</strong> is "
                 "the check. Nothing is sealed, and every problem is listed with the row it belongs to, so that one "
                 "attempt shows all of them instead of one at a time.",
@@ -63,9 +63,9 @@ STEPS = [
     },
     {
         "file": "04-the-table-is-sealed.png", "actor": "devi",
-        "title": "With the right rows file, the table is sealed",
+        "title": "With the right file of rows, the table is sealed",
         "screen": "Bring data into a dataset &middot; the table option",
-        "text": "Devi replaces the rows file with the correct one. For each of the 20 people in it, the platform makes "
+        "text": "Devi replaces the file of rows with the correct one. For each of the 20 people in it, the platform makes "
                 "a key of their own and uses it to scramble that person&rsquo;s name and reason for visit. These "
                 "are the <strong>locked columns</strong>. The number that identified each patient is replaced by a "
                 "<strong>person code</strong>, a label that stands for one person and means nothing on its own. The "

@@ -34,6 +34,7 @@ import { joined, joinedMax } from "../../lib/joined";
 import { when } from "../../lib/when";
 import { sentence, words } from "../../lib/text";
 import { RecordFilesSection } from "../locking/RecordFiles";
+import { ChooseBar, JudgedBy, KindResults } from "./ReleaseBarJudgement";
 
 /** The class in the middle of a sentence, where a capital would read as a shout. */
 const classWord = (c: VisibilityClass) => CLASS_LABEL[c].toLowerCase();
@@ -339,10 +340,11 @@ function ReviewSection({ detail }: { detail: GateDetail }) {
   );
 }
 
-function Decide({ detail }: { detail: GateDetail }) {
+function Decide({ detail, barId }: { detail: GateDetail; barId: string | null }) {
   const { principal } = useIdentity();
   const decide = useDecideGate(detail.id);
-  const review = useReview(detail.id);
+  // Asked under the bar chosen above, so what stops a release is what the decision itself will be checked against.
+  const review = useReview(detail.id, barId);
   const [reason, setReason] = useState("");
   // What stops a release now, from the platform: the same answer the decision itself is checked against, so this page cannot offer what is refused.
   const stoppers = detail.state === "pending" ? (review.data?.blockers ?? []) : [];
@@ -432,7 +434,7 @@ function Decide({ detail }: { detail: GateDetail }) {
           disabled={Boolean(blocked) || stoppers.length > 0 || !reason.trim() || decide.isPending}
           onClick={() =>
             decide.mutate(
-              { outcome: "promote", reason },
+              { outcome: "promote", reason, releaseBarId: barId },
               { onSuccess: () => notify(`Released to ${classWord(detail.to_class)}.`) },
             )
           }
@@ -446,7 +448,7 @@ function Decide({ detail }: { detail: GateDetail }) {
           disabled={Boolean(blocked) || !reason.trim() || decide.isPending}
           onClick={() =>
             decide.mutate(
-              { outcome: "refuse", reason },
+              { outcome: "refuse", reason, releaseBarId: barId },
               { onSuccess: () => notify("Held back.") },
             )
           }
@@ -538,6 +540,8 @@ export function GateDetailScreen() {
   // The same query the review section reads, so the page knows whether there are files to look at without asking twice.
   const review = useReview(decisionId);
   const reviewFiles = review.data?.files.length ?? 0;
+  // The release bar the person has chosen to judge this result by. Empty is the platform's built-in bar.
+  const [barId, setBarId] = useState<string | null>(null);
 
   if (detail.isLoading) return <Loading what="this result" />;
   if (detail.error) return <Failure error={detail.error} what="this result" />;
@@ -546,6 +550,9 @@ export function GateDetailScreen() {
   const d = detail.data;
   // What a practice run found is kept apart from what was found in this batch, so one is never read as the other.
   const notMeasured = d.recommendation === "not_measured";
+  // Whether the result carries counts for each kind of identifier (a bar can judge it), and whether the run measured the share removed at all (a pipeline's own check does not).
+  const counted = Boolean((d.metrics as unknown as { per_entity?: unknown }).per_entity);
+  const hasFigures = d.metrics?.recall_effective !== undefined;
   const batchLeaks = d.leaks.filter((leak) => !leak.practice);
   const practiceLeaks = d.leaks.filter((leak) => leak.practice);
 
@@ -577,8 +584,8 @@ export function GateDetailScreen() {
       </p>
 
       <Section
-        title={notMeasured ? "No automatic measurement" : "What the run measured"}
-        description={notMeasured ? undefined : "How much identifying detail the run removed from the data, and how much it left in."}
+        title={notMeasured ? "No automatic measurement" : hasFigures ? "What the run measured" : "What the pipeline's own check found"}
+        description={notMeasured || !hasFigures ? undefined : "How much identifying detail the run removed from the data, and how much it left in."}
       >
         {notMeasured ? (
           // Nothing was counted, so there are no figures to show: one statement of what that means for the reader, the pipeline's own note about it,
@@ -599,31 +606,46 @@ export function GateDetailScreen() {
           </div>
         ) : (
           <>
-            <dl className="grid grid-cols-2 gap-4 text-sm md:grid-cols-3">
-              <div>
-                <dt className="text-slate-500">Identifying detail removed</dt>
-                <dd className="mt-0.5 font-medium">{percent(d.metrics?.recall_effective)}</dd>
-              </div>
-              <div>
-                <dt className="text-slate-500">Left in the clear</dt>
-                <dd className="mt-0.5 font-medium">{d.metrics?.leaks_total ?? batchLeaks.length}</dd>
-              </div>
-              <div>
-                <dt className="text-slate-500">Naming a person directly</dt>
-                <dd className="mt-0.5 font-medium">{d.metrics?.leaks_direct ?? 0}</dd>
-              </div>
-            </dl>
+            {hasFigures && (
+              <dl className="grid grid-cols-2 gap-4 text-sm md:grid-cols-3">
+                <div>
+                  <dt className="text-slate-500">Identifying detail removed</dt>
+                  <dd className="mt-0.5 font-medium">{percent(d.metrics?.recall_effective)}</dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500">Left in the clear</dt>
+                  <dd className="mt-0.5 font-medium">{d.metrics?.leaks_total ?? batchLeaks.length}</dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500">Naming a person directly</dt>
+                  <dd className="mt-0.5 font-medium">{d.metrics?.leaks_direct ?? 0}</dd>
+                </div>
+              </dl>
+            )}
 
-            <div
-              className={`mt-4 rounded border p-3 text-sm ${
-                d.recommendation === "pass" ? "border-green-300 bg-green-50 text-green-900" : "border-amber-300 bg-amber-50 text-amber-900"
-              }`}
-              data-testid="gate-recommendation"
-            >
-              <p className="font-medium">
-                {d.recommendation === "pass" ? "The measurement clears the agreed bar." : "The measurement does not clear the agreed bar."}
-              </p>
-              <p className="mt-1">{sentence(d.recommendation_reason)}</p>
+            <div className={hasFigures ? "mt-4" : ""}>
+              {d.state === "pending" && counted ? (
+                <ChooseBar detail={d} barId={barId} onChange={setBarId} />
+              ) : d.purpose_name ? (
+                <JudgedBy detail={d} />
+              ) : (
+                <>
+                  <div
+                    className={`rounded border p-3 text-sm ${
+                      d.recommendation === "pass" ? "border-green-300 bg-green-50 text-green-900" : "border-amber-300 bg-amber-50 text-amber-900"
+                    }`}
+                    data-testid="gate-recommendation"
+                  >
+                    <p className="font-medium">
+                      {hasFigures
+                        ? d.recommendation === "pass" ? "The measurement cleared the bar the run was given." : "The measurement did not clear the bar the run was given."
+                        : d.recommendation === "pass" ? "The pipeline's own check passed." : "The pipeline's own check did not pass."}
+                    </p>
+                    <p className="mt-1">{sentence(d.recommendation_reason)}</p>
+                  </div>
+                  <KindResults detail={d} />
+                </>
+              )}
             </div>
           </>
         )}
@@ -656,7 +678,7 @@ export function GateDetailScreen() {
                   <dd className="mt-0.5 font-medium">{d.metrics?.practice_leaks_direct}</dd>
                 </div>
                 <div>
-                  <dt className="text-slate-500">Meets the agreed bar</dt>
+                  <dt className="text-slate-500">Meets the Platform default bar</dt>
                   <dd className="mt-0.5 font-medium">
                     {d.metrics?.practice_cleared_bar === 1 ? "Yes" : "No"}
                   </dd>
@@ -679,7 +701,7 @@ export function GateDetailScreen() {
 
       <ReviewSection detail={d} />
 
-      {!notMeasured && (
+      {!notMeasured && (hasFigures || batchLeaks.length > 0) && (
         <Section
           title="What was left in the clear"
           description="Judge how bad each one is. A fragment and a full name both count as one."
@@ -725,7 +747,7 @@ export function GateDetailScreen() {
       )}
 
       <Section title={d.state === "pending" ? "Your decision" : "The decision"}>
-        <Decide detail={d} />
+        <Decide detail={d} barId={barId} />
       </Section>
     </div>
   );

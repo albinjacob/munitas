@@ -104,10 +104,12 @@ def main() -> int:
     print(f"\n{len(compared)} packages pinned in more than one place, {len(disagree)} disagree")
 
     # The database layer ships twice, because the API image and the worker's images are built from different folders. The two files must be the same file.
-    copies = [root / "platform" / "pgdb.py", root / "worker" / "pgdb.py"]
-    different = all(c.exists() for c in copies) and copies[0].read_bytes() != copies[1].read_bytes()
-    if different:
-        print("platform/pgdb.py and worker/pgdb.py differ: change one and copy it over the other")
+    different = False
+    for name in ("pgdb.py", "gate_bars.py"):
+        copies = [root / "platform" / name, root / "worker" / name]
+        if all(c.exists() for c in copies) and copies[0].read_bytes() != copies[1].read_bytes():
+            print(f"platform/{name} and worker/{name} differ: change one and copy it over the other")
+            different = True
     return 1 if (disagree or different) else 0
 
 

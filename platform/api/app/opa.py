@@ -85,6 +85,14 @@ def may_register_code(payload: dict) -> tuple[bool, list[str]]:
     return _ask(_CODE_REGISTRATION_PATH, payload)
 
 
+_RELEASE_BAR_PATH = "/v1/data/munitas/access/set_release_bar_decision"
+
+
+def may_set_release_bar(payload: dict) -> tuple[bool, list[str]]:
+    """May this person create a release bar, or add a version to one? The data protection officer alone."""
+    return _ask(_RELEASE_BAR_PATH, payload)
+
+
 _CONFIRMATION_PATH = "/v1/data/munitas/access/classification_confirmation_decision"
 
 
