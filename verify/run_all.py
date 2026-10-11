@@ -60,6 +60,8 @@ SCRIPTS = [
     ("U64 grants are a projection, not an edit", "v64_grant_projection.py"),
     ("U65 ingestion writes through a tenant's own identity", "v65_tenant_ingest_identity.py"),
     ("U67 the committed API reference matches the live schema", "v67_openapi_current.py"),
+    ("U191 a policy engine that cannot answer is a 503 with one plain sentence on every route that asks it", "v180_policy_down_is_503.py"),
+    ("U192 the bar a de-identified result is judged by is the customer's: set per purpose by the data protection officer, worked out again at release, and kept with the decision", "v181_release_bars.py"),
     ("U69 the log carries identifiers, never contents", "v69_logging.py"),
     ("U70 disposability is declared, never acquired", "v70_declared_disposable.py"),
     ("U72 a role is asked for by one person and granted by another", "v72_role_administration.py"),
@@ -320,6 +322,8 @@ if ONLY is None:
     print("    .venv\\Scripts\\python.exe verify\\v178_opa_policy_modes.py")
     print("  U190 tries the policy engine's store from the platform's own networks (it cannot be reached) and from its own (the engine's key reads the one package and nothing else), so it runs against a stack in bundle mode with a package published, in the API container and in a throwaway container, seconds:")
     print("    wsl -d Munitas -- bash verify/policy_store_check.sh")
+    print("  U193 calls the worker's record_gate_decision to prove a run keeps the counts for each kind of identifier and is judged by the platform's built-in bar and not a default of its own, so it runs on the host, about 20 seconds:")
+    print("    .venv\\Scripts\\python.exe verify\\v182_gate_records_per_kind.py")
     print("  Also tried against a running stack in bundle mode, never part of a quick run: verify/policy_signing_attacks.sh (an unsigned, wrongly signed or altered package is refused) and verify/policy_persistence_check.sh (the engine starts from its saved package with the store down).")
     print("  U183 reads the repository to prove the large tier (verify/large, run_large.py) is kept out of this suite and plans before it acts, so it runs on the host, no database, under a minute:")
     print("    .venv\\Scripts\\python.exe verify\\v173_large_tier_guard.py")

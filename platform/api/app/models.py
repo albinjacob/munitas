@@ -108,6 +108,8 @@ class GateDecisionIn(BaseModel):
     # with no reason recorded is exactly what the gate screen exists to stop.
     reason: str = Field(min_length=1)
     grant_roles: list[str] = Field(default_factory=list)
+    # The release bar the result is judged by, chosen by whoever decides. Empty means the platform's built-in bar.
+    release_bar_id: str | None = None
 
 
 class PipelineRunIn(BaseModel):

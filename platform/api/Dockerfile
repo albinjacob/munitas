@@ -11,6 +11,8 @@ COPY api/app ./app
 COPY crypto ./crypto
 # The project's database layer over pg8000, shared with the worker (worker/pgdb.py is an identical copy).
 COPY pgdb.py ./pgdb.py
+# The bars a de-identified result is judged against, shared with the worker (worker/gate_bars.py is an identical copy).
+COPY gate_bars.py ./gate_bars.py
 # The library that writes a version's rows as a table: shared with the table worker, which has no database.
 COPY tablewriter ./tablewriter
 

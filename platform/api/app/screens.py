@@ -18,11 +18,9 @@ router = APIRouter(tags=["screens"])
 
 
 def require_screen(screen: str, identity: dict) -> None:
-    """Refuse with a 403 and the policy's reason unless the caller's roles may open this page. A policy engine that cannot be reached refuses too."""
-    try:
-        permitted, reasons = opa.may_open_screen(screen, list(identity["roles"]))
-    except opa.PolicyUnavailable as exc:
-        raise HTTPException(503, {"reasons": [str(exc)]}) from exc
+    """Refuse with a 403 and the policy's reason unless the caller's roles may open this page. A policy engine that cannot be reached refuses too, with a 503
+    (the API answers every such failure the same way, in main.py)."""
+    permitted, reasons = opa.may_open_screen(screen, list(identity["roles"]))
     if not permitted:
         raise HTTPException(403, {"reasons": reasons})
 
@@ -35,7 +33,4 @@ def list_screens(identity: dict = Depends(auth.current_session)) -> dict:
     be narrower than `open`, never wider) and `who` (the people it is for, in a phrase that completes "This page is for ..."). The answer is
     `{screens}`, keyed by the page's name.
     """
-    try:
-        return {"screens": opa.screens_for(list(identity["roles"]))}
-    except opa.PolicyUnavailable as exc:
-        raise HTTPException(503, {"reasons": [str(exc)]}) from exc
+    return {"screens": opa.screens_for(list(identity["roles"]))}

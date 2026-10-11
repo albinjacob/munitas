@@ -30,7 +30,7 @@ from crypto import DestroyedKeyError, EnvelopeCrypto
 
 from . import (access_preview, activation, agent_upload, agents, auth, config,
               dag_pipelines, db, department_approvers, derivations, external_accounts, grants, housekeeping, iceberg,
-              development_outputs, development_sample_routes, access_rules_routes, file_lease_routes, notebook_routes, notebook_sign_in_routes, person_keys, release_review, release_review_routes, iceberg_catalog, ingest, legal_export, lifecycle, logs, models, opa, people, person_routes, pipeline, r2, record_routes, locked_file_routes, table_upload_routes, step_routes,
+              development_outputs, development_sample_routes, access_rules_routes, release_bar_routes, gate_purposes, file_lease_routes, notebook_routes, notebook_sign_in_routes, person_keys, release_review, release_review_routes, iceberg_catalog, ingest, legal_export, lifecycle, logs, models, opa, people, person_routes, pipeline, r2, record_routes, locked_file_routes, table_upload_routes, step_routes,
               read_models, readability, screens, seaweed, storage, table_jobs, task_credential, temporal_client,
               versions)
 
@@ -141,6 +141,7 @@ app.include_router(step_routes.router)
 app.include_router(development_sample_routes.router)
 app.include_router(file_lease_routes.router)
 app.include_router(access_rules_routes.router)
+app.include_router(release_bar_routes.router)
 app.include_router(notebook_routes.router)
 app.include_router(notebook_sign_in_routes.router)
 app.include_router(record_routes.router)
@@ -188,6 +189,22 @@ def closed_tenant(request, exc: pg_errors.ReadOnlySqlTransaction):
     return JSONResponse(
         status_code=409,
         content={"detail": str(exc).strip().splitlines()[0]},
+    )
+
+
+@app.exception_handler(opa.PolicyUnavailable)
+def policy_engine_unavailable(request, exc: opa.PolicyUnavailable):
+    """The policy engine could not answer, so the question it was asked is refused.
+
+    Every decision the platform makes about who may do what is put to the policy engine, and with no answer the only safe reply is no. Without this handler
+    the caller saw the catch-all "the platform ran into a problem it did not expect", which reads as a bug; with it the caller sees what happened, as a 503
+    that a console can show and a client can retry. What went wrong (the address, the connection error) goes to the log under the request's reference and
+    never to the caller.
+    """
+    logs.get_logger("main").warning("the policy engine could not answer: %s", exc, extra={"request_id": logs.request_id.get(None)})
+    return JSONResponse(
+        status_code=503,
+        content={"detail": {"reasons": ["The platform's policy engine did not answer, so this was refused. Try again in a moment."]}},
     )
 
 
@@ -1793,6 +1810,23 @@ def _gate_permission(row: dict, identity: dict) -> None:
         raise HTTPException(403, {"decided": False, "reasons": reasons})
 
 
+def _judged_by(row: dict, body: models.GateDecisionIn, identity: dict) -> dict:
+    """The result judged under the release bar the decider chose (the built-in one when none), or a refusal in words when it cannot be."""
+    try:
+        return gate_purposes.judge(row, release_bar_routes.resolve(identity["tenant_id"], body.release_bar_id))
+    except gate_purposes.NotJudgeable as exc:
+        raise HTTPException(409, {"decided": False, "reasons": [str(exc)]})
+
+
+def _judgement_columns(judged: dict) -> tuple:
+    """What a decision keeps of the bar it was judged by: which bar and version, the limits as they were, and the recommendation under them."""
+    bar = judged["bar"]
+    if bar["built_in"] and not judged["counted"]:
+        # Nothing was counted by kind of identifier, so there is no bar to say it was judged by.
+        return (None, None, None, None, None, None)
+    return (bar["id"], bar["name"], bar["version"], json.dumps(bar["bars"]), judged["recommendation"], judged["reason"])
+
+
 @app.post("/gate-decisions/{decision_id}/promote", status_code=201)
 def decide_gate_promote(decision_id: str, body: models.GateDecisionIn,
                         identity: dict = Depends(auth.current_session)) -> dict:
@@ -1804,9 +1838,11 @@ def decide_gate_promote(decision_id: str, body: models.GateDecisionIn,
     """
     row = _pending_gate(decision_id)
     _gate_permission(row, identity)
+    # The release bar the person chose judges the result now, from the counts the run kept. Nothing the caller sends says what the answer is.
+    judged = _judged_by(row, body, identity)
     # The release rests on what the platform checked and what the reviewer looked at, from the same evidence the page shows.
     found = release_review.evidence(person_keys.key_service(), identity, row)
-    stopped = release_review.blockers(found, row)
+    stopped = release_review.blockers(found, row, judged["recommendation"])
     if stopped:
         raise HTTPException(409, {"decided": False, "reasons": stopped})
 
@@ -1817,6 +1853,7 @@ def decide_gate_promote(decision_id: str, body: models.GateDecisionIn,
             "mlflow_run": row["score_card_id"],
             "machine_recommendation": row["recommendation"],
             "machine_reason": row["recommendation_reason"],
+            "release_bar": {"name": judged["bar"]["name"], "version": judged["bar"]["version"], "recommendation": judged["recommendation"], "reason": judged["reason"]},
             "decided_because": body.reason,
             **row["metrics"],
         },
@@ -1826,9 +1863,10 @@ def decide_gate_promote(decision_id: str, body: models.GateDecisionIn,
     db.execute(
         """update gate_decision
              set state = 'promoted', decided_by = %s, decided_at = now(),
-                 decision_reason = %s
+                 decision_reason = %s, purpose_id = %s, purpose_name = %s, purpose_version = %s, bars_used = %s,
+                 release_recommendation = %s, release_reason = %s
            where id = %s and state = 'pending'""",
-        (identity["id"], body.reason, decision_id),
+        (identity["id"], body.reason, *_judgement_columns(judged), decision_id),
     )
     release_review.record(decision_id, found, "released")
     return {"decided": True, "state": "promoted", **result}
@@ -1840,14 +1878,16 @@ def decide_gate_refuse(decision_id: str, body: models.GateDecisionIn,
     """Refuse the gate. The version stays exactly where it is."""
     row = _pending_gate(decision_id)
     _gate_permission(row, identity)
+    judged = _judged_by(row, body, identity)
     found = release_review.evidence(person_keys.key_service(), identity, row)
 
     db.execute(
         """update gate_decision
              set state = 'refused', decided_by = %s, decided_at = now(),
-                 decision_reason = %s
+                 decision_reason = %s, purpose_id = %s, purpose_name = %s, purpose_version = %s, bars_used = %s,
+                 release_recommendation = %s, release_reason = %s
            where id = %s and state = 'pending'""",
-        (identity["id"], body.reason, decision_id),
+        (identity["id"], body.reason, *_judgement_columns(judged), decision_id),
     )
     release_review.record(decision_id, found, "held back")
     return {"decided": True, "state": "refused",

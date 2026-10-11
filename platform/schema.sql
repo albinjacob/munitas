@@ -3465,3 +3465,58 @@ create trigger access_rule_version_no_update before update on access_rule_versio
 
 drop trigger if exists refuse_retired_access_rule_version on access_rule_version;
 create trigger refuse_retired_access_rule_version before insert on access_rule_version for each row execute function refuse_write_to_retired_tenant();
+
+-- ------------------------------------------------ release bars, by purpose -------
+-- The bar a de-identified result is judged against when it is released is the customer's decision (platform/gate_bars.py). A purpose is a name an organisation gives to a
+-- bar ("Public release", "Project A, closed research team"); each change to it is a new version, never an edit, with who made it, when and why, so a decision can say which bar
+-- it was judged by and what that bar was. The platform's own starting values are not rows: they are the built-in purpose "Platform default".
+create table if not exists gate_purpose (
+  id         uuid primary key,
+  tenant_id  text not null references tenant(id),
+  name       text not null check (name <> ''),
+  created_by text not null references directory(id),
+  created_at timestamptz not null default now()
+);
+create unique index if not exists gate_purpose_name_idx on gate_purpose (tenant_id, lower(name));
+
+create table if not exists gate_purpose_version (
+  purpose_id uuid not null references gate_purpose(id),
+  version    int not null check (version >= 1),
+  tenant_id  text not null references tenant(id),
+  bars       jsonb not null,
+  reason     text not null check (reason <> ''),
+  set_by     text not null references directory(id),
+  set_at     timestamptz not null default now(),
+  primary key (purpose_id, version)
+);
+
+create or replace function refuse_edit_of_gate_purpose() returns trigger as $$
+begin
+  raise exception 'a release bar is never edited: change it by adding a version' using errcode = 'read_only_sql_transaction';
+end;
+$$ language plpgsql;
+drop trigger if exists gate_purpose_no_update on gate_purpose;
+create trigger gate_purpose_no_update before update on gate_purpose for each row execute function refuse_edit_of_gate_purpose();
+drop trigger if exists gate_purpose_version_no_update on gate_purpose_version;
+create trigger gate_purpose_version_no_update before update on gate_purpose_version for each row execute function refuse_edit_of_gate_purpose();
+
+drop trigger if exists refuse_retired_gate_purpose on gate_purpose;
+create trigger refuse_retired_gate_purpose before insert on gate_purpose for each row execute function refuse_write_to_retired_tenant();
+drop trigger if exists refuse_retired_gate_purpose_version on gate_purpose_version;
+create trigger refuse_retired_gate_purpose_version before insert on gate_purpose_version for each row execute function refuse_write_to_retired_tenant();
+
+-- What a release was judged by. All null on a decision made before purposes existed. `purpose_name`, `purpose_version` and `bars_used` are copies, so the decision still says what
+-- it was judged by whatever happens to the purpose afterwards. `release_recommendation` is the recommendation under that bar; `recommendation` stays what the run recorded under the
+-- platform's starting values.
+alter table gate_decision add column if not exists purpose_id uuid;
+alter table gate_decision add column if not exists purpose_name text;
+alter table gate_decision add column if not exists purpose_version int;
+alter table gate_decision add column if not exists bars_used jsonb;
+alter table gate_decision add column if not exists release_recommendation text;
+alter table gate_decision add column if not exists release_reason text;
+do $$
+begin
+  alter table gate_decision drop constraint if exists gate_decision_release_recommendation_check;
+  alter table gate_decision add constraint gate_decision_release_recommendation_check
+    check (release_recommendation is null or release_recommendation in ('pass','fail','not_measured'));
+end $$;

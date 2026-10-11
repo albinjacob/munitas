@@ -838,7 +838,9 @@ def verify(params: dict) -> dict:
         "leaks_total": card.leaked,
         "leaks_direct": card.direct_leaks,
         "leaks_quasi": card.quasi_leaks,
-        "metrics": card.as_metrics(),
+        # The counts for each kind of identifier go with the totals, because the bar a result is released under is chosen at release and judged
+        # then, kind by kind (platform/gate_bars.py). They are counts, not identifiers, so they are safe to keep with the decision.
+        "metrics": {**card.as_metrics(), "per_entity": card.per_entity},
         # Carried out of here so the gate decision can store it under the
         # owning tenant. It holds the identifiers, so it goes to Postgres and
         # not to MLflow: see scoring.pseudonymised.
@@ -1003,7 +1005,11 @@ def record_gate_decision(params: dict) -> dict:
     from .scoring import GATE_DIRECT_LEAKS, GATE_RECALL, ScoreCard, evaluate_gate
 
     score = params["score_card"]
-    threshold = params.get("recall_threshold", GATE_RECALL)
+    # A run that was not given a figure is judged by the platform's own starting bar, never by a default of its own: the bar a result is released
+    # under is chosen at release, and this recommendation is the one made under the built-in purpose.
+    threshold = params.get("recall_threshold")
+    if threshold is None:
+        threshold = GATE_RECALL
     max_direct = params.get("max_direct_leaks", GATE_DIRECT_LEAKS)
 
     # Rebuild a card from the metrics the verify activity returned, because
@@ -1016,6 +1022,7 @@ def record_gate_decision(params: dict) -> dict:
     card.leaked = metrics["leaks_total"]
     card.direct_leaks = metrics["leaks_direct"]
     card.quasi_leaks = metrics["leaks_quasi"]
+    card.per_entity = metrics.get("per_entity", {})
 
     passed, reason = evaluate_gate(card, threshold, max_direct)
 

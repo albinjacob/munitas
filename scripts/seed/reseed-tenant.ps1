@@ -99,13 +99,19 @@ if ((Get-Scalar "select count(*) from tenant where id = '$Tenant'") -eq "0") {
 Write-Host "1/5 '$Tenant' does not exist yet, so there is nothing to delete."
 } else {
 Write-Host "1/5 deleting '$Tenant'..." -ForegroundColor Yellow
+# What the purpose is put back to after the rebuild. A worked example is `production`; a `canary` found here was left by an earlier rebuild that stopped
+# after the flip below, so it is not taken as the value to restore.
+$originalPurpose = Get-Scalar "select purpose from tenant where id = '$Tenant'"
+$restorePurpose = if ($originalPurpose -eq "canary") { "production" } else { $originalPurpose }
 Get-Scalar "update tenant set purpose = 'canary' where id = '$Tenant'" | Out-Null
 # scripts/admin/nuke-tenant.py asks for the id to be typed back even under --force, and
 # that prompt is the guard working. It is answered here rather than removed,
 # through cmd's echo: piping a bare string from PowerShell to a native
 # process sends no trailing newline, so `input()` reads an empty line and the
 # deletion is refused. The script is not weakened, only answered.
-cmd /c "echo $Tenant| `"$venvPython`" scripts\admin\nuke-tenant.py --tenant $Tenant --force"
+# --keep-referenced-people: a person another organisation's records point at (the platform administrator, who placed a legal hold in Harbour) cannot be
+# deleted, so they stay with the organisation's own row, and the seed below fills everything else in around them.
+cmd /c "echo $Tenant| `"$venvPython`" scripts\admin\nuke-tenant.py --tenant $Tenant --force --keep-referenced-people"
 if ($LASTEXITCODE -ne 0) { throw "scripts/admin/nuke-tenant.py failed; nothing further was done." }
 }
 
@@ -121,6 +127,11 @@ if ($Tenant -eq "harbour") {
 Write-Host "2/5 restoring the people from $($recipe.Sql)..."
 Get-Content (Join-Path $RepoRoot $recipe.Sql) -Raw |
     wsl -d $WslDistro -- bash -lc "$compose exec -T postgres psql -U munitas -d platform -f -" | Out-Null
+
+# The organisation's row survives a rebuild that kept people, and the seed does not change its purpose, so it is put back here, whatever happened above.
+if ($restorePurpose) {
+    Get-Scalar "update tenant set purpose = '$restorePurpose' where id = '$Tenant' and purpose = 'canary'" | Out-Null
+}
 
 Write-Host "3/5 linking the logins (directory.kratos_identity_id)..."
 & $venvPython infra/kratos/seed-identities.py | Out-Null

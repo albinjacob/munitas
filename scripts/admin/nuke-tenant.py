@@ -153,7 +153,35 @@ INDIRECT_TABLES: dict[str, tuple[str, str]] = {
     "notebook_code_attempt": ("principal", "directory"),
     "pipeline_step_run": ("pipeline_run_id", "pipeline_run"),
     "pipeline_version": ("pipeline_id", "pipeline"),
+    "table_job_part": ("job_id", "table_job"),            # the parts of an upload that is still open, which hold the organisation's file (the platform's own purge lists it too)
 }
+
+
+# Set by --keep-referenced-people: the people another organisation's records point at are not deleted (see people_others_rely_on).
+KEEP = {"people": False}
+
+
+def people_others_rely_on(conn, tenant: str) -> list[tuple[str, str]]:
+    """The people of `tenant` that a record of another organisation points at, as (id, name).
+
+    A person's directory row cannot be deleted while any record points at it, and some of those records cannot be deleted by anybody: a legal hold names
+    the person who placed it. The platform administrator is one person with one row, kept in one organisation, and acts in the others; a hold placed
+    in another organisation therefore stops the first organisation being deleted. Found by asking the database for every foreign key that points at
+    `directory` from a table with an organisation column, and keeping the people whose rows are pointed at from a different organisation."""
+    refs = conn.execute(
+        """select c.conrelid::regclass::text as child, a.attname as col
+             from pg_constraint c join pg_attribute a on a.attrelid = c.conrelid and a.attnum = any(c.conkey)
+            where c.contype = 'f' and c.confrelid = 'directory'::regclass and c.conrelid <> 'directory'::regclass
+              and exists (select 1 from information_schema.columns k
+                           where k.table_schema = 'public' and k.table_name = c.conrelid::regclass::text and k.column_name = 'tenant_id')
+            order by 1, 2""").fetchall()
+    found: dict[str, str] = {}
+    for ref in refs:
+        for row in conn.execute(
+            f'select distinct d.id, d.label from directory d join "{ref["child"]}" x on x."{ref["col"]}" = d.id '
+            "where d.tenant_id = %s and x.tenant_id <> %s", (tenant, tenant)).fetchall():
+            found[row["id"]] = row["label"]
+    return sorted(found.items())
 
 
 def delete_clause(table: str) -> str:
@@ -168,6 +196,8 @@ def delete_clause(table: str) -> str:
     if table in INDIRECT_TABLES:
         fk_col, parent = INDIRECT_TABLES[table]
         return f'{fk_col} in (select id from "{parent}" where tenant_id = %s)'
+    if table == "directory" and KEEP["people"]:
+        return "tenant_id = %s and id not in (select id from nuke_keep)"
     return "tenant_id = %s"
 
 
@@ -259,6 +289,9 @@ def _delete_together(conn, tables: list[str], tenant: str) -> dict[str, int]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tenant", required=True)
+    parser.add_argument("--keep-referenced-people", action="store_true",
+                        help="keep the people that another organisation's records point at, and so the organisation's own row, instead of being refused by the database. "
+                             "For a rebuild: the seed puts everything else back around them.")
     parser.add_argument("--force", action="store_true",
                         help="skip straight to the typed confirmation, for scripted use")
     args = parser.parse_args()
@@ -276,6 +309,13 @@ def main() -> int:
                 "never touches a production tenant, and no flag overrides that."
             )
             return 1
+
+        kept = people_others_rely_on(conn, args.tenant)
+        if kept and args.keep_referenced_people:
+            conn.execute("create temp table nuke_keep (id text primary key) on commit drop")
+            for person, _name in kept:
+                conn.execute("insert into nuke_keep values (%s)", (person,))
+            KEEP["people"] = True
 
         tables = tenant_scoped_tables(conn) + list(INDIRECT_TABLES)
         counts = counts_for(conn, tables, args.tenant)
@@ -297,6 +337,14 @@ def main() -> int:
             keys = bucket_keys(client, b["bucket"])
             print(f"  bucket {b['bucket']}: " + ("already gone" if keys is None
                                                else f"{len(keys)} file(s), deleted with it"))
+
+        if kept:
+            who = ", ".join(f"{name} ({person})" for person, name in kept)
+            if args.keep_referenced_people:
+                print(f"\nKept, because records of another organisation point at them: {who}. The organisation's own row stays with them.")
+            else:
+                print(f"\nRecords of another organisation point at: {who}. The database will refuse to delete them, and so the organisation. "
+                      "Pass --keep-referenced-people to keep them and delete everything else.")
 
         if not args.force:
             print(
@@ -329,7 +377,8 @@ def main() -> int:
             conn.execute("set constraints all immediate")
             for table, rule in PROTECTED_RULES:
                 conn.execute(f'alter table "{table}" enable rule "{rule}"')
-            conn.execute("delete from tenant where id = %s", (args.tenant,))
+            if not KEEP["people"]:
+                conn.execute("delete from tenant where id = %s", (args.tenant,))
         except Exception as exc:
             conn.rollback()
             print(f"\nSomething went wrong, nothing was changed: {exc}")
@@ -337,7 +386,7 @@ def main() -> int:
 
         conn.commit()
 
-    print(f"\ntenant {args.tenant!r} deleted, across {len(deleted)} tables:")
+    print(f"\ntenant {args.tenant!r} " + ("emptied, with its row and the people named above kept," if KEEP["people"] else "deleted,") + f" across {len(deleted)} tables:")
     for t, n in deleted.items():
         print(f"  {t}: {n} rows")
 

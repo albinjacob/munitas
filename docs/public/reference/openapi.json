@@ -204,6 +204,32 @@
         "title": "Attestation",
         "type": "object"
       },
+      "BarsIn": {
+        "properties": {
+          "overall_recall": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The least share of identifiers that survived transcription and were removed, from 0 to 1. Empty for no overall limit.",
+            "title": "Overall Recall"
+          },
+          "types": {
+            "additionalProperties": {
+              "type": "object"
+            },
+            "description": "For a kind of identifier: `recall` (the least share removed) and `max_leaks` (the most left in the clear). Either may be empty.",
+            "title": "Types",
+            "type": "object"
+          }
+        },
+        "title": "BarsIn",
+        "type": "object"
+      },
       "Body_seal_table_files_datasets__dataset_id__seal_table_files_post": {
         "properties": {
           "contract": {
@@ -1348,6 +1374,17 @@
             "minLength": 1,
             "title": "Reason",
             "type": "string"
+          },
+          "release_bar_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Bar Id"
           }
         },
         "required": [
@@ -1641,6 +1678,52 @@
           "rows"
         ],
         "title": "LockedColumnLeaseRequestIn",
+        "type": "object"
+      },
+      "NewBarIn": {
+        "properties": {
+          "bars": {
+            "$ref": "#/components/schemas/BarsIn"
+          },
+          "name": {
+            "description": "What the organisation calls the bar, for example the audience a result is released to. It cannot be changed afterwards.",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Why the bar is set this way.",
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "bars",
+          "reason"
+        ],
+        "title": "NewBarIn",
+        "type": "object"
+      },
+      "NewVersionIn": {
+        "properties": {
+          "bars": {
+            "$ref": "#/components/schemas/BarsIn"
+          },
+          "reason": {
+            "description": "Why the bar is changed.",
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bars",
+          "reason"
+        ],
+        "title": "NewVersionIn",
         "type": "object"
       },
       "OpenOutputIn": {
@@ -8413,6 +8496,66 @@
         ]
       }
     },
+    "/gate-decisions/{decision_id}/judgement": {
+      "get": {
+        "description": "What the recommendation for a result waiting for a decision would be under a release bar (the Platform default when none is named), with the bar and the reason. Nothing is recorded.",
+        "operationId": "judge_waiting_result_gate_decisions__decision_id__judgement_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "decision_id",
+            "required": true,
+            "schema": {
+              "title": "Decision Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "release_bar_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Release Bar Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Judge Waiting Result Gate Decisions  Decision Id  Judgement Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Judge Waiting Result",
+        "tags": [
+          "release bars"
+        ]
+      }
+    },
     "/gate-decisions/{decision_id}/promote": {
       "post": {
         "description": "Clear the gate, and widen access.\n\nThe identity comes from the session, never from the body. Promotion cannot\nbe undone, so who did it has to be a fact the caller could not assert about\nthemselves.",
@@ -8517,7 +8660,7 @@
     },
     "/gate-decisions/{decision_id}/review": {
       "get": {
-        "description": "The files of the version a decision is about, with the checks the platform ran on each, what the caller has opened so far, and whether\nanything stops the caller releasing it now. Opens nothing for the caller to read; the files are opened through the file door.",
+        "description": "The files of the version a decision is about, with the checks the platform ran on each, what the caller has opened so far, and whether\nanything stops the caller releasing it now under the release bar named (the platform's built-in one when none is). Opens nothing for the caller\nto read; the files are opened through the file door.",
         "operationId": "get_review_gate_decisions__decision_id__review_get",
         "parameters": [
           {
@@ -8527,6 +8670,22 @@
             "schema": {
               "title": "Decision Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "release_bar_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Release Bar Id"
             }
           }
         ],
@@ -12848,6 +13007,166 @@
           }
         },
         "summary": "Open Record"
+      }
+    },
+    "/release-bars": {
+      "get": {
+        "description": "The release bars of the caller's organisation, each at its latest version, with the Platform default bar, the kinds of identifier a bar can limit, and whether the caller may set bars. `aliases` names the labels a run keeps its counts under that stand for one of those kinds.",
+        "operationId": "release_bars_release_bars_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Release Bars Release Bars Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Release Bars",
+        "tags": [
+          "release bars"
+        ]
+      },
+      "post": {
+        "description": "Create a release bar, at version 1. Only the data protection officer may. The name is the organisation's own and is never changed afterwards.",
+        "operationId": "create_release_bar_release_bars_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewBarIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Create Release Bar Release Bars Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Release Bar",
+        "tags": [
+          "release bars"
+        ]
+      }
+    },
+    "/release-bars/{bar_id}/versions": {
+      "get": {
+        "description": "Every version of one release bar, newest first, each with the limits as they were, who set it, when and why.",
+        "operationId": "release_bar_versions_release_bars__bar_id__versions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bar_id",
+            "required": true,
+            "schema": {
+              "title": "Bar Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Release Bar Versions Release Bars  Bar Id  Versions Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Release Bar Versions",
+        "tags": [
+          "release bars"
+        ]
+      },
+      "post": {
+        "description": "Change a release bar by adding a version to it. Only the data protection officer may. Earlier versions stay as they were, and a decision already made keeps the version it was judged by.",
+        "operationId": "change_release_bar_release_bars__bar_id__versions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bar_id",
+            "required": true,
+            "schema": {
+              "title": "Bar Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewVersionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Change Release Bar Release Bars  Bar Id  Versions Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change Release Bar",
+        "tags": [
+          "release bars"
+        ]
       }
     },
     "/schema-contracts": {

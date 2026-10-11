@@ -643,6 +643,28 @@ code_registration_decision := {
 	"reasons": [r | some r in code_registration_reason],
 }
 
+# Who sets the bar a de-identified result is judged against (a "release bar", platform/gate_bars.py). The data protection officer: it is the person accountable for how an
+# organisation handles personal data, and, as the rule above says, independent of the act of releasing. The reviewer who decides a release picks among the bars; they do not
+# write them, so a bar cannot be loosened by the person it would let through. The platform administrator is absent for the reason it is absent from approving access: the account that
+# runs the system does not also decide what the system lets out.
+set_release_bar_roles := {"dpo"}
+
+default may_set_release_bar := false
+
+may_set_release_bar if {
+	some role in input.person.roles
+	set_release_bar_roles[role]
+}
+
+set_release_bar_reason contains sprintf("only %s may set a release bar", [role_words.people(set_release_bar_roles)]) if {
+	not may_set_release_bar
+}
+
+set_release_bar_decision := {
+	"allow": may_set_release_bar,
+	"reasons": [r | some r in set_release_bar_reason],
+}
+
 # ---------------------------------------- confirming a sensitivity claim --
 
 # Somebody who registers a dataset may claim a sensitivity less restrictive than the safe default. Until a custodian agrees, the data cannot be

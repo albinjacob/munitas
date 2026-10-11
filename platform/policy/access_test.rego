@@ -679,6 +679,26 @@ test_code_registration_refusal_says_why if {
 }
 
 # ------------------------------------------------------------------
+# Setting a release bar.
+
+test_the_data_protection_officer_may_set_a_release_bar if {
+	access.may_set_release_bar with input as {"person": {"id": "x", "roles": ["dpo"]}}
+}
+
+test_nobody_else_may_set_a_release_bar if {
+	every role in ["deid_reviewer", "platform_admin", "data_custodian", "pipeline_operator", "notebook_explore", "analyst", "privacy_auditor"] {
+		not access.may_set_release_bar with input as {"person": {"id": "x", "roles": [role]}}
+	}
+	not access.may_set_release_bar with input as {"person": {"id": "x", "roles": []}}
+}
+
+test_release_bar_refusal_says_why_in_the_words_of_the_role_table if {
+	decision := access.set_release_bar_decision with input as {"person": {"id": "x", "roles": ["deid_reviewer"]}}
+	decision.allow == false
+	"only the data protection officer may set a release bar" in decision.reasons
+}
+
+# ------------------------------------------------------------------
 # Confirming a sensitivity claim.
 
 department := {"name": "Cardiology", "approvers": ["cust-a"]}

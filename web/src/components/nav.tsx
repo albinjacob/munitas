@@ -64,6 +64,7 @@ export const GROUPS: { title: string; items: Item[] }[] = [
       { to: "/directory", label: "People and roles", icon: PeopleIcon },
       { to: "/roles", label: "What each role can do", icon: KeyIcon },
       { to: "/access-rules", label: "Access rules", icon: ShieldCheckIcon },
+      { to: "/release-bars", label: "Release bars", icon: ShieldCheckIcon },
       { to: "/closing", label: "Closing down the organisation", icon: ClosingIcon },
     ],
   },

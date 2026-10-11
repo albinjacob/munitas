@@ -3,8 +3,8 @@
 **Most platforms govern datasets, AI agents, and pipelines with three
 different tools. Munitas governs all three with one.**
 
-Upload a dataset and it's locked until someone reviews it. Register an
-agent and it can't run until it's locked the same way. A pipeline's output
+Upload a dataset and it is locked until someone reviews it. Register an
+agent and it cannot run until it is locked the same way. A pipeline's output
 gets locked too before anyone can call it real. From there, reading it,
 running it, or releasing it more widely all need someone else to sign off,
 on the record, with a stated reason. One governance model, used everywhere,
@@ -70,7 +70,7 @@ record of what happened to them are protected by guarantees that cannot be quiet
 
 - **Register, then seal.** A dataset, an agent, or a pipeline is named,
   given an owning department, and uploaded. Nothing is readable or runnable
-  until it's sealed as a version: content-addressed, immutable, no editing
+  until it is sealed as a version: content-addressed, immutable, no editing
   in place.
 - **A sensitivity lattice, not a binary ACL.** Data moves through access
   levels one step at a time. Every role has a ceiling on what it can read
@@ -80,7 +80,7 @@ record of what happened to them are protected by guarantees that cannot be quiet
 - **Every pipeline ends in a gate decision.** Built-in pipelines and
   operator-authored DAGs alike terminate in a real gate decision, not a
   side quest, part of the execution graph itself. Whoever started the run
-  cannot be the one who clears it; that's checked in code, not policy.
+  cannot be the one who clears it; that is checked in code, not policy.
 - **One policy engine, every request.** Every read and every write is
   checked against [Open Policy Agent](https://www.openpolicyagent.org/)
   before it is allowed: who is asking, what they are asking for, and why,
@@ -95,7 +95,7 @@ record of what happened to them are protected by guarantees that cannot be quiet
   runs in a sandbox with no network and no passwords.
 
 For the services and how they fit together, see
-[docs/public/architecture.md](docs/public/architecture.md). For who's
+[docs/public/architecture.md](docs/public/architecture.md). For who is
 accountable for what and why, see
 [docs/public/design/governance-model.md](docs/public/design/governance-model.md). For every setting
 and its default, see the [Configuration reference](https://albinjacob.github.io/munitas/reference/configuration.html). For every route the
@@ -170,11 +170,11 @@ own work. Agent governance tools govern what a running agent may do,
 live, but do not register or version anything, and do not touch data at
 all. None of these categories combines all six rows in one system.
 
-De-identification tools aren't in the table above: they solve a different
+De-identification tools are not in the table above: they solve a different
 problem (detecting and redacting personal data) rather than governing who
 may access it, so comparing them on these rows would not be a fair test.
 Munitas's own de-identification pipeline uses one such library
-internally, wrapped in the governance layer these tools don't provide on
+internally, wrapped in the governance layer these tools do not provide on
 their own.
 
 ## Status

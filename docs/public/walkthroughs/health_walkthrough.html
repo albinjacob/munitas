@@ -297,32 +297,33 @@
         <li><a href="#w-people-arrive"><span class="quicknav-n">6.</span>Bring in patient data, locked under a key for each patient</a></li>
         <li><a href="#w-read-a-few-rows"><span class="quicknav-n">7.</span>Read five locked rows, with an approver's say</a></li>
         <li><a href="#w-open-a-few-files"><span class="quicknav-n">8.</span>Open two of the recordings, with an approver's say</a></li>
-        <li><a href="#w-de-identify-and-release"><span class="quicknav-n">9.</span>Remove names from the recordings, and a reviewer decides</a></li>
-        <li><a href="#w-evidence-without-names"><span class="quicknav-n">10.</span>See how locked data was used, without seeing a name</a></li>
+        <li><a href="#w-release-bars"><span class="quicknav-n">9.</span>Set the bars a result is released under</a></li>
+        <li><a href="#w-de-identify-and-release"><span class="quicknav-n">10.</span>Remove names from the recordings, and a reviewer decides</a></li>
+        <li><a href="#w-evidence-without-names"><span class="quicknav-n">11.</span>See how locked data was used, without seeing a name</a></li>
       </ul>
     </li>
     <li><a class="quicknav-stage" href="#stage-roles-and-approvers">Roles and approvers</a>
       <ul>
-        <li><a href="#w-people-administration"><span class="quicknav-n">11.</span>Ask for a role, and see who may grant it</a></li>
-        <li><a href="#w-department-approvers"><span class="quicknav-n">12.</span>Cover a department while its custodian is away</a></li>
+        <li><a href="#w-people-administration"><span class="quicknav-n">12.</span>Ask for a role, and see who may grant it</a></li>
+        <li><a href="#w-department-approvers"><span class="quicknav-n">13.</span>Cover a department while its custodian is away</a></li>
       </ul>
     </li>
     <li><a class="quicknav-stage" href="#stage-ai-agents">AI agents</a>
       <ul>
-        <li><a href="#w-agent-asks"><span class="quicknav-n">13.</span>Grant an AI agent permission to read a dataset</a></li>
-        <li><a href="#w-agent-egress"><span class="quicknav-n">14.</span>Grant an AI agent permission to call an external host</a></li>
+        <li><a href="#w-agent-asks"><span class="quicknav-n">14.</span>Grant an AI agent permission to read a dataset</a></li>
+        <li><a href="#w-agent-egress"><span class="quicknav-n">15.</span>Grant an AI agent permission to call an external host</a></li>
       </ul>
     </li>
     <li><a class="quicknav-stage" href="#stage-custom-pipelines">Custom pipelines</a>
       <ul>
-        <li><a href="#w-custom-pipeline"><span class="quicknav-n">15.</span>Register a custom pipeline, and run it</a></li>
-        <li><a href="#w-development-sample"><span class="quicknav-n">16.</span>Test a new pipeline version on a development sample</a></li>
-        <li><a href="#w-custom-step"><span class="quicknav-n">17.</span>Approve a custom step before it runs</a></li>
+        <li><a href="#w-custom-pipeline"><span class="quicknav-n">16.</span>Register a custom pipeline, and run it</a></li>
+        <li><a href="#w-development-sample"><span class="quicknav-n">17.</span>Test a new pipeline version on a development sample</a></li>
+        <li><a href="#w-custom-step"><span class="quicknav-n">18.</span>Approve a custom step before it runs</a></li>
       </ul>
     </li>
     <li><a class="quicknav-stage" href="#stage-audit">Audit</a>
       <ul>
-        <li><a href="#w-audit-decisions"><span class="quicknav-n">18.</span>Read every access decision, including every refusal</a></li>
+        <li><a href="#w-audit-decisions"><span class="quicknav-n">19.</span>Read every access decision, including every refusal</a></li>
       </ul>
     </li>
   </ol>
@@ -395,15 +396,22 @@
       <p class="meta">You will see: A request for files, a custodian allowing fewer, a recording playing in the page, and the files closing when the permission ends.</p>
       <p class="meta">6 steps, about 5 minutes. <span class="open">Open &rarr;</span></p>
     </a>
-    <a class="tile" id="w-de-identify-and-release" href="de-identify-and-release-walkthrough.html">
+    <a class="tile" id="w-release-bars" href="release-bars-walkthrough.html">
       <span class="tag">9. Health organisation</span>
+      <h3>Set the bars a result is released under</h3>
+      <p>The data protection officer writes down how much identifying detail a de-identified result may still hold, once for each audience it is released to, as named sets of limits. Everyone in the organisation can read them, and nobody else can set one.</p>
+      <p class="meta">You will see: A first bar written, saved with who made it and when, a stricter second bar, and a reviewer who can read both and cannot change either.</p>
+      <p class="meta">5 steps, about 4 minutes. <span class="open">Open &rarr;</span></p>
+    </a>
+    <a class="tile" id="w-de-identify-and-release" href="de-identify-and-release-walkthrough.html">
+      <span class="tag">10. Health organisation</span>
       <h3>Remove names from the recordings, and a reviewer decides</h3>
-      <p>The built-in pipeline removes names, dates and addresses from the three locked recordings and is scored against their answer keys. The person who started the run cannot decide the result, and neither can the custodian of the owning department. The de-identification reviewer decides, with a written reason, and a release widens access by one step.</p>
-      <p class="meta">You will see: A run on real speech, two people refused for different reasons, a reviewer's measurement and decision, and a researcher who still cannot read the released result.</p>
-      <p class="meta">9 steps, about 7 minutes. <span class="open">Open &rarr;</span></p>
+      <p>The built-in pipeline removes names, dates and addresses from the three locked recordings and is scored against their answer keys. The person who started the run cannot decide the result, and neither can the custodian of the owning department. The de-identification reviewer chooses the release bar for the audience, decides with a written reason, and a release widens access by one step.</p>
+      <p class="meta">You will see: A run on real speech, two people refused for different reasons, the same measurement checked against two bars, a reviewer's decision that keeps the bar it was judged by, and a researcher who still cannot read the released result.</p>
+      <p class="meta">12 steps, about 10 minutes. <span class="open">Open &rarr;</span></p>
     </a>
     <a class="tile" id="w-evidence-without-names" href="evidence-without-names-walkthrough.html">
-      <span class="tag">10. Health organisation</span>
+      <span class="tag">11. Health organisation</span>
       <h3>See how locked data was used, without seeing a name</h3>
       <p>The privacy auditor and the data protection officer read the record of everything that happened to the locked data: who read, who was refused, what was done to each column, and which key was opened and why. No patient's name appears, and the same person code ties a patient's recording to the same patient's row.</p>
       <p class="meta">You will see: An audit page with no names on it, how each column was treated, and every key opening with its reason.</p>
@@ -414,14 +422,14 @@
   <p>A person asks for a role and an approver decides. When a department's usual approver is away, another approver covers for them.</p>
   <div class="tiles">
     <a class="tile" id="w-people-administration" href="people-administration-walkthrough.html">
-      <span class="tag">11. Health organisation</span>
+      <span class="tag">12. Health organisation</span>
       <h3>Ask for a role, and see who may grant it</h3>
       <p>A researcher asks to hold a role and cannot decide the request alone. The person who runs Munitas is refused when trying to grant it, and the custodian of a department grants it instead.</p>
-      <p class="meta">You will see: A request for a role, a refusal with its reason, and a grant that starts as never checked.</p>
+      <p class="meta">You will see: A request for a role, a refusal with its reason, and a grant that nobody has yet confirmed is still needed.</p>
       <p class="meta">9 steps, about 7 minutes. <span class="open">Open &rarr;</span></p>
     </a>
     <a class="tile" id="w-department-approvers" href="department-approvers-walkthrough.html">
-      <span class="tag">12. Health organisation</span>
+      <span class="tag">13. Health organisation</span>
       <h3>Cover a department while its custodian is away</h3>
       <p>The custodian of Cardiology names a colleague from another department as cover. The cover confirms a claim about Cardiology's data on their own, then the custodian ends the cover. The platform refuses to remove the last permanent approver and keeps a record of every change.</p>
       <p class="meta">You will see: Adding an approver with a reason and an end date, a claim confirmed by the cover, a removal, a refusal with its reason, and the history of who answered for the department.</p>
@@ -432,14 +440,14 @@
   <p>A program that works on data is held to the same rules as a person: it asks for access and waits for an approver to decide. A network architect decides which external hosts a version of it may call.</p>
   <div class="tiles">
     <a class="tile" id="w-agent-asks" href="agent-asks-walkthrough.html">
-      <span class="tag">13. Health organisation</span>
+      <span class="tag">14. Health organisation</span>
       <h3>Grant an AI agent permission to read a dataset</h3>
       <p>An AI agent that ranks radiology documents is given a new version of its code and run. The run waits until the custodian of the Radiology department grants it permission to read a dataset, in the same way a person's request would wait, and a second run has to ask again.</p>
       <p class="meta">You will see: An agent version sealed, a run waiting for permission, a request that names who asked and who will read, and the runs finishing.</p>
       <p class="meta">9 steps, about 7 minutes. <span class="open">Open &rarr;</span></p>
     </a>
     <a class="tile" id="w-agent-egress" href="agent-egress-walkthrough.html">
-      <span class="tag">14. Health organisation</span>
+      <span class="tag">15. Health organisation</span>
       <h3>Grant an AI agent permission to call an external host</h3>
       <p>A data engineer uploads a new version of a radiology agent and lists the one external host it needs to call. The version is sealed but cannot be deployed. Neither the engineer nor the custodian who owns the agent can decide the list: the network architect does, with a written reason. An approved version can then be deployed, and a version whose host is refused cannot.</p>
       <p class="meta">You will see: A version waiting for a decision with its Deploy button greyed out, two people refused for different reasons, the architect's approval and refusal with their reasons, and what each decision does to the version.</p>
@@ -450,21 +458,21 @@
   <p>An organisation can write its own pipelines, which are series of steps that Munitas runs on data. A new version first runs only on development data, and a step that reads recordings needs an approver's agreement.</p>
   <div class="tiles">
     <a class="tile" id="w-custom-pipeline" href="custom-pipeline-walkthrough.html">
-      <span class="tag">15. Health organisation</span>
+      <span class="tag">16. Health organisation</span>
       <h3>Register a custom pipeline, and run it</h3>
       <p>A data engineer in Cardiology registers a pipeline of their own, asks for access to a note, and runs the pipeline. A reviewer makes the final decision, as for every other pipeline.</p>
       <p class="meta">You will see: Registering a pipeline, asking for access, running it, and a reviewer's decision.</p>
       <p class="meta">18 steps, about 14 minutes. <span class="open">Open &rarr;</span></p>
     </a>
     <a class="tile" id="w-development-sample" href="development-sample-walkthrough.html">
-      <span class="tag">16. Health organisation</span>
+      <span class="tag">17. Health organisation</span>
       <h3>Test a new pipeline version on a development sample</h3>
       <p>A data engineer in Cardiology has written a pipeline version that is still in development, so it may run only on development data. The engineer asks for a sample of the locked recordings, a custodian approves fewer, and the platform draws them. The pipeline version then runs for real on the sample and is refused on the real recordings. The sample ends, and recordings with no real person in them are declared synthetic.</p>
       <p class="meta">You will see: A request for a sample, a custodian lowering it and the platform drawing it, a sample that says what it is, a run refused on real recordings and working on the sample, a sample that ends, and a declaration of synthetic recordings.</p>
       <p class="meta">15 steps, about 12 minutes. <span class="open">Open &rarr;</span></p>
     </a>
     <a class="tile" id="w-custom-step" href="custom-step-walkthrough.html">
-      <span class="tag">17. Health organisation</span>
+      <span class="tag">18. Health organisation</span>
       <h3>Approve a custom step before it runs</h3>
       <p>A data engineer in Cardiology uploads a pipeline with a step of their own that reads recordings and writes files. The platform refuses to run it until an approver of the owning department, who did not upload it, approves it. The run then makes a new version that waits for a review.</p>
       <p class="meta">You will see: A version waiting for an approver, a refused run, an approval, a finished run that links to what it made, and a new version that records exactly what produced it.</p>
@@ -475,7 +483,7 @@
   <p>Every request to read data, from a person or a program, is recorded with who asked, what for and why it was allowed or refused. The people who watch can read the record and change nothing.</p>
   <div class="tiles">
     <a class="tile" id="w-audit-decisions" href="audit-decisions-walkthrough.html">
-      <span class="tag">18. Health organisation</span>
+      <span class="tag">19. Health organisation</span>
       <h3>Read every access decision, including every refusal</h3>
       <p>The data protection officer opens a home page of counts, then the list of every request to read data, newest first, and then only the refusals, each with its date and time, who asked, what for and the reason. Each request is recorded twice, once for whether it was allowed and once for whether the access was given, and reading the record is itself recorded.</p>
       <p class="meta">You will see: A home page of counts and the latest refusals, every request in one list, the refusals alone with the reason for each, and the auditors' own reading appearing in the list.</p>

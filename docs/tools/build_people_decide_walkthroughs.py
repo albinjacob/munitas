@@ -68,37 +68,74 @@ DEID_STEPS = [
     },
     {
         "file": "06-imani-opens-the-decision.png", "actor": "imani",
-        "act": ("PART TWO", "The reviewer decides, and the decision cannot be undone",
+        "act": ("PART TWO", "The reviewer chooses the bar, and decides",
                 "A de-identification reviewer is a person who holds the role that decides whether a result with the names removed may be released. "
-                "The role gives no right to read the recordings themselves."),
-        "title": "Imani sees what the run measured",
+                "The role gives no right to read the recordings themselves. A release bar is a named set of limits that the organisation's data "
+                "protection officer wrote for one audience; the reviewer chooses the one for the audience the result is going to."),
+        "title": "Imani sees what the run measured, kind of identifier by kind",
         "screen": "De-identification decision &middot; /gates/&lt;id&gt;",
         "text": "Imani is the de-identification reviewer. The page shows how much identifying detail the run removed and how much it left in, measured "
-                "against the answer keys. Imani is told plainly what releasing does: it moves the result one step up, and it cannot be undone.",
+                "against the answer keys, and counts each kind of identifier separately, so a good overall figure cannot hide one kind that is "
+                "being missed. Until Imani chooses a bar, the result is judged by the Platform default. Imani is told plainly what releasing does: "
+                "it moves the result one step up, and it cannot be undone.",
         "note": "<strong>Identifying detail removed</strong> says <strong>100.0%</strong>, and <strong>Left in the clear</strong> and <strong>Naming a "
-                "person directly</strong> both say <strong>0</strong>. A green box says <strong>The measurement clears the agreed bar.</strong> The text "
+                "person directly</strong> both say <strong>0</strong>. Under <strong>Release bar</strong> the choice reads <strong>Platform "
+                "default</strong>, and a green box says <strong>The measurement clears the Platform default bar.</strong> The table lists "
+                "<strong>A person's name</strong>, <strong>A phone number</strong> and the other kinds with how many were left in the clear. The text "
                 "above says <strong>Releasing moves it from under review to open for annotation, which cannot be undone.</strong>",
     },
     {
-        "file": "07-imani-writes-a-reason.png", "actor": "imani",
+        "file": "07-imani-chooses-the-annotation-team-bar.png", "actor": "imani",
+        "title": "Imani chooses the bar for the audience, and the platform checks the result against it",
+        "screen": "De-identification decision &middot; /gates/&lt;id&gt;",
+        "text": "The result is going to the annotation team, so Imani chooses the Annotation team bar that Nakamura wrote. The platform works the "
+                "recommendation out from the counts the run kept, and works it out again when Imani decides, so nothing Imani types can change what "
+                "the measurement says. The last column of the table now shows what this bar asks of each kind.",
+        "note": "The choice reads <strong>Annotation team (version 1)</strong> and the box says <strong>The measurement clears the Annotation team "
+                "bar.</strong> A line reads <strong>The Annotation team bar asks for at least 95% of identifying detail removed, over all kinds "
+                "together.</strong> In the table, <strong>An address or a place</strong> asks for <strong>at least 90% removed</strong>.",
+    },
+    {
+        "file": "08-the-public-release-bar-asks-more.png", "actor": "imani",
+        "title": "Imani can see what a stricter bar would ask of the same result",
+        "screen": "De-identification decision &middot; /gates/&lt;id&gt;",
+        "text": "Choosing another bar changes nothing until Imani decides. Under Public release the same result is checked against stricter limits, "
+                "and the table shows them. This result clears both, because the run removed everything the answer keys mark.",
+        "note": "The choice reads <strong>Public release (version 1)</strong> and the box says <strong>The measurement clears the Public release "
+                "bar.</strong> In the table, <strong>A date of birth</strong> and <strong>An address or a place</strong> both ask for <strong>at "
+                "least 99% removed</strong>.",
+    },
+    {
+        "file": "09-imani-writes-a-reason.png", "actor": "imani",
         "title": "Imani writes why, and both buttons become available",
         "screen": "De-identification decision &middot; /gates/&lt;id&gt;",
-        "text": "A decision needs a reason, written before the buttons work, because whoever reads the decision later will not have the result in "
-                "front of them. Imani can release the result or hold it back.",
+        "text": "Imani goes back to the Annotation team bar, because that is the audience this result is going to, and writes the reason. A decision "
+                "needs a reason before the buttons work, because whoever reads the decision later will not have the result in front of them. Imani "
+                "can release the result or hold it back, and the bar chosen is the one kept with the decision.",
         "note": "The box holds Imani's reason, <strong>The names, dates and addresses that the answer keys mark were all removed from the "
                 "transcripts.</strong> Both <strong>Release to open for annotation</strong> and <strong>Hold it back</strong> are now ready.",
     },
     {
-        "file": "08-released.png", "actor": "imani",
-        "title": "Imani releases the result",
+        "file": "10-released-and-judged-by-the-bar.png", "actor": "imani",
+        "title": "The result is released, and it keeps the bar it was judged by",
+        "screen": "De-identification decision &middot; /gates/&lt;id&gt;",
+        "text": "Once the result is decided, the page no longer offers a choice. It says which bar the result was judged by, which version of it, "
+                "and what that bar asked at the time. If the data protection officer changes the bar later, this decision still says what it said.",
+        "note": "A green box says <strong>Judged by the Annotation team bar, version 1: it cleared the bar.</strong> A line reads <strong>The "
+                "Annotation team bar asked for at least 95% of identifying detail removed, over all kinds together.</strong> A line that opens "
+                "to show more reads <strong>All of the limits of the bar, as they were then</strong>.",
+    },
+    {
+        "file": "11-the-decision-is-recorded.png", "actor": "imani",
+        "title": "Imani's decision is recorded with who made it, when, and the reason",
         "screen": "De-identification decision &middot; /gates/&lt;id&gt;",
         "text": "The decision is recorded with who made it, when, and the reason. It also records what it rested on. The result is now open for "
                 "annotation, and no data moved: the same files stay where they are and what may read them changed.",
         "note": "Under <strong>The decision</strong> the page says <strong>Released by Imani</strong> with the date and time, and <strong>Reason:</strong> "
-                "followed by Imani's reason.",
+                "followed by Imani's reason, which ends <strong>to the annotation team, under its bar.</strong>",
     },
     {
-        "file": "09-sam-finds-the-released-result.png", "actor": "sam",
+        "file": "12-sam-finds-the-released-result.png", "actor": "sam",
         "title": "A release widens access by one step, not to everybody",
         "screen": "Datasets &middot; /datasets",
         "text": "Sam, a researcher, looks for the result in the list of datasets. It is listed, and its widest access level is now open for annotation. "
@@ -177,10 +214,11 @@ DEID_PAGE = Page(
     eyebrow="Health organisation &middot; The people",
     lede="The built-in pipeline removes names, dates and addresses from the three locked recordings, scored against the answer keys that came "
          "with them. The person who started the run cannot decide the result, and neither can the custodian of the department that owns the "
-         "recordings. The de-identification reviewer decides, with a written reason, and a release widens access by one step.",
+         "recordings. The de-identification reviewer chooses the release bar for the audience, decides with a written reason, and a release "
+         "widens access by one step.",
     actors=DEID_ACTORS, steps=DEID_STEPS,
     words=["organisation", "department", "dataset", "custodian", "pipeline", "run", "gate", "deid_reviewer", "under_review", "open_for_annotation",
-           "answer_key", "locked", "release", "version", "access_level"],
+           "answer_key", "locked", "release", "version", "access_level", "release_bar"],
     shots_dir=SHOTS_ROOT / "remove-names-story",
     capture_note="Captured live against the <code>health</code> organisation by <code>web/walkthroughs/story-b.spec.ts</code>, with a real run on a "
                  "graphics card, and built by <code>docs/tools/build_people_decide_walkthroughs.py</code>.",

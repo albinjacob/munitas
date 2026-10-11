@@ -8,19 +8,24 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from . import auth, db, opa, person_keys, release_review, review_access
+from . import auth, db, gate_purposes, opa, person_keys, release_bar_routes, release_review, review_access
 from .person_errors import NoSuchVersion
 
 router = APIRouter(tags=["release review"])
 
 
 @router.get("/gate-decisions/{decision_id}/review")
-def get_review(decision_id: str, identity: dict = Depends(auth.current_session)) -> dict:
+def get_review(decision_id: str, release_bar_id: str | None = None, identity: dict = Depends(auth.current_session)) -> dict:
     """The files of the version a decision is about, with the checks the platform ran on each, what the caller has opened so far, and whether
-    anything stops the caller releasing it now. Opens nothing for the caller to read; the files are opened through the file door."""
+    anything stops the caller releasing it now under the release bar named (the platform's built-in one when none is). Opens nothing for the caller
+    to read; the files are opened through the file door."""
     row = db.one("select * from gate_decision where id = %s", (decision_id,))
     if not row or row["tenant_id"] != identity["tenant_id"]:
         raise HTTPException(404, "no such gate decision")
+    try:
+        recommendation = gate_purposes.judge(row, release_bar_routes.resolve(identity["tenant_id"], release_bar_id))["recommendation"]
+    except gate_purposes.NotJudgeable as exc:
+        raise HTTPException(409, {"reasons": [str(exc)]}) from exc
     try:
         service = person_keys.key_service()
     except RuntimeError as exc:
@@ -36,5 +41,5 @@ def get_review(decision_id: str, identity: dict = Depends(auth.current_session))
     pending = row["state"] == "pending"
     return {"decision_id": decision_id, "version_id": found["version_id"], "state": row["state"], "files": found["files"], "checks_failed": found["failed"],
             "opened": found["opened"], "limit": found["limit"], "may_review": bool(pending and allowed and review_access.may_review(identity["id"], identity["tenant_id"], found["version_id"])),
-            "blockers": release_review.blockers(found, row) if pending and allowed else [], "not_allowed": [] if allowed else reasons,
+            "blockers": release_review.blockers(found, row, recommendation) if pending and allowed else [], "not_allowed": [] if allowed else reasons,
             "recorded": (row["handoff"] or {}).get("review")}

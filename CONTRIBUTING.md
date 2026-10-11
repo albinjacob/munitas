@@ -7,18 +7,18 @@ deliberately light; expect it to grow as the project does.
 
 - For anything more than a small fix, open an issue first describing what
   you want to change and why. This saves you from building something that
-  doesn't fit the direction, and saves a reviewer from untangling a large,
+  does not fit the direction, and saves a reviewer from untangling a large,
   unexpected diff.
 - Read the [walkthroughs](https://albinjacob.github.io/munitas/walkthroughs/feature-walkthrough.html) before
-  touching code you haven't worked in before, for what the platform
+  touching code you have not worked in before, for what the platform
   actually does before diving into how. Read
   [docs/public/architecture.md](docs/public/architecture.md) for the
   services, trust boundaries, and core guarantees the design rests on.
   Beyond that, every module's own docstring carries the implementation
-  detail inline, next to the code it describes, so it can't go stale the
+  detail inline, next to the code it describes, so it cannot go stale the
   way a second copy would.
 - Read [docs/public/design/governance-model.md](docs/public/design/governance-model.md) before touching
-  anything access- or gate-decision-related. The rules there aren't
+  anything access- or gate-decision-related. The rules there are not
   incidental; they encode who is legally accountable for what.
 
 ## Development setup

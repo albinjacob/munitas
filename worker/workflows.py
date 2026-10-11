@@ -335,7 +335,7 @@ class DeidentificationPipeline:
                 "to_class": params.get("to_class", "OPEN_FOR_ANNOTATION"),
                 "score_card": score,
                 "leak_detail": score["leak_detail"],
-                "recall_threshold": params.get("recall_threshold", 0.95),
+                "recall_threshold": params.get("recall_threshold"),
                 "triggered_by": params.get("triggered_by"),
                 "pipeline_run_id": pipeline_run_id,
                 # What a workflow started after the promotion would need, so it

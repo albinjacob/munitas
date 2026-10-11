@@ -86,7 +86,7 @@ async def main() -> None:
     parser.add_argument("--limit", type=int, default=6,
                         help="records to process; the full corpus takes hours on this GPU")
     parser.add_argument("--dataset", default="encounters")
-    parser.add_argument("--recall-threshold", type=float, default=0.95)
+    parser.add_argument("--recall-threshold", type=float, default=None)
     parser.add_argument("--confidence-threshold", type=float, default=0.4)
     parser.add_argument("--to-class", default="OPEN_FOR_ANNOTATION")
     parser.add_argument("--workflow-id", default=None)

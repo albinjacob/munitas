@@ -12,7 +12,7 @@
  *
  *   $env:STORY_B_PART = "recordings"; npx playwright test --config=walkthroughs/playwright.config.ts story-b
  *
- * Parts: recordings, table, rows, files, remove-names, evidence.
+ * Parts: recordings, table, rows, files, bars, remove-names, after-release, evidence.
  */
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
@@ -293,6 +293,50 @@ test("part files: Devi asks to open the recordings, Hartley allows fewer, and th
 // ---------------------------------------------------------------------------------------------------------------------------------------------
 // B3: names are removed from the recordings by the built-in pipeline, and the de-identification reviewer decides. Real speech work on the graphics card.
 // ---------------------------------------------------------------------------------------------------------------------------------------------
+test("part bars: Nakamura sets two release bars, and Imani can read them but not set one", async ({ page }) => {
+  test.skip(PART !== "bars");
+  test.setTimeout(180_000);
+  const dir = "release-bars-story";
+
+  await loginAs(page, NAKAMURA);
+  await page.goto("/release-bars");
+  await expect(page.getByTestId("bars-none")).toBeVisible({ timeout: 20_000 });
+  await shot(page, dir, "01", "nakamura-opens-release-bars");
+
+  await page.getByTestId("new-bar-open").click();
+  await expect(page.getByTestId("limit-overall")).toHaveValue("98");
+  await page.getByTestId("new-bar-name").fill("Annotation team");
+  await page.getByTestId("limit-overall").fill("95");
+  // The limits are on kinds the recordings really hold: addresses and places, and dates of birth.
+  await page.getByTestId("limit-ADDRESS-recall").fill("90");
+  await page.getByTestId("new-bar-reason").fill("The annotation team works inside the organisation and may keep a few addresses or places in a result, but never a name, a phone number or a record number.");
+  await shotAt(page, dir, "02", "new-bar", "nakamura-fills-in-the-first-bar", 70);
+  await page.getByTestId("new-bar-save").click();
+  await expect(page.getByTestId("release-bar-Annotation team")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId("release-bar-Annotation team").getByTestId("bar-set")).toContainText("Version 1 by Nakamura");
+  // The toast that says the bar was made is gone before the picture, so the picture shows the page and nothing laid over it.
+  await expect(page.getByText("Release bar created.")).toHaveCount(0, { timeout: 20_000 });
+  await shotAt(page, dir, "03", "release-bar-Annotation team", "the-first-bar-is-saved", 90);
+
+  await page.getByTestId("new-bar-open").click();
+  await page.getByTestId("new-bar-name").fill("Public release");
+  await page.getByTestId("limit-overall").fill("99");
+  await page.getByTestId("limit-ADDRESS-recall").fill("99");
+  await page.getByTestId("limit-DATE_OF_BIRTH-recall").fill("99");
+  await page.getByTestId("new-bar-reason").fill("Anything released outside the organisation has to meet the strictest bar the organisation sets.");
+  await page.getByTestId("new-bar-save").click();
+  await expect(page.getByTestId("release-bar-Public release")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText("Release bar created.")).toHaveCount(0, { timeout: 20_000 });
+  await shotAt(page, dir, "04", "release-bar-Annotation team", "both-bars-are-listed", 150);
+
+  await loginAs(page, IMANI);
+  await page.goto("/release-bars");
+  await expect(page.getByTestId("release-bar-Annotation team")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId("bars-cannot-set")).toBeVisible();
+  await expect(page.getByTestId("new-bar-open")).toHaveCount(0);
+  await shotAt(page, dir, "05", "bars-lead", "imani-can-read-the-bars-but-not-set-one", 90);
+});
+
 test("part remove-names: the pipeline runs over the locked recordings, and Imani decides", async ({ page }) => {
   test.skip(PART !== "remove-names");
   test.setTimeout(1_500_000);
@@ -343,9 +387,21 @@ test("part remove-names: the pipeline runs over the locked recordings, and Imani
   await loginAs(page, IMANI);
   await page.goto(gateUrl);
   await expect(page.getByTestId("gate-reason")).toBeVisible();
+  await expect(page.getByTestId("gate-bar-select")).toHaveValue("");
   await shot(page, dir, "06", "imani-opens-the-decision", true);
-  await page.getByTestId("gate-reason").fill("The names, dates and addresses that the answer keys mark were all removed from the transcripts. Releasing the de-identified recordings and transcripts.");
-  await shot(page, dir, "07", "imani-writes-a-reason");
+
+  // The bar is chosen for the audience the result is released to. The annotation team is that audience, and its bar is the one Nakamura set.
+  await page.getByTestId("gate-bar-select").selectOption({ label: "Annotation team (version 1)" });
+  await expect(page.getByTestId("gate-recommendation")).toContainText("Annotation team bar", { timeout: 20_000 });
+  await shotAt(page, dir, "07", "gate-bar", "imani-chooses-the-annotation-team-bar", 170);
+  await page.getByTestId("gate-bar-select").selectOption({ label: "Public release (version 1)" });
+  await expect(page.getByTestId("gate-recommendation")).toContainText("Public release bar", { timeout: 20_000 });
+  await shotAt(page, dir, "08", "gate-bar", "the-public-release-bar-asks-more", 170);
+  await page.getByTestId("gate-bar-select").selectOption({ label: "Annotation team (version 1)" });
+  await expect(page.getByTestId("gate-recommendation")).toContainText("Annotation team bar", { timeout: 20_000 });
+
+  await page.getByTestId("gate-reason").fill("The names, dates and addresses that the answer keys mark were all removed from the transcripts. Releasing the de-identified recordings and transcripts to the annotation team, under its bar.");
+  await shot(page, dir, "09", "imani-writes-a-reason");
   await page.getByTestId("gate-promote").click();
   await expect(page.getByTestId("gate-state")).toContainText(/Released|Promoted|Cleared/i, { timeout: 30_000 });
   await afterRelease(page, dir);
@@ -355,14 +411,16 @@ const REDACTED = "consultation-recordings-redacted";
 
 /** Imani's page after the decision, then what a researcher sees of the released result. */
 async function afterRelease(page: Page, dir: string): Promise<void> {
+  // Two pictures, because the bar the result was judged by is near the top of the page and the decision itself is at the foot.
+  await shotAt(page, dir, "10", "gate-judged-by", "released-and-judged-by-the-bar", 170);
   await page.getByRole("heading", { name: "The decision", exact: true }).scrollIntoViewIfNeeded();
-  await shot(page, dir, "08", "released");
+  await shot(page, dir, "11", "the-decision-is-recorded");
 
   await loginAs(page, SAM);
   await page.goto("/datasets");
   await page.getByTestId("dataset-search").fill(REDACTED);
   await expect(page.getByRole("row").filter({ hasText: REDACTED }).first()).toContainText(/\d+ of \d+/);
-  await shot(page, dir, "09", "sam-finds-the-released-result");
+  await shot(page, dir, "12", "sam-finds-the-released-result");
 }
 
 test("part after-release: Imani's page after the decision, and what Sam sees of the result", async ({ page }) => {

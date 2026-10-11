@@ -40,7 +40,7 @@ async def main() -> None:
     parser.add_argument("--dataset", default="encounters")
     parser.add_argument("--limit", type=int, default=0,
                         help="records per firing; 0 means the full corpus")
-    parser.add_argument("--recall-threshold", type=float, default=0.95)
+    parser.add_argument("--recall-threshold", type=float, default=None)
     parser.add_argument("--confidence-threshold", type=float, default=0.4)
     parser.add_argument("--to-class", default="OPEN_FOR_ANNOTATION")
     args = parser.parse_args()
