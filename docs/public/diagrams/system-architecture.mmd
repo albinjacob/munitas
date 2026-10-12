@@ -21,19 +21,32 @@ flowchart TB
   subgraph no_net["No network connection"]
     derivation["Derivation runner<br/><i>runs one query, no network</i>"]
   end
-  console --> api
-  console --> sign_in
-  api --> policy
-  gateway --> api
-  api --> database
-  api --> storage
-  api --> workflow
-  workflow --> worker
-  workflow --> table_worker
-  worker --> agent
-  worker --> derivation
-  worker --> custom
-  custom --> gateway
+  %% 1. The Console sends everything a person does to the API as a request.
+  console -->|1| api
+  %% 2. The Console asks Sign-in who the person is, and Sign-in issues the session that every request carries.
+  console -->|2| sign_in
+  %% 3. The API asks the policy engine whether each request is allowed, and the engine answers with a reason.
+  api -->|3| policy
+  %% 4. The step gateway passes a custom step's requests to the API. It forwards only the step routes and answers 404 to everything else.
+  gateway -->|4| api
+  %% 5. The API records every decision, and the history behind it, in the database.
+  api -->|5| database
+  %% 6. The API creates a key in object storage for one task at a time, so a task can open only the files it was allowed.
+  api -->|6| storage
+  %% 7. The API starts a long job, such as a pipeline run, in the workflow engine.
+  api -->|7| workflow
+  %% 8. The workflow engine hands the job to the worker and keeps it going if the worker stops, so the job can resume.
+  workflow -->|8| worker
+  %% 9. The workflow engine hands the writing of a large table to the table worker.
+  workflow -->|9| table_worker
+  %% 10. The worker starts a sandboxed agent run on a network with no route to the internet.
+  worker -->|10| agent
+  %% 11. The worker starts the derivation runner, which runs one query with no network connection.
+  worker -->|11| derivation
+  %% 12. The worker starts a custom pipeline step, which is an organisation's own code, on a network of its own.
+  worker -->|12| custom
+  %% 13. The custom step reaches the platform only through the step gateway.
+  custom -->|13| gateway
   classDef restricted fill:#FAEBEB,stroke:#C9564A
   classDef service fill:#E1EEFC,stroke:#1A5FA8
   classDef network fill:#DDEEF0,stroke:#2E7D8A,stroke-dasharray: 5 5

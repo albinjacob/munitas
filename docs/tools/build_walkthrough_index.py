@@ -208,19 +208,17 @@ def render() -> str:
 
 
 def update_feature_page() -> None:
-    """Keep the list of walkthroughs on the feature tour in step with SERIES."""
+    """Keep the short list of organisations, and how many walkthroughs each has, on the feature tour in step with SERIES."""
     page = PUBLIC / "feature-walkthrough.html"
     text = page.read_text(encoding="utf-8")
     start, end = "<!-- walkthrough-list:start -->", "<!-- walkthrough-list:end -->"
     a, b = text.index(start) + len(start), text.index(end)
-    columns = []
-    for org, title in ORG_TITLES.items():
-        items = NL.join(f'      <li><a href="{e["slug"]}-walkthrough.html">{e["title"]}</a></li>' for e in org_entries(org))
-        columns.append(NL.join(["    <div>", f'      <h3><a href="{org_page(org)}">{title}</a></h3>', "      <ul>", items,
-                                "      </ul>", "    </div>"]))
-    block = NL.join(["", '  <div class="walk-list">', NL.join(columns), "  </div>",
+    items = NL.join(
+        f'    <li><a href="{org_page(org)}">{title}</a>: {len(org_entries(org))} walkthroughs</li>'
+        for org, title in ORG_TITLES.items())
+    block = NL.join(["", '  <ul class="plain">', items, "  </ul>",
                      '  <p class="measure" style="margin-top:1.25rem"><a href="index.html">'
-                     "Open the walkthrough index &rarr;</a></p>", "  "])
+                     "Open the walkthrough index, which also says where to start &rarr;</a></p>", "  "])
     page.write_text(text[:a] + block + text[b:], encoding="utf-8")
     print(f"updated the walkthrough list in {page.name}")
 

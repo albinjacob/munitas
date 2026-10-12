@@ -32,7 +32,7 @@ OUT = ROOT / "docs" / "public" / "diagrams"
 # The description. Coordinates are canvas pixels. Boxes are x, y, width, height.
 # ---------------------------------------------------------------------------------------------------------------------------------------------------
 
-W, H = 1192, 990
+W, H = 1192, 1080
 
 BLUE = {"fill": "#E1EEFC", "stroke": "#1A5FA8"}
 RED = {"fill": "#FAEBEB", "stroke": "#C9564A"}
@@ -40,10 +40,10 @@ ZONE = {"fill": "#DDEEF0", "stroke": "#2E7D8A"}
 LINE_BLUE, LINE_RED = "#1A5FA8", "#B03030"
 
 ZONES = {
-    "platform": ("Platform network", (40, 130, 768, 410)),
-    "step_net": ("Step network", (904, 130, 248, 410)),
-    "agent_net": ("Agent network, no route out", (216, 620, 248, 140)),
-    "no_net": ("No network connection", (560, 620, 248, 140)),
+    "platform": ("Platform network", (40, 130, 768, 470)),
+    "step_net": ("Step network", (904, 130, 248, 470)),
+    "agent_net": ("Agent network, no route out", (216, 680, 248, 140)),
+    "no_net": ("No network connection", (560, 680, 248, 140)),
 }
 
 # id: (title, subtitle, box, colour, zone)
@@ -52,15 +52,15 @@ NODES = {
     "sign_in": ("Sign-in", "knows who each person is", (64, 170, 200, 60), BLUE, "platform"),
     "policy": ("Policy engine", "decides every request", (324, 170, 200, 60), BLUE, "platform"),
     "api": ("API", "every request passes here", (584, 170, 200, 60), BLUE, "platform"),
-    "database": ("Database", "records every decision", (64, 310, 200, 60), BLUE, "platform"),
-    "storage": ("Object storage", "where the files live", (324, 310, 200, 60), BLUE, "platform"),
-    "workflow": ("Workflow engine", "keeps long jobs running", (584, 310, 200, 60), BLUE, "platform"),
-    "table_worker": ("Table worker", "writes the large tables", (324, 450, 200, 60), BLUE, "platform"),
-    "worker": ("Worker", "runs pipelines and agents", (584, 450, 200, 60), BLUE, "platform"),
+    "database": ("Database", "records every decision", (64, 340, 200, 60), BLUE, "platform"),
+    "storage": ("Object storage", "where the files live", (324, 340, 200, 60), BLUE, "platform"),
+    "workflow": ("Workflow engine", "keeps long jobs running", (584, 340, 200, 60), BLUE, "platform"),
+    "table_worker": ("Table worker", "writes the large tables", (324, 510, 200, 60), BLUE, "platform"),
+    "worker": ("Worker", "runs pipelines and agents", (584, 510, 200, 60), BLUE, "platform"),
     "gateway": ("Step gateway", "forwards only step routes", (928, 170, 200, 60), BLUE, "step_net"),
-    "custom": ("Custom pipeline step", "an organisation's own code", (928, 450, 200, 60), RED, "step_net"),
-    "agent": ("Sandboxed agent run", "every tool call is checked", (240, 665, 200, 60), RED, "agent_net"),
-    "derivation": ("Derivation runner", "runs one query, no network", (584, 665, 200, 60), RED, "no_net"),
+    "custom": ("Custom pipeline step", "an organisation's own code", (928, 510, 200, 60), RED, "step_net"),
+    "agent": ("Sandboxed agent run", "every tool call is checked", (240, 725, 200, 60), RED, "agent_net"),
+    "derivation": ("Derivation runner", "runs one query, no network", (584, 725, 200, 60), RED, "no_net"),
 }
 
 # id: (from, to, colour, points). Points run from the edge of the first box to the point where the arrowhead's tip sits, which is 10 px short of the second box.
@@ -69,27 +69,45 @@ EDGES = {
     "console_sign_in": ("console", "sign_in", LINE_BLUE, [(584, 54), (164, 54), (164, 160)]),
     "api_policy": ("api", "policy", LINE_BLUE, [(584, 200), (534, 200)]),
     "gateway_api": ("gateway", "api", LINE_BLUE, [(928, 200), (794, 200)]),
-    "api_database": ("api", "database", LINE_BLUE, [(684, 230), (684, 270), (164, 270), (164, 300)]),
-    "api_storage": ("api", "storage", LINE_BLUE, [(684, 230), (684, 270), (424, 270), (424, 300)]),
-    "api_workflow": ("api", "workflow", LINE_BLUE, [(684, 230), (684, 300)]),
-    "workflow_worker": ("workflow", "worker", LINE_BLUE, [(684, 370), (684, 440)]),
-    "workflow_table_worker": ("workflow", "table_worker", LINE_BLUE, [(684, 370), (684, 410), (424, 410), (424, 440)]),
-    "worker_agent": ("worker", "agent", LINE_RED, [(684, 510), (684, 590), (340, 590), (340, 655)]),
-    "worker_derivation": ("worker", "derivation", LINE_RED, [(684, 510), (684, 655)]),
-    "worker_custom": ("worker", "custom", LINE_RED, [(784, 480), (918, 480)]),
-    "custom_gateway": ("custom", "gateway", LINE_RED, [(1028, 450), (1028, 240)]),
+    "api_database": ("api", "database", LINE_BLUE, [(684, 230), (684, 270), (164, 270), (164, 330)]),
+    "api_storage": ("api", "storage", LINE_BLUE, [(684, 230), (684, 270), (424, 270), (424, 330)]),
+    "api_workflow": ("api", "workflow", LINE_BLUE, [(684, 230), (684, 330)]),
+    "workflow_worker": ("workflow", "worker", LINE_BLUE, [(684, 400), (684, 500)]),
+    "workflow_table_worker": ("workflow", "table_worker", LINE_BLUE, [(684, 400), (684, 440), (424, 440), (424, 500)]),
+    "worker_agent": ("worker", "agent", LINE_RED, [(684, 570), (684, 650), (340, 650), (340, 715)]),
+    "worker_derivation": ("worker", "derivation", LINE_RED, [(684, 570), (684, 715)]),
+    "worker_custom": ("worker", "custom", LINE_RED, [(784, 540), (918, 540)]),
+    "custom_gateway": ("custom", "gateway", LINE_RED, [(1028, 510), (1028, 240)]),
 }
 
 # The legend is part of the drawing so that it travels with a screenshot. Swatches first, then the one abbreviation in two aligned columns.
-LEGEND_Y = 800
+LEGEND_Y = 860
 LEGEND_SWATCHES = [
     ("box", BLUE, "A service the platform runs"),
     ("box", RED, "A place with restricted reach: it can reach only what an arrow shows"),
     ("zone", ZONE, "The edge of a network"),
     ("line", LINE_BLUE, "A request, from the one that starts it to the one that answers"),
     ("line", LINE_RED, "A connection into or out of a restricted place"),
+    ("badge", LINE_BLUE, "The number of a connector: what it does is written under the picture"),
 ]
 LEGEND_ABBREVIATIONS = [("API", "Application Programming Interface, the platform's single control plane")]
+
+# One line for each connector, in the order the connectors are numbered (the order of EDGES). They are written for a reader who has never seen the platform.
+EXPLAIN = {
+    "console_api": "The Console sends everything a person does to the API as a request.",
+    "console_sign_in": "The Console asks Sign-in who the person is, and Sign-in issues the session that every request carries.",
+    "api_policy": "The API asks the policy engine whether each request is allowed, and the engine answers with a reason.",
+    "gateway_api": "The step gateway passes a custom step's requests to the API. It forwards only the step routes and answers 404 to everything else.",
+    "api_database": "The API records every decision, and the history behind it, in the database.",
+    "api_storage": "The API creates a key in object storage for one task at a time, so a task can open only the files it was allowed.",
+    "api_workflow": "The API starts a long job, such as a pipeline run, in the workflow engine.",
+    "workflow_worker": "The workflow engine hands the job to the worker and keeps it going if the worker stops, so the job can resume.",
+    "workflow_table_worker": "The workflow engine hands the writing of a large table to the table worker.",
+    "worker_agent": "The worker starts a sandboxed agent run on a network with no route to the internet.",
+    "worker_derivation": "The worker starts the derivation runner, which runs one query with no network connection.",
+    "worker_custom": "The worker starts a custom pipeline step, which is an organisation's own code, on a network of its own.",
+    "custom_gateway": "The custom step reaches the platform only through the step gateway.",
+}
 
 TITLE = "System architecture"
 SUMMARY = (
@@ -126,6 +144,65 @@ def seg_box_hit(seg, box, pad=0):
     lo_x, hi_x = min(x1, x2), max(x1, x2)
     lo_y, hi_y = min(y1, y2), max(y1, y2)
     return hi_x > x - pad and lo_x < x + w + pad and hi_y > y - pad and lo_y < y + h + pad
+
+
+BADGE_R = 10
+
+
+def _dist_point_segment(p, seg):
+    (x1, y1), (x2, y2) = seg
+    px, py = p
+    dx, dy = x2 - x1, y2 - y1
+    u = 0 if dx == dy == 0 else max(0, min(1, ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy)))
+    return ((px - (x1 + u * dx)) ** 2 + (py - (y1 + u * dy)) ** 2) ** 0.5
+
+
+def _dist_point_box(p, box):
+    x, y, w, h = box
+    dx = max(x - p[0], 0, p[0] - (x + w))
+    dy = max(y - p[1], 0, p[1] - (y + h))
+    return (dx * dx + dy * dy) ** 0.5
+
+
+def badge_positions() -> dict:
+    """Where each connector's number sits: on a stretch of its own, away from every box, every title and every other connector. None when there is no such place."""
+    zone_titles = [(x + 24, y + h - 26, len(title) * 12 * CHAR, 16) for _z, (title, (x, y, w, h)) in ZONES.items()]
+    spots: dict = {}
+    for eid, (_a, _b, _c, pts) in EDGES.items():
+        segs = segments(pts)
+        best = None
+        for index, ((x1, y1), (x2, y2)) in enumerate(segs):
+            length = abs(x2 - x1) + abs(y2 - y1)
+            last = index == len(segs) - 1
+            lo, hi = 18, length - (30 if last else 18)
+            if hi < lo or (best is not None and length <= best[0]):
+                continue
+            horizontal = y1 == y2
+            sign = 1 if (x2 > x1 if horizontal else y2 > y1) else -1
+            for d in sorted(range(lo, hi + 1), key=lambda v: abs(v - (lo + hi) / 2)):
+                p = (x1 + sign * d, y1) if horizontal else (x1, y1 + sign * d)
+                if any(_dist_point_box(p, box_of(n)) < BADGE_R + 8 for n in NODES):
+                    continue
+                if any(_dist_point_box(p, tb) < BADGE_R + 6 for tb in zone_titles):
+                    continue
+                if any(_dist_point_segment(p, s) < BADGE_R + 6 for oid, (_x, _y, _cc, opts) in EDGES.items() if oid != eid for s in segments(opts)):
+                    continue
+                if any(((p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2) ** 0.5 < 2 * BADGE_R + 8 for q in spots.values() if q):
+                    continue
+                best = (length, p)
+                break
+        spots[eid] = best[1] if best else None
+    return spots
+
+
+def connection_title(eid: str) -> str:
+    a, b, _c, _p = EDGES[eid]
+    return f"{NODES[a][0]} to {NODES[b][0]}"
+
+
+def connections_html() -> str:
+    items = "\n".join(f"    <li><strong>{esc(connection_title(eid))}.</strong> {esc(EXPLAIN[eid])}</li>" for eid in EDGES)
+    return f'<ol class="connections" style="margin:1.2rem 0 0; padding-left:1.5rem; line-height:1.6;">\n{items}\n  </ol>'
 
 
 def run_checks() -> list[tuple[str, bool, list[str]]]:
@@ -300,6 +377,11 @@ def run_checks() -> list[tuple[str, bool, list[str]]]:
     markers = len(re.findall(r'<path class="edge"[^>]*marker-end="url\(#', svg))
     problems = [] if paths == markers == len(EDGES) else [f"{len(EDGES)} connectors, {paths} drawn, {markers} with an arrowhead"]
     record("Arrowheads: every connector is drawn and has one", problems)
+    # Numbers: one badge per connector, clear of everything, and a line of explanation for each.
+    problems = [f"{eid} has no clear place for its number" for eid, spot in badge_positions().items() if spot is None]
+    problems += [f"{eid} has no explanation" for eid in EDGES if eid not in EXPLAIN]
+    problems += [f"{eid} is explained but is not a connector" for eid in EXPLAIN if eid not in EDGES]
+    record("Numbers: every connector has a number on a stretch of its own, clear of boxes, titles and other connectors, and a line of explanation", problems)
     return results
 
 
@@ -346,12 +428,22 @@ def build_svg() -> str:
         name = "blue" if colour == LINE_BLUE else "red"
         out.append(f'<path class="edge" id="{eid}" d="{d}" fill="none" stroke="{colour}" stroke-width="1.5" marker-end="url(#arrow-{name})"/>')
 
+    for number, (eid, spot) in enumerate(badge_positions().items(), 1):
+        if spot is None:
+            continue
+        colour = EDGES[eid][2]
+        out.append(f'<circle class="badge" cx="{spot[0]}" cy="{spot[1]}" r="{BADGE_R}" fill="#FFFFFF" stroke="{colour}" stroke-width="1.5"/>')
+        out.append(f'<text x="{spot[0]}" y="{spot[1] + 4}" font-size="11" font-weight="700" text-anchor="middle" fill="#1C2333">{number}</text>')
+
     # Legend, a table drawn in the picture.
     x0 = 40
     out.append(f'<text x="{x0}" y="{LEGEND_Y}" font-size="13" font-weight="700" fill="#1C2333">Legend</text>')
     y = LEGEND_Y + 14
     for kind, colour, label in LEGEND_SWATCHES:
-        if kind == "line":
+        if kind == "badge":
+            out.append(f'<circle cx="{x0 + 13}" cy="{y + 11}" r="9" fill="#FFFFFF" stroke="{colour}" stroke-width="1.5"/>')
+            out.append(f'<text x="{x0 + 13}" y="{y + 15}" font-size="11" font-weight="700" text-anchor="middle" fill="#1C2333">1</text>')
+        elif kind == "line":
             name = "blue" if colour == LINE_BLUE else "red"
             out.append(f'<path class="legend-line" d="M{x0},{y + 11} L{x0 + 26},{y + 11}" fill="none" stroke="{colour}" stroke-width="1.5" marker-end="url(#arrow-{name})"/>')
         else:
@@ -384,8 +476,9 @@ def build_mermaid() -> str:
         lines.append(f'  subgraph {zid}["{title}"]')
         lines.extend(node_line(nid, "    ") for nid in in_zone.get(zid, []))
         lines.append("  end")
-    for eid, (a, b, _c, _p) in EDGES.items():
-        lines.append(f"  {a} --> {b}")
+    for number, (eid, (a, b, _c, _p)) in enumerate(EDGES.items(), 1):
+        lines.append(f"  %% {number}. {EXPLAIN[eid]}")
+        lines.append(f"  {a} -->|{number}| {b}")
     reds = [nid for nid, (_t, _s, _b, c, _z) in NODES.items() if c is RED]
     lines.append(f"  classDef restricted fill:{RED['fill']},stroke:{RED['stroke']}")
     lines.append(f"  classDef service fill:{BLUE['fill']},stroke:{BLUE['stroke']}")
@@ -416,7 +509,7 @@ def build_drawio() -> str:
         cells.append(
             f'<mxCell id="{nid}" value="{value}" style="{style_for(colour)}" vertex="1" parent="{parent}"><mxGeometry x="{x}" y="{y}" width="{w}" height="{h}" as="geometry"/></mxCell>'
         )
-    for eid, (a, b, colour, pts) in EDGES.items():
+    for number, (eid, (a, b, colour, pts)) in enumerate(EDGES.items(), 1):
         ax, ay, aw, ah = box_of(a)
         bx, by, bw, bh = box_of(b)
         sx, sy = pts[0]
@@ -433,7 +526,7 @@ def build_drawio() -> str:
             entry_x, entry_y = 1, (ey - by) / bh
         waypoints = "".join(f'<mxPoint x="{x}" y="{y}"/>' for x, y in pts[1:-1])
         cells.append(
-            f'<mxCell id="e_{eid}" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor={colour};strokeWidth=1.5;endArrow=block;endFill=1;targetPerimeterSpacing=10;'
+            f'<mxCell id="e_{eid}" value="{number}" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor={colour};strokeWidth=1.5;endArrow=block;endFill=1;targetPerimeterSpacing=10;'
             f'exitX={exit_x:g};exitY={exit_y:g};exitDx=0;exitDy=0;entryX={entry_x:g};entryY={entry_y:g};entryDx=0;entryDy=0;" edge="1" parent="1" source="{a}" target="{b}">'
             f'<mxGeometry relative="1" as="geometry"><Array as="points">{waypoints}</Array></mxGeometry></mxCell>'
         )
@@ -469,7 +562,7 @@ def build_html(existing: str, svg: str) -> str:
                   "    background: #f6f4ec; color-scheme: light; border: 1px solid var(--paper-line); border-radius: 10px;\n    padding: 24px; box-shadow: var(--shadow); overflow-x: auto;\n  }\n"
                   "  .diagram svg { display: block; width: 100%; height: auto; }\n", page, flags=re.S)
     page = page.replace(".wrap { max-width: 900px;", ".wrap { max-width: 1240px;")
-    block = f'<!-- diagram:start -->\n  <div class="diagram">\n{svg}\n  </div>\n  <!-- diagram:end -->'
+    block = f'<!-- diagram:start -->\n  <div class="diagram">\n{svg}\n  </div>\n  {connections_html()}\n  <!-- diagram:end -->'
     if "<!-- diagram:start -->" in page:
         page = re.sub(r"<!-- diagram:start -->.*?<!-- diagram:end -->", lambda m: block, page, flags=re.S)
     else:

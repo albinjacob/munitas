@@ -158,17 +158,17 @@ SERIES = [
      "you_see": "A version waiting for a decision with its Deploy button greyed out, two people refused for different reasons, "
                 "the architect's approval and refusal with their reasons, and what each decision does to the version"},
     {"slug": "agent-levels", "org": "health", "stage": "AI agents", "title": "Set the risk levels for AI agents",
-     "summary": "The data protection officer writes a short list of risk levels that says how strictly each kind of AI agent is held. A change to the list, here "
-                "how often an agent at the highest level has to be confirmed again, is saved as a new version with who made it, when and why, and the earlier version "
+     "summary": "The AI risk owner writes a short list of risk levels that says how strictly each kind of AI agent is held. A change to the list, here "
+                "how often an agent at the Moderate level has to be confirmed again, is saved as a new version with who made it, when and why, and the earlier version "
                 "is kept. Everybody signed in can read the list, nobody else can change it, and the change reaches the agents held at that level.",
      "you_see": "The list of levels with who wrote it and when, the editor with each level's settings, a reason written for a change, a new version and the earlier one "
                 "side by side, a reviewer who can read the list and has no way to change it, and an agent whose due date moved"},
     {"slug": "agent-approval", "org": "health", "stage": "AI agents", "title": "Approve an AI agent before it can work with patient records",
-     "summary": "The data protection officer has written risk levels. A data engineer registers an agent for the Cardiology department and proposes a level, "
-                "an approver of the department agrees to its first version, and the officer confirms the level and the version in one decision. A sponsor "
+     "summary": "The AI risk owner has written risk levels. A data engineer registers an agent for the Cardiology department and proposes a level, "
+                "an approver of the department agrees to its first version, and the AI risk owner confirms the level and the version in one decision. A sponsor "
                 "is named, the agent is listed in the registry, and a later version that adds a tool the platform does not know needs both people again "
                 "before it can be deployed.",
-     "you_see": "Risk levels with who wrote them and when, a proposed level waiting for the officer, a version that cannot be deployed and says why, "
+     "you_see": "Risk levels with who wrote them and when, a proposed level waiting for the AI risk owner, a version that cannot be deployed and says why, "
                 "two different people deciding, a confirmed level with its reason, a sponsor, and a second version approved by both"},
     {"slug": "agent-tools", "org": "health", "stage": "AI agents", "title": "Approve the tools AI agents may add in advance, and decide the rest one at a time",
      "summary": "The AI risk owner writes a list of tools the organisation has approved in advance, each with the highest risk level it is approved for, the conditions "
