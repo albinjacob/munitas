@@ -44,6 +44,7 @@ insert into directory (id, tenant_id, label, kind, roles) values
   ('canary-engineer',   'canary', 'Canary engineer',    'human', '{pipeline_operator}'),
   ('canary-researcher', 'canary', 'Canary researcher',  'human', '{notebook_explore}'),
   ('canary-dpo',        'canary', 'Canary oversight',   'human', '{dpo}'),
+  ('canary-risk-owner', 'canary', 'Canary AI risk owner', 'human', '{ai_risk_owner}'),
   ('canary-reviewer',   'canary', 'Canary reviewer',    'human', '{deid_reviewer}'),
   ('canary-auditor',    'canary', 'Canary privacy auditor', 'human', '{privacy_auditor}'),
   -- A dedicated identity, the same pattern every other role here already

@@ -236,8 +236,9 @@ def _decide(ctx: ToolContext, tool: str, version_id: str, span) -> dict:
     # mistake in code this platform controls, the same reason a linter
     # catches a typo: useful, and not what stands between an attacker and
     # the data.
-    if ctx.identity.tool_scope and tool not in ctx.identity.tool_scope:
-        reasons = [f"{tool!r} is outside the tool scope declared for this agent version"]
+    if (ctx.identity.tools_declared or ctx.identity.tool_scope) and tool not in ctx.identity.tool_scope:
+        reasons = [f"{tool!r} is outside the tool scope declared for this agent version"
+                   if ctx.identity.tool_scope else f"{tool!r} is refused because this agent version declared that it uses no tools"]
         ctx.decisions[-1] = {
             "tool": tool, "dataset_version": version_id,
             "allowed": False, "reasons": reasons,

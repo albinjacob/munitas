@@ -18,7 +18,7 @@ WHAT KEEPS A FEW PEOPLE FROM SLOWING EVERYONE ELSE DOWN
 
 Past a limit a request is turned away at once with the seconds to wait (429), never queued, because a queue of waiting uploads holds their memory too.
 Per person: uploads open at once, uploads started in an hour, tables refused or failed in an hour. Per upload: parts being stored at once. For the whole
-platform: parts being stored at once (gate.py), which is what holds the API's memory. Per organisation (access rules): the largest file, tables written at
+platform: parts being stored at once (gate.py), which is what holds the API's memory. Per organisation (limits): the largest file, tables written at
 once, tables allowed to wait, bytes kept while they wait, bytes brought in a day. The counts come from the register, so they are exact and hold with
 several API replicas; only the count of parts in flight is per process, and it is the memory of this process that it protects.
 """
@@ -35,7 +35,8 @@ import os
 import tablewriter.binaryrows as binaryrows
 import tablewriter.textrows as textrows
 
-from . import access_rules, config, db, gate, person_keys, privacy_contract, storage, table_files, table_jobs, versions
+from . import config, db, gate, person_keys, privacy_contract, storage, table_files, table_jobs, versions
+from . import limits as org_limits
 from .person_errors import Refused
 
 PART_BYTES = 8 * 1024 * 1024
@@ -74,8 +75,8 @@ def _amount(n: int) -> str:
 
 def limits(tenant_id: str) -> dict:
     """This organisation's own limits, as numbers in the units they are used in (bytes, tables)."""
-    rules = access_rules.in_force(tenant_id)
-    value = lambda key: rules[f"table_uploads.{key}"]["value"]  # noqa: E731
+    in_force = org_limits.in_force(tenant_id)
+    value = lambda key: in_force[f"table_uploads.{key}"]["value"]  # noqa: E731
     return {"largest_file": value("largest_file_gb") * GB, "jobs_at_once": value("jobs_at_once"), "jobs_waiting": value("jobs_waiting"),
             "staged": value("staged_gb") * GB, "per_day": value("per_day_gb") * GB}
 

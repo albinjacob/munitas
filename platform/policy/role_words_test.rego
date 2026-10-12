@@ -28,7 +28,7 @@ test_the_roles_that_are_not_people_only_have_a_label if {
 }
 
 test_the_roles_the_policy_names_are_all_known if {
-	named := access.approver_roles | access.operator_roles | access.intake_roles | access.code_registration_roles | access.set_release_bar_roles
+	named := access.approver_roles | access.operator_roles | access.intake_roles | access.code_registration_roles | access.set_standard_roles
 	every r in named {
 		role_words.roles[r]
 	}

@@ -3439,79 +3439,79 @@ create trigger refuse_retired_notebook_sign_in
   before insert or update on notebook_sign_in
   for each row execute function refuse_write_to_retired_tenant();
 
--- ------------------------------------------------ access rules -------------------
--- What an organisation has set for the limits on what people may ask for (platform/api/app/access_rules.py): who may ask to read locked rows, the most rows and days,
--- the most files and hours to open locked files in the page and in a notebook. One row for each time a rule was set, never edited: the value in force is the latest row,
+-- ------------------------------------------------ limits -------------------
+-- What an organisation has set for the limits on what people may ask for (platform/api/app/limits.py): who may ask to read locked rows, the most rows and days,
+-- the most files and hours to open locked files in the page and in a notebook. One row for each time a limit was set, never edited: the value in force is the latest row,
 -- or the default when there is none, and the rows are the history. `set_by` is a name a person gave (until the page edits and the platform knows who), `source` says how.
-create table if not exists access_rule_version (
+create table if not exists limit_version (
   id        bigserial primary key,
   tenant_id text not null references tenant(id),
-  rule      text not null,
+  limit_key text not null,
   value     jsonb not null,
   reason    text not null check (reason <> ''),
   set_by    text not null check (set_by <> ''),
   source    text not null default 'operator script',
   set_at    timestamptz not null default now()
 );
-create index if not exists access_rule_version_idx on access_rule_version (tenant_id, rule, set_at desc);
+create index if not exists limit_version_idx on limit_version (tenant_id, limit_key, set_at desc);
 
-create or replace function refuse_edit_of_access_rule() returns trigger as $$
+create or replace function refuse_edit_of_limit() returns trigger as $$
 begin
-  raise exception 'a rule that was set is never edited: set it again, and the latest is the one in force' using errcode = 'read_only_sql_transaction';
+  raise exception 'a limit that was set is never edited: set it again, and the latest is the one in force' using errcode = 'read_only_sql_transaction';
 end;
 $$ language plpgsql;
-drop trigger if exists access_rule_version_no_update on access_rule_version;
-create trigger access_rule_version_no_update before update on access_rule_version for each row execute function refuse_edit_of_access_rule();
+drop trigger if exists limit_version_no_update on limit_version;
+create trigger limit_version_no_update before update on limit_version for each row execute function refuse_edit_of_limit();
 
-drop trigger if exists refuse_retired_access_rule_version on access_rule_version;
-create trigger refuse_retired_access_rule_version before insert on access_rule_version for each row execute function refuse_write_to_retired_tenant();
+drop trigger if exists refuse_retired_limit_version on limit_version;
+create trigger refuse_retired_limit_version before insert on limit_version for each row execute function refuse_write_to_retired_tenant();
 
--- ------------------------------------------------ release bars, by purpose -------
--- The bar a de-identified result is judged against when it is released is the customer's decision (platform/gate_bars.py). A purpose is a name an organisation gives to a
--- bar ("Public release", "Project A, closed research team"); each change to it is a new version, never an edit, with who made it, when and why, so a decision can say which bar
--- it was judged by and what that bar was. The platform's own starting values are not rows: they are the built-in purpose "Platform default".
-create table if not exists gate_purpose (
+-- ------------------------------------------------ de-identification standards -------
+-- The standard a de-identified result is judged against when it is released is the customer's decision (platform/gate_standards.py). A de-identification standard is a name an
+-- organisation gives to a set of limits ("Public release", "Project A, closed research team"); each change to it is a new version, never an edit, with who made it, when and why,
+-- so a decision can say which standard it was judged by and what that standard was. The platform's own starting values are not rows: they are the built-in standard "Platform default".
+create table if not exists deidentification_standard (
   id         uuid primary key,
   tenant_id  text not null references tenant(id),
   name       text not null check (name <> ''),
   created_by text not null references directory(id),
   created_at timestamptz not null default now()
 );
-create unique index if not exists gate_purpose_name_idx on gate_purpose (tenant_id, lower(name));
+create unique index if not exists deidentification_standard_name_idx on deidentification_standard (tenant_id, lower(name));
 
-create table if not exists gate_purpose_version (
-  purpose_id uuid not null references gate_purpose(id),
-  version    int not null check (version >= 1),
-  tenant_id  text not null references tenant(id),
-  bars       jsonb not null,
-  reason     text not null check (reason <> ''),
-  set_by     text not null references directory(id),
-  set_at     timestamptz not null default now(),
-  primary key (purpose_id, version)
+create table if not exists deidentification_standard_version (
+  standard_id uuid not null references deidentification_standard(id),
+  version     int not null check (version >= 1),
+  tenant_id   text not null references tenant(id),
+  limits      jsonb not null,
+  reason      text not null check (reason <> ''),
+  set_by      text not null references directory(id),
+  set_at      timestamptz not null default now(),
+  primary key (standard_id, version)
 );
 
-create or replace function refuse_edit_of_gate_purpose() returns trigger as $$
+create or replace function refuse_edit_of_deidentification_standard() returns trigger as $$
 begin
-  raise exception 'a release bar is never edited: change it by adding a version' using errcode = 'read_only_sql_transaction';
+  raise exception 'a de-identification standard is never edited: change it by adding a version' using errcode = 'read_only_sql_transaction';
 end;
 $$ language plpgsql;
-drop trigger if exists gate_purpose_no_update on gate_purpose;
-create trigger gate_purpose_no_update before update on gate_purpose for each row execute function refuse_edit_of_gate_purpose();
-drop trigger if exists gate_purpose_version_no_update on gate_purpose_version;
-create trigger gate_purpose_version_no_update before update on gate_purpose_version for each row execute function refuse_edit_of_gate_purpose();
+drop trigger if exists deidentification_standard_no_update on deidentification_standard;
+create trigger deidentification_standard_no_update before update on deidentification_standard for each row execute function refuse_edit_of_deidentification_standard();
+drop trigger if exists deidentification_standard_version_no_update on deidentification_standard_version;
+create trigger deidentification_standard_version_no_update before update on deidentification_standard_version for each row execute function refuse_edit_of_deidentification_standard();
 
-drop trigger if exists refuse_retired_gate_purpose on gate_purpose;
-create trigger refuse_retired_gate_purpose before insert on gate_purpose for each row execute function refuse_write_to_retired_tenant();
-drop trigger if exists refuse_retired_gate_purpose_version on gate_purpose_version;
-create trigger refuse_retired_gate_purpose_version before insert on gate_purpose_version for each row execute function refuse_write_to_retired_tenant();
+drop trigger if exists refuse_retired_deidentification_standard on deidentification_standard;
+create trigger refuse_retired_deidentification_standard before insert on deidentification_standard for each row execute function refuse_write_to_retired_tenant();
+drop trigger if exists refuse_retired_deidentification_standard_version on deidentification_standard_version;
+create trigger refuse_retired_deidentification_standard_version before insert on deidentification_standard_version for each row execute function refuse_write_to_retired_tenant();
 
--- What a release was judged by. All null on a decision made before purposes existed. `purpose_name`, `purpose_version` and `bars_used` are copies, so the decision still says what
--- it was judged by whatever happens to the purpose afterwards. `release_recommendation` is the recommendation under that bar; `recommendation` stays what the run recorded under the
+-- What a release was judged by. All null on a decision made before standards existed. `standard_name`, `standard_version` and `limits_used` are copies, so the decision still says what
+-- it was judged by whatever happens to the standard afterwards. `release_recommendation` is the recommendation under that standard; `recommendation` stays what the run recorded under the
 -- platform's starting values.
-alter table gate_decision add column if not exists purpose_id uuid;
-alter table gate_decision add column if not exists purpose_name text;
-alter table gate_decision add column if not exists purpose_version int;
-alter table gate_decision add column if not exists bars_used jsonb;
+alter table gate_decision add column if not exists standard_id uuid;
+alter table gate_decision add column if not exists standard_name text;
+alter table gate_decision add column if not exists standard_version int;
+alter table gate_decision add column if not exists limits_used jsonb;
 alter table gate_decision add column if not exists release_recommendation text;
 alter table gate_decision add column if not exists release_reason text;
 do $$
@@ -3520,3 +3520,257 @@ begin
   alter table gate_decision add constraint gate_decision_release_recommendation_check
     check (release_recommendation is null or release_recommendation in ('pass','fail','not_measured'));
 end $$;
+
+-- ------------------------------------------------ agent oversight --------------
+-- Declared tools, risk levels, approval of a widening, review of a drafted output, suspension and incidents (docs/internal/design/agent-oversight.md). Every table below is
+-- appended to and never edited: a decision is a new row with who made it and when.
+
+create or replace function refuse_edit_of_agent_oversight() returns trigger as $$
+begin
+  raise exception 'this record is never edited or removed: add a new one' using errcode = 'read_only_sql_transaction';
+end;
+$$ language plpgsql;
+
+-- Whether the owner said which tools a version uses. False for every version sealed before this column, and for one registered without saying; true when the owner gave a list or
+-- stated that the version uses none. An empty list with this true means "no tools". `model_hosting` is where the model runs, as declared by the owner: null when not said.
+alter table agent_version add column if not exists tools_declared boolean not null default false;
+alter table agent_version add column if not exists model_hosting text;
+do $$
+begin
+  alter table agent_version drop constraint if exists agent_version_model_hosting_valid;
+  alter table agent_version add constraint agent_version_model_hosting_valid check (model_hosting is null or model_hosting in ('platform', 'outside'));
+end $$;
+
+-- Who runs an agent. 'outside' means the platform only describes it: it keeps the record and refuses to start a run.
+alter table agent add column if not exists run_by text not null default 'platform';
+do $$
+begin
+  alter table agent drop constraint if exists agent_run_by_valid;
+  alter table agent add constraint agent_run_by_valid check (run_by in ('platform', 'outside'));
+end $$;
+
+-- The risk levels of an organisation: a list the organisation writes, in order from least to most strict. Each change is a new version. `levels` is a list of
+-- {key, name, description, framework_label, second_approver, blocks}. An organisation with no row uses the built-in list in platform/api/app/agent_risk.py.
+-- `enforce`: when true an agent with no confirmed level cannot start a run, and a version that widens an agent cannot be deployed until it is approved. False until the
+-- data protection officer turns it on, so an organisation chooses when to hold its agents to its levels.
+create table if not exists agent_risk_level_list (
+  tenant_id              text not null references tenant(id),
+  version                int not null check (version >= 1),
+  levels                 jsonb not null,
+  enforce                boolean not null default false,
+  reason                 text not null check (reason <> ''),
+  set_by                 text not null references directory(id),
+  set_at                 timestamptz not null default now(),
+  primary key (tenant_id, version)
+);
+drop trigger if exists agent_risk_level_list_no_edit on agent_risk_level_list;
+create trigger agent_risk_level_list_no_edit before update on agent_risk_level_list for each row execute function refuse_edit_of_agent_oversight();
+drop trigger if exists refuse_retired_agent_risk_level_list on agent_risk_level_list;
+create trigger refuse_retired_agent_risk_level_list before insert on agent_risk_level_list for each row execute function refuse_write_to_retired_tenant();
+
+-- A proposal by the person who registers an agent, or a decision by the data protection officer. The current level of an agent is its newest confirmed row; the name, the
+-- label and the two settings are copied so the record says what the level meant then. `list_version` is null when the built-in list was in force.
+create table if not exists agent_risk_record (
+  id               uuid primary key,
+  tenant_id        text not null references tenant(id),
+  agent_id         uuid not null references agent(id),
+  kind             text not null check (kind in ('proposed', 'confirmed')),
+  level_key        text not null check (level_key <> ''),
+  level_name       text not null,
+  framework_label  text,
+  second_approver  boolean not null,
+  blocks           boolean not null,
+  list_version     int,
+  intended_purpose text not null check (intended_purpose <> ''),
+  affected         text not null check (affected <> ''),
+  reasoning        text not null check (reasoning <> ''),
+  recorded_by      text not null references directory(id),
+  recorded_at      timestamptz not null default now()
+);
+create index if not exists agent_risk_record_agent_idx on agent_risk_record (agent_id, recorded_at desc);
+drop trigger if exists agent_risk_record_no_edit on agent_risk_record;
+create trigger agent_risk_record_no_edit before update on agent_risk_record for each row execute function refuse_edit_of_agent_oversight();
+drop trigger if exists refuse_retired_agent_risk_record on agent_risk_record;
+create trigger refuse_retired_agent_risk_record before insert on agent_risk_record for each row execute function refuse_write_to_retired_tenant();
+
+-- What a version changed against the one before it, written when the version is registered. `changes` is a list of {kind, what, rank, widens}. `widening` is true when any change
+-- widens. `needs_officer` is true when the agent's level (or the lack of a confirmed one) asks for a second approver. `inside_envelope` stays null: reserved for the second round.
+create table if not exists agent_change_approval (
+  id                  uuid primary key,
+  tenant_id           text not null references tenant(id),
+  agent_id            uuid not null references agent(id),
+  agent_version_id    uuid not null unique references agent_version(id),
+  previous_version_id uuid references agent_version(id),
+  changes             jsonb not null,
+  widening            boolean not null,
+  needs_officer       boolean not null,
+  inside_envelope     boolean,
+  submitted_by        text not null references directory(id),
+  created_at          timestamptz not null default now()
+);
+drop trigger if exists agent_change_approval_no_edit on agent_change_approval;
+create trigger agent_change_approval_no_edit before update on agent_change_approval for each row execute function refuse_edit_of_agent_oversight();
+drop trigger if exists refuse_retired_agent_change_approval on agent_change_approval;
+create trigger refuse_retired_agent_change_approval before insert on agent_change_approval for each row execute function refuse_write_to_retired_tenant();
+
+-- One decision per part. The state of the approval is worked out from these rows, so nothing is updated: refused when any part refused; approved when the department part
+-- approved and, if an officer is needed, the officer part approved; otherwise waiting. Nobody decides a version they submitted.
+create table if not exists agent_change_decision (
+  id            uuid primary key,
+  approval_id   uuid not null references agent_change_approval(id),
+  tenant_id     text not null references tenant(id),
+  part          text not null check (part in ('department', 'officer')),
+  decision      text not null check (decision in ('approved', 'refused')),
+  reason        text not null check (reason <> ''),
+  submitted_by  text not null references directory(id),
+  decided_by    text not null references directory(id),
+  decided_at    timestamptz not null default now(),
+  unique (approval_id, part),
+  constraint agent_change_decision_no_self_decision check (decided_by <> submitted_by)
+);
+drop trigger if exists agent_change_decision_no_edit on agent_change_decision;
+create trigger agent_change_decision_no_edit before update on agent_change_decision for each row execute function refuse_edit_of_agent_oversight();
+drop trigger if exists refuse_retired_agent_change_decision on agent_change_decision;
+create trigger refuse_retired_agent_change_decision before insert on agent_change_decision for each row execute function refuse_write_to_retired_tenant();
+
+-- A person's review of what a run produced: accepted as it was, changed, or refused. `draft_hash` is worked out by the platform from the run's findings and never taken from the
+-- caller. `final_hash` is what the reviewer says they ended with. `seconds_taken` is from the run stopping to wait to the decision.
+create table if not exists agent_output_review (
+  id               uuid primary key,
+  tenant_id        text not null references tenant(id),
+  run_id           uuid not null unique references agent_run(id),
+  agent_id         uuid not null references agent(id),
+  agent_version_id uuid not null references agent_version(id),
+  model_id         text not null,
+  outcome          text not null check (outcome in ('accepted', 'changed', 'refused')),
+  draft_hash       text not null,
+  final_hash       text,
+  reason           text,
+  reviewed_by      text not null references directory(id),
+  reviewed_at      timestamptz not null default now(),
+  seconds_taken    int not null check (seconds_taken >= 0)
+);
+create index if not exists agent_output_review_agent_idx on agent_output_review (agent_id, reviewed_at desc);
+drop trigger if exists agent_output_review_no_edit on agent_output_review;
+create trigger agent_output_review_no_edit before update on agent_output_review for each row execute function refuse_edit_of_agent_oversight();
+drop trigger if exists refuse_retired_agent_output_review on agent_output_review;
+create trigger refuse_retired_agent_output_review before insert on agent_output_review for each row execute function refuse_write_to_retired_tenant();
+
+-- Suspending an agent as a whole, and resuming it. The current state is the newest row; no row means running.
+create table if not exists agent_suspension (
+  id        uuid primary key,
+  tenant_id text not null references tenant(id),
+  agent_id  uuid not null references agent(id),
+  action    text not null check (action in ('suspended', 'resumed')),
+  reason    text not null check (reason <> ''),
+  acted_by  text not null references directory(id),
+  acted_at  timestamptz not null default now()
+);
+create index if not exists agent_suspension_agent_idx on agent_suspension (agent_id, acted_at desc);
+drop trigger if exists agent_suspension_no_edit on agent_suspension;
+create trigger agent_suspension_no_edit before update on agent_suspension for each row execute function refuse_edit_of_agent_oversight();
+drop trigger if exists refuse_retired_agent_suspension on agent_suspension;
+create trigger refuse_retired_agent_suspension before insert on agent_suspension for each row execute function refuse_write_to_retired_tenant();
+
+-- An incident reported against an agent. `what` holds no personal data. `reported_onward` is what the organisation says about telling others (a provider, an authority); the
+-- platform sends nothing.
+create table if not exists agent_incident (
+  id              uuid primary key,
+  tenant_id       text not null references tenant(id),
+  agent_id        uuid not null references agent(id),
+  what            text not null check (what <> ''),
+  reported_onward text,
+  action_taken    text,
+  reported_by     text not null references directory(id),
+  reported_at     timestamptz not null default now()
+);
+create index if not exists agent_incident_agent_idx on agent_incident (agent_id, reported_at desc);
+drop trigger if exists agent_incident_no_edit on agent_incident;
+create trigger agent_incident_no_edit before update on agent_incident for each row execute function refuse_edit_of_agent_oversight();
+drop trigger if exists refuse_retired_agent_incident on agent_incident;
+create trigger refuse_retired_agent_incident before insert on agent_incident for each row execute function refuse_write_to_retired_tenant();
+
+-- Each time an evidence pack is made: who, for which agent and period, and the hash of what was handed over.
+create table if not exists agent_evidence_export (
+  id          uuid primary key,
+  tenant_id   text not null references tenant(id),
+  agent_id    uuid not null references agent(id),
+  period_from timestamptz not null,
+  period_to   timestamptz not null,
+  pack_hash   text not null,
+  exported_by text not null references directory(id),
+  exported_at timestamptz not null default now()
+);
+drop trigger if exists agent_evidence_export_no_edit on agent_evidence_export;
+create trigger agent_evidence_export_no_edit before update on agent_evidence_export for each row execute function refuse_edit_of_agent_oversight();
+drop trigger if exists refuse_retired_agent_evidence_export on agent_evidence_export;
+create trigger refuse_retired_agent_evidence_export before insert on agent_evidence_export for each row execute function refuse_write_to_retired_tenant();
+
+-- ------------------------------------------ agent sponsors, re-confirmation and the record chain --------------
+-- A sponsor is the person who answers for an agent on the business side: an approver of the department that owns it. The newest row is the current sponsor. A re-confirmation is a
+-- statement that the agent is still needed and still held at the right level; it restarts the clock a level may set (`reconfirm_days` in the level). Nothing is edited.
+create table if not exists agent_sponsorship (
+  id          uuid primary key,
+  tenant_id   text not null references tenant(id),
+  agent_id    uuid not null references agent(id),
+  sponsor_id  text not null references directory(id),
+  assigned_by text not null references directory(id),
+  reason      text not null check (reason <> ''),
+  assigned_at timestamptz not null default now()
+);
+create index if not exists agent_sponsorship_agent_idx on agent_sponsorship (agent_id, assigned_at desc);
+drop trigger if exists agent_sponsorship_no_edit on agent_sponsorship;
+create trigger agent_sponsorship_no_edit before update on agent_sponsorship for each row execute function refuse_edit_of_agent_oversight();
+drop trigger if exists refuse_retired_agent_sponsorship on agent_sponsorship;
+create trigger refuse_retired_agent_sponsorship before insert on agent_sponsorship for each row execute function refuse_write_to_retired_tenant();
+
+create table if not exists agent_reconfirmation (
+  id           uuid primary key,
+  tenant_id    text not null references tenant(id),
+  agent_id     uuid not null references agent(id),
+  confirmed_by text not null references directory(id),
+  note         text not null check (note <> ''),
+  confirmed_at timestamptz not null default now()
+);
+create index if not exists agent_reconfirmation_agent_idx on agent_reconfirmation (agent_id, confirmed_at desc);
+drop trigger if exists agent_reconfirmation_no_edit on agent_reconfirmation;
+create trigger agent_reconfirmation_no_edit before update on agent_reconfirmation for each row execute function refuse_edit_of_agent_oversight();
+drop trigger if exists refuse_retired_agent_reconfirmation on agent_reconfirmation;
+create trigger refuse_retired_agent_reconfirmation before insert on agent_reconfirmation for each row execute function refuse_write_to_retired_tenant();
+
+-- Every oversight record of an agent is also written here, in the same transaction, with a hash of the record as it was stored and a hash that covers the one before it. Changing or
+-- removing a record afterwards, or adding one outside the platform, no longer matches the chain, and the platform says so when asked to check. The chain is per agent. It shows that
+-- records were changed; it cannot stop somebody who can rewrite the whole chain, which is why the head of the chain is also written into each evidence pack.
+create table if not exists agent_record_chain (
+  seq         bigserial primary key,
+  tenant_id   text not null references tenant(id),
+  agent_id    uuid not null references agent(id),
+  kind        text not null,
+  record_id   uuid not null,
+  record_hash text not null,
+  prev_hash   text not null,
+  chain_hash  text not null,
+  added_at    timestamptz not null default now(),
+  unique (agent_id, kind, record_id)
+);
+create index if not exists agent_record_chain_agent_idx on agent_record_chain (agent_id, seq);
+drop trigger if exists agent_record_chain_no_edit on agent_record_chain;
+create trigger agent_record_chain_no_edit before update on agent_record_chain for each row execute function refuse_edit_of_agent_oversight();
+drop trigger if exists refuse_retired_agent_record_chain on agent_record_chain;
+create trigger refuse_retired_agent_record_chain before insert on agent_record_chain for each row execute function refuse_write_to_retired_tenant();
+
+-- The approved tools list: tools an organisation has approved in advance, each with the highest risk level it is approved for. A change is a new version with who, when and why, and the
+-- earlier versions stay. A version of an agent that adds only listed tools needs no request, or only the department's approval (platform/api/app/agent_tool_list.py).
+create table if not exists agent_tool_list (
+  tenant_id text not null references tenant(id),
+  version   int not null check (version >= 1),
+  entries   jsonb not null,
+  reason    text not null check (reason <> ''),
+  set_by    text not null references directory(id),
+  set_at    timestamptz not null default now(),
+  primary key (tenant_id, version)
+);
+drop trigger if exists agent_tool_list_no_edit on agent_tool_list;
+create trigger agent_tool_list_no_edit before update on agent_tool_list for each row execute function refuse_edit_of_agent_oversight();
+drop trigger if exists refuse_retired_agent_tool_list on agent_tool_list;
+create trigger refuse_retired_agent_tool_list before insert on agent_tool_list for each row execute function refuse_write_to_retired_tenant();

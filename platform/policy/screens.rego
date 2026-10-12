@@ -47,10 +47,30 @@ catalogue := {
 		"menu": {"deid_reviewer", "dpo", "pipeline_operator", "platform_admin"},
 		"why": "Everyone can see what waits and who it waits on. Each row says whether the caller may decide it, and only a reviewer can.", "api": [],
 	},
-	"release_bars": {
-		"path": "/release-bars", "label": "Release bars", "open_to": "everyone",
+	"deidentification_standards": {
+		"path": "/deidentification-standards", "label": "De-identification standards", "open_to": "everyone",
 		"menu": {"deid_reviewer", "dpo", "pipeline_operator", "privacy_auditor", "platform_admin"},
-		"why": "A result is released under a bar the organisation chose, so everyone can see what each bar asks. Only the data protection officer sets one, and the platform refuses the rest.", "api": [],
+		"why": "A result is released under a standard the organisation chose, so everyone can see what each standard asks. Only the data protection officer sets one, and the platform refuses the rest.", "api": [],
+	},
+	"agent_registry": {
+		"path": "/agent-registry", "label": "Agent registry", "open_to": "everyone",
+		"menu": {"dpo", "ai_risk_owner", "pipeline_operator", "privacy_auditor", "deid_reviewer", "data_custodian", "network_architect", "platform_admin"},
+		"why": "Everyone in the organisation can see which agents it has, who answers for each and what each is held to. Acting on one is decided agent by agent.", "api": [],
+	},
+	"risk_levels": {
+		"path": "/risk-levels", "label": "Risk levels", "open_to": "everyone",
+		"menu": {"dpo", "ai_risk_owner", "pipeline_operator", "privacy_auditor", "platform_admin"},
+		"why": "Everyone can see the levels an agent is held at. Only the AI risk owner writes them, and the platform refuses the rest.", "api": [],
+	},
+	"approved_tools": {
+		"path": "/approved-tools", "label": "Approved tools", "open_to": "everyone",
+		"menu": {"ai_risk_owner", "dpo", "pipeline_operator", "data_custodian", "privacy_auditor", "platform_admin"},
+		"why": "Everyone can see which tools a new version of an agent may add without a request, how far each is approved, and why. Only the AI risk owner writes the list, and the platform refuses the rest.", "api": [],
+	},
+	"agent_changes": {
+		"path": "/agent-changes", "label": "Agent changes", "open_to": "everyone",
+		"menu": {"dpo", "ai_risk_owner", "pipeline_operator", "data_custodian", "platform_admin"},
+		"why": "Everyone can see what each new version of an agent changed and who has approved it. Each row says whether the caller may decide it.", "api": [],
 	},
 	"locked_requests": {
 		"path": "/locked-column-access", "label": "Locked data requests", "open_to": "everyone",
@@ -108,8 +128,8 @@ catalogue := {
 		"path": "/roles", "label": "What each role can do", "open_to": "everyone", "menu": "everyone",
 		"why": "What each role may read and approve is published to everyone, so that nobody has to guess what a refusal means.", "api": [],
 	},
-	"access_rules": {
-		"path": "/access-rules", "label": "Access rules", "open_to": "everyone", "menu": "everyone",
+	"limits": {
+		"path": "/limits", "label": "Limits", "open_to": "everyone", "menu": "everyone",
 		"why": "The limits an organisation has set are public inside it, so that a person knows what they may ask for.", "api": [],
 	},
 	"closing": {

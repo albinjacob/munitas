@@ -85,12 +85,74 @@ def may_register_code(payload: dict) -> tuple[bool, list[str]]:
     return _ask(_CODE_REGISTRATION_PATH, payload)
 
 
-_RELEASE_BAR_PATH = "/v1/data/munitas/access/set_release_bar_decision"
+_STANDARD_PATH = "/v1/data/munitas/access/set_standard_decision"
 
 
-def may_set_release_bar(payload: dict) -> tuple[bool, list[str]]:
-    """May this person create a release bar, or add a version to one? The data protection officer alone."""
-    return _ask(_RELEASE_BAR_PATH, payload)
+def may_set_standard(payload: dict) -> tuple[bool, list[str]]:
+    """May this person create a de-identification standard, or add a version to one? The data protection officer alone."""
+    return _ask(_STANDARD_PATH, payload)
+
+
+_RISK_LEVELS_PATH = "/v1/data/munitas/access/manage_risk_levels_decision"
+_RISK_CONFIRM_PATH = "/v1/data/munitas/access/confirm_risk_level_decision"
+_TOOL_LIST_PATH = "/v1/data/munitas/access/manage_tool_list_decision"
+_AGENT_CHANGE_PATH = "/v1/data/munitas/access/agent_change_decision"
+_AGENT_SUSPEND_PATH = "/v1/data/munitas/access/suspend_agent_decision"
+_AGENT_RESUME_PATH = "/v1/data/munitas/access/resume_agent_decision"
+_AGENT_INCIDENT_PATH = "/v1/data/munitas/access/report_incident_decision"
+_AGENT_PACK_PATH = "/v1/data/munitas/access/evidence_pack_decision"
+_AGENT_SPONSOR_PATH = "/v1/data/munitas/access/assign_sponsor_decision"
+_AGENT_RECONFIRM_PATH = "/v1/data/munitas/access/reconfirm_agent_decision"
+
+
+def may_assign_sponsor(payload: dict) -> tuple[bool, list[str]]:
+    """May this person assign the sponsor of an agent? An approver of its department or the AI risk owner."""
+    return _ask(_AGENT_SPONSOR_PATH, payload)
+
+
+def may_reconfirm_agent(payload: dict) -> tuple[bool, list[str]]:
+    """May this person re-confirm an agent? Its sponsor, an approver of its department or the AI risk owner."""
+    return _ask(_AGENT_RECONFIRM_PATH, payload)
+
+
+def may_make_evidence_pack(payload: dict) -> tuple[bool, list[str]]:
+    """May this person make the evidence pack of an agent? An approver of its department, the AI risk owner, the data protection officer, a privacy auditor or a platform administrator."""
+    return _ask(_AGENT_PACK_PATH, payload)
+
+
+def may_manage_risk_levels(payload: dict) -> tuple[bool, list[str]]:
+    """May this person write the organisation's risk levels? The AI risk owner alone."""
+    return _ask(_RISK_LEVELS_PATH, payload)
+
+
+def may_manage_tool_list(payload: dict) -> tuple[bool, list[str]]:
+    """May this person write the organisation's approved tools list? The AI risk owner alone."""
+    return _ask(_TOOL_LIST_PATH, payload)
+
+
+def may_confirm_risk_level(payload: dict) -> tuple[bool, list[str]]:
+    """May this person confirm the risk level of this agent? The AI risk owner, and never for an agent the AI risk owner registered."""
+    return _ask(_RISK_CONFIRM_PATH, payload)
+
+
+def may_decide_agent_change(payload: dict) -> tuple[bool, list[str]]:
+    """May this person give the department's or the officer's approval to a version that widens an agent? Never the person who submitted it."""
+    return _ask(_AGENT_CHANGE_PATH, payload)
+
+
+def may_suspend_agent(payload: dict) -> tuple[bool, list[str]]:
+    """May this person suspend an agent? An approver of its department, the AI risk owner, the data protection officer or a platform administrator."""
+    return _ask(_AGENT_SUSPEND_PATH, payload)
+
+
+def may_resume_agent(payload: dict) -> tuple[bool, list[str]]:
+    """May this person resume a suspended agent? As for suspending, and only the AI risk owner where the agent's level asks for a second approver."""
+    return _ask(_AGENT_RESUME_PATH, payload)
+
+
+def may_report_incident(payload: dict) -> tuple[bool, list[str]]:
+    """May this person report an incident about an agent?"""
+    return _ask(_AGENT_INCIDENT_PATH, payload)
 
 
 _CONFIRMATION_PATH = "/v1/data/munitas/access/classification_confirmation_decision"

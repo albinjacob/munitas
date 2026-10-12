@@ -61,7 +61,11 @@ SCRIPTS = [
     ("U65 ingestion writes through a tenant's own identity", "v65_tenant_ingest_identity.py"),
     ("U67 the committed API reference matches the live schema", "v67_openapi_current.py"),
     ("U191 a policy engine that cannot answer is a 503 with one plain sentence on every route that asks it", "v180_policy_down_is_503.py"),
-    ("U192 the bar a de-identified result is judged by is the customer's: set per purpose by the data protection officer, worked out again at release, and kept with the decision", "v181_release_bars.py"),
+    ("U192 the de-identification standard a result is judged by is the customer's: set by the data protection officer, worked out again at release, and kept with the decision", "v181_deidentification_standards.py"),
+    ("U195 an organisation holds its agents to risk levels it writes: a version that widens an agent waits for approval, an agent can be suspended, and the evidence about it can be made", "v183_agent_oversight.py"),
+    ("U198 an agent's first submission is decided once, an agent has a sponsor and is re-confirmed, its records are chained so a change shows, and the evidence pack says which outcomes its records support", "v185_agent_oversight_more.py"),
+    ("U205 an organisation approves tools in advance: a version that adds only those tools does not wait for the people who would otherwise decide it, and a tool outside the list, above its level or past its review date is decided in the normal way", "v190_approved_tools_list.py"),
+    ("U202 the first upload for a new organisation waits for storage to recognise its key instead of failing, and waits for nothing else", "v188_new_key_wait.py"),
     ("U69 the log carries identifiers, never contents", "v69_logging.py"),
     ("U70 disposability is declared, never acquired", "v70_declared_disposable.py"),
     ("U72 a role is asked for by one person and granted by another", "v72_role_administration.py"),
@@ -110,7 +114,7 @@ SCRIPTS = [
     ("U163 a custom pipeline's run says which step waits for which (names, kinds and dependencies only, nothing else of the definition) so it can be drawn as a graph, and a run with no steps, a built-in run and another organisation's run are handled", "v156_run_graph.py"),
     ("U164 a person opens a few of a version's real files only when an approver of the owning department, who is not them, has allowed it: the limits, who may ask and decide, files the platform draws and fixes, what the door lists, opens and refuses, a log that names the lease, a lease that ends or runs out stopping what was playing, and a lease never counting as development data", "v157_file_leases.py"),
     ("U167 a notebook signs in on behalf of a person and the pass it receives can do only what a notebook may: it shows a code, the person types it in the console, is signed in by the console session and approves, and the notebook receives a short-lived pass; a code the platform did not start is refused, wrong codes are limited, the pass reaches only the routes the client library calls and is refused with a reason everywhere else (including deciding a request, for a custodian), renews with reuse detection, is ended at once by revoke or deny, runs out with its sign-in, is counted when used from another address, and is listed for the person and for the auditor only; the client library signs in, renews, signs out and refuses plain http", "v160_notebook_sign_in.py"),
-    ("U168 an organisation's limits on what people may ask for are settings with today's behaviour as their defaults: who may ask for locked-column rows, the most rows and days, the most files and hours in the page and in a notebook; the value in force is the one every screen and decision uses, a setting is never edited and says who set it and why, the most the platform allows holds even for a row put in by hand, and another organisation is not affected", "v161_access_rules.py"),
+    ("U168 an organisation's limits on what people may ask for are settings with today's behaviour as their defaults: who may ask for locked-column rows, the most rows and days, the most files and hours in the page and in a notebook; the value in force is the one every screen and decision uses, a setting is never edited and says who set it and why, the most the platform allows holds even for a row put in by hand, and another organisation is not affected", "v161_limits.py"),
     ("U170 the directory of people is one organisation's: whoever holds an ordinary role sees their own organisation and no other whatever they ask for, the platform administrator is offered every live organisation, a custodian's row still says which department they answer for, and nobody who is not signed in is given the list", "v163_directory_is_one_organisation.py"),
     ("U172 a dataset is registered, active or deleted, worked out from its versions: deleted ones stay out of the list unless asked for and are counted, each state filter returns its own, a dataset with one readable version is active, the record of a deleted one is kept, and another organisation sees none of them", "v164_dataset_state.py"),
     ("U173 the purge of an organisation knows every table that holds its data without an organisation column of its own, so the next new table is caught the day it is added", "v165_purge_knows_every_table.py"),
@@ -304,6 +308,10 @@ if ONLY is None:
     print("    .venv\\Scripts\\python.exe verify\\v149_development_gate.py")
     print("  U160 reads the repository (the compose file, the start scripts, every settings file), which the API container does not hold, so it runs on the host, no database, seconds:")
     print("    .venv\\Scripts\\python.exe verify\\v154_settings_documented.py")
+    print("  U207 installs the client library from the platform's own address into a clean virtual environment and checks what was served, so it runs on the host against the live platform, under a minute, and needs the package index for httpx:")
+    print("    .venv\\Scripts\\python.exe verify\\v191_client_library.py")
+    print("  U204 reads the policy, the roles catalogue and the console's role lists, and checks the public Roles reference is current, so it runs on the host, no database, seconds:")
+    print("    .venv\\Scripts\\python.exe verify\\v189_roles_documented.py")
     print("  U175 makes test tables in every format and proves they are reproducible, safe, realistic, correctly described and checkable, so it runs on the host, no database, under a minute:")
     print("    .venv\\Scripts\\python.exe verify\\v167_testdata_generator.py")
     print("  U176 sends the generated tables, in every text layout, through the person route and a worker job and compares the stored tables with their truth files, so it runs on the host, a few minutes:")
@@ -322,8 +330,14 @@ if ONLY is None:
     print("    .venv\\Scripts\\python.exe verify\\v178_opa_policy_modes.py")
     print("  U190 tries the policy engine's store from the platform's own networks (it cannot be reached) and from its own (the engine's key reads the one package and nothing else), so it runs against a stack in bundle mode with a package published, in the API container and in a throwaway container, seconds:")
     print("    wsl -d Munitas -- bash verify/policy_store_check.sh")
-    print("  U193 calls the worker's record_gate_decision to prove a run keeps the counts for each kind of identifier and is judged by the platform's built-in bar and not a default of its own, so it runs on the host, about 20 seconds:")
+    print("  U193 calls the worker's record_gate_decision to prove a run keeps the counts for each kind of identifier and is judged by the platform's built-in standard and not a default of its own, so it runs on the host, about 20 seconds:")
     print("    .venv\\Scripts\\python.exe verify\\v182_gate_records_per_kind.py")
+    print("  U196 calls the agent's tool layer to prove a version that declared it uses no tools refuses every tool, so it runs on the host (the agent package is not in the API image), seconds:")
+    print("    .venv\\Scripts\\python.exe verify\\v184_declared_no_tools.py")
+    print("  U200 runs the example note drafter over sample transcripts to prove every line of a draft is a line of the transcript, so it runs on the host, no platform, seconds:")
+    print("    .venv\\Scripts\\python.exe verify\\v186_note_drafter_example.py")
+    print("  U201 proves the list of files the sandbox copies in is right for a version listed by full key and one listed by file name, so it runs on the host, no platform, seconds:")
+    print("    .venv\\Scripts\\python.exe verify\\v187_sandbox_staging_keys.py")
     print("  Also tried against a running stack in bundle mode, never part of a quick run: verify/policy_signing_attacks.sh (an unsigned, wrongly signed or altered package is refused) and verify/policy_persistence_check.sh (the engine starts from its saved package with the store down).")
     print("  U183 reads the repository to prove the large tier (verify/large, run_large.py) is kept out of this suite and plans before it acts, so it runs on the host, no database, under a minute:")
     print("    .venv\\Scripts\\python.exe verify\\v173_large_tier_guard.py")

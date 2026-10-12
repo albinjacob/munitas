@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from common import CANARY, ENGINEER, check, db, fixture_contract, fixture_tenant, fixture_version, heading, require_api, summary  # noqa: E402
-from worker import gate_bars  # noqa: E402
+from worker import gate_standards  # noqa: E402
 from worker.activities import record_gate_decision  # noqa: E402
 from worker.scoring import GATE_RECALL, ScoreCard, evaluate_gate, score_record  # noqa: E402
 
@@ -110,15 +110,15 @@ def main() -> int:
             old.destroyed = sum(k["destroyed"] for k in per_entity.values())
             old.effective = sum(k["effective"] for k in per_entity.values())
             old.leaked = sum(k["leaked"] for k in per_entity.values())
-            old.direct_leaks = sum(k["leaked"] for code, k in per_entity.items() if code in gate_bars.DIRECT_KINDS)
+            old.direct_leaks = sum(k["leaked"] for code, k in per_entity.items() if code in gate_standards.DIRECT_KINDS)
             old.quasi_leaks = old.leaked - old.direct_leaks
             by_the_old_figures = evaluate_gate(old)[0]
-            by_the_bars = evaluate_gate(old, bars=gate_bars.default_bars())[0]
-            check(f"{sorted(per_entity)} gives {'a pass' if expected else 'a fail'} both ways", by_the_old_figures == by_the_bars == expected, f"figures {by_the_old_figures}, bars {by_the_bars}")
+            by_the_standard = evaluate_gate(old, limits=gate_standards.default_limits())[0]
+            check(f"{sorted(per_entity)} gives {'a pass' if expected else 'a fail'} both ways", by_the_old_figures == by_the_standard == expected, f"figures {by_the_old_figures}, standard {by_the_standard}")
 
         heading("U193: the worker's copy and the API's copy of the judgement are one file")
-        check("platform/gate_bars.py and worker/gate_bars.py are the same file", (ROOT / "platform/gate_bars.py").read_bytes() == (ROOT / "worker/gate_bars.py").read_bytes())
-        check("the API image copies it in", "COPY gate_bars.py ./gate_bars.py" in (ROOT / "platform/api/Dockerfile").read_text(encoding="utf-8"))
+        check("platform/gate_standards.py and worker/gate_standards.py are the same file", (ROOT / "platform/gate_standards.py").read_bytes() == (ROOT / "worker/gate_standards.py").read_bytes())
+        check("the API image copies it in", "COPY gate_standards.py ./gate_standards.py" in (ROOT / "platform/api/Dockerfile").read_text(encoding="utf-8"))
     finally:
         teardown()
     return summary("U193")

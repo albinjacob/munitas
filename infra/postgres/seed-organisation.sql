@@ -84,7 +84,9 @@ insert into directory (id, tenant_id, label, kind, roles) values
   -- bootstrap every role needs before self-service can work at all.
   ('arch-turner',    'health', 'Turner',   'human', '{network_architect}'),
   -- Checks how locked columns were used and reads no personal data: the privacy auditor.
-  ('aud-marlow',     'health', 'Marlow',   'human', '{privacy_auditor}')
+  ('aud-marlow',     'health', 'Marlow',   'human', '{privacy_auditor}'),
+  -- Answers for how the organisation holds its AI agents: writes the approved tools list and gives the officer's part of an agent change.
+  ('risk-okafor',    'health', 'Okafor',   'human', '{ai_risk_owner}')
 on conflict (id) do nothing;
 
 -- Four departments, each with its own custodian, so custodian scoping is

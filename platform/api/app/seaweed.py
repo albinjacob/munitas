@@ -294,6 +294,42 @@ def _admin_boto_client():
     )
 
 
+# How long a client that was handed back right after its key was written waits for storage to recognise that key, in attempts of NEW_KEY_PAUSE seconds each.
+# SeaweedFS reads a new identity document a moment after it is written, so the first write in that moment can be told the key does not exist.
+NEW_KEY_ATTEMPTS = 20
+NEW_KEY_PAUSE = 0.25
+
+
+def _wait_for_new_key(**kwargs):
+    """Retry hook for a client whose key was written a moment ago: a refusal that says the key does not exist is retried after a short pause, and nothing else is.
+
+    botocore asks every hook after each response. Returning a number of seconds retries after that pause; returning None leaves the answer as it is.
+    """
+    response = kwargs.get("response")
+    parsed = (response[1] if response else None) or {}
+    if parsed.get("Error", {}).get("Code") == "InvalidAccessKeyId" and kwargs.get("attempts", 0) <= NEW_KEY_ATTEMPTS:
+        return NEW_KEY_PAUSE
+    return None
+
+
+def _ingest_client(access_key: str, secret_key: str, *, just_activated: bool, endpoint: str | None = None):
+    """The S3 client of an organisation's ingest key. When the key was written to storage only a moment ago the client waits for storage to recognise it, up to about five seconds, instead of failing the first write."""
+    import boto3
+    from botocore.config import Config
+
+    client = boto3.client(
+        "s3",
+        endpoint_url=endpoint or config.S3_ENDPOINT,
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
+        config=Config(signature_version="s3v4"),
+        region_name="us-east-1",
+    )
+    if just_activated:
+        client.meta.events.register_first("needs-retry.s3", _wait_for_new_key)
+    return client
+
+
 def admin_client(tenant_id: str):
     """An S3 client scoped to this tenant's own bucket.
 
@@ -313,30 +349,22 @@ def admin_client(tenant_id: str):
     fail every write with InvalidAccessKeyId. The activator finishes the job,
     and the same upload succeeds once it has.
     """
-    import boto3
-    from botocore.config import Config
-
     from . import grants
 
     # Resolved first for what it does on a first write: creates the bucket
     # the identity below is then granted.
     _resolve_bucket(tenant_id)
     identity = grants.identity_for_tenant_ingest(tenant_id)
-    if not grants.ingest_is_active(tenant_id):
+    just_activated = not grants.ingest_is_active(tenant_id)
+    if just_activated:
         try:
             grants.reconcile(trigger="provision")
         except Exception as exc:
             raise StorageUnavailable(
                 "This organisation's storage is being set up. Try again shortly."
             ) from exc
-    return boto3.client(
-        "s3",
-        endpoint_url=config.S3_ENDPOINT,
-        aws_access_key_id=identity["access_key"],
-        aws_secret_access_key=identity["secret_key"],
-        config=Config(signature_version="s3v4"),
-        region_name="us-east-1",
-    )
+    # A key written a moment ago is read by storage a moment later: the client waits for that, rather than the first upload failing with InvalidAccessKeyId.
+    return _ingest_client(identity["access_key"], identity["secret_key"], just_activated=just_activated)
 
 
 def credentials_for(role: str, tenant_id: str) -> dict:

@@ -55,12 +55,13 @@ def _context_for(params: dict) -> ToolContext:
             (params["run_id"],),
         ).fetchone()
         version_row = conn.execute(
-            "select tool_scope from agent_version where id = %s",
+            "select tool_scope, tools_declared from agent_version where id = %s",
             (params["agent_version_id"],),
         ).fetchone()
 
     allowed_versions = frozenset({str(row[0])}) if row and row[0] else frozenset()
     tool_scope = frozenset(version_row[0]) if version_row and version_row[0] else frozenset()
+    tools_declared = bool(version_row and version_row[1])
     run_secret = row[1] if row else None
 
     identity = AgentIdentity(
@@ -71,6 +72,7 @@ def _context_for(params: dict) -> ToolContext:
         agent_version_id=params["agent_version_id"],
         allowed_versions=allowed_versions,
         tool_scope=tool_scope,
+        tools_declared=tools_declared,
         run_secret=run_secret,
     )
     return ToolContext(

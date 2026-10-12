@@ -11,7 +11,7 @@ is in the pictures: the same datasets and the same people appear on every page, 
     a3      work from a notebook                     (scripts/demo/notebook-demo.py with web/walkthroughs/story-a-notebook.spec.ts while it waits)
     b1      patient data arrives locked              (web/walkthroughs/story-b.spec.ts, parts recordings and table)
     b2      Devi checks what arrived                 (story-b.spec.ts, parts rows and files)
-    b3      release bars, names removed, a reviewer decides  (story-b.spec.ts, parts bars, remove-names and after-release: real speech work on the graphics card)
+    b3      de-identification standards, names removed, a reviewer decides  (story-b.spec.ts, parts bars, remove-names and after-release: real speech work on the graphics card)
     b4      evidence without names                   (story-b.spec.ts, part evidence)
 
 The derivation is one timeline in two programs: the Python session stops after each of its steps (its --sync option) and this script runs the console
@@ -151,7 +151,7 @@ def b2() -> None:
 
 
 def b3() -> None:
-    say("b3: Nakamura sets the release bars, names are removed on the graphics card, and Imani decides (about 3 minutes)")
+    say("b3: Nakamura sets the de-identification standards, names are removed on the graphics card, and Imani decides (about 3 minutes)")
     story_b("bars", "remove-names", "after-release")
 
 

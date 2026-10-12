@@ -141,7 +141,7 @@ def evidence(service, identity: dict, decision: dict) -> Evidence:
 def blockers(found: Evidence, decision: dict, recommendation: str | None = None) -> list[str]:
     """What stops this caller releasing the result now, in words, from the same evidence the page shows. Empty when nothing does.
 
-    `recommendation` is the one under the release bar the person chose; without it, the recommendation the run recorded.
+    `recommendation` is the one under the de-identification standard the person chose; without it, the recommendation the run recorded.
     """
     recommendation = recommendation or decision["recommendation"]
     reasons = list(found["blocking"])

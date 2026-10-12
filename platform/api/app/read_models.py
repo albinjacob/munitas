@@ -396,10 +396,11 @@ def list_transitions(
     which organisation something belongs to is two places that can disagree.
     """
     sql = """
-        select ct.id, ct.from_class, ct.to_class, ct.decided_by,
+        select ct.id, ct.from_class, ct.to_class, ct.decided_by, who.label as decided_by_label,
                ct.decided_by_kind, ct.gate_evidence, ct.at
         from class_transition ct
         join dataset_version dv on dv.id = ct.dataset_version_id
+        left join directory who on who.id = ct.decided_by
         where ct.dataset_version_id = %s
           and dv.tenant_id = %s
         order by ct.at asc
@@ -736,7 +737,7 @@ def get_agent(
                   av.image_digest, av.model_id, av.tool_scope, av.content_hash,
                   av.sealed, av.created_at, reg.label as registered_by_label,
                   av.code_object_key is not null as sandboxed,
-                  av.entrypoint, av.requested_hosts,
+                  av.entrypoint, av.requested_hosts, av.tools_declared, av.model_hosting, av.data_access,
                   ega.id as egress_approval_id, ega.state as egress_state
            from agent_version av
            left join directory reg on reg.id = av.registered_by
@@ -1042,11 +1043,15 @@ def list_agent_runs(
         select ar.id, ar.agent_version_id, av.version as agent_version,
                ar.status, ar.purpose, ar.requested_by, req.label as requested_by_label,
                ar.tool_calls, ar.halted_reason, ar.error, ar.started_at, ar.ended_at,
-               ar.approved_by, ar.approved_at, ar.lease_request_id, ar.findings,
-               ar.execution_mode
+               ar.approved_by, apr.label as approved_by_label, ar.approved_at, ar.lease_request_id, ar.findings,
+               ar.execution_mode,
+               rv.outcome as review_outcome, rv.reviewed_by, rvw.label as reviewed_by_label, rv.reviewed_at, rv.reason as review_reason, rv.seconds_taken as review_seconds
         from agent_run ar
         join agent_version av on av.id = ar.agent_version_id
         left join directory req on req.id = ar.requested_by
+        left join directory apr on apr.id = ar.approved_by
+        left join agent_output_review rv on rv.run_id = ar.id
+        left join directory rvw on rvw.id = rv.reviewed_by
         where ar.agent_id = %s
         order by ar.started_at desc
     """

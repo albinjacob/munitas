@@ -29,7 +29,7 @@ import zipfile
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
-from . import auth, config, db, seaweed
+from . import agent_changes, auth, config, db, seaweed
 from .agents import _agent, file_egress_approval
 
 router = APIRouter(tags=["agents"])
@@ -51,6 +51,8 @@ def upload_version(
     zip: UploadFile = File(...),
     model_id: str = Form(...),
     tool_scope: str = Form(""),
+    declares_no_tools: bool = Form(False),
+    model_hosting: str | None = Form(None),
     data_access: str = Form("none"),
     requested_hosts: str = Form(""),
     registered_by: str = Form(...),
@@ -120,6 +122,10 @@ def upload_version(
         )
 
     scopes = sorted({t.strip() for t in tool_scope.split(",") if t.strip()})
+    if model_hosting not in (None, "", "platform", "outside"):
+        raise HTTPException(400, {"reasons": ["model_hosting is 'platform' or 'outside'"]})
+    model_hosting = model_hosting or None
+    tools_declared = bool(scopes) or declares_no_tools
     hosts = sorted({h.strip() for h in requested_hosts.split(",") if h.strip()})
 
     row = db.one(
@@ -142,6 +148,7 @@ def upload_version(
             "image_digest": "sandboxed:python3.11-slim",
             "model_id": model_id,
             "tool_scope": scopes,
+            "tools_declared": tools_declared,
         },
         sort_keys=True, separators=(",", ":"),
     )
@@ -153,16 +160,17 @@ def upload_version(
              (id, tenant_id, agent_id, version, code_hash, source_path,
               image_digest, model_id, tool_scope, registered_by,
               content_hash, sealed, code_object_key, code_bytes,
-              entrypoint, manifest, data_access, requested_hosts)
+              entrypoint, manifest, data_access, requested_hosts, tools_declared, model_hosting)
            values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, true,
-                   %s, %s, %s, %s, %s, %s)""",
+                   %s, %s, %s, %s, %s, %s, %s, %s)""",
         (version_id, agent["tenant_id"], agent_id, version, code_hash,
          "uploaded", "sandboxed:python3.11-slim", model_id, scopes,
          registered_by, content_hash, key, len(payload), entrypoint,
-         json.dumps(manifest), data_access, hosts),
+         json.dumps(manifest), data_access, hosts, tools_declared, model_hosting),
     )
     file_egress_approval(agent["tenant_id"], agent_id, version_id,
                          hosts, registered_by)
+    change = agent_changes.record_version(agent, version_id, registered_by)
 
     return {
         "id": version_id,
@@ -175,6 +183,9 @@ def upload_version(
         "sealed": True,
         "data_access": data_access,
         "requested_hosts": hosts,
+        "tools_declared": tools_declared,
+        "widening": change["widening"],
+        "changes": change["changes"],
     }
 
 

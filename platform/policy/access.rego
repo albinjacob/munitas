@@ -25,6 +25,7 @@ role_floor := {
 	"data_custodian": 4, # deciding who may read is not the same as reading
 	"deid_reviewer": 4, # judging whether a de-identification is adequate is not a licence to read the data
 	"dpo": 4, # sees every decision, reads no more data than anyone else
+	"ai_risk_owner": 4, # answers for how agents are held; reads no more data than anyone else
 	"pipeline_operator": 4, # runs the jobs, does not read what they produce
 	"platform_admin": 4, # runs the system, holds no standing access to its contents
 	"hybridops": 4, # support and reliability work needs telemetry, not records
@@ -643,26 +644,26 @@ code_registration_decision := {
 	"reasons": [r | some r in code_registration_reason],
 }
 
-# Who sets the bar a de-identified result is judged against (a "release bar", platform/gate_bars.py). The data protection officer: it is the person accountable for how an
-# organisation handles personal data, and, as the rule above says, independent of the act of releasing. The reviewer who decides a release picks among the bars; they do not
-# write them, so a bar cannot be loosened by the person it would let through. The platform administrator is absent for the reason it is absent from approving access: the account that
+# Who sets the standard a de-identified result is judged against (a "de-identification standard", platform/gate_standards.py). The data protection officer: it is the person accountable for how an
+# organisation handles personal data, and, as the rule above says, independent of the act of releasing. The reviewer who decides a release picks among the standards; they do not
+# write them, so a standard cannot be loosened by the person it would let through. The platform administrator is absent for the reason it is absent from approving access: the account that
 # runs the system does not also decide what the system lets out.
-set_release_bar_roles := {"dpo"}
+set_standard_roles := {"dpo"}
 
-default may_set_release_bar := false
+default may_set_standard := false
 
-may_set_release_bar if {
+may_set_standard if {
 	some role in input.person.roles
-	set_release_bar_roles[role]
+	set_standard_roles[role]
 }
 
-set_release_bar_reason contains sprintf("only %s may set a release bar", [role_words.people(set_release_bar_roles)]) if {
-	not may_set_release_bar
+set_standard_reason contains sprintf("only %s may set a de-identification standard", [role_words.people(set_standard_roles)]) if {
+	not may_set_standard
 }
 
-set_release_bar_decision := {
-	"allow": may_set_release_bar,
-	"reasons": [r | some r in set_release_bar_reason],
+set_standard_decision := {
+	"allow": may_set_standard,
+	"reasons": [r | some r in set_standard_reason],
 }
 
 # ---------------------------------------- confirming a sensitivity claim --
@@ -1488,7 +1489,7 @@ locked_lease_max_days := 7
 
 locked_lease_max_rows := 20
 
-# What an organisation has set (platform/api/app/access_rules.py hands the values in force as `input.limits`). With none, the constants above are the values, exactly as
+# What an organisation has set (platform/api/app/limits.py hands the values in force as `input.limits`). With none, the constants above are the values, exactly as
 # before. A direct read of a document, with no input at all, also gets the defaults.
 limits_in := v if {
 	v := input.limits
@@ -1812,7 +1813,7 @@ file_lease_default_caps := {
 	"notebook": {"records": 200, "hours": 8},
 }
 
-# What an organisation has set (`input.limits`, from platform/api/app/access_rules.py), or the defaults above.
+# What an organisation has set (`input.limits`, from platform/api/app/limits.py), or the defaults above.
 file_lease_caps := {
 	"console": {
 		"records": object.get(limits_in, ["files_in_page", "most_files"], file_lease_default_caps.console.records),
@@ -2147,3 +2148,250 @@ group_size_decision := {
 	"allow": may_decide_group_size_report,
 	"reasons": [r | some r in group_size_decision_reason],
 }
+
+# ------------------------------------------------------------------
+# Agent oversight: risk levels, approving a widening, suspending, reporting an incident.
+#
+# What an organisation calls its risk levels, and which of them ask for a second approver, is a decision about how the organisation holds its agents, so it is the AI risk owner's.
+# The data protection officer advises and monitors, and does not decide how agents are held: it reads the evidence and may stop an agent, and it makes none of these decisions. The person
+# who registers an agent proposes its level; the AI risk owner confirms it, and never for an agent the AI risk owner registered, so nobody is the only check on their own agent. A
+# widening of an agent is approved by an approver of the department that owns the agent, and also by the AI risk owner where the level asks for it; nobody decides a version they
+# submitted.
+manage_risk_levels_roles := {"ai_risk_owner"}
+
+default may_manage_risk_levels := false
+
+may_manage_risk_levels if {
+	some role in input.person.roles
+	manage_risk_levels_roles[role]
+}
+
+manage_risk_levels_reason contains sprintf("only %s may set the risk levels", [role_words.people(manage_risk_levels_roles)]) if {
+	not may_manage_risk_levels
+}
+
+manage_risk_levels_decision := {
+	"allow": may_manage_risk_levels,
+	"reasons": [r | some r in manage_risk_levels_reason],
+}
+
+confirm_risk_level_roles := {"ai_risk_owner"}
+
+default may_confirm_risk_level := false
+
+may_confirm_risk_level if {
+	some role in input.person.roles
+	confirm_risk_level_roles[role]
+	input.person.id != input.agent.registered_by
+}
+
+confirm_risk_level_reason contains sprintf("only %s may confirm the risk level of an agent", [role_words.people(confirm_risk_level_roles)]) if {
+	every role in input.person.roles {
+		not confirm_risk_level_roles[role]
+	}
+}
+
+confirm_risk_level_reason contains "the person who registered an agent cannot confirm its risk level; somebody else has to" if {
+	input.person.id == input.agent.registered_by
+}
+
+confirm_risk_level_decision := {
+	"allow": may_confirm_risk_level,
+	"reasons": [r | some r in confirm_risk_level_reason],
+}
+
+# The approved tools list: tools an organisation has approved in advance, each with the highest risk level it is approved for. A version that adds only listed tools, at or
+# below each ceiling, needs no request, or only the department's approval. Writing the list answers for how agents are held, so it is the AI risk owner's. Everybody can read it.
+manage_tool_list_roles := {"ai_risk_owner"}
+
+default may_manage_tool_list := false
+
+may_manage_tool_list if {
+	some role in input.person.roles
+	manage_tool_list_roles[role]
+}
+
+manage_tool_list_reason contains sprintf("only %s may write the approved tools list", [role_words.people(manage_tool_list_roles)]) if {
+	not may_manage_tool_list
+}
+
+manage_tool_list_decision := {
+	"allow": may_manage_tool_list,
+	"reasons": [r | some r in manage_tool_list_reason],
+}
+
+# Who acts as the officer for an agent: gives the officer's part of an agent change, resumes an agent whose level asks for a second approver, and may also assign a sponsor and
+# re-confirm an agent. Today this is the AI risk owner alone; until 2026-10-11 the data protection officer shared it. It is a named set so that the roles documentation can see it and so
+# that a change of who holds this duty is one edit here with its tests. The public roles reference (docs/tools/roles_reference.json) must say the same.
+agent_officer_roles := {"ai_risk_owner"}
+
+# Deciding a widening. `part` is "department" (an approver of the department that owns the agent) or "officer" (the AI risk owner).
+default may_decide_agent_change := false
+
+may_decide_agent_change if {
+	input.part == "department"
+	input.approver.id in input.department.approvers
+	input.approver.id != input.approval.submitted_by
+}
+
+may_decide_agent_change if {
+	input.part == "officer"
+	input.approver.id != input.approval.submitted_by
+	some role in input.approver.roles
+	agent_officer_roles[role]
+}
+
+agent_change_reason contains "the person who submitted a version cannot decide on it" if {
+	input.approver.id == input.approval.submitted_by
+}
+
+agent_change_reason contains sprintf("only an approver of %s may give the department's approval; its approvers are %s", [input.department.name, concat(", ", object.get(input.department, "approver_names", input.department.approvers))]) if {
+	input.part == "department"
+	not input.approver.id in input.department.approvers
+	count(input.department.approvers) > 0
+}
+
+agent_change_reason contains "the department that owns this agent has no approvers, so nobody can give the department's approval" if {
+	input.part == "department"
+	count(input.department.approvers) == 0
+}
+
+agent_change_reason contains sprintf("only %s may give the officer's approval", [role_words.either(agent_officer_roles)]) if {
+	input.part == "officer"
+	every role in input.approver.roles {
+		not agent_officer_roles[role]
+	}
+}
+
+agent_change_decision := {
+	"allow": may_decide_agent_change,
+	"reasons": [r | some r in agent_change_reason],
+}
+
+# Suspending an agent stops new runs at once, so the people who answer for it or watch it may do it: an approver of its department, the AI risk owner, the data protection officer, or
+# the platform administrator. Resuming it needs the AI risk owner when the agent's level asks for a second approver.
+suspend_agent_roles := {"dpo", "ai_risk_owner", "platform_admin"}
+
+default may_suspend_agent := false
+
+may_suspend_agent if {
+	some role in input.person.roles
+	suspend_agent_roles[role]
+}
+
+may_suspend_agent if {
+	input.person.id in object.get(input.department, "approvers", [])
+}
+
+suspend_agent_reason contains sprintf("only an approver of the department that owns the agent, %s may suspend or resume it", [role_words.either(suspend_agent_roles)]) if {
+	not may_suspend_agent
+}
+
+default may_resume_agent := false
+
+may_resume_agent if {
+	may_suspend_agent
+	not input.requires_officer
+}
+
+may_resume_agent if {
+	some role in input.person.roles
+	agent_officer_roles[role]
+}
+
+resume_agent_reason contains sprintf("only an approver of the department that owns the agent, %s may suspend or resume it", [role_words.either(suspend_agent_roles)]) if {
+	not may_suspend_agent
+}
+
+resume_agent_reason contains sprintf("this agent's risk level asks for a second approver, so only %s may resume it", [role_words.either(agent_officer_roles)]) if {
+	may_suspend_agent
+	input.requires_officer
+	every role in input.person.roles {
+		not agent_officer_roles[role]
+	}
+}
+
+suspend_agent_decision := {"allow": may_suspend_agent, "reasons": [r | some r in suspend_agent_reason]}
+
+resume_agent_decision := {"allow": may_resume_agent, "reasons": [r | some r in resume_agent_reason]}
+
+# Making the evidence pack of an agent names who ran it, who approved what and when, so it is for the people who answer for the agent or for data protection: an approver
+# of its department, the AI risk owner, the data protection officer, a privacy auditor, or a platform administrator.
+evidence_pack_roles := {"dpo", "ai_risk_owner", "privacy_auditor", "platform_admin"}
+
+default may_make_evidence_pack := false
+
+may_make_evidence_pack if {
+	some role in input.person.roles
+	evidence_pack_roles[role]
+}
+
+may_make_evidence_pack if {
+	input.person.id in object.get(input.department, "approvers", [])
+}
+
+evidence_pack_reason contains sprintf("only an approver of the department that owns the agent, %s may make its evidence pack", [role_words.either(evidence_pack_roles)]) if {
+	not may_make_evidence_pack
+}
+
+evidence_pack_decision := {"allow": may_make_evidence_pack, "reasons": [r | some r in evidence_pack_reason]}
+
+# The sponsor of an agent is an approver of the department that owns it, assigned by an approver of that department or by the AI risk owner. A re-confirmation (that the agent is
+# still needed and still held at the right level) is made by the sponsor, an approver of the department, or the AI risk owner.
+default may_assign_sponsor := false
+
+may_assign_sponsor if {
+	input.person.id in object.get(input.department, "approvers", [])
+}
+
+may_assign_sponsor if {
+	some role in input.person.roles
+	agent_officer_roles[role]
+}
+
+assign_sponsor_reason contains sprintf("only an approver of the department that owns the agent or %s may assign its sponsor", [role_words.either(agent_officer_roles)]) if {
+	not may_assign_sponsor
+}
+
+assign_sponsor_decision := {"allow": may_assign_sponsor, "reasons": [r | some r in assign_sponsor_reason]}
+
+default may_reconfirm_agent := false
+
+may_reconfirm_agent if {
+	input.person.id == object.get(input, "sponsor", "")
+}
+
+may_reconfirm_agent if {
+	input.person.id in object.get(input.department, "approvers", [])
+}
+
+may_reconfirm_agent if {
+	some role in input.person.roles
+	agent_officer_roles[role]
+}
+
+reconfirm_agent_reason contains sprintf("only the sponsor of the agent, an approver of the department that owns it or %s may re-confirm it", [role_words.either(agent_officer_roles)]) if {
+	not may_reconfirm_agent
+}
+
+reconfirm_agent_decision := {"allow": may_reconfirm_agent, "reasons": [r | some r in reconfirm_agent_reason]}
+
+# Reporting an incident about an agent: the people whose work puts them in a position to see one.
+report_incident_roles := {"dpo", "ai_risk_owner", "privacy_auditor", "pipeline_operator", "deid_reviewer", "platform_admin"}
+
+default may_report_incident := false
+
+may_report_incident if {
+	some role in input.person.roles
+	report_incident_roles[role]
+}
+
+may_report_incident if {
+	input.person.id in object.get(input.department, "approvers", [])
+}
+
+report_incident_reason contains "only an approver of the department that owns the agent, or a person who works on data protection, review or pipelines, may report an incident about an agent" if {
+	not may_report_incident
+}
+
+report_incident_decision := {"allow": may_report_incident, "reasons": [r | some r in report_incident_reason]}
