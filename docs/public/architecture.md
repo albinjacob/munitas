@@ -164,9 +164,7 @@ in the stack requires a commercial licence to run or extend.
 | Component | Role |
 | --- | --- |
 | faster-whisper | Speech recognition with word-level timings |
-| pyannote.audio | Speaker diarisation |
-| Microsoft Presidio, spaCy, GLiNER | Three independent identifier-detection approaches, combined because they fail differently, so their union catches more than any one alone |
-| Piper | Speech synthesis, for rendering redacted spans as matched-duration surrogate audio |
+| Microsoft Presidio, spaCy, GLiNER | Three independent identifier-detection approaches, combined because they fail differently, so what one misses another can catch |
 | Label Studio | Human annotation and correction, with model output pre-filled so a reviewer corrects rather than starts from nothing |
 
 **Agents and observability**
