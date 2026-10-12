@@ -5,6 +5,7 @@
 
 import type { ReactNode } from "react";
 import "./shell.css";
+import "./buttons.css";
 import { PATHS } from "./Ico";
 import { UnauthenticatedBanner } from "../identity/IdentityBar";
 import { useTheme } from "./useStored";

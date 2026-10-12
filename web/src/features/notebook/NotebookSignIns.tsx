@@ -13,6 +13,7 @@ import { useNotebookSignIns, useRevokeAllNotebookSignIns, useRevokeNotebookSignI
 import { Empty, Failure, Loading, Section } from "../../components/states";
 import { when } from "../../lib/when";
 import { Reasons } from "../locking/LockedColumns";
+import { NotebookStart } from "./NotebookStart";
 
 const STATE_WORDS: Record<NotebookSignIn["status"], string> = {
   approved: "In force",
@@ -74,11 +75,11 @@ function Confirm({
           data-testid={`${testid}-yes`}
           disabled={busy}
           onClick={onYes}
-          className="rounded bg-red-700 px-2 py-1 text-xs font-medium text-white disabled:opacity-50"
+          className="btn btn-danger btn-sm"
         >
           {busy ? "Ending" : what.length === 1 ? "Yes, end it" : "Yes, end them all"}
         </button>
-        <button type="button" data-testid={`${testid}-no`} onClick={onNo} className="rounded border border-slate-500 px-2 py-1 text-xs text-slate-900">
+        <button type="button" data-testid={`${testid}-no`} onClick={onNo} className="btn btn-secondary btn-sm">
           Keep {what.length === 1 ? "it" : "them"}
         </button>
       </div>
@@ -101,7 +102,7 @@ function End({ s }: { s: NotebookSignIn }) {
         data-testid={`notebook-revoke-${s.id}`}
         disabled={revoke.isPending}
         onClick={() => (s.in_use ? setAsking(true) : revoke.mutate(s.id))}
-        className="whitespace-nowrap rounded border border-slate-500 px-2 py-1 text-xs text-slate-900 disabled:opacity-50"
+        className="btn btn-secondary btn-sm whitespace-nowrap"
       >
         {revoke.isPending ? "Ending" : "End now"}
       </button>
@@ -135,7 +136,7 @@ function EndAll({ live }: { live: NotebookSignIn[] }) {
         data-testid="notebook-revoke-all"
         disabled={revokeAll.isPending}
         onClick={() => setAsking(true)}
-        className="rounded border border-red-700 px-3 py-1.5 text-sm font-medium text-red-800 disabled:opacity-50"
+        className="btn btn-secondary"
       >
         End all of my notebook sign-ins
       </button>
@@ -173,6 +174,7 @@ export function NotebookSignIns() {
       title="Your notebooks"
       description="Each notebook that signed in as you. A notebook can find datasets, ask for access in your name, open the few files you were allowed in a notebook, and make a dataset from a query. It cannot decide anybody's request or change anything about roles or settings."
     >
+      <NotebookStart />
       {mayWatchAll && (
         <label className="mb-3 flex items-center gap-2 text-sm text-slate-800">
           <input type="checkbox" data-testid="notebooks-everyone" checked={everyone} onChange={(e) => setEveryone(e.target.checked)} />
@@ -181,7 +183,7 @@ export function NotebookSignIns() {
       )}
       {!everyone && <EndAll live={live} />}
       {rows.length === 0 ? (
-        <Empty what="notebook sign-ins" hint="In a notebook, run the sign-in of the Munitas client library. It shows a code and an address, and you approve it here." />
+        <Empty what="notebook sign-ins" hint="A notebook that signs in as you appears here. The steps above show how." />
       ) : (
         <div className="data-card">
           <table className="data-table" data-testid="notebook-sign-ins">

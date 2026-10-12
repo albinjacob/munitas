@@ -437,7 +437,7 @@ function CustodianHome({
                                   standing: lease.standing,
                                 })
                               }
-                              className="text-red-700 underline hover:text-red-900 disabled:opacity-50"
+                              className="btn btn-link btn-link-danger"
                               style={{ display: "block", marginTop: 4, fontSize: 12.5 }}
                             >
                               Revoke

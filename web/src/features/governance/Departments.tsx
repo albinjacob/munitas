@@ -108,7 +108,7 @@ function DepartmentCard({ department }: { department: Department }) {
                   setRemoving(a.person_id);
                   setRemoveReason("");
                 }}
-                className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50"
+                className="btn btn-secondary btn-sm"
               >
                 Remove
               </button>
@@ -140,11 +140,11 @@ function DepartmentCard({ department }: { department: Department }) {
                   type="submit"
                   data-testid={`confirm-remove-${department.id}`}
                   disabled={!removeReason.trim() || remove.isPending}
-                  className="rounded bg-red-700 px-2 py-1 text-xs font-medium text-white disabled:opacity-50"
+                  className="btn btn-danger btn-sm"
                 >
                   Confirm removal
                 </button>
-                <button type="button" onClick={() => setRemoving(null)} className="text-xs text-slate-600 underline">
+                <button type="button" onClick={() => setRemoving(null)} className="btn btn-link">
                   Cancel
                 </button>
               </form>
@@ -232,7 +232,7 @@ function DepartmentCard({ department }: { department: Department }) {
               type="submit"
               data-testid={`add-submit-${department.id}`}
               disabled={!personId || !reason.trim() || add.isPending}
-              className="rounded bg-indigo-500 hover:bg-indigo-800 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+              className="btn btn-primary"
             >
               Add approver
             </button>
@@ -256,7 +256,7 @@ function DepartmentCard({ department }: { department: Department }) {
             type="button"
             data-testid={`history-toggle-${department.id}`}
             onClick={() => setShowHistory((v) => !v)}
-            className="text-xs text-sky-700 underline"
+            className="btn btn-link"
           >
             {showHistory ? "Hide history" : "Show history"}
           </button>

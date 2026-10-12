@@ -6,7 +6,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { api } from "./client";
 
-export interface AccessRule {
+export interface Limit {
   key: string;
   group: string;
   label: string;
@@ -25,8 +25,8 @@ export interface AccessRule {
   reason: string | null;
 }
 
-export interface AccessRules {
-  rules: AccessRule[];
+export interface LimitsResponse {
+  limits: Limit[];
   capabilities: Record<string, string>;
   roles: string[];
   role_words: Record<string, string>;
@@ -37,12 +37,12 @@ export interface WhatWouldHappen {
   reasons: string[];
 }
 
-export function useAccessRules() {
-  return useQuery({ queryKey: ["access-rules"], queryFn: () => api.get<AccessRules>("/access-rules") });
+export function useLimits() {
+  return useQuery({ queryKey: ["limits"], queryFn: () => api.get<LimitsResponse>("/limits") });
 }
 
 export function useWhatWouldHappen() {
   return useMutation({
-    mutationFn: (v: { capability: string; role: string; size: number; length: number }) => api.post<WhatWouldHappen>("/access-rules/what-would-happen", v),
+    mutationFn: (v: { capability: string; role: string; size: number; length: number }) => api.post<WhatWouldHappen>("/limits/what-would-happen", v),
   });
 }

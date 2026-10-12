@@ -109,7 +109,7 @@ export function UploadPipelineVersion({ pipelineId }: { pipelineId: string }) {
         type="submit"
         data-testid="upload-pipeline-version-submit"
         disabled={!ready || upload.isPending}
-        className="rounded bg-indigo-500 hover:bg-indigo-800 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+        className="btn btn-primary"
       >
         {upload.isPending ? "Uploading" : "Upload version"}
       </button>

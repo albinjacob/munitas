@@ -1,38 +1,38 @@
 /**
- * Access rules: what people in this organisation may ask for, and the limits on each request.
+ * Limits: what people in this organisation may ask for, and the limits on each request, and how much may be brought in as tables.
  *
- * Anybody signed in may read them, because people should know what they may ask for before they ask. Nothing on the page changes a rule. Below the rules a person can
- * try a request of a given size and see whether it would be accepted and, if not, which rule says no. The answer is the one a real request gets.
+ * Anybody signed in may read them, because people should know what they may ask for before they ask. Nothing on the page changes a limit. Below the limits a person can
+ * try a request of a given size and see whether it would be accepted and, if not, which limit says no. The answer is the one a real request gets.
  */
 
 import { useState } from "react";
-import { useAccessRules, useWhatWouldHappen, type AccessRule, type AccessRules as Rules } from "../../api/accessRules";
+import { useLimits, useWhatWouldHappen, type Limit, type LimitsResponse } from "../../api/limits";
 import { Failure, Loading, Section } from "../../components/states";
 import { Link } from "react-router-dom";
 import { byOn } from "../../lib/when";
 import { Reasons } from "../locking/LockedColumns";
 
-function shown(rule: AccessRule, value: number | string[], words: Record<string, string>): string {
-  if (rule.kind === "number") return `${value} ${value === 1 ? (rule.unit ?? "").replace(/s$/, "") : rule.unit}`;
+function shown(limit: Limit, value: number | string[], words: Record<string, string>): string {
+  if (limit.kind === "number") return `${value} ${value === 1 ? (limit.unit ?? "").replace(/s$/, "") : limit.unit}`;
   const roles = value as string[];
   return roles.length === 0 ? "Nobody" : roles.map((r) => words[r] ?? r).join(", ");
 }
 
-function RuleRow({ rule, words }: { rule: AccessRule; words: Record<string, string> }) {
+function LimitRow({ limit, words }: { limit: Limit; words: Record<string, string> }) {
   return (
-    <tr data-testid={`rule-${rule.key}`}>
+    <tr data-testid={`limit-${limit.key}`}>
       <td>
-        <span className="font-medium">{rule.label}</span>
-        <div className="text-xs text-slate-600">{rule.about}</div>
+        <span className="font-medium">{limit.label}</span>
+        <div className="text-xs text-slate-600">{limit.about}</div>
       </td>
-      <td data-testid={`rule-${rule.key}-value`}>{shown(rule, rule.value, words)}</td>
-      <td className="text-slate-700">{shown(rule, rule.default, words)}</td>
-      <td className="text-slate-700">{rule.kind === "number" ? shown(rule, rule.maximum!, words) : rule.allowed.map((r) => words[r] ?? r).join(", ")}</td>
-      <td data-testid={`rule-${rule.key}-who`} className="text-xs text-slate-700">
-        {rule.source === "organisation" ? (
+      <td data-testid={`limit-${limit.key}-value`}>{shown(limit, limit.value, words)}</td>
+      <td className="text-slate-700">{shown(limit, limit.default, words)}</td>
+      <td className="text-slate-700">{limit.kind === "number" ? shown(limit, limit.maximum!, words) : limit.allowed.map((r) => words[r] ?? r).join(", ")}</td>
+      <td data-testid={`limit-${limit.key}-who`} className="text-xs text-slate-700">
+        {limit.source === "organisation" ? (
           <>
-            <div>{byOn(rule.set_by, rule.set_at)}</div>
-            <div>{rule.reason}</div>
+            <div>{byOn(limit.set_by, limit.set_at)}</div>
+            <div>{limit.reason}</div>
           </>
         ) : (
           "Not changed"
@@ -42,7 +42,7 @@ function RuleRow({ rule, words }: { rule: AccessRule; words: Record<string, stri
   );
 }
 
-function Tester({ data }: { data: Rules }) {
+function Tester({ data }: { data: LimitsResponse }) {
   const ask = useWhatWouldHappen();
   const [capability, setCapability] = useState("locked_rows");
   const [role, setRole] = useState(data.roles[0]);
@@ -50,7 +50,7 @@ function Tester({ data }: { data: Rules }) {
   const [length, setLength] = useState(1);
   const rows = capability === "locked_rows";
   return (
-    <Section level="section" title="What would happen" description="Try a request of a given size to see whether the rules above would accept it. Nothing is sent to an approver.">
+    <Section level="section" title="What would happen" description="Try a request of a given size to see whether the limits above would accept it. Nothing is sent to an approver.">
       <form
         className="flex flex-wrap items-end gap-3 text-sm"
         onSubmit={(e) => {
@@ -86,7 +86,7 @@ function Tester({ data }: { data: Rules }) {
           {rows ? "For how many days" : "For how many hours"}
           <input data-testid="test-length" type="number" min={0} value={length} onChange={(e) => setLength(Number(e.target.value))} className="w-24 rounded border border-slate-400 px-2 py-1" />
         </label>
-        <button type="submit" data-testid="test-run" disabled={ask.isPending} className="rounded bg-slate-800 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50">
+        <button type="submit" data-testid="test-run" disabled={ask.isPending} className="btn btn-primary">
           {ask.isPending ? "Asking" : "Would it be accepted?"}
         </button>
       </form>
@@ -119,25 +119,25 @@ function Tester({ data }: { data: Rules }) {
   );
 }
 
-export function AccessRules() {
-  const rules = useAccessRules();
-  if (rules.isLoading) return <Loading what="the access rules" />;
-  if (rules.error) return <Failure error={rules.error} what="the access rules" />;
-  const data = rules.data!;
-  const groups = [...new Set(data.rules.map((r) => r.group))];
+export function Limits() {
+  const result = useLimits();
+  if (result.isLoading) return <Loading what="the limits" />;
+  if (result.error) return <Failure error={result.error} what="the limits" />;
+  const data = result.data!;
+  const groups = [...new Set(data.limits.map((r) => r.group))];
   return (
     <Section
       level="page"
-      title="Access rules"
-      description="How much people in this organisation may ask for, and for how long, when they need to ask. An approver of the department that owns the data still decides each request. To change a rule, ask your platform administrator."
+      title="Limits"
+      description="The limits in this organisation: how much people may ask for and for how long, and how much may be brought in as tables. An approver of the department that owns the data still decides each request. To change a limit, ask your platform administrator."
     >
-      <p className="mb-4 text-sm text-slate-600" data-testid="rules-to-roles">
+      <p className="mb-4 text-sm text-slate-600" data-testid="limits-to-roles">
         What each role may read without asking, and which roles may approve, is the same in every organisation and is on the <Link to="/roles" className="text-sky-700 underline">What each role can do</Link> page.
       </p>
       {groups.map((group) => (
         <Section key={group} level="section" title={group}>
           <div className="data-card">
-            <table className="data-table w-full table-fixed" data-testid={`rules-${group}`}>
+            <table className="data-table w-full table-fixed" data-testid={`limits-${group}`}>
               <colgroup>
                 <col style={{ width: "34%" }} />
                 <col style={{ width: "19%" }} />
@@ -147,7 +147,7 @@ export function AccessRules() {
               </colgroup>
               <thead className="whitespace-normal">
                 <tr>
-                  <th>Rule</th>
+                  <th>Limit</th>
                   <th>In force now</th>
                   <th>Default</th>
                   <th>Platform maximum</th>
@@ -155,10 +155,10 @@ export function AccessRules() {
                 </tr>
               </thead>
               <tbody>
-                {data.rules
+                {data.limits
                   .filter((r) => r.group === group)
                   .map((r) => (
-                    <RuleRow key={r.key} rule={r} words={data.role_words} />
+                    <LimitRow key={r.key} limit={r} words={data.role_words} />
                   ))}
               </tbody>
             </table>

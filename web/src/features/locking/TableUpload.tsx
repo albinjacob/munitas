@@ -105,7 +105,7 @@ export function LargeTableUpload({ datasetId, contract, rows, options }: { datas
           {done.about_people && done.people !== null ? ` about ${done.people.toLocaleString()} ${done.people === 1 ? "person" : "people"}` : ""}.
         </p>
         <p data-testid="brought-in">
-          {rows.name} ({size(rows.size)}) was brought in {byOn(done.brought_in_by, done.finished_at)}.
+          {rows.name} ({size(rows.size)}) was brought in {byOn(done.brought_in_by_label, done.finished_at)}.
           {done.about_people ? " The file itself was not kept, because it held the identifying values as they were written." : ""}
         </p>
         {done.about_people ? (
@@ -181,7 +181,7 @@ export function LargeTableUpload({ datasetId, contract, rows, options }: { datas
         <p>
           {minutes ? `Try again in about ${minutes} ${minutes === 1 ? "minute" : "minutes"}.` : "Try again in a while."} Nothing was sent.
         </p>
-        <button type="button" data-testid="upload-retry" onClick={() => void run()} className="rounded bg-indigo-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-800">
+        <button type="button" data-testid="upload-retry" onClick={() => void run()} className="btn btn-primary">
           Try again
         </button>
       </div>
@@ -194,10 +194,10 @@ export function LargeTableUpload({ datasetId, contract, rows, options }: { datas
         <p className="font-medium">The upload is paused.</p>
         <p>{sentence(stage.message)} What has arrived is kept, and carrying on sends only what is missing.</p>
         <div className="flex gap-3">
-          <button type="button" data-testid="upload-resume" onClick={() => void run()} className="rounded bg-indigo-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-800">
+          <button type="button" data-testid="upload-resume" onClick={() => void run()} className="btn btn-primary">
             Carry on
           </button>
-          <button type="button" data-testid="upload-cancel" onClick={() => void cancel()} className="rounded border border-slate-300 px-3 py-1.5 text-sm">
+          <button type="button" data-testid="upload-cancel" onClick={() => void cancel()} className="btn btn-secondary">
             Cancel
           </button>
         </div>
@@ -230,7 +230,7 @@ export function LargeTableUpload({ datasetId, contract, rows, options }: { datas
           {sent.held} of {sent.parts} parts sent ({size(Math.min(rows.size, sent.held * 8 * MB))} of {size(rows.size)}).
         </p>
       )}
-      <button type="button" data-testid="upload-cancel" onClick={() => void cancel()} className="rounded border border-slate-300 px-3 py-1.5 text-sm">
+      <button type="button" data-testid="upload-cancel" onClick={() => void cancel()} className="btn btn-secondary">
         Cancel
       </button>
     </div>

@@ -34,7 +34,7 @@ import { joined, joinedMax } from "../../lib/joined";
 import { when } from "../../lib/when";
 import { sentence, words } from "../../lib/text";
 import { RecordFilesSection } from "../locking/RecordFiles";
-import { ChooseBar, JudgedBy, KindResults } from "./ReleaseBarJudgement";
+import { ChooseStandard, JudgedBy, KindResults } from "./StandardJudgement";
 
 /** The class in the middle of a sentence, where a capital would read as a shout. */
 const classWord = (c: VisibilityClass) => CLASS_LABEL[c].toLowerCase();
@@ -340,11 +340,11 @@ function ReviewSection({ detail }: { detail: GateDetail }) {
   );
 }
 
-function Decide({ detail, barId }: { detail: GateDetail; barId: string | null }) {
+function Decide({ detail, standardId }: { detail: GateDetail; standardId: string | null }) {
   const { principal } = useIdentity();
   const decide = useDecideGate(detail.id);
-  // Asked under the bar chosen above, so what stops a release is what the decision itself will be checked against.
-  const review = useReview(detail.id, barId);
+  // Asked under the standard chosen above, so what stops a release is what the decision itself will be checked against.
+  const review = useReview(detail.id, standardId);
   const [reason, setReason] = useState("");
   // What stops a release now, from the platform: the same answer the decision itself is checked against, so this page cannot offer what is refused.
   const stoppers = detail.state === "pending" ? (review.data?.blockers ?? []) : [];
@@ -434,11 +434,11 @@ function Decide({ detail, barId }: { detail: GateDetail; barId: string | null })
           disabled={Boolean(blocked) || stoppers.length > 0 || !reason.trim() || decide.isPending}
           onClick={() =>
             decide.mutate(
-              { outcome: "promote", reason, releaseBarId: barId },
+              { outcome: "promote", reason, standardId: standardId },
               { onSuccess: () => notify(`Released to ${classWord(detail.to_class)}.`) },
             )
           }
-          className="rounded bg-green-700 px-3 py-1.5 text-sm font-medium text-white disabled:bg-slate-300"
+          className="btn btn-primary"
         >
           {decide.isPending ? "Releasing" : `Release to ${classWord(detail.to_class)}`}
         </button>
@@ -448,11 +448,11 @@ function Decide({ detail, barId }: { detail: GateDetail; barId: string | null })
           disabled={Boolean(blocked) || !reason.trim() || decide.isPending}
           onClick={() =>
             decide.mutate(
-              { outcome: "refuse", reason, releaseBarId: barId },
+              { outcome: "refuse", reason, standardId: standardId },
               { onSuccess: () => notify("Held back.") },
             )
           }
-          className="rounded bg-red-700 px-3 py-1.5 text-sm font-medium text-white disabled:bg-slate-300"
+          className="btn btn-danger-outline"
         >
           {decide.isPending ? "Holding back" : "Hold it back"}
         </button>
@@ -540,8 +540,8 @@ export function GateDetailScreen() {
   // The same query the review section reads, so the page knows whether there are files to look at without asking twice.
   const review = useReview(decisionId);
   const reviewFiles = review.data?.files.length ?? 0;
-  // The release bar the person has chosen to judge this result by. Empty is the platform's built-in bar.
-  const [barId, setBarId] = useState<string | null>(null);
+  // The de-identification standard the person has chosen to judge this result by. Empty is the platform's built-in standard.
+  const [standardId, setStandardId] = useState<string | null>(null);
 
   if (detail.isLoading) return <Loading what="this result" />;
   if (detail.error) return <Failure error={detail.error} what="this result" />;
@@ -550,7 +550,7 @@ export function GateDetailScreen() {
   const d = detail.data;
   // What a practice run found is kept apart from what was found in this batch, so one is never read as the other.
   const notMeasured = d.recommendation === "not_measured";
-  // Whether the result carries counts for each kind of identifier (a bar can judge it), and whether the run measured the share removed at all (a pipeline's own check does not).
+  // Whether the result carries counts for each kind of identifier (a standard can judge it), and whether the run measured the share removed at all (a pipeline's own check does not).
   const counted = Boolean((d.metrics as unknown as { per_entity?: unknown }).per_entity);
   const hasFigures = d.metrics?.recall_effective !== undefined;
   const batchLeaks = d.leaks.filter((leak) => !leak.practice);
@@ -625,8 +625,8 @@ export function GateDetailScreen() {
 
             <div className={hasFigures ? "mt-4" : ""}>
               {d.state === "pending" && counted ? (
-                <ChooseBar detail={d} barId={barId} onChange={setBarId} />
-              ) : d.purpose_name ? (
+                <ChooseStandard detail={d} standardId={standardId} onChange={setStandardId} />
+              ) : d.standard_name ? (
                 <JudgedBy detail={d} />
               ) : (
                 <>
@@ -638,7 +638,7 @@ export function GateDetailScreen() {
                   >
                     <p className="font-medium">
                       {hasFigures
-                        ? d.recommendation === "pass" ? "The measurement cleared the bar the run was given." : "The measurement did not clear the bar the run was given."
+                        ? d.recommendation === "pass" ? "The measurement cleared the standard the run was given." : "The measurement did not clear the standard the run was given."
                         : d.recommendation === "pass" ? "The pipeline's own check passed." : "The pipeline's own check did not pass."}
                     </p>
                     <p className="mt-1">{sentence(d.recommendation_reason)}</p>
@@ -678,7 +678,7 @@ export function GateDetailScreen() {
                   <dd className="mt-0.5 font-medium">{d.metrics?.practice_leaks_direct}</dd>
                 </div>
                 <div>
-                  <dt className="text-slate-500">Meets the Platform default bar</dt>
+                  <dt className="text-slate-500">Meets the Platform default standard</dt>
                   <dd className="mt-0.5 font-medium">
                     {d.metrics?.practice_cleared_bar === 1 ? "Yes" : "No"}
                   </dd>
@@ -747,7 +747,7 @@ export function GateDetailScreen() {
       )}
 
       <Section title={d.state === "pending" ? "Your decision" : "The decision"}>
-        <Decide detail={d} barId={barId} />
+        <Decide detail={d} standardId={standardId} />
       </Section>
     </div>
   );

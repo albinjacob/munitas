@@ -150,7 +150,7 @@ function Ask({ ask, mine }: { ask: RoleAsk; mine: boolean }) {
                   { onSuccess: () => notify(`${roleLabel(ask.role)} granted.`) },
                 )
               }
-              className="rounded bg-green-700 px-3 py-1.5 text-sm font-medium text-white disabled:bg-slate-300"
+              className="btn btn-primary"
             >
               {decide.isPending ? "Granting" : "Grant it"}
             </button>
@@ -164,7 +164,7 @@ function Ask({ ask, mine }: { ask: RoleAsk; mine: boolean }) {
                   { onSuccess: () => notify("Refused.") },
                 )
               }
-              className="rounded bg-slate-200 px-3 py-1.5 text-sm font-medium text-slate-800 disabled:bg-slate-100"
+              className="btn btn-secondary"
             >
               {decide.isPending ? "Refusing" : "Refuse"}
             </button>
@@ -218,7 +218,7 @@ function Held({ grant, mine }: { grant: RoleHeld; mine: boolean }) {
                   { onSuccess: () => notify("Marked still needed.") },
                 )
               }
-              className="rounded bg-slate-800 px-2 py-1 text-xs font-medium text-white disabled:bg-slate-300"
+              className="btn btn-primary btn-sm"
             >
               {attest.isPending ? "Marking" : "Still needed"}
             </button>
@@ -232,7 +232,7 @@ function Held({ grant, mine }: { grant: RoleHeld; mine: boolean }) {
                   { onSuccess: () => notify("Withdrawn.") },
                 )
               }
-              className="rounded bg-red-700 px-2 py-1 text-xs font-medium text-white disabled:bg-slate-300"
+              className="btn btn-danger btn-sm"
             >
               {attest.isPending ? "Withdrawing" : "Withdraw"}
             </button>
@@ -244,7 +244,7 @@ function Held({ grant, mine }: { grant: RoleHeld; mine: boolean }) {
 }
 
 /** The roles a person may ask for: every role a person can hold, except the one that administers roles. */
-const REQUESTABLE_ROLES = ["analyst", "data_custodian", "deid_reviewer", "dpo", "network_architect", "notebook_explore", "pipeline_operator", "privacy_auditor"];
+const REQUESTABLE_ROLES = ["ai_risk_owner", "analyst", "data_custodian", "deid_reviewer", "dpo", "network_architect", "notebook_explore", "pipeline_operator", "privacy_auditor"];
 
 function AskForRole() {
   const [role, setRole] = useState("");
@@ -296,7 +296,7 @@ function AskForRole() {
               },
             })
           }
-          className="rounded bg-indigo-500 hover:bg-indigo-800 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+          className="btn btn-primary"
         >
           {ask.isPending ? "Sending" : "Send request"}
         </button>

@@ -56,7 +56,7 @@ export function NotebookCode() {
           type="submit"
           data-testid="notebook-code-submit"
           disabled={accept.isPending || code.trim().length < 4}
-          className="rounded bg-indigo-500 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-800 disabled:opacity-50"
+          className="btn btn-primary"
         >
           {accept.isPending ? "Checking" : "Continue"}
         </button>
@@ -160,7 +160,7 @@ export function NotebookConsent() {
             data-testid="notebook-approve"
             disabled={decide.isPending}
             onClick={() => decide.mutate({ consent_challenge: challenge, approve: true }, { onSuccess: (r) => window.location.assign(r.redirect_to) })}
-            className="rounded bg-indigo-500 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-800 disabled:opacity-50"
+            className="btn btn-primary"
           >
             Approve
           </button>
@@ -169,7 +169,7 @@ export function NotebookConsent() {
             data-testid="notebook-refuse"
             disabled={decide.isPending}
             onClick={() => decide.mutate({ consent_challenge: challenge, approve: false }, { onSuccess: () => setRefused(true) })}
-            className="rounded border border-slate-700 px-3 py-2 text-sm font-medium text-slate-900 disabled:opacity-50"
+            className="btn btn-danger-outline"
           >
             Refuse
           </button>

@@ -147,7 +147,7 @@ export function LegalHolds() {
                 type="button"
                 data-testid="deletions-toggle"
                 onClick={() => setShowAllDeletions(!showAllDeletions)}
-                className="text-sm text-sky-700 underline"
+                className="btn btn-link"
               >
                 {showAllDeletions
                   ? `Show only the ${DELETIONS_SHOWN} most recent`
@@ -231,7 +231,7 @@ function HoldCard({ hold, mine }: { hold: Hold; mine: boolean }) {
             data-testid="hold-approve"
             disabled={decide.isPending}
             onClick={() => decide.mutate({ approve: true, note }, { onSuccess: () => notify("The legal hold is in force.") })}
-            className="rounded bg-green-700 px-3 py-1.5 text-sm font-medium text-white disabled:bg-slate-300"
+            className="btn btn-primary"
           >
             {decide.isPending ? "Approving" : "Approve it"}
           </button>
@@ -240,7 +240,7 @@ function HoldCard({ hold, mine }: { hold: Hold; mine: boolean }) {
             data-testid="hold-decline"
             disabled={decide.isPending}
             onClick={() => decide.mutate({ approve: false, note }, { onSuccess: () => notify("The legal hold is declined.") })}
-            className="rounded bg-slate-200 px-3 py-1.5 text-sm font-medium text-slate-800 disabled:bg-slate-100"
+            className="btn btn-secondary"
           >
             Decline
           </button>
@@ -261,7 +261,7 @@ function HoldCard({ hold, mine }: { hold: Hold; mine: boolean }) {
             type="button"
             data-testid="hold-release"
             onClick={() => setReleasing(true)}
-            className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-800"
+            className="btn btn-secondary"
           >
             Release this hold
           </button>
@@ -399,7 +399,7 @@ function PlaceHold() {
             type="submit"
             data-testid="hold-submit"
             disabled={!ready || place.isPending}
-            className="rounded bg-slate-800 px-3 py-1.5 text-sm font-medium text-white disabled:bg-slate-300"
+            className="btn btn-primary"
           >
             {place.isPending ? "Recording" : "Record the legal hold"}
           </button>

@@ -204,7 +204,7 @@ export function RequestAccess({
           type="submit"
           data-testid="request-submit"
           disabled={!ready || ask.isPending}
-          className="rounded bg-indigo-500 hover:bg-indigo-800 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+          className="btn btn-primary"
         >
           {ask.isPending ? "Sending" : "Ask for access"}
         </button>

@@ -274,7 +274,7 @@ export function SealTablePanel({ datasetId, plain = false }: { datasetId: string
         type="submit"
         data-testid="seal-table-submit"
         disabled={!contract || !rows || seal.isPending || (rows !== null && layout === null)}
-        className="rounded bg-indigo-500 hover:bg-indigo-800 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+        className="btn btn-primary"
       >
         {seal.isPending ? "Sealing" : large ? "Send and write as a table" : "Seal as a table"}
       </button>

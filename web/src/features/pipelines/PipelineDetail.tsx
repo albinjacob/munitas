@@ -51,7 +51,7 @@ function Lifecycle({ pipelineId, department, version }: { pipelineId: string; de
         writing.length ? `${named(writing)} ${writing.length > 1 ? "write" : "writes"} files, ${made}` : "",
       ].filter(Boolean).join(" ");
   const box = version.stage === "development" ? "border-amber-200 bg-amber-50" : version.stage === "retired" ? "border-slate-200 bg-slate-50" : "border-green-200 bg-green-50";
-  const secondary = "mt-2 rounded border border-slate-300 bg-white px-3 py-1 text-xs hover:bg-slate-50";
+  const secondary = "btn btn-secondary btn-sm mt-2";
   return (
     <div data-testid={`pipeline-lifecycle-${version.version}`} className={`mt-3 rounded border p-3 text-sm text-slate-800 ${box}`}>
       {version.stage === "retired" ? (
@@ -69,7 +69,7 @@ function Lifecycle({ pipelineId, department, version }: { pipelineId: string; de
           {mayDecide && (
             <button
               type="button"
-              className="mr-2 mt-2 rounded bg-slate-900 px-3 py-1 text-xs text-white hover:bg-slate-700"
+              className="btn btn-primary btn-sm mr-2 mt-2"
               disabled={promote.isPending}
               onClick={() => promote.mutate({ versionId: version.id, note: "" })}
             >
@@ -101,13 +101,13 @@ function Lifecycle({ pipelineId, department, version }: { pipelineId: string; de
           Retiring is final. A retired version is replaced by a later one, never brought back.
           <button
             type="button"
-            className="rounded bg-red-700 px-3 py-1 text-white hover:bg-red-800"
+            className="btn btn-danger-outline"
             disabled={retire.isPending}
             onClick={() => retire.mutate({ versionId: version.id, note: "" }, { onSettled: () => setSure(false) })}
           >
             Retire v{version.version}
           </button>
-          <button type="button" className="rounded border border-slate-300 bg-white px-3 py-1 hover:bg-slate-50" onClick={() => setSure(false)}>
+          <button type="button" className="btn btn-secondary" onClick={() => setSure(false)}>
             Cancel
           </button>
         </span>

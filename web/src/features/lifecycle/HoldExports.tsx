@@ -98,7 +98,7 @@ function ExportDetails({ e }: { e: LegalExport }) {
       </dl>
       {Boolean(e.file_count) && (
         <div className="mt-2">
-          <button type="button" onClick={() => setOpen(!open)} className="text-xs text-sky-700 underline">
+          <button type="button" onClick={() => setOpen(!open)} className="btn btn-link">
             {open ? "Hide the list of files" : "Show the list of files"}
           </button>
           {open && manifest.data && (
@@ -143,7 +143,7 @@ export function HoldExports({ holdId }: { holdId: string }) {
             type="button"
             data-testid="ask-for-records"
             onClick={() => setAsking(true)}
-            className="rounded border border-slate-300 px-3 py-1 text-sm text-slate-800"
+            className="btn btn-secondary"
           >
             Ask for records to be produced
           </button>
@@ -194,7 +194,7 @@ function ExportCard({ e, me }: { e: LegalExport; me: string }) {
               data-testid="export-approve"
               disabled={approve.isPending}
               onClick={() => approve.mutate({ approve: true, note }, { onSuccess: () => notify("The export is approved.") })}
-              className="rounded bg-green-700 px-3 py-1.5 text-sm font-medium text-white disabled:bg-slate-300"
+              className="btn btn-primary"
             >
               Approve it
             </button>
@@ -202,7 +202,7 @@ function ExportCard({ e, me }: { e: LegalExport; me: string }) {
               type="button"
               disabled={approve.isPending}
               onClick={() => approve.mutate({ approve: false, note }, { onSuccess: () => notify("The export is declined.") })}
-              className="rounded bg-slate-200 px-3 py-1.5 text-sm font-medium text-slate-800"
+              className="btn btn-secondary"
             >
               Decline
             </button>
@@ -230,7 +230,7 @@ function ExportCard({ e, me }: { e: LegalExport; me: string }) {
                   setMade({ url: `${API_BASE}${r.download_path}`, expires: r.expires_at, uses: r.uses }),
               })
             }
-            className="rounded bg-slate-800 px-3 py-1.5 text-sm font-medium text-white disabled:bg-slate-300"
+            className="btn btn-primary"
           >
             Make a download link
           </button>
@@ -361,11 +361,11 @@ function AskForm({ holdId, done }: { holdId: string; done: () => void }) {
           type="submit"
           data-testid="export-submit"
           disabled={!ready || ask.isPending}
-          className="rounded bg-slate-800 px-3 py-1.5 text-sm font-medium text-white disabled:bg-slate-300"
+          className="btn btn-primary"
         >
           {ask.isPending ? "File" : "Record the request"}
         </button>
-        <button type="button" onClick={done} className="text-sm text-slate-600 underline">Cancel</button>
+        <button type="button" onClick={done} className="btn btn-link">Cancel</button>
       </div>
       {ask.error && (
         <div className="md:col-span-2">
@@ -455,7 +455,7 @@ function CustodianCard({ e }: { e: LegalExport }) {
               data-testid="check-filter"
               disabled={!named || preview.isPending}
               onClick={() => preview.mutate(allValues())}
-              className="mt-2 rounded border border-slate-300 px-3 py-1 text-sm text-slate-800 disabled:text-slate-400"
+              className="btn btn-secondary mt-2"
             >
               Check how many rows match
             </button>
@@ -485,7 +485,7 @@ function CustodianCard({ e }: { e: LegalExport }) {
                   { onSuccess: () => notify("The scope is confirmed. The package is being prepared.") },
                 )
               }
-              className="rounded bg-green-700 px-3 py-1.5 text-sm font-medium text-white disabled:bg-slate-300"
+              className="btn btn-primary"
             >
               The scope is right
             </button>
@@ -493,7 +493,7 @@ function CustodianCard({ e }: { e: LegalExport }) {
               type="button"
               disabled={confirm.isPending}
               onClick={() => confirm.mutate({ approve: false, note }, { onSuccess: () => notify("The scope is declined.") })}
-              className="rounded bg-slate-200 px-3 py-1.5 text-sm font-medium text-slate-800"
+              className="btn btn-secondary"
             >
               It goes further than the demand
             </button>
@@ -522,7 +522,7 @@ function CustodianCard({ e }: { e: LegalExport }) {
               data-testid="read-passphrase"
               disabled={reveal.isPending}
               onClick={() => reveal.mutate(undefined, { onSuccess: (r) => setPassphrase(r.passphrase) })}
-              className="rounded bg-slate-800 px-3 py-1.5 text-sm font-medium text-white disabled:bg-slate-300"
+              className="btn btn-primary"
             >
               Show me the passphrase, once
             </button>

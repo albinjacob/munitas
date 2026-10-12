@@ -134,7 +134,7 @@ export function Closing() {
                 type="button"
                 data-testid="close-organisation"
                 onClick={() => setAsking(status.tenant_id)}
-                className="rounded bg-red-700 px-3 py-1.5 text-sm font-medium text-white"
+                className="btn btn-danger"
               >
                 Close down this organisation
               </button>
@@ -153,7 +153,7 @@ export function Closing() {
                 onClick={() =>
                   cancel.mutate({}, { onSuccess: () => notify("The closing is cancelled. The organisation is open again.") })
                 }
-                className="rounded bg-slate-800 px-3 py-1.5 text-sm font-medium text-white disabled:bg-slate-300"
+                className="btn btn-primary"
               >
                 {cancel.isPending ? "Cancelling" : "Cancel the closing down"}
               </button>
@@ -265,7 +265,7 @@ function Row({ org, onClose }: { org: OrganisationRow; onClose: () => void }) {
       </td>
       <td className="p-3 align-top">
         {org.phase === "active" && (
-          <button type="button" onClick={onClose} className="rounded border border-red-300 px-2 py-1 text-xs text-red-800">
+          <button type="button" onClick={onClose} className="btn btn-secondary btn-sm">
             Close down
           </button>
         )}
@@ -276,7 +276,7 @@ function Row({ org, onClose }: { org: OrganisationRow; onClose: () => void }) {
             onClick={() =>
               cancel.mutate({ tenant_id: org.tenant_id }, { onSuccess: () => notify(`${org.tenant_id} is open again.`) })
             }
-            className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-800"
+            className="btn btn-secondary btn-sm"
           >
             Cancel closing down
           </button>

@@ -412,10 +412,10 @@ export function Datasets() {
                 Showing {(page - 1) * PAGE + 1} to {(page - 1) * PAGE + (list.data?.datasets.length ?? 0)} of {list.data?.total ?? 0}
               </span>
               <div className="btns">
-                <button type="button" data-testid="ds-prev" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+                <button type="button" className="btn btn-secondary btn-sm" data-testid="ds-prev" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
                   Previous
                 </button>
-                <button type="button" data-testid="ds-next" disabled={!list.data || page * PAGE >= list.data.total} onClick={() => setPage((p) => p + 1)}>
+                <button type="button" className="btn btn-secondary btn-sm" data-testid="ds-next" disabled={!list.data || page * PAGE >= list.data.total} onClick={() => setPage((p) => p + 1)}>
                   Next
                 </button>
               </div>

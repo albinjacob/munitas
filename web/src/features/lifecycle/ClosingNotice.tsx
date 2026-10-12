@@ -67,7 +67,7 @@ export function ClosingNotice() {
             await clear();
             navigate("/auth/login");
           }}
-          className="mt-6 text-sm text-sky-700 underline"
+          className="btn btn-link mt-6"
         >
           Sign out
         </button>
@@ -96,7 +96,7 @@ function Acknowledge(props: {
           data-testid="hold-acknowledge"
           disabled={ack.isPending}
           onClick={() => ack.mutate(undefined, { onSuccess: () => notify("You have acknowledged the hold.") })}
-          className="mt-3 rounded bg-slate-800 px-3 py-1.5 text-sm font-medium text-white disabled:bg-slate-300"
+          className="btn btn-primary mt-3"
         >
           {ack.isPending ? "File" : "I have read it and will answer for these records"}
         </button>

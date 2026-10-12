@@ -57,6 +57,11 @@ const BY_ROLE: Record<string, Copy> = {
       "Independent oversight. Sees every decision including every refusal, and makes none.",
     landing: "You see every decision, including every refusal, and you make none.",
   },
+  ai_risk_owner: {
+    description:
+      "Answers for how the organisation holds its AI agents. Writes the risk levels and the approved tools list, confirms each agent's level and gives the second approval.",
+    landing: "You write the risk levels and the approved tools list, confirm each agent's level, and give the second approval when an agent's level asks for one.",
+  },
   notebook_explore: {
     description:
       "Wants de-identified data for a project. Asks for access, never grants it.",
@@ -81,6 +86,14 @@ const BY_ROLE: Record<string, Copy> = {
     description:
       "Runs the de-identification pipeline and works out why a run failed.",
     landing: "You bring in data, register pipelines and agents, and ask to read what you need.",
+  },
+  analyst: {
+    description: "Reads what has been released, and nothing wider.",
+    landing: "You read what has been released to you, and nothing wider.",
+  },
+  hybridops: {
+    description: "Support and reliability work, held alongside the administrator role.",
+    landing: "You support and keep the platform reliable. You hold no standing access to the data in it.",
   },
   platform_admin: {
     description:

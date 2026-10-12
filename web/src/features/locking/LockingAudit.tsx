@@ -12,7 +12,6 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { useIdentity } from "../../identity/IdentityContext";
 import { ApiError } from "../../api/client";
 import { useAuditPage, type AuditEvidence, type AuditSection, type LockedLease } from "../../api/locking";
 import { Empty, Failure, Loading, Section } from "../../components/states";
@@ -192,7 +191,7 @@ function FilterBar({ applied, onChange, onClear, size, onSize }: { applied: Filt
             onChange(NO_FILTERS);
             onClear();
           }}
-          className="rounded border border-slate-500 px-3 py-1 text-sm text-slate-900 disabled:opacity-40"
+          className="btn btn-secondary"
         >
           Clear filters
         </button>
@@ -365,7 +364,7 @@ function PagedList<T>({
               data-testid={`${testid}-prev`}
               disabled={d.page <= 1}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="rounded border border-slate-500 px-2 py-1 text-xs text-slate-900 disabled:opacity-40"
+              className="btn btn-secondary btn-sm"
             >
               Previous
             </button>
@@ -374,7 +373,7 @@ function PagedList<T>({
               data-testid={`${testid}-next`}
               disabled={d.page >= d.pages}
               onClick={() => setPage((p) => Math.min(d.pages, p + 1))}
-              className="rounded border border-slate-500 px-2 py-1 text-xs text-slate-900 disabled:opacity-40"
+              className="btn btn-secondary btn-sm"
             >
               Next
             </button>
@@ -396,7 +395,7 @@ function CodeChip({ code, onClear }: { code: string; onClear: () => void }) {
       <span>
         Showing only the key <span className="font-mono text-xs">{code}</span>
       </span>
-      <button type="button" data-testid="clear-code" onClick={onClear} className="text-sky-700 underline">
+      <button type="button" data-testid="clear-code" onClick={onClear} className="btn btn-link">
         Show every key
       </button>
     </div>
@@ -417,7 +416,6 @@ function Result({ allowed, note }: { allowed: boolean; note?: string | null }) {
 }
 
 export function LockingAudit() {
-  const { principal } = useIdentity();
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const [ended, setEnded] = useState(false);
   const location = useLocation();
@@ -426,17 +424,6 @@ export function LockingAudit() {
   /** A person code selected in a list: every line recorded for that key, in the keys list and the list of people who were erased. */
   const [code, setCode] = useState("");
   const follow = (c: string) => setCode(c);
-  const may = principal?.roles.some((r) => r === "privacy_auditor" || r === "dpo") ?? false;
-
-  if (!may) {
-    return (
-      <div>
-        <Section level="page" title="Locked data audit">
-          <p className="text-sm text-slate-700">This page is for the privacy auditor and the data protection officer.</p>
-        </Section>
-      </div>
-    );
-  }
 
   if (ended) {
     return (
@@ -668,7 +655,7 @@ export function LockingAudit() {
                       <td className="py-1.5 pr-4">{k.actor_label}</td>
                       <td className="py-1.5 pr-4">
                         {k.person_code && (
-                          <button type="button" data-testid="follow-code" title="Show everything recorded for this key" onClick={() => follow(k.person_code!)} className="font-mono text-xs text-sky-700 underline">
+                          <button type="button" data-testid="follow-code" title="Show everything recorded for this key" onClick={() => follow(k.person_code!)} className="btn btn-link font-mono">
                             {k.person_code}
                           </button>
                         )}
@@ -693,7 +680,7 @@ export function LockingAudit() {
                     <tr key={i} className="border-b border-slate-100">
                       <td className="py-1.5 pr-4">{when(e.at)}</td>
                       <td className="py-1.5 pr-4">
-                        <button type="button" data-testid="follow-code" title="Show everything recorded for this key" onClick={() => follow(e.record_id.replace(/^person:/, ""))} className="font-mono text-xs text-sky-700 underline">
+                        <button type="button" data-testid="follow-code" title="Show everything recorded for this key" onClick={() => follow(e.record_id.replace(/^person:/, ""))} className="btn btn-link font-mono">
                           {e.record_id.replace(/^person:/, "")}
                         </button>
                       </td>

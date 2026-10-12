@@ -52,7 +52,7 @@ function Decide({ lease }: { lease: LockedLease }) {
           data-testid={`approve-${lease.id}`}
           disabled={decide.isPending}
           onClick={() => decide.mutate({ id: lease.id, verb: "approve", note })}
-          className="rounded bg-indigo-500 hover:bg-indigo-800 px-2 py-1 text-xs font-medium text-white disabled:opacity-50"
+          className="btn btn-primary btn-sm"
         >
           Approve
         </button>
@@ -62,7 +62,7 @@ function Decide({ lease }: { lease: LockedLease }) {
           disabled={decide.isPending || !note.trim()}
           title={note.trim() ? undefined : "Say why in the note first"}
           onClick={() => decide.mutate({ id: lease.id, verb: "decline", note })}
-          className="rounded border border-slate-700 px-2 py-1 text-xs font-medium text-slate-900 disabled:opacity-50"
+          className="btn btn-secondary btn-sm"
         >
           Decline
         </button>
@@ -85,7 +85,7 @@ function End({ lease }: { lease: LockedLease }) {
         data-testid={`end-${lease.id}`}
         disabled={revoke.isPending}
         onClick={() => revoke.mutate(lease.id)}
-        className="whitespace-nowrap rounded border border-slate-500 px-2 py-1 text-xs text-slate-900 disabled:opacity-50"
+        className="btn btn-secondary btn-sm whitespace-nowrap"
       >
         {revoke.isPending ? "Ending" : "End now"}
       </button>

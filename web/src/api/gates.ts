@@ -77,10 +77,10 @@ export interface GateRow {
   /** When it was decided, or null while it waits. */
   decided_at: string | null;
   decision_reason: string | null;
-  /** The release bar the result was judged by when it was decided, and what that bar asked then. Empty on a decision made before bars were chosen. */
-  purpose_name: string | null;
-  purpose_version: number | null;
-  bars_used: Record<string, unknown> | null;
+  /** The de-identification standard the result was judged by when it was decided, and what that standard asked then. Empty on a decision made before standards were chosen. */
+  standard_name: string | null;
+  standard_version: number | null;
+  limits_used: Record<string, unknown> | null;
   release_recommendation: "pass" | "fail" | "not_measured" | null;
   release_reason: string | null;
   created_at: string;
@@ -167,10 +167,10 @@ export function useGateDecision(decisionId: string | undefined) {
   });
 }
 
-export function useReview(decisionId: string | undefined, releaseBarId: string | null = null) {
+export function useReview(decisionId: string | undefined, standardId: string | null = null) {
   return useQuery({
-    queryKey: ["gate-review", decisionId, releaseBarId],
-    queryFn: () => api.get<ReviewEvidence>(`/gate-decisions/${decisionId}/review`, releaseBarId ? { release_bar_id: releaseBarId } : undefined),
+    queryKey: ["gate-review", decisionId, standardId],
+    queryFn: () => api.get<ReviewEvidence>(`/gate-decisions/${decisionId}/review`, standardId ? { standard_id: standardId } : undefined),
     enabled: Boolean(decisionId),
     retry: false,
   });
@@ -179,10 +179,10 @@ export function useReview(decisionId: string | undefined, releaseBarId: string |
 export function useDecideGate(decisionId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: { outcome: "promote" | "refuse"; reason: string; releaseBarId?: string | null }) =>
+    mutationFn: (body: { outcome: "promote" | "refuse"; reason: string; standardId?: string | null }) =>
       api.post<{ decided: boolean; state: string }>(
         `/gate-decisions/${decisionId}/${body.outcome}`,
-        { reason: body.reason, release_bar_id: body.releaseBarId ?? null },
+        { reason: body.reason, standard_id: body.standardId ?? null },
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["gate-decision", decisionId] });

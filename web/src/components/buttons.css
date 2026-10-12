@@ -1,0 +1,179 @@
+/* Buttons: one set for the whole console. A button is `btn` plus one kind (btn-primary, btn-secondary, btn-danger, btn-danger-outline, btn-ghost, btn-link)
+   and, in a row or a card, `btn-sm`. The primary is near-black in the light theme and near-white in the dark theme, so colour stays for meaning (red for
+   danger, indigo for what is selected). Every colour pair was measured: label 4.5:1 or better, edge and focus ring 3:1 or better. The focus ring follows the
+   kind (red on the danger kinds) and shows for keyboard focus only. A button that cannot be pressed keeps its shape at half strength.
+   Unlayered on purpose: it must beat Tailwind's utility layer for the few properties it owns. Layout utilities (margins, widths) still apply. */
+.ds[data-theme="light"] {
+  --btn-primary: #1e293b;
+  --btn-primary-h: #0f172a;
+  --btn-on-primary: #ffffff;
+  --btn-line: #64748b;
+  --btn-hover: #f1f5f9;
+  --btn-text: #0f172a;
+  --btn-text2: #475569;
+  --btn-danger: #b91c1c;
+  --btn-danger-h: #991b1b;
+  --btn-danger-tint: #fef2f2;
+  --btn-danger-text: #b91c1c;
+  --btn-sel: #4f46e5;
+  --btn-sel-h: #4338ca;
+  --btn-ring: #1e293b;
+  --btn-ring-danger: #b91c1c;
+  --btn-ring-sel: #4f46e5;
+}
+.ds[data-theme="dark"] {
+  --btn-primary: #e5e9f0;
+  --btn-primary-h: #ffffff;
+  --btn-on-primary: #0f172a;
+  --btn-line: #7b8798;
+  --btn-hover: #1a1f2a;
+  --btn-text: #e5e9f0;
+  --btn-text2: #9aa4b2;
+  --btn-danger: #dc2626;
+  --btn-danger-h: #b91c1c;
+  --btn-danger-tint: #2e1517;
+  --btn-danger-text: #fca5a5;
+  --btn-sel: #4f46e5;
+  --btn-sel-h: #4338ca;
+  --btn-ring: #e5e9f0;
+  --btn-ring-danger: #fca5a5;
+  --btn-ring-sel: #a5b4fc;
+}
+.btn {
+  --btn-r: var(--btn-ring);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--btn-text);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.btn:focus-visible {
+  outline: 2px solid var(--btn-r);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+.btn:disabled,
+.btn[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-sm {
+  height: 30px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+.btn-primary {
+  background: var(--btn-primary);
+  color: var(--btn-on-primary);
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--btn-primary-h);
+}
+.btn-secondary {
+  border-color: var(--btn-line);
+}
+.btn-secondary:hover:not(:disabled) {
+  background: var(--btn-hover);
+}
+.btn-danger {
+  --btn-r: var(--btn-ring-danger);
+  background: var(--btn-danger);
+  color: #ffffff;
+}
+.btn-danger:hover:not(:disabled) {
+  background: var(--btn-danger-h);
+}
+.btn-danger-outline {
+  --btn-r: var(--btn-ring-danger);
+  border-color: var(--btn-danger-text);
+  color: var(--btn-danger-text);
+}
+.btn-danger-outline:hover:not(:disabled) {
+  background: var(--btn-danger-tint);
+}
+.btn-ghost {
+  color: var(--btn-text2);
+}
+.btn-ghost:hover:not(:disabled) {
+  background: var(--btn-hover);
+  color: var(--btn-text);
+}
+.btn-link {
+  display: inline;
+  height: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: none;
+  color: var(--btn-text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  white-space: normal;
+}
+.btn-link:hover:not(:disabled) {
+  text-decoration-thickness: 2px;
+}
+.btn-link.btn-link-danger {
+  --btn-r: var(--btn-ring-danger);
+  color: var(--btn-danger-text);
+}
+.btn-selected,
+.btn[aria-pressed="true"] {
+  --btn-r: var(--btn-ring-sel);
+  border-color: var(--btn-sel);
+  background: var(--btn-sel);
+  color: #ffffff;
+}
+.btn-selected:hover:not(:disabled),
+.btn[aria-pressed="true"]:hover:not(:disabled) {
+  background: var(--btn-sel-h);
+}
+.btn-icon {
+  width: 36px;
+  padding: 0;
+}
+.btn-icon.btn-sm {
+  width: 30px;
+}
+
+/* The shell's own buttons (the Home page, the Datasets pager) draw from the same tokens, so they match the set above. */
+.ds-btn {
+  border-color: var(--btn-line);
+  color: var(--btn-text);
+}
+.ds-btn.primary {
+  border-color: var(--btn-primary);
+  background: var(--btn-primary);
+  color: var(--btn-on-primary);
+}
+.ds-btn.primary:hover {
+  border-color: var(--btn-primary-h);
+  background: var(--btn-primary-h);
+}
+.ds-btn:focus-visible {
+  outline: 2px solid var(--btn-ring);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+.ds-pager button.btn {
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--btn-line);
+  background: transparent;
+  font-size: 13px;
+}
+.ds-pager button.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

@@ -201,7 +201,7 @@ function Decide({ detail }: { detail: EgressApprovalDetail }) {
               { onSuccess: () => notify("Hosts approved.") },
             )
           }
-          className="rounded bg-green-700 px-3 py-1.5 text-sm font-medium text-white disabled:bg-slate-300"
+          className="btn btn-primary"
         >
           {decide.isPending ? "Approving" : "Approve these hosts"}
         </button>
@@ -215,7 +215,7 @@ function Decide({ detail }: { detail: EgressApprovalDetail }) {
               { onSuccess: () => notify("Refused.") },
             )
           }
-          className="rounded bg-red-700 px-3 py-1.5 text-sm font-medium text-white disabled:bg-slate-300"
+          className="btn btn-danger-outline"
         >
           {decide.isPending ? "Refusing" : "Refuse"}
         </button>

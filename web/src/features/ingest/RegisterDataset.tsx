@@ -221,7 +221,7 @@ function RegisterForm({
           type="submit"
           data-testid="register-submit"
           disabled={!ready || register.isPending}
-          className="rounded bg-indigo-500 hover:bg-indigo-800 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+          className="btn btn-primary"
         >
           {register.isPending ? "Registering" : "Register"}
         </button>
@@ -283,7 +283,7 @@ function HuggingFaceAccountPanel({
           data-testid="hf-account-disconnect"
           onClick={() => disconnect.mutate(directoryId)}
           disabled={disconnect.isPending}
-          className="text-sky-700 underline"
+          className="btn btn-link"
         >
           {disconnect.isPending ? "Disconnecting" : "Disconnect"}
         </button>
@@ -301,7 +301,7 @@ function HuggingFaceAccountPanel({
           type="button"
           data-testid="hf-account-connect-open"
           onClick={() => setEditing(true)}
-          className="text-sky-700 underline"
+          className="btn btn-link"
         >
           Connect your HuggingFace account
         </button>
@@ -351,14 +351,14 @@ function HuggingFaceAccountPanel({
               { onSuccess: () => { setToken(""); setEditing(false); } },
             )
           }
-          className="rounded bg-indigo-500 hover:bg-indigo-800 px-2 py-1 text-xs font-medium text-white disabled:opacity-50"
+          className="btn btn-primary btn-sm"
         >
           {connect.isPending ? "Checking" : "Connect"}
         </button>
         <button
           type="button"
           onClick={() => { setEditing(false); setToken(""); }}
-          className="text-xs text-slate-500 underline"
+          className="btn btn-link"
         >
           Cancel
         </button>
@@ -495,7 +495,7 @@ function HuggingFaceFetch({
               path: path.trim(),
             })
           }
-          className="rounded bg-indigo-500 hover:bg-indigo-800 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+          className="btn btn-primary"
         >
           {fetchHf.isPending || running ? "Fetching" : "Fetch"}
         </button>
@@ -505,7 +505,7 @@ function HuggingFaceFetch({
             data-testid="hf-cancel"
             disabled={cancelHf.isPending}
             onClick={() => cancelHf.mutate({ datasetId, jobId: latestJob!.id })}
-            className="rounded border border-red-300 px-3 py-1.5 text-sm font-medium text-red-800 disabled:opacity-50"
+            className="btn btn-secondary"
           >
             {cancelHf.isPending ? "Cancelling" : "Cancel"}
           </button>
@@ -695,11 +695,7 @@ export function UploadStep({
             data-testid={`source-${value}`}
             disabled={sealed}
             onClick={() => setSource(value)}
-            className={`rounded px-2 py-1 font-medium ${
-              source === value
-                ? "bg-indigo-500 hover:bg-indigo-800 text-white"
-                : "text-slate-600 hover:bg-slate-100"
-            }`}
+            className={`btn btn-sm ${source === value ? "btn-selected" : "btn-ghost"}`}
           >
             {label}
           </button>
@@ -816,7 +812,7 @@ export function UploadStep({
                       },
                     )
                   }
-                  className="text-xs text-slate-500 underline hover:text-slate-900"
+                  className="btn btn-link"
                 >
                   Withdraw
                 </button>
@@ -887,7 +883,7 @@ export function UploadStep({
                   },
                 })
               }
-              className="rounded bg-indigo-500 hover:bg-indigo-800 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+              className="btn btn-primary"
             >
               {seal.isPending ? "Sealing" : "Seal this as version 1"}
             </button>
@@ -910,7 +906,7 @@ export function UploadStep({
                     },
                   })
                 }
-                className="rounded border border-slate-900 px-3 py-1.5 text-sm font-medium text-slate-900 disabled:opacity-50"
+                className="btn btn-secondary"
               >
                 {sealAudio.isPending ? "Sealing" : "Seal as files"}
               </button>

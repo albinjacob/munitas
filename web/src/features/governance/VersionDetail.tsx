@@ -172,7 +172,7 @@ export function VersionDetail() {
             <Field label="Brought in" hint="The file as it was sent, and who sent it.">
               <span data-testid="brought-in-by">
                 {v.brought_in.file_name}
-                {v.brought_in.bytes ? ` (${size(v.brought_in.bytes)})` : ""} {byOn(v.brought_in.who, v.brought_in.at)}
+                {v.brought_in.bytes ? ` (${size(v.brought_in.bytes)})` : ""} {byOn(v.brought_in.who_label, v.brought_in.at)}
               </span>
             </Field>
           )}
@@ -363,7 +363,7 @@ export function VersionDetail() {
               type="button"
               data-testid="version-pipeline-start"
               disabled={startPipeline.isPending}
-              className="rounded bg-sky-700 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+              className="btn btn-primary"
               onClick={() => {
                 const [kind, pipelineVersionId] = pipelineChoice.startsWith("dag:")
                   ? pipelineChoice.split(":")
@@ -460,7 +460,7 @@ export function VersionDetail() {
                     <span className="text-slate-400">&rarr;</span>
                     <ClassBadge value={t.to_class} />
                     <span className="ml-2 text-slate-600">
-                      by {t.decided_by}{" "}
+                      by {t.decided_by_label ?? t.decided_by}{" "}
                       <span className="text-slate-400">({t.decided_by_kind})</span>
                     </span>
                     <span className="ml-auto text-xs text-slate-400">{when(t.at)}</span>
