@@ -7,8 +7,8 @@ One description below produces:
 
   docs/public/diagrams/architecture-layers.mmd     Mermaid, the diffable text
   docs/public/diagrams/architecture-layers.drawio  for anyone who wants to rearrange it in draw.io
+  docs/public/diagrams/architecture-layers.svg     the picture as a file, shown on the architecture page
   the picture on docs/public/walkthroughs/feature-walkthrough.html, between the diagram markers, with its short description
-  the page docs/public/diagrams/system-architecture.html (the address the architecture page links to), with the same picture
 
 It reuses the checked drawing code in build_system_architecture_diagram.py, runs every rule from that file on this picture, prints pass or fail for each, and writes
 nothing if one fails.
@@ -75,7 +75,7 @@ LEGEND = [
     ("box", R, "A place with restricted reach: it has no route to the internet"),
     ("box", g.ZONE, "A layer"),
 ]
-ABBREVIATIONS = [("API", "Application Programming Interface, the platform's single control plane")]
+ABBREVIATIONS = [("API", "Application Programming Interface, the one place every request goes through")]
 
 TITLE = "Munitas in layers"
 SUMMARY = (
@@ -138,25 +138,6 @@ def update_tour(svg: str) -> None:
     print("wrote", page.relative_to(ROOT))
 
 
-def update_page(svg: str) -> None:
-    """The public architecture page: the same layered picture as the feature tour, at the address the architecture page already links to."""
-    page = OUT / "system-architecture.html"
-    raw = page.read_bytes().decode("utf-8")
-    text = raw.replace("\r\n", "\n")
-    text = re.sub(r"<title>.*?</title>", "<title>Munitas: Architecture in layers</title>", text, count=1, flags=re.S)
-    text = re.sub(r"<h1>.*?</h1>", "<h1>Munitas in layers</h1>", text, count=1, flags=re.S)
-    text = re.sub(r'<p class="lede">.*?</p>', lambda m: f'<p class="lede">\n    {LEDE}\n  </p>', text, count=1, flags=re.S)
-    block = f'<!-- diagram:start -->\n  <div class="diagram">\n{svg}\n  </div>\n  <p class="note">{NOTE}</p>\n  <!-- diagram:end -->'
-    text = re.sub(r"<!-- diagram:start -->.*?<!-- diagram:end -->", lambda m: block, text, count=1, flags=re.S)
-    footer = ("The same picture as text: <code>docs/public/diagrams/architecture-layers.mmd</code> (Mermaid). To rearrange it, open "
-              "<code>docs/public/diagrams/architecture-layers.drawio</code> in draw.io.")
-    text = re.sub(r"<footer>.*?</footer>", lambda m: f"<footer>\n    {footer}\n  </footer>", text, count=1, flags=re.S)
-    if ".note {" not in text:
-        text = text.replace("</style>", "  .note { color: var(--ink-faint, #6b7280); font-size: 0.88rem; margin: 1rem 0 0; }\n</style>", 1)
-    page.write_bytes((text.replace("\n", "\r\n") if "\r\n" in raw else text).encode("utf-8"))
-    print("wrote", page.relative_to(ROOT))
-
-
 def main() -> int:
     describe()
     results = g.run_checks()
@@ -170,11 +151,10 @@ def main() -> int:
         print("Nothing written.")
         return 1
     svg = picture()
-    for path, text in ((OUT / "architecture-layers.mmd", g.build_mermaid()), (OUT / "architecture-layers.drawio", g.build_drawio())):
+    for path, text in ((OUT / "architecture-layers.mmd", g.build_mermaid()), (OUT / "architecture-layers.drawio", g.build_drawio()), (OUT / "architecture-layers.svg", svg)):
         path.write_text(text, encoding="utf-8", newline="\n")
         print("wrote", path.relative_to(ROOT))
     update_tour(svg)
-    update_page(svg)
     return 0
 
 

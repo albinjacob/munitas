@@ -1,190 +1,85 @@
 # Munitas: system architecture
 
-What the platform is built from, and how each piece enforces governance
-rather than just describing it.
+What the platform is built from, and how a request moves through it.
 
-Companion reading: [the governance model](design/governance-model.md) for
-who is accountable for what, and the
-[walkthroughs](https://albinjacob.github.io/munitas/walkthroughs/feature-walkthrough.html) for these guarantees
-in action, screen by screen.
+Companion reading: [the governance model](design/governance-model.md) for who is accountable for what, and the [walkthroughs](https://albinjacob.github.io/munitas/walkthroughs/feature-walkthrough.html) for these rules in action, screen by screen.
 
 ---
 
-## 1. The services, and the trust boundaries between them
+## 1. How a request moves through the platform
 
-Every request into the platform passes through one control plane, the API,
-which checks every read and every write against a separate policy engine
-before doing anything else. Sandboxed agent runs sit on their own isolated
-network, with no direct route to the internet or to storage, and still have
-every tool call checked against that same policy engine. A step of an
-organisation's own pipeline runs in a container on a network of its own,
-with no storage, no key and no route to anything but one small gateway that
-forwards only the platform's step routes.
+A person works in the Console and signs in. Every request goes to the API. The API asks the policy engine whether the request is allowed, and records the answer with its reason. If it is allowed, the API hands out a short-lived key for exactly what was approved, and nothing more.
 
-[Diagram: Munitas in layers →](https://albinjacob.github.io/munitas/diagrams/system-architecture.html)
+Long jobs, such as a pipeline run, are handled by the workflow engine and the worker. Code that is not the platform's own runs in places with limited reach: sandboxed AI agents on a network with no route to the internet, an organisation's own pipeline steps in containers with no storage and no key, and the queries that make new datasets with no network at all.
 
-| Service | Role |
-| --- | --- |
-| Console | Where a person signs in and works: registers data, requests access, approves it, reviews pipeline output |
-| API | The control plane. Every request passes through here; it decides nothing about access on its own |
-| Policy engine (Open Policy Agent) | Evaluates every access, approval, export, and release decision, and logs a reason for every allow and deny |
-| Sign-in (Ory Kratos and Ory Hydra) | Kratos answers who a person is and issues the session every request carries. Hydra signs a notebook in on a person's behalf, with a short-lived pass; it holds no people |
-| Workflow engine (Temporal) | Keeps long jobs running and resumable: pipeline runs, imports, agent runs that wait for approval, and the scheduled sweeps |
-| Worker | Runs pipelines and AI agents. When it reads or writes a dataset's bytes it does so with a key the API made for that one task |
-| Table worker | A separate process that writes large tables. It holds no database and no organisation's standing key |
-| Database | Records every dataset version, every access decision (including denials), and the append-only history that answers what was allowed on any past date |
-| Object storage | Where the underlying files live, reached only through credentials the API mints. Each is scoped to one organisation's own bucket, and those issued for a lease or for a single task are limited to the folders involved and end with it |
-| Table catalog | The API serves a read-only Iceberg catalog: a person's own tool, such as DuckDB, lists only the tables that person may read and opens one with a short-lived key for that version |
-| Sandboxed agent run | Executes an agent's own uploaded code on a network with no route out, so what it may reach is a property of the network itself, not a rule that has to be remembered |
-| Derivation runner | Runs the query that makes a new dataset, in a container with no network connection and no credentials |
-| Custom pipeline step | Runs an organisation's own code as one step of a pipeline, in a container with no storage and no key. It reaches the platform only through the step gateway |
-| Step gateway | The only thing on the step network besides the steps. It forwards the platform's step routes to the API and answers 404 to everything else |
+![Munitas in layers: people and tools, governance, processing and storage, with a record of every decision across all of them](diagrams/architecture-layers.svg)
 
 ---
 
-## 2. Core concepts
+## 2. The services
 
-**A sensitivity lattice, not a binary ACL.** Every dataset version sits at
-one of five access levels, from most to least restricted: `RAW`,
-`UNDER_REVIEW`, `OPEN_FOR_ANNOTATION`, `OPEN_FOR_TRAINING`, `PUBLISHED`.
-Every role has a ceiling on what it can read without asking; reading
-anything above that ceiling always requires an explicit request, a named
-custodian's approval, a stated purpose, and a lease that expires on its
-own. Promoting a version to a higher access level grants a new credential;
-it never copies or moves the underlying bytes.
-
-**Immutable once sealed.** A dataset version, once sealed, cannot be
-edited or deleted at the database level, not by application convention.
-The access level a version currently holds is derived from an append-only
-log of promotions, so history is never rewritten and the access level held
-on any past date stays answerable.
-
-**Lineage, in one hop.** Every pipeline step records the exact code and
-inputs that produced its output, with a unique key so a retried step
-produces exactly one result. What produced any given version, from what,
-with which code, is one query away rather than a graph traversal.
-
-**Tenancy.** Every organisation's data sits in its own isolated space:
-its own storage bucket, its own rows, resolved from who is signed in, never
-from anything a request claims about itself.
-
-**One policy engine, every decision.** Access, approval, export, and
-release are each answered by the same policy engine rather than decided
-inline by whichever endpoint happens to handle the request, so there is one
-place, not many, where "who may do this" is defined and tested.
-
-**An agent's identity never comes from what it reads or writes.** The
-identity a running agent's tool calls are checked against is frozen by the
-runtime before the agent starts, and nothing inside the agent's own
-reasoning or the documents it reads can change it. An instruction planted
-in a document the agent reads can change what the agent asks to do, but it
-cannot change which identity that request is checked against, so there is
-nothing for a prompt-injection attempt to escalate into.
-
-**Locked data.** The columns of a table, and the files, that identify a
-person can be locked under a key made for that person. The owning
-department's approvers read their own locked columns in full. Anybody else
-sees real values only through a lease: a stated purpose, an approver of the
-owning department who is not the person asking, a short life, a cap on rows
-or on files, and every read logged. The platform draws the rows or files a
-lease opens and fixes the list, so reading again never reveals more. A
-privacy auditor reads the evidence of how locking was used, which contains
-no name, value, file name or identifier.
-
-**Development data.** A pipeline version that is still in development may
-run only on development data: files declared to hold no real person, or a
-sample of real ones that the platform draws after an approver of the owning
-department has approved it for the person who asked. A sample, and whatever
-is made from it, ends with the sample: its files are deleted and the sealed
-record of it stays.
-
-**An organisation's own code.** It runs as a step of a pipeline only after
-an approver of the owning department, who did not upload it, has approved
-that version. The platform asks four
-questions of every request a step makes: is the pass real and made for
-this step, is the pipeline run still going, does the version of the
-pipeline declare this step for what it is asking to do, and does the
-approver's approval still stand. A file is opened before it is read, and the
-opening is logged.
-
-**A notebook acts for one person.** A notebook signs in on a person's
-behalf without pasting a session: it shows a code, the person approves it
-in the console, and the notebook receives a short-lived pass. The platform
-asks Hydra whether the pass is live on every request, and the pass reaches
-only a short list of routes. Approving a request or changing a role is
-refused even for a person who may do it in the console.
-
-**Closing an organisation, and legal hold.** An organisation that leaves is
-closed in two stages, 15 days each by default, and nothing in it is deleted
-while a legal hold stands. A hold needs two different platform
-administrators. Records for a legal matter leave as an encrypted, signed
-package: one administrator asks, a different one approves, and the custodian
-the hold names confirms what is included.
-
-**Deletion without rewriting history.** Records that identify a person are
-protected by a key of their own: a key made for the record, or one made for
-the person it is about. Deleting destroys that key rather than rewriting
-any sealed version: the record becomes permanently unreadable everywhere it
-was ever included, while the version history, lineage, and audit trail that
-referenced it stay intact. A record of the deletion itself is kept, so
-erasure does not erase the fact that an erasure happened. A legal hold over
-an organisation stops any erasure while it stands, because a destroyed key
-cannot be brought back.
+| Service | What it does |
+| --- | --- |
+| Console | Where a person signs in and works: registers data, requests access, approves it, reviews results |
+| API | The one place every request goes through. It asks the policy engine, records decisions, and hands out short-lived keys |
+| Policy engine (Open Policy Agent) | Answers every access, approval, export and release question, and gives a reason for every allow and every refusal |
+| Sign-in (Ory Kratos and Ory Hydra) | Real sign-in for every person. It also lets a notebook act for one person, with a short-lived pass |
+| Workflow engine (Temporal) | Keeps long jobs running and resumes them after a crash: pipeline runs, imports, agent runs that wait for approval, and scheduled clean-ups |
+| Worker | Runs pipelines and AI agents. Whenever it reads or writes data, it uses a key made for that one task |
+| Table worker | Writes large tables in the background |
+| Database (PostgreSQL) | Records every dataset version and every decision, including refusals, and keeps the history, so what was allowed on any past date can be answered |
+| Object storage | Where the files live, one bucket per organisation. A key opens only what it was made for and ends with its task or lease |
+| Table catalog | Lets a person's own tool, such as DuckDB, list only the tables that person may read and open one |
+| Sandboxed agent run | Runs an AI agent's own code on a network with no route out |
+| Derivation runner | Runs the query that makes a new dataset, with no network connection and no credentials |
+| Custom pipeline step | Runs an organisation's own code as one step of a pipeline, with no storage and no key |
+| Step gateway | The only door from a custom step to the platform |
 
 ---
 
-## 3. Technology
+## 3. Ideas the design rests on
 
-Every component is MIT, Apache 2.0, BSD, or PostgreSQL licensed: nothing
-in the stack requires a commercial licence to run or extend.
+**One policy engine for every decision.** Access, approval, export and release are all answered by the same engine, so there is one place where "who may do this" is defined and tested.
 
-**Storage and data**
+**Each organisation is kept apart.** It has its own storage bucket and its own records. The organisation is worked out from who is signed in, never from anything a request says about itself.
 
-| Component | Role |
+**Sealed versions cannot be edited, and widening access never moves data.** A sealed dataset version is finished for good. A version has one of five sensitivity levels, and making it available to a wider audience changes only which key opens it. The files are never copied or moved.
+
+**An agent's identity never comes from what it reads.** The identity an agent's actions are checked against is fixed by the platform before the agent starts. A hidden instruction in a document can change what the agent asks for, but not who the platform believes the agent is.
+
+**Deleting a person's data without rewriting history.** Records that identify a person are protected by a key of their own. Deleting destroys the key, so the records become unreadable everywhere they were ever included, while the version history and the audit trail stay intact. A short record that the deletion happened is kept.
+
+For locked data, development data, an organisation's own code, notebooks and closing an organisation, see the [walkthroughs](https://albinjacob.github.io/munitas/walkthroughs/feature-walkthrough.html).
+
+---
+
+## 4. What it is built with
+
+The platform and almost every service it runs are under open-source licences that allow commercial use, mostly MIT, BSD or Apache. A few small libraries are under the Mozilla Public Licence 2.0. Speech recognition on a graphics card also uses NVIDIA's CUDA libraries and the FFmpeg audio library, which are installed under their own licences. The repository's [third-party notices](../../THIRD_PARTY_NOTICES.md) list them.
+
+| Component | What it does here |
 | --- | --- |
-| SeaweedFS or Cloudflare R2 | S3-compatible object storage, selected per organisation. Credentials are scoped to one organisation's bucket and, for a lease or a single task, to specific folders, which is how access is enforced physically and not only by convention |
-| PostgreSQL (with pgvector) | Dataset versions, access-level history, pipeline runs, leases, and the audit log; also the vector store for near-duplicate and contamination checks |
-| Apache Iceberg and DuckDB | A sealed table is also stored as an Iceberg table, which the API's read-only catalog lets a person's own tool, such as DuckDB, open. DuckDB also runs the query that makes a new dataset, with no network |
-| cryptography (Python) | Encrypts records and stored credentials. Keys are made and destroyed through one key-service interface, so what holds the keys can be replaced |
-
-**Control and policy**
-
-| Component | Role |
-| --- | --- |
-| Temporal | Durable workflow execution for pipeline runs and background ingestion, with retry, timeout, and resume-after-crash as properties of the engine rather than something each workflow has to implement |
-| Open Policy Agent | Evaluates every access, approval, export, and release decision, and logs a reason for every allow and deny |
-| Ory Kratos | Real sign-in and session verification; every registered person authenticates for real, with no shared or assumed identity |
-| Ory Hydra | Issues, renews and revokes the short-lived pass a notebook signs in with. It holds no people: Kratos still answers who somebody is, and the platform decides what a pass may do |
-| nginx | The step gateway: the one thing besides the steps on the network a custom pipeline step runs on |
-| Docker | Runs the isolated containers for sandboxed agent runs, custom pipeline steps and derivation runs |
-| FastAPI | The control plane: register schemas, create dataset versions, mint scoped credentials, approve leases, promote access levels, start ingestion |
-
-**De-identification pipeline**
-
-| Component | Role |
-| --- | --- |
+| SeaweedFS or Cloudflare R2 | Object storage, chosen per organisation. Keys are limited to one organisation's bucket and, for a lease or a single task, to specific folders |
+| PostgreSQL | Dataset versions, access-level history, pipeline runs, leases and the audit log |
+| Apache Iceberg and DuckDB | A sealed table is also stored as an Iceberg table, which a person's own tool, such as DuckDB, opens through the table catalog. DuckDB also runs the query that makes a new dataset |
+| cryptography (Python) | Encrypts locked records. Destroying a person's key makes their records unreadable |
+| Temporal | Durable workflows for pipeline runs and imports, with retry, timeout and resume after a crash |
+| Open Policy Agent | The policy engine |
+| Ory Kratos and Ory Hydra | Sign-in, and the short-lived pass a notebook signs in with |
+| FastAPI | The framework the API is written in |
+| Docker | Runs the isolated containers for sandboxed agent runs, custom steps and derivation runs |
 | faster-whisper | Speech recognition with word-level timings |
-| Microsoft Presidio, spaCy, GLiNER | Three independent identifier-detection approaches, combined because they fail differently, so what one misses another can catch |
-| Label Studio | Human annotation and correction, with model output pre-filled so a reviewer corrects rather than starts from nothing |
-
-**Agents and observability**
-
-| Component | Role |
-| --- | --- |
-| LangGraph | An agent's execution graph, with checkpointed state and an explicit pause for human approval before a consequential action |
-| OpenTelemetry and Jaeger | Traces of an agent's tool calls, with the access level of the data touched carried as a span attribute |
-| MLflow | Registry for pipeline runs, models, and the evidence a promotion decision points to |
+| Microsoft Presidio, spaCy, GLiNER | Three separate ways of finding personal information, combined because they miss different things |
+| Label Studio | Where a person corrects what was found, with the detectors' marks already filled in |
+| LangGraph | The steps of an AI agent, with a pause for human approval before a significant action |
+| OpenTelemetry and Jaeger | Traces of an agent's actions, tagged with the sensitivity of the data touched |
+| MLflow | Stores the measured results of pipeline runs |
 
 ---
 
 ## Learn more
 
-- [The governance model](design/governance-model.md): who owns the data,
-  who decides who may read it, and how that decision is made trustworthy.
-- [API reference](https://albinjacob.github.io/munitas/reference/api-reference.html): every route the control
-  plane exposes, generated directly from the API's own route definitions.
-- [Roles reference](https://albinjacob.github.io/munitas/reference/roles.html): what each role can and cannot do,
-  generated from the platform's own rules.
-- [Walkthroughs](https://albinjacob.github.io/munitas/walkthroughs/feature-walkthrough.html): real screenshots
-  of these guarantees end to end, for someone who has never seen the
-  platform before.
+- [The governance model](design/governance-model.md): who owns the data, who decides who may read it, and why nobody decides their own request.
+- [API reference](https://albinjacob.github.io/munitas/reference/api-reference.html): every route the API exposes, generated from the API's own route definitions.
+- [Roles reference](https://albinjacob.github.io/munitas/reference/roles.html): what each role can and cannot do, generated from the platform's own rules.
+- [Walkthroughs](https://albinjacob.github.io/munitas/walkthroughs/feature-walkthrough.html): real screenshots of these rules from start to finish, for someone who has never seen the platform.

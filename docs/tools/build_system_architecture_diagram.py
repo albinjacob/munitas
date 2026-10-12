@@ -1,10 +1,12 @@
-r"""Build the public system architecture diagram from one description.
+r"""Build the drawing code and the detailed system diagram from one description.
 
-One list of places, boxes and connectors below produces all three files, so they cannot disagree:
+INTERNAL OUTPUT. This module is the shared drawing code (boxes, connectors, numbered badges, the rule checks, the Mermaid and draw.io writers) that
+docs/tools/build_layers_diagram.py reuses for the public layered picture. Run on its own it draws the detailed picture with every connector, and writes it
+only to the internal folder, because that picture shows how the services connect and is not published:
 
-  docs/public/diagrams/system-architecture.mmd     Mermaid, the diffable text
-  docs/public/diagrams/system-architecture.drawio  for anyone who wants to rearrange it in draw.io
-  docs/public/diagrams/system-architecture.html    the page, with the diagram drawn inline as SVG (nothing is loaded from outside)
+  docs/internal/diagrams/system-architecture/system-architecture.mmd     Mermaid, the diffable text
+  docs/internal/diagrams/system-architecture/system-architecture.drawio  for anyone who wants to rearrange it in draw.io
+  docs/internal/diagrams/system-architecture/system-architecture.svg     the picture
 
 Run it after changing a service, a network or a connector:
 
