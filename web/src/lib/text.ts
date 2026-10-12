@@ -15,6 +15,11 @@ export function sentence(text: string | null | undefined): string {
   return (isName ? t.charAt(0) : t.charAt(0).toUpperCase()) + t.slice(1) + (/[.!?]$/.test(t) ? "" : ".");
 }
 
+/** Words that start a sentence ("the AI risk owner" as "The AI risk owner"). */
+export function sentenceStart(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 /** An internal name ("custom_step") as words a person would write ("Custom step"). */
 export function words(name: string): string {
   const t = name.replace(/[_-]+/g, " ").trim();

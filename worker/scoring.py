@@ -22,7 +22,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from . import gate_bars
+from . import gate_standards
 from .align import Alignment, coverage
 
 # A detector must cover this much of an identifier for the span itself to count.
@@ -45,7 +45,7 @@ HARMLESS_RESIDUE = {
 # and only identify in combination. The gate treats them differently because
 # leaving a town in a transcript and leaving a patient's name in one are not the
 # same failure.
-DIRECT = set(gate_bars.DIRECT_ENTITY_CODES)
+DIRECT = set(gate_standards.DIRECT_ENTITY_CODES)
 
 
 def residue_is_harmless(residue: str) -> bool:
@@ -248,29 +248,29 @@ def _failure_shape(leak: dict) -> str:
 # These values are a proposal and should be argued with. The recall figure is
 # set above the 0.95 the pipeline currently reaches, so the gate refuses until
 # the span-boundary problem is fixed rather than being tuned to pass today.
-# They are the platform's starting values: the bar a result is released under is
-# the customer's, kept as a named purpose (see gate_bars.py), and this is the bar
-# of the built-in "Platform default" purpose that the run's own recommendation uses.
-GATE_RECALL = gate_bars.GATE_RECALL
+# They are the platform's starting values: the standard a result is released under is
+# the customer's, kept as a named standard (see gate_standards.py), and this is the standard
+# of the built-in "Platform default" standard that the run's own recommendation uses.
+GATE_RECALL = gate_standards.GATE_RECALL
 GATE_DIRECT_LEAKS = 0
 
 
 def evaluate_gate(card: ScoreCard,
                   recall_threshold: float = GATE_RECALL,
                   max_direct_leaks: int = GATE_DIRECT_LEAKS,
-                  bars: dict | None = None) -> tuple[bool, str]:
+                  limits: dict | None = None) -> tuple[bool, str]:
     """Decide whether a version may be promoted, and say why if not.
 
-    With `bars` (a purpose's limits, see gate_bars.py) the result is judged kind by kind. Without, it is judged by the two figures the run
+    With `limits` (a standard's limits, see gate_standards.py) the result is judged kind by kind. Without, it is judged by the two figures the run
     was started with: the overall recall and the most direct identifiers left in the clear, over all the direct kinds together.
     """
-    if bars is not None:
-        return gate_bars.evaluate(card.per_entity, bars)
+    if limits is not None:
+        return gate_standards.evaluate(card.per_entity, limits)
     reasons = []
     if card.recall_effective < recall_threshold:
-        reasons.append(gate_bars.say_overall_short(card.recall_effective, recall_threshold, card.leaked, card.survived))
+        reasons.append(gate_standards.say_overall_short(card.recall_effective, recall_threshold, card.leaked, card.survived))
     if card.direct_leaks > max_direct_leaks:
-        reasons.append(gate_bars.say_too_many(None, card.direct_leaks, max_direct_leaks))
+        reasons.append(gate_standards.say_too_many(None, card.direct_leaks, max_direct_leaks))
     if reasons:
         return False, "; ".join(reasons)
-    return True, gate_bars.say_clear(card.recall_effective, card.direct_leaks, card.quasi_leaks)
+    return True, gate_standards.say_clear(card.recall_effective, card.direct_leaks, card.quasi_leaks)

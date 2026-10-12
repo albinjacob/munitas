@@ -48,8 +48,11 @@ class AgentIdentity:
     # round trip to find out.
     allowed_versions: frozenset[str] = field(default_factory=frozenset)
     # Tool functions this agent version declared it needs
-    # (agent_version.tool_scope). Empty means unrestricted, matching every
-    # version sealed before this field existed.
+    # (agent_version.tool_scope). `tools_declared` says whether the owner said:
+    # declared with an empty list means the agent uses no tools and every tool
+    # is refused; not declared (every version sealed before the owner was asked,
+    # and any registered without saying) is unrestricted, and is flagged for
+    # the owner to declare.
     #
     # Explicitly NOT a security boundary: the server has no independent way
     # to know which Python function decided to make a given request, only
@@ -59,6 +62,7 @@ class AgentIdentity:
     # Defending against that is a distinct, harder problem, and not solved
     # here.
     tool_scope: frozenset[str] = field(default_factory=frozenset)
+    tools_declared: bool = False
     # Proof this identity is the run it claims to be, not merely something
     # that learned the run's id. Minted once by the platform at run creation
     # (agent_run.run_secret) and read from the runtime the same way every

@@ -117,7 +117,7 @@ function AskForAccess({ locking }: { locking: Locking }) {
         type="submit"
         data-testid="lease-submit"
         disabled={!purpose.trim() || request.isPending}
-        className="rounded bg-indigo-500 hover:bg-indigo-800 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+        className="btn btn-primary"
       >
         {request.isPending ? "Asking" : "Ask for access"}
       </button>
@@ -165,7 +165,7 @@ function YourAccess({ locking }: { locking: Locking }) {
             data-testid="end-own-lease"
             disabled={revoke.isPending}
             onClick={() => revoke.mutate(lease.id)}
-            className="rounded border border-slate-400 px-2 py-1 text-xs text-slate-800 disabled:opacity-50"
+            className="btn btn-secondary btn-sm"
           >
             {revoke.isPending ? "Ending" : "End this lease now"}
           </button>
@@ -242,7 +242,7 @@ function DecideGroupSize({ versionId }: { versionId: string }) {
         type="submit"
         data-testid="group-size-submit"
         disabled={!note.trim() || decide.isPending}
-        className="rounded bg-indigo-500 hover:bg-indigo-800 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+        className="btn btn-primary"
       >
         {decide.isPending ? "File" : "Record this decision"}
       </button>

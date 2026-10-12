@@ -248,6 +248,7 @@ CUSTODIAN = "canary-custodian"
 ENGINEER = "canary-engineer"
 RESEARCHER = "canary-researcher"
 OVERSIGHT = "canary-dpo"
+RISK_OWNER = "canary-risk-owner"
 REVIEWER = "canary-reviewer"
 PIPELINE = "canary-pipeline"
 TRAINER = "canary-trainer"
@@ -289,6 +290,7 @@ _EMAIL_BY_DIRECTORY_ID = {
     "canary-engineer": "engineer@canary.example",
     "canary-researcher": "researcher@canary.example",
     "canary-dpo": "dpo@canary.example",
+    "canary-risk-owner": "risk-owner@canary.example",
     "canary-reviewer": "reviewer@canary.example",
     "canary-auditor": "auditor@canary.example",
     "canary-architect": "architect@canary.example",
@@ -300,6 +302,7 @@ _EMAIL_BY_DIRECTORY_ID = {
     "neighbour-admin": "admin@neighbour.example",
     "rev-imani": "imani@health.example",
     "aud-marlow": "marlow@health.example",
+    "risk-okafor": "okafor@health.example",
 }
 _PASSWORD = "dev-password-not-for-production"
 

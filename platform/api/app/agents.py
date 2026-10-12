@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pgdb import errors as pg_errors
 from pydantic import BaseModel, Field
 
-from . import auth, config, db, grants, opa, readability, task_credential, temporal_client
+from . import agent_changes, agent_oversight, agent_risk, auth, config, db, grants, opa, readability, task_credential, temporal_client
 
 router = APIRouter(tags=["agents"])
 
@@ -121,12 +121,22 @@ def access_preflight(
     return _access_preflight(agent, dataset_version_id)
 
 
+class ProposedLevel(BaseModel):
+    level_key: str = Field(description="The key of the risk level proposed, from the organisation's list.")
+    affected: str = Field(min_length=1, description="Who is affected by what the agent produces.")
+    reasoning: str = Field(min_length=1, description="Why this level.")
+
+
 class RegisterAgent(BaseModel):
     tenant_id: str
     name: str
     department_id: str | None = None
     registered_by: str
     purpose: str = Field(min_length=1)
+    # Who runs the agent. 'outside' means the platform only keeps the record: it never starts a run of it.
+    run_by: str = "platform"
+    # A level proposed together with the registration. The AI risk owner then decides it with the agent's first version, in one decision.
+    proposed_level: ProposedLevel | None = None
 
 
 class RegisterAgentVersion(BaseModel):
@@ -140,6 +150,10 @@ class RegisterAgentVersion(BaseModel):
     image_digest: str = "native:host-venv"
     model_id: str = Field(min_length=1)
     tool_scope: list[str] = Field(default_factory=list)
+    # Said when the version uses no tools, so that an empty list means "none" and not "not said". A version that gives neither a list nor this is stored as not declared.
+    declares_no_tools: bool = False
+    # Where the model runs, as the owner states it: 'platform' or 'outside'. Not stating it is stored as not declared.
+    model_hosting: str | None = None
     registered_by: str
     # Empty by default: most versions call nothing outside the boundary.
     # Non-empty means this version cannot be deployed until a
@@ -252,6 +266,14 @@ def register(body: RegisterAgent, identity: dict = Depends(auth.current_session)
     ):
         raise HTTPException(400, {"reasons": ["that department does not exist"]})
 
+    if body.run_by not in ("platform", "outside"):
+        raise HTTPException(400, {"reasons": ["run_by is 'platform' or 'outside'"]})
+    proposed = None
+    if body.proposed_level:
+        proposed = agent_risk.level_named(body.tenant_id, body.proposed_level.level_key)
+        if not proposed:
+            raise HTTPException(400, {"reasons": [f"{body.proposed_level.level_key!r} is not one of this organisation's risk levels"]})
+
     agent_id = str(uuid.uuid4())
     principal_id = f"{body.tenant_id}-{_slugify(body.name)}-runtime"
     label = f"{body.name.strip()} (runtime account)"
@@ -265,14 +287,17 @@ def register(body: RegisterAgent, identity: dict = Depends(auth.current_session)
             cur.execute(
                 """insert into agent
                      (id, tenant_id, name, department_id, registered_by, purpose,
-                      principal_id)
-                   values (%s, %s, %s, %s, %s, %s, %s)""",
+                      principal_id, run_by)
+                   values (%s, %s, %s, %s, %s, %s, %s, %s)""",
                 (agent_id, body.tenant_id, body.name, body.department_id,
-                 body.registered_by, body.purpose, principal_id),
+                 body.registered_by, body.purpose, principal_id, body.run_by),
             )
     except Exception as exc:  # unique (tenant_id, name), or a name whose slug collides
         raise HTTPException(409, {"reasons": [f"could not register: {exc}"]}) from exc
 
+    if proposed:
+        level, list_version = proposed
+        agent_risk.record({"id": agent_id, "tenant_id": body.tenant_id}, "proposed", level, list_version, body.purpose, body.proposed_level.affected, body.proposed_level.reasoning, body.registered_by)
     return {"id": agent_id, "name": body.name}
 
 
@@ -307,6 +332,10 @@ def register_version(agent_id: str, body: RegisterAgentVersion, identity: dict =
     )
     version = row["v"] + 1
 
+    if body.model_hosting not in (None, "platform", "outside"):
+        raise HTTPException(400, {"reasons": ["model_hosting is 'platform' or 'outside'"]})
+    tools_declared = bool(body.tool_scope) or body.declares_no_tools
+
     canonical = json.dumps(
         {
             "code_hash": body.code_hash,
@@ -314,6 +343,7 @@ def register_version(agent_id: str, body: RegisterAgentVersion, identity: dict =
             "image_digest": body.image_digest,
             "model_id": body.model_id,
             "tool_scope": sorted(body.tool_scope),
+            "tools_declared": tools_declared,
         },
         sort_keys=True, separators=(",", ":"),
     )
@@ -324,14 +354,15 @@ def register_version(agent_id: str, body: RegisterAgentVersion, identity: dict =
         """insert into agent_version
              (id, tenant_id, agent_id, version, code_hash, source_path,
               image_digest, model_id, tool_scope, registered_by,
-              content_hash, sealed, requested_hosts)
-           values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, true, %s)""",
+              content_hash, sealed, requested_hosts, tools_declared, model_hosting)
+           values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, true, %s, %s, %s)""",
         (version_id, agent["tenant_id"], agent_id, version, body.code_hash,
          body.source_path, body.image_digest, body.model_id, body.tool_scope,
-         body.registered_by, content_hash, body.requested_hosts),
+         body.registered_by, content_hash, body.requested_hosts, tools_declared, body.model_hosting),
     )
     file_egress_approval(agent["tenant_id"], agent_id, version_id,
                          body.requested_hosts, body.registered_by)
+    change = agent_changes.record_version(agent, version_id, body.registered_by)
 
     return {
         "id": version_id,
@@ -339,6 +370,9 @@ def register_version(agent_id: str, body: RegisterAgentVersion, identity: dict =
         "version": version,
         "content_hash": content_hash,
         "sealed": True,
+        "tools_declared": tools_declared,
+        "widening": change["widening"],
+        "changes": change["changes"],
     }
 
 
@@ -376,6 +410,11 @@ def deploy(agent_id: str, body: DeployAgent,
                 f"{agent['tenant_id']!r}"
             ]}
         )
+
+    # A level the organisation does not allow, or a widening that has not been approved, stops a deploy before anything else is asked.
+    held = agent_changes.deploy_refusal(agent, body.agent_version_id)
+    if held:
+        raise HTTPException(409, {"reasons": held})
 
     # A version that names no hosts needs no approval at all; one that does
     # cannot deploy until every host it named has one on file. The most
@@ -829,6 +868,10 @@ async def start_run(agent_id: str, body: StartAgentRun,
             ]}
         )
 
+    held = agent_oversight.start_refusals(agent)
+    if held:
+        raise HTTPException(409, {"reasons": held})
+
     version_id = body.agent_version_id
     if not version_id:
         active = db.one(
@@ -933,8 +976,12 @@ async def start_run(agent_id: str, body: StartAgentRun,
     return {"run_id": run_id, "status": "running"}
 
 
+class ApproveRunIn(BaseModel):
+    final_hash: str | None = Field(default=None, description="The hash of what the reviewer ended with, when they changed what the run produced. Without it the run is recorded as accepted as it was.")
+
+
 @router.post("/agents/runs/{run_id}/approve", status_code=202)
-async def approve_run(run_id: str, identity: dict = Depends(auth.current_session)) -> dict:
+async def approve_run(run_id: str, body: ApproveRunIn | None = None, identity: dict = Depends(auth.current_session)) -> dict:
     """Let a run that stopped at its approval gate carry on.
 
     Self-approval is rejected by a check constraint on `agent_run`, not by the
@@ -990,6 +1037,8 @@ async def approve_run(run_id: str, identity: dict = Depends(auth.current_session
                where id = %s""",
             (identity["id"], run_id),
         )
+        final_hash = body.final_hash if body else None
+        agent_oversight.record_review(run, "changed" if final_hash and final_hash != agent_oversight.draft_hash_of(run) else "accepted", final_hash, None, identity["id"])
     except pg_errors.CheckViolation as exc:
         if "agent_run_no_self_approval" in str(exc):
             raise HTTPException(

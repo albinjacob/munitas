@@ -119,7 +119,7 @@ export interface VersionRow {
   created_at?: string;
   sealed?: boolean;
   /** The file somebody brought in to make this version, who sent it and when, or null when nothing was brought in (a pipeline made it). */
-  brought_in?: { file_name: string; bytes: number | null; sha256: string | null; who: string | null; at: string | null } | null;
+  brought_in?: { file_name: string; bytes: number | null; sha256: string | null; who: string | null; who_label: string | null; at: string | null } | null;
   /**
    * When the stored files were deleted to free space, or null.
    *
@@ -170,6 +170,7 @@ export interface Transition {
   from_class: VisibilityClass;
   to_class: VisibilityClass;
   decided_by: string;
+  decided_by_label: string | null;
   decided_by_kind: "human" | "workload";
   gate_evidence: Record<string, unknown>;
   at: string;

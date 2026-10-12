@@ -90,7 +90,7 @@ export function Login() {
           type="submit"
           disabled={!flow || submitting}
           data-testid="login-submit"
-          className="w-full rounded bg-indigo-500 hover:bg-indigo-800 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+          className="btn btn-primary w-full"
         >
           {submitting ? "Signing in…" : "Sign in"}
         </button>

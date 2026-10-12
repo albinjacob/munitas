@@ -334,11 +334,11 @@ test("capture: the healthcare worked example, start to finish", async ({ page })
 
   await page.getByRole("link", { name: "Run a pipeline against this version" }).click();
   await expect(page.getByTestId("version-pipeline-start")).toBeVisible();
-  // A click made while the page is still settling is lost without any message, so retry until the run opens.
-  await expect(async () => {
-    await page.getByTestId("version-pipeline-start").click();
-    await expect(page).toHaveURL(/\/pipeline-runs\/[0-9a-f-]{36}$/, { timeout: 6000 });
-  }).toPass({ timeout: 60_000, intervals: [1000] });
+  // Click once, after the page has settled, and wait for the run to open. A second click while the first run is still working is refused ("has not finished"), so there is no retry.
+  await page.waitForLoadState("networkidle");
+  await page.waitForTimeout(1500);
+  await page.getByTestId("version-pipeline-start").click();
+  await expect(page).toHaveURL(/\/pipeline-runs\/[0-9a-f-]{36}$/, { timeout: 90_000 });
   // The address of the run, kept now: the page can move on to another address while the run is working.
   const pipelineRunUrl = page.url();
   await shot(page, "pipeline-started");
@@ -477,7 +477,7 @@ test("capture: the healthcare worked example, start to finish", async ({ page })
       await page.getByTestId("start-run").click();
     }
     await expect(page.getByTestId("agent-runs")).toContainText(secondRunPurpose, { timeout: 8000 });
-  }).toPass({ timeout: 90_000, intervals: [1000] });
+  }).toPass({ timeout: 240_000, intervals: [1000] });   // the platform refuses a second run while the first is still working, and a first run on a freshly started sandbox can take two minutes
   await toTop(page, page.getByRole("heading", { name: "Runs" }));
   await shot(page, "second-run-needs-second-grant");
 

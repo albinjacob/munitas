@@ -171,9 +171,10 @@ async function ownedVersion(custodianId: string): Promise<string> {
 
   // Oldest first, so the plain datasets the test organisation was seeded with come before the locked ones that other tests make as they run. A version
   // is only worth asking for when something in it can be read: the platform refuses a request for a version whose every file is locked, rightly.
+  // Asked for this department alone: the organisation holds thousands of datasets, and a fixed window of the oldest ones stopped reaching this department's.
   const datasets = await apiGet<{
     datasets: { id: string; department_id: string | null; version_count: number }[];
-  }>("/datasets?tenant_id=canary&limit=1000&sort=registered&direction=asc", auth);
+  }>(`/datasets?tenant_id=canary&limit=1000&sort=registered&direction=asc&department_id=${dept.id}&has_versions=true`, auth);
   for (const owned of datasets.datasets.filter((d) => d.department_id === dept.id && d.version_count > 0)) {
     const versions = await apiGet<{ dataset_version_id: string }[]>(`/datasets/${owned.id}/versions`, auth);
     for (const v of versions) {

@@ -1,0 +1,11 @@
+Visit 3, cardiology outpatient clinic. A made-up conversation, for demonstration only.
+Doctor: Welcome back. How have the last two weeks been?
+Patient: The breathlessness is better since the new tablets, but my ankles have been swollen for a few days.
+Doctor: Are you taking the water tablet as prescribed?
+Patient: Yes, every morning.
+Doctor: Let me examine your ankles. There is mild swelling on both sides, and your temperature is normal.
+Doctor: Your blood pressure today is 138 over 84.
+Doctor: The swelling appears to be a side effect of the new tablet rather than anything worse.
+Doctor: I will reduce the dose, and schedule a blood test, and see you again in one month.
+Patient: Will it go away?
+Doctor: It should settle within a week or two.

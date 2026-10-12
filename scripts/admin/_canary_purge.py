@@ -55,13 +55,20 @@ COVERED_TABLES = frozenset({
     "development_data_declaration", "development_output", "development_sample", "file_lease", "file_part", "file_person", "file_upload", "gate_decision",
     "group_size_report", "huggingface_fetch_job", "iceberg_projection_note", "iceberg_table_ref", "lease_request", "locked_column_lease",
     "pipeline_run", "pipeline_step_run", "record_read_log", "step_file_opened", "step_output", "step_output_part", "storage_identity",
-    "storage_reclamation", "table_job", "table_job_part", "task_read_grant", "access_decision", "agent_run_attempt"})
+    "storage_reclamation", "table_job", "table_job_part", "task_read_grant", "access_decision", "agent_run_attempt", "agent_output_review"})
+
+# The agent-oversight records that hang off an agent (and its approvals), deleted with the agent. They refuse edits through triggers but not deletes, so nothing
+# is switched off for them. Each has a tenant column, so every delete is scoped to canary (G6) and every one is counted for G7.
+AGENT_RECORD_TABLES = ("agent_output_review", "agent_risk_record", "agent_change_approval", "agent_suspension", "agent_incident", "agent_evidence_export",
+                       "agent_sponsorship", "agent_reconfirmation", "agent_record_chain")
 
 # The tables a purge touches, for the comparison in G7. Every one of them is counted per tenant before and after.
 WATCHED = ("dataset", "dataset_version", "action_run", "access_lease", "lease_request", "agent_run", "pipeline_run",
            "derivation", "gate_decision", "access_decision", "storage_identity", "task_read_grant", "class_transition",
            "storage_reclamation", "catalog_key", "table_job", "huggingface_fetch_job", "dataset_source", "iceberg_table_ref",
-           "write_grant", "agent", "agent_version", "agent_deployment", "agent_egress_approval", "directory")
+           "write_grant", "agent", "agent_version", "agent_deployment", "agent_egress_approval", "directory",
+           "agent_change_decision", "agent_output_review", "agent_risk_record", "agent_change_approval", "agent_suspension", "agent_incident",
+           "agent_evidence_export", "agent_sponsorship", "agent_reconfirmation", "agent_record_chain")
 
 
 class NotCanary(Exception):
@@ -362,7 +369,7 @@ def purge(conn, plan: Plan, client=None) -> tuple[dict[str, int], list[str]]:
                  ("storage_identity", "action_run_id", action_runs), ("storage_identity", "pipeline_run_id", pipeline_runs),
                  ("storage_identity", "agent_run_id", agent_runs), ("storage_identity", "lease_id", leases),
                  ("storage_identity", "huggingface_fetch_job_id", fetch_jobs),
-                 ("catalog_key", "lease_id", leases), ("agent_run_attempt", "run_id", agent_runs),
+                 ("catalog_key", "lease_id", leases), ("agent_run_attempt", "run_id", agent_runs), ("agent_output_review", "run_id", agent_runs),
                  ("pipeline_step_run", "pipeline_run_id", pipeline_runs),
                  ("step_output_part", "output_id", step_outputs), ("file_part", "upload_id", uploads), ("table_job_part", "job_id", table_jobs),
                  ("step_file_opened", "pipeline_run_id", pipeline_runs), ("development_output", "sample_id", samples),
@@ -520,7 +527,7 @@ def purge_agents(conn, agent_ids: list[str], client=None) -> tuple[dict[str, int
     verify_canary(conn)
     locked = conn.execute("select id, tenant_id from agent where id = any(%s) for update", (agent_ids,)).fetchall()
     check_agents_are_canary(agent_ids, locked)
-    for table in ("agent_version", "agent_run"):
+    for table in ("agent_version", "agent_run") + AGENT_RECORD_TABLES:
         if conn.execute(f'select 1 from "{table}" where agent_id = any(%s) and tenant_id <> %s limit 1', (agent_ids, TENANT)).fetchone():
             raise NotCanary(f"G5: a row of {table} for these agents is not canary's. Nothing was changed")
     before = snapshot(conn)
@@ -529,6 +536,10 @@ def purge_agents(conn, agent_ids: list[str], client=None) -> tuple[dict[str, int
     try:
         for k, v in run_passes(conn, [("task_read_grant", "agent_run_id", runs), ("storage_identity", "agent_run_id", runs),
                                       ("agent_run_attempt", "run_id", runs)]).items():
+            deleted[k] = deleted.get(k, 0) + v
+        approvals = [str(r["id"]) for r in conn.execute("select id from agent_change_approval where agent_id = any(%s)", (agent_ids,)).fetchall()]
+        records = [("agent_change_decision", "approval_id", approvals)] + [(table, "agent_id", agent_ids) for table in AGENT_RECORD_TABLES]
+        for k, v in run_passes(conn, records).items():
             deleted[k] = deleted.get(k, 0) + v
         for table, rule in AGENT_RULES:  # G11
             conn.execute(f'alter table "{table}" disable rule "{rule}"')

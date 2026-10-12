@@ -287,7 +287,7 @@ TABLE_SHARED_QUEUE = "munitas-table-write"
 # the file becomes a table job when they finish. These limits keep a few people from slowing everybody else down: they are counted for the person
 # (how many uploads are open, how many are started and refused in an hour) and for the whole platform (how many requests carrying a part are being
 # served at once, which is what holds the API's memory). An organisation's own limits (its largest file, how many tables are written at once, how
-# much it may stage and bring in a day) are access rules, which the organisation can lower.
+# much it may stage and bring in a day) are limits, which the organisation can lower.
 TABLE_UPLOAD_LIFE_HOURS = int(os.environ.get("MUNITAS_TABLE_UPLOAD_LIFE_HOURS", "24"))
 TABLE_UPLOAD_OPEN_PER_PERSON = int(os.environ.get("MUNITAS_TABLE_UPLOAD_OPEN_PER_PERSON", "3"))
 TABLE_UPLOAD_PER_HOUR = int(os.environ.get("MUNITAS_TABLE_UPLOAD_PER_HOUR", "20"))

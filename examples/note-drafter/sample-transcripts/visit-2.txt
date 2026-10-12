@@ -1,0 +1,11 @@
+Visit 2, cardiology outpatient clinic. A made-up conversation, for demonstration only.
+Doctor: Hello, please sit down. How can I help?
+Patient: My heart has been racing at night, on and off since last month.
+Doctor: Do you drink coffee in the evening?
+Patient: Two cups most days. I am allergic to penicillin, and my mother had heart trouble too.
+Doctor: I am going to listen to your heart now. Your heart rate is 104 and your blood pressure is 128 over 80.
+Doctor: The rhythm is a little fast but regular.
+Doctor: I think this is likely to be caffeine and poor sleep, though I am concerned enough to check for an irregular rhythm.
+Doctor: I will refer you for a heart monitor worn for 24 hours, and advise you to stop coffee after noon.
+Doctor: Book a follow up in three weeks.
+Patient: That sounds fine.

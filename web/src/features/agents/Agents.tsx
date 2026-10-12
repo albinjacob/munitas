@@ -46,7 +46,7 @@ export function Agents() {
           <Link
             to="/agents/register"
             data-testid="agents-register-link"
-            className="shrink-0 whitespace-nowrap rounded bg-indigo-500 hover:bg-indigo-800 px-3 py-1.5 text-sm font-medium text-white"
+            className="btn btn-primary shrink-0"
           >
             Register an agent
           </Link>

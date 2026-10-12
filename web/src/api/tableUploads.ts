@@ -35,6 +35,7 @@ export interface TableUpload {
   problems: string[];
   progress: { phase?: string | null; rows?: number | null } | null;
   brought_in_by: string | null;
+  brought_in_by_label: string | null;
   /** True for a table about people: its identifying columns are locked as it is written, and the file that was sent is not kept. */
   about_people: boolean;
   /** For a sealed table about people: how many different people it holds, how many sit in a group smaller than the threshold, and the threshold. */

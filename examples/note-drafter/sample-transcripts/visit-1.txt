@@ -1,0 +1,12 @@
+Visit 1, cardiology outpatient clinic. A made-up conversation, for demonstration only.
+Doctor: Good morning. What has brought you in today?
+Patient: I have had tightness in my chest when I climb stairs, for about two weeks.
+Doctor: Does it spread anywhere, or ease when you rest?
+Patient: It goes into my left arm, and it eases after a few minutes of rest.
+Patient: I take a tablet for blood pressure every morning, and I stopped smoking last year.
+Doctor: Let me examine you. Your blood pressure is 150 over 92 and your pulse is 88.
+Doctor: I can hear a regular rhythm and no murmur.
+Doctor: This sounds like angina brought on by effort, and I suspect narrowed arteries.
+Doctor: I will order an ECG and an exercise stress test, and start a low dose of aspirin.
+Doctor: Please avoid heavy exertion until the test, and come back in two weeks to go through the results.
+Patient: Thank you, doctor.

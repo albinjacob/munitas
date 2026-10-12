@@ -18,7 +18,8 @@ from datetime import timezone
 
 import pgdb
 
-from . import access_rules, db, opa
+from . import db, opa
+from . import limits as org_limits
 from .person_errors import LeaseConflict, NoSuchLease, NoSuchVersion, NotPermitted
 
 COLUMNS = ("id", "tenant_id", "principal", "dataset_version_id", "purpose", "days", "row_limit", "status", "requested_at",
@@ -104,7 +105,7 @@ def locking_summary(identity: dict, version_id: str) -> dict:
     waiting = db.one("select * from locked_column_lease where principal = %s and dataset_version_id = %s and status = 'requested'", (identity["id"], version_id))
     decision = opa.locked_columns({"person": {"id": identity["id"], "roles": identity["roles"]},
                                    "dataset": {"approvers": approvers_of(version["department_id"])}, "lease": policy_view(held)})
-    limits = access_rules.limits_for(identity["tenant_id"])
+    limits = org_limits.limits_for(identity["tenant_id"])
     may_ask, _ = opa.may_request_locked_lease({"requester": {"id": identity["id"], "roles": identity["roles"]}, "limits": limits,
                                                "request": {"principal": identity["id"], "purpose": "x", "days": 1, "rows": 1}})
     both = _labels([_shape(r) for r in (held, waiting) if r]) if (held or waiting) else []
@@ -126,7 +127,7 @@ def locking_summary(identity: dict, version_id: str) -> dict:
 def request_lease(identity: dict, version_id: str, purpose: str, days: int, rows: int) -> dict:
     version = _version(version_id, identity["tenant_id"])
     allowed, reasons = opa.may_request_locked_lease({
-        "requester": {"id": identity["id"], "roles": identity["roles"]}, "limits": access_rules.limits_for(identity["tenant_id"]),
+        "requester": {"id": identity["id"], "roles": identity["roles"]}, "limits": org_limits.limits_for(identity["tenant_id"]),
         "request": {"principal": identity["id"], "purpose": purpose, "days": days, "rows": rows}})
     if not allowed:
         raise NotPermitted(reasons)

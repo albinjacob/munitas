@@ -61,7 +61,7 @@ test.describe("U174: an ordinary table is brought in through the console", () =>
     await page.getByTestId("open-sealed-table").click();
     await expect(page).toHaveURL(/\/versions\/[0-9a-f-]{36}$/);
     await expect(page.getByTestId("sealed-class")).toContainText("Raw");
-    await expect(page.getByTestId("brought-in-by")).toContainText(/wards\.jsonl .* by canary-engineer on [A-Z][a-z]{2} \d{1,2}, 20\d\d/);
+    await expect(page.getByTestId("brought-in-by")).toContainText(/wards\.jsonl .* by Canary engineer on [A-Z][a-z]{2} \d{1,2}, 20\d\d/);
 
     // It is a table, with its two rows, and not a file that looks like one.
     const version = page.url().split("/").pop();

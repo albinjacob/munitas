@@ -105,7 +105,7 @@ def main() -> int:
 
     # The database layer ships twice, because the API image and the worker's images are built from different folders. The two files must be the same file.
     different = False
-    for name in ("pgdb.py", "gate_bars.py"):
+    for name in ("pgdb.py", "gate_standards.py"):
         copies = [root / "platform" / name, root / "worker" / name]
         if all(c.exists() for c in copies) and copies[0].read_bytes() != copies[1].read_bytes():
             print(f"platform/{name} and worker/{name} differ: change one and copy it over the other")

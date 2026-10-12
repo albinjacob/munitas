@@ -293,48 +293,55 @@ test("part files: Devi asks to open the recordings, Hartley allows fewer, and th
 // ---------------------------------------------------------------------------------------------------------------------------------------------
 // B3: names are removed from the recordings by the built-in pipeline, and the de-identification reviewer decides. Real speech work on the graphics card.
 // ---------------------------------------------------------------------------------------------------------------------------------------------
-test("part bars: Nakamura sets two release bars, and Imani can read them but not set one", async ({ page }) => {
+test("part bars: Nakamura sets two de-identification standards, and Imani can read them but not set one", async ({ page }) => {
   test.skip(PART !== "bars");
   test.setTimeout(180_000);
-  const dir = "release-bars-story";
+  const dir = "deidentification-standards-story";
 
   await loginAs(page, NAKAMURA);
-  await page.goto("/release-bars");
-  await expect(page.getByTestId("bars-none")).toBeVisible({ timeout: 20_000 });
-  await shot(page, dir, "01", "nakamura-opens-release-bars");
+  await page.goto("/deidentification-standards");
+  await expect(page.getByTestId("standards-none")).toBeVisible({ timeout: 20_000 });
+  // The page opens with an explanation and a worked example (both in the first picture), and the list of the organisation's standards (none yet) and the platform's
+  // starting one are further down, so they are the second picture.
+  await shot(page, dir, "01", "nakamura-opens-the-standards-page");
+  await shotAt(page, dir, "02", "standards-none", "no-standard-yet-and-the-platform-default", 120);
+  await expect(page.getByTestId("standards-none")).toBeInViewport();
+  await expect(page.getByTestId("standard-card-Platform default")).toBeInViewport({ ratio: 0.5 });
 
-  await page.getByTestId("new-bar-open").click();
+  await page.getByTestId("new-standard-open").click();
   await expect(page.getByTestId("limit-overall")).toHaveValue("98");
-  await page.getByTestId("new-bar-name").fill("Annotation team");
+  await page.getByTestId("new-standard-name").fill("Annotation team");
   await page.getByTestId("limit-overall").fill("95");
   // The limits are on kinds the recordings really hold: addresses and places, and dates of birth.
   await page.getByTestId("limit-ADDRESS-recall").fill("90");
-  await page.getByTestId("new-bar-reason").fill("The annotation team works inside the organisation and may keep a few addresses or places in a result, but never a name, a phone number or a record number.");
-  await shotAt(page, dir, "02", "new-bar", "nakamura-fills-in-the-first-bar", 70);
-  await page.getByTestId("new-bar-save").click();
-  await expect(page.getByTestId("release-bar-Annotation team")).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByTestId("release-bar-Annotation team").getByTestId("bar-set")).toContainText("Version 1 by Nakamura");
-  // The toast that says the bar was made is gone before the picture, so the picture shows the page and nothing laid over it.
-  await expect(page.getByText("Release bar created.")).toHaveCount(0, { timeout: 20_000 });
-  await shotAt(page, dir, "03", "release-bar-Annotation team", "the-first-bar-is-saved", 90);
+  await page.getByTestId("new-standard-reason").fill("The annotation team works inside the organisation and may keep a few addresses or places in a result, but never a name, a phone number or a record number.");
+  await shotAt(page, dir, "03", "new-standard", "nakamura-fills-in-the-first-standard", 70);
+  await page.getByTestId("new-standard-save").click();
+  await expect(page.getByTestId("standard-card-Annotation team")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId("standard-card-Annotation team").getByTestId("standard-set")).toContainText("Version 1 by Nakamura");
+  // The toast that says the standard was made is gone before the picture, so the picture shows the page and nothing laid over it.
+  await expect(page.getByText("Standard created.")).toHaveCount(0, { timeout: 20_000 });
+  await shotAt(page, dir, "04", "standard-card-Annotation team", "the-first-standard-is-saved", 90);
 
-  await page.getByTestId("new-bar-open").click();
-  await page.getByTestId("new-bar-name").fill("Public release");
+  await page.getByTestId("new-standard-open").click();
+  await page.getByTestId("new-standard-name").fill("Public release");
   await page.getByTestId("limit-overall").fill("99");
   await page.getByTestId("limit-ADDRESS-recall").fill("99");
   await page.getByTestId("limit-DATE_OF_BIRTH-recall").fill("99");
-  await page.getByTestId("new-bar-reason").fill("Anything released outside the organisation has to meet the strictest bar the organisation sets.");
-  await page.getByTestId("new-bar-save").click();
-  await expect(page.getByTestId("release-bar-Public release")).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByText("Release bar created.")).toHaveCount(0, { timeout: 20_000 });
-  await shotAt(page, dir, "04", "release-bar-Annotation team", "both-bars-are-listed", 150);
+  await page.getByTestId("new-standard-reason").fill("Anything released outside the organisation has to meet the strictest standard the organisation sets.");
+  await page.getByTestId("new-standard-save").click();
+  await expect(page.getByTestId("standard-card-Public release")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText("Standard created.")).toHaveCount(0, { timeout: 20_000 });
+  await shotAt(page, dir, "05", "standard-card-Annotation team", "both-standards-are-listed", 150);
 
   await loginAs(page, IMANI);
-  await page.goto("/release-bars");
-  await expect(page.getByTestId("release-bar-Annotation team")).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByTestId("bars-cannot-set")).toBeVisible();
-  await expect(page.getByTestId("new-bar-open")).toHaveCount(0);
-  await shotAt(page, dir, "05", "bars-lead", "imani-can-read-the-bars-but-not-set-one", 90);
+  await page.goto("/deidentification-standards");
+  await expect(page.getByTestId("standard-card-Annotation team")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId("standards-cannot-set")).toBeVisible();
+  await expect(page.getByTestId("new-standard-open")).toHaveCount(0);
+  // The sentence that says why there is no button is below the two standards, so the picture starts at the first standard and must hold that sentence.
+  await shotAt(page, dir, "06", "standard-card-Annotation team", "imani-can-read-the-standards-but-not-set-one", 90);
+  await expect(page.getByTestId("standards-cannot-set")).toBeInViewport();
 });
 
 test("part remove-names: the pipeline runs over the locked recordings, and Imani decides", async ({ page }) => {
@@ -387,20 +394,20 @@ test("part remove-names: the pipeline runs over the locked recordings, and Imani
   await loginAs(page, IMANI);
   await page.goto(gateUrl);
   await expect(page.getByTestId("gate-reason")).toBeVisible();
-  await expect(page.getByTestId("gate-bar-select")).toHaveValue("");
+  await expect(page.getByTestId("gate-standard-select")).toHaveValue("");
   await shot(page, dir, "06", "imani-opens-the-decision", true);
 
   // The bar is chosen for the audience the result is released to. The annotation team is that audience, and its bar is the one Nakamura set.
-  await page.getByTestId("gate-bar-select").selectOption({ label: "Annotation team (version 1)" });
-  await expect(page.getByTestId("gate-recommendation")).toContainText("Annotation team bar", { timeout: 20_000 });
-  await shotAt(page, dir, "07", "gate-bar", "imani-chooses-the-annotation-team-bar", 170);
-  await page.getByTestId("gate-bar-select").selectOption({ label: "Public release (version 1)" });
-  await expect(page.getByTestId("gate-recommendation")).toContainText("Public release bar", { timeout: 20_000 });
-  await shotAt(page, dir, "08", "gate-bar", "the-public-release-bar-asks-more", 170);
-  await page.getByTestId("gate-bar-select").selectOption({ label: "Annotation team (version 1)" });
-  await expect(page.getByTestId("gate-recommendation")).toContainText("Annotation team bar", { timeout: 20_000 });
+  await page.getByTestId("gate-standard-select").selectOption({ label: "Annotation team (version 1)" });
+  await expect(page.getByTestId("gate-recommendation")).toContainText("Annotation team standard", { timeout: 20_000 });
+  await shotAt(page, dir, "07", "gate-standard", "imani-chooses-the-annotation-team-standard", 170);
+  await page.getByTestId("gate-standard-select").selectOption({ label: "Public release (version 1)" });
+  await expect(page.getByTestId("gate-recommendation")).toContainText("Public release standard", { timeout: 20_000 });
+  await shotAt(page, dir, "08", "gate-standard", "the-public-release-standard-asks-more", 170);
+  await page.getByTestId("gate-standard-select").selectOption({ label: "Annotation team (version 1)" });
+  await expect(page.getByTestId("gate-recommendation")).toContainText("Annotation team standard", { timeout: 20_000 });
 
-  await page.getByTestId("gate-reason").fill("The names, dates and addresses that the answer keys mark were all removed from the transcripts. Releasing the de-identified recordings and transcripts to the annotation team, under its bar.");
+  await page.getByTestId("gate-reason").fill("The names, dates and addresses that the answer keys mark were all removed from the transcripts. Releasing the de-identified recordings and transcripts to the annotation team, under its standard.");
   await shot(page, dir, "09", "imani-writes-a-reason");
   await page.getByTestId("gate-promote").click();
   await expect(page.getByTestId("gate-state")).toContainText(/Released|Promoted|Cleared/i, { timeout: 30_000 });
@@ -412,7 +419,7 @@ const REDACTED = "consultation-recordings-redacted";
 /** Imani's page after the decision, then what a researcher sees of the released result. */
 async function afterRelease(page: Page, dir: string): Promise<void> {
   // Two pictures, because the bar the result was judged by is near the top of the page and the decision itself is at the foot.
-  await shotAt(page, dir, "10", "gate-judged-by", "released-and-judged-by-the-bar", 170);
+  await shotAt(page, dir, "10", "gate-judged-by", "released-and-judged-by-the-standard", 170);
   await page.getByRole("heading", { name: "The decision", exact: true }).scrollIntoViewIfNeeded();
   await shot(page, dir, "11", "the-decision-is-recorded");
 

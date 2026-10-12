@@ -58,7 +58,7 @@ function EndButton({ sample }: { sample: DevelopmentSample }) {
         data-testid={`sample-end-${sample.id}`}
         disabled={end.isPending}
         onClick={() => end.mutate(sample.id)}
-        className="rounded border border-slate-300 bg-white px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-50"
+        className="btn btn-secondary btn-sm"
       >
         {sample.status === "requested" ? "Withdraw this request" : "End this sample"}
       </button>
@@ -209,7 +209,7 @@ function Ask({ versionId, data }: { versionId: string; data: DevelopmentSamples 
               },
             )
           }
-          className="rounded bg-indigo-500 px-3 py-1.5 font-medium text-white hover:bg-indigo-800 disabled:opacity-50"
+          className="btn btn-primary"
         >
           Ask for a sample
         </button>
@@ -276,7 +276,7 @@ function Decide({ sample }: { sample: DevelopmentSample }) {
           data-testid={`sample-approve-${sample.id}`}
           disabled={decide.isPending}
           onClick={() => decide.mutate({ id: sample.id, verb: "approve", note, records, days })}
-          className="rounded bg-indigo-500 px-2 py-1 text-xs font-medium text-white hover:bg-indigo-800 disabled:opacity-50"
+          className="btn btn-primary btn-sm"
         >
           Approve
         </button>
@@ -285,7 +285,7 @@ function Decide({ sample }: { sample: DevelopmentSample }) {
           data-testid={`sample-decline-${sample.id}`}
           disabled={decide.isPending}
           onClick={() => decide.mutate({ id: sample.id, verb: "decline", note })}
-          className="rounded border border-slate-300 bg-white px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-50"
+          className="btn btn-secondary btn-sm"
         >
           Decline
         </button>
@@ -330,7 +330,7 @@ function Synthetic({ versionId, data }: { versionId: string; data: DevelopmentSa
           data-testid="sample-synthetic-declare"
           disabled={declare.isPending || !note.trim()}
           onClick={() => declare.mutate(note)}
-          className="rounded border border-slate-300 bg-white px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-50"
+          className="btn btn-secondary btn-sm"
         >
           Declare these files synthetic
         </button>

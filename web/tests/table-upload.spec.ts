@@ -81,14 +81,14 @@ test.describe("U179: a large table is brought in through the console, in parts",
     const sealed = page.getByTestId("table-sealed");
     await expect(sealed).toBeVisible({ timeout: 150_000 });
     await expect(sealed).toContainText("Sealed as version 1: 800,000 rows.");
-    await expect(sealed.getByTestId("brought-in")).toContainText(/wards\.csv \(\d+ MB\) was brought in by canary-engineer on [A-Z][a-z]{2} \d{1,2}, 20\d\d/);
+    await expect(sealed.getByTestId("brought-in")).toContainText(/wards\.csv \(\d+ MB\) was brought in by Canary engineer on [A-Z][a-z]{2} \d{1,2}, 20\d\d/);
     await expect(sealed).toContainText("Nothing in it is locked.");
     await shot(page, "3-sealed");
 
     await page.getByTestId("open-sealed-table").click();
     await expect(page).toHaveURL(/\/versions\/[0-9a-f-]{36}$/);
     await expect(page.getByTestId("sealed-class")).toContainText("Raw");
-    await expect(page.getByTestId("brought-in-by")).toContainText(/wards\.csv \(\d+(\.\d+)? MB\) by canary-engineer on [A-Z][a-z]{2} \d{1,2}, 20\d\d/);
+    await expect(page.getByTestId("brought-in-by")).toContainText(/wards\.csv \(\d+(\.\d+)? MB\) by Canary engineer on [A-Z][a-z]{2} \d{1,2}, 20\d\d/);
     await shot(page, "3b-version-page");
     const version = page.url().split("/").pop();
     const holds = await fetch(`${API_BASE}/dataset-versions/${version}/holds`, { headers: await bearerFor("canary-engineer") }).then((r) => r.json());

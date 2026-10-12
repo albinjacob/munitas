@@ -1,7 +1,10 @@
 """A small client for working with Munitas from a notebook or a script.
 
-    from munitas_client import Munitas
+    from munitas import Munitas
     me = Munitas.sign_in("https://munitas.example")
+
+Install it from your platform (the console page "Your notebooks" shows the exact line): `pip install https://munitas.example/client/munitas-0.1.0-py3-none-any.whl`.
+Used as loose files it is `from munitas_client import Munitas`, with `munitas_step.py` beside it.
 
 `sign_in` shows a short code and an address. Open the address in the browser you are signed in to the console with, type the code, and approve. The notebook
 then holds a pass that lasts a few minutes and renews itself, for up to eight hours, as you. It can find datasets, ask for access, open the few files you were
@@ -45,6 +48,11 @@ import time
 import httpx
 
 
+# The version of this library, and of the `munitas` package built from it (scripts/build-client-wheel.py reads it from here). Raise it when the library
+# changes in a way a person would notice; the platform offers exactly the version it was built with.
+CLIENT_VERSION = "0.1.0"
+
+
 class MunitasError(Exception):
     """The platform said no, with its reasons."""
 
@@ -54,12 +62,17 @@ class FileErased(MunitasError):
 
 
 def _reader():
-    """The one reader of a file, shared with custom pipeline steps. Imported when a file is first opened, so the rest of this library needs nothing else."""
+    """The one reader of a file, shared with custom pipeline steps. Imported when a file is first opened, so the rest of this library needs nothing else.
+
+    Installed as the `munitas` package it sits inside the package; used as loose files it is `munitas_step.py` beside this file."""
     try:
-        import munitas_step
-    except ImportError as exc:
-        raise MunitasError("reading files needs munitas_step.py beside munitas_client.py: it is the reader that custom pipeline steps use as well") from exc
-    return munitas_step
+        from . import step as reader  # installed: munitas/client.py and munitas/step.py
+    except ImportError:
+        try:
+            import munitas_step as reader  # loose files: munitas_client.py and munitas_step.py side by side
+        except ImportError as exc:
+            raise MunitasError("reading files needs munitas_step.py beside munitas_client.py: it is the reader that custom pipeline steps use as well") from exc
+    return reader
 
 
 def _require_https(api: str, allow_http: bool) -> None:

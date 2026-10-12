@@ -47,10 +47,17 @@ interface PolicyRoles {
  */
 const INTERNAL_ROLES = new Set(["platform_admin", "hybridops"]);
 
-/** Every other human role: the customer's own staff. */
+/**
+ * Every other human role: the customer's own staff.
+ *
+ * This list and INTERNAL_ROLES are written by hand, not read from the policy. A person role added in platform/policy/role_words.rego is missing from this page
+ * until it is added here, and the page does not say so. Keep them in step (see the note on adding a role at the top of role_words.rego). Check U204
+ * (verify/v189_roles_documented.py) fails when a person role in the policy is missing from these two lists.
+ */
 const CUSTOMER_ROLES = new Set([
   "data_custodian",
   "dpo",
+  "ai_risk_owner",
   "notebook_explore",
   "pipeline_operator",
   "analyst",
@@ -173,8 +180,8 @@ export function Roles() {
         What each role may read without asking, and who may approve access beyond that. This is the same in every organisation.
       </p>
       {principal && (
-        <p className="mt-1 text-slate-600" data-testid="roles-to-rules">
-          How much a person may ask for, and for how long, is set for each organisation on the <Link to="/access-rules" className="text-sky-700 underline">Access rules</Link> page.
+        <p className="mt-1 text-slate-600" data-testid="roles-to-limits">
+          How much a person may ask for, and for how long, is set for each organisation on the <Link to="/limits" className="text-sky-700 underline">Limits</Link> page.
         </p>
       )}
 

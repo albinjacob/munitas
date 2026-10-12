@@ -368,7 +368,16 @@ def _staging_manifest(object_manifest: list[dict], storage_prefix: str) -> list[
     strip = f"{storage_prefix}/"
     for entry in object_manifest:
         key = entry["key"]
-        relative = key[len(strip):] if key.startswith(strip) else key.rsplit("/", 1)[-1]
+        if key.startswith(strip):
+            relative = key[len(strip):]
+        else:
+            # A file uploaded through the ordinary upload path is listed by its name, relative to the version's prefix, and is stored under that prefix: the key to
+            # ask storage for is the two joined. (The read grant covers that prefix and nothing outside it, so a key anywhere else could not be read in any case.)
+            relative = key
+            key = strip + key
+        # Nothing the manifest says may place a file outside the data folder.
+        if relative.startswith("/") or ".." in relative.split("/"):
+            relative = relative.rsplit("/", 1)[-1]
         entries.append({
             "key": key, "relative_path": relative,
             "bytes": entry.get("bytes"), "sha256": entry.get("sha256"),

@@ -600,7 +600,7 @@ function FreeStorage() {
           data-testid="reclaim-rehearse"
           disabled={!canAsk}
           onClick={rehearse}
-          className="rounded bg-slate-800 px-3 py-1.5 text-sm font-medium text-white disabled:bg-slate-300"
+          className="btn btn-primary"
         >
           Show what would go
         </button>
@@ -630,7 +630,7 @@ function FreeStorage() {
                 data-testid="reclaim-confirm"
                 disabled={reclaim.isPending}
                 onClick={perform}
-                className="mt-3 rounded bg-red-700 px-3 py-1.5 text-sm font-medium text-white disabled:bg-slate-300"
+                className="btn btn-danger mt-3"
               >
                 {reclaim.isPending ? "Freeing" : `Free ${size(totals.bytes)} for good`}
               </button>

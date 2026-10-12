@@ -838,8 +838,8 @@ def verify(params: dict) -> dict:
         "leaks_total": card.leaked,
         "leaks_direct": card.direct_leaks,
         "leaks_quasi": card.quasi_leaks,
-        # The counts for each kind of identifier go with the totals, because the bar a result is released under is chosen at release and judged
-        # then, kind by kind (platform/gate_bars.py). They are counts, not identifiers, so they are safe to keep with the decision.
+        # The counts for each kind of identifier go with the totals, because the standard a result is released under is chosen at release and judged
+        # then, kind by kind (platform/gate_standards.py). They are counts, not identifiers, so they are safe to keep with the decision.
         "metrics": {**card.as_metrics(), "per_entity": card.per_entity},
         # Carried out of here so the gate decision can store it under the
         # owning tenant. It holds the identifiers, so it goes to Postgres and
@@ -912,7 +912,7 @@ def practice_run(params: dict) -> dict:
         f"A practice run of the same models on {len(chosen)} files whose contents are known caught {caught} of the {card.survived} "
         f"identifiers that survived transcription ({card.recall_effective:.0%}) and left {card.direct_leaks} naming a person directly; "
         + ("that meets" if cleared else "that does not meet")
-        + f" the bar of {GATE_RECALL:.0%} with {GATE_DIRECT_LEAKS} direct leaks. "
+        + f" the standard of {GATE_RECALL:.0%} with {GATE_DIRECT_LEAKS} direct leaks. "
         "That describes the method and says nothing about this batch, which needs full human review before any release."
     )
     metrics = {"practice_ran": 1, "practice_records": len(chosen), "practice_cleared_bar": int(cleared)}
@@ -1005,8 +1005,8 @@ def record_gate_decision(params: dict) -> dict:
     from .scoring import GATE_DIRECT_LEAKS, GATE_RECALL, ScoreCard, evaluate_gate
 
     score = params["score_card"]
-    # A run that was not given a figure is judged by the platform's own starting bar, never by a default of its own: the bar a result is released
-    # under is chosen at release, and this recommendation is the one made under the built-in purpose.
+    # A run that was not given a figure is judged by the platform's own starting standard, never by a default of its own: the standard a result is released
+    # under is chosen at release, and this recommendation is the one made under the built-in standard.
     threshold = params.get("recall_threshold")
     if threshold is None:
         threshold = GATE_RECALL

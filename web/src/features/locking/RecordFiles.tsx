@@ -80,7 +80,7 @@ function Row({ versionId, file, mayOpen }: { versionId: string; file: RecordFile
             data-testid={`record-play-${file.record_id}`}
             onClick={start}
             disabled={open.isPending}
-            className="ml-auto rounded bg-indigo-500 px-2 py-1 text-xs font-medium text-white hover:bg-indigo-800 disabled:opacity-50"
+            className="btn btn-primary btn-sm ml-auto"
           >
             {isSound ? "Play" : isOther ? "Preview" : "Read"}
           </button>

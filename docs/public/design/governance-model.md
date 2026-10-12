@@ -414,7 +414,7 @@ key again.
 | `pipeline_version_approval` table | An approver's approval of a pipeline version that runs an organisation's own code |
 | `agent_egress_approval` table | The hosts an agent version may call, approved by a network architect |
 | `legal_hold`, `legal_export`, `lifecycle_event` and `tenant_deletion_record` tables | Closing an organisation, holding its records, handing them over, and the short record of what was deleted |
-| `access_rule_version` table | Every limit an organisation has set on what people may ask for, never edited, with who set it, when and why |
+| `limit_version` table | Every limit an organisation has set on what people may ask for, never edited, with who set it, when and why |
 | `notebook_sign_in` table | One row per notebook sign-in: who, what the notebook called itself, from where, when, until when and when it was last used |
 
 The foreign key on `approved_by` matters most because it moves the

@@ -22,6 +22,10 @@ export function UploadAgentVersion({ agentId }: { agentId: string }) {
   const [modelId, setModelId] = useState("");
   const [toolScope, setToolScope] = useState("");
   const [requestedHosts, setRequestedHosts] = useState("");
+  const [usesNoTools, setUsesNoTools] = useState(false);
+  const [modelHosting, setModelHosting] = useState("");
+  // Whether the platform copies the data a run is started on into the sandbox. Uploaded code has no network and no storage key, so a copy is the only way it can read a dataset.
+  const [copiesData, setCopiesData] = useState(false);
   // Collapsed by default: both fields are genuinely optional (empty is a
   // valid, common answer for either), unlike the project file and model
   // above them, so most people filling this in never need to open it.
@@ -51,14 +55,22 @@ export function UploadAgentVersion({ agentId }: { agentId: string }) {
             modelId: modelId.trim(),
             toolScope: toolScope.trim(),
             requestedHosts: requestedHosts.trim(),
+            declaresNoTools: usesNoTools && !toolScope.trim(),
+            modelHosting,
+            dataAccess: copiesData ? "copy" : "none",
             registeredBy: principal.id,
           },
           {
             onSuccess: () => {
               setFile(null);
+              setFileTouched(false);
+              setModelTouched(false);
               setModelId("");
               setToolScope("");
               setRequestedHosts("");
+              setUsesNoTools(false);
+              setModelHosting("");
+              setCopiesData(false);
               setAdvancedOpen(false);
               if (fileInput.current) fileInput.current.value = "";
             },
@@ -131,8 +143,8 @@ export function UploadAgentVersion({ agentId }: { agentId: string }) {
           >
             &rsaquo;
           </span>
-          Advanced: tools and hosts it may call
-          {!advancedOpen && (toolScope || requestedHosts) && (
+          Advanced: tools, hosts, data and where the model runs
+          {!advancedOpen && (toolScope || requestedHosts || usesNoTools || modelHosting || copiesData) && (
             <span className="text-xs font-normal text-slate-400">(set)</span>
           )}
         </button>
@@ -154,7 +166,47 @@ export function UploadAgentVersion({ agentId }: { agentId: string }) {
                 onChange={(e) => setToolScope(e.target.value)}
                 placeholder="e.g. read_dataset_version, summarise_counts"
                 className="mt-1.5 w-full max-w-md rounded border border-slate-300 px-3 py-1.5 text-sm"
+                disabled={usesNoTools}
               />
+              <label className="mt-2 flex items-center gap-2 text-sm text-slate-700">
+                <input type="checkbox" data-testid="agent-version-no-tools" checked={usesNoTools} onChange={(e) => { setUsesNoTools(e.target.checked); if (e.target.checked) setToolScope(""); }} />
+                This version uses no tools
+              </label>
+              {!usesNoTools && !toolScope.trim() && (
+                <p className="mt-1 text-xs text-amber-800" data-testid="agent-version-tools-note">
+                  Saying neither is recorded as not declared. The agent&rsquo;s page and the registry then flag it, and nothing limits the tools it calls.
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label htmlFor="agent-version-model-hosting" className="block text-sm font-medium text-slate-700">
+                Where the model runs
+              </label>
+              <p className="mt-0.5 text-xs text-slate-500">A model that runs outside the platform can change without the platform seeing it, and is flagged in the registry.</p>
+              <select
+                id="agent-version-model-hosting"
+                data-testid="agent-version-model-hosting"
+                value={modelHosting}
+                onChange={(e) => setModelHosting(e.target.value)}
+                className="mt-1.5 rounded border border-slate-300 px-3 py-1.5 text-sm"
+              >
+                <option value="">Not stated</option>
+                <option value="platform">In the platform</option>
+                <option value="outside">Outside the platform</option>
+              </select>
+            </div>
+
+            <div>
+              <span className="block text-sm font-medium text-slate-700">Data it reads</span>
+              <p className="mt-0.5 text-xs text-slate-500">
+                This code runs with no network and no storage key, so it can read a dataset only if the platform copies it in. The platform copies in just what the run was granted, and
+                a version that asks for a copy is compared with the one before it, so it may need approval.
+              </p>
+              <label className="mt-1.5 flex items-center gap-2 text-sm text-slate-700">
+                <input type="checkbox" data-testid="agent-version-data-copy" checked={copiesData} onChange={(e) => setCopiesData(e.target.checked)} />
+                Give this version a copy of the data a run is started on
+              </label>
             </div>
 
             <div>
@@ -183,7 +235,7 @@ export function UploadAgentVersion({ agentId }: { agentId: string }) {
         type="submit"
         data-testid="upload-agent-version-submit"
         disabled={!ready || upload.isPending}
-        className="rounded bg-indigo-500 hover:bg-indigo-800 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+        className="btn btn-primary"
       >
         {upload.isPending ? "Uploading" : "Upload version"}
       </button>

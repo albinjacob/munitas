@@ -158,7 +158,7 @@ export function FilesPanel({ datasetId }: { datasetId: string }) {
           data-testid="files-start"
           disabled={!manifest || files.length === 0 || problems.length > 0 || running}
           onClick={run}
-          className="rounded bg-indigo-500 hover:bg-indigo-800 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+          className="btn btn-primary"
         >
           Upload and lock
         </button>
@@ -202,7 +202,7 @@ export function FilesPanel({ datasetId }: { datasetId: string }) {
           type="button"
           data-testid="files-carry-on"
           onClick={run}
-          className="rounded border border-slate-700 px-3 py-1.5 text-sm font-medium text-slate-900"
+          className="btn btn-secondary"
         >
           Carry on from where it stopped
         </button>
@@ -215,7 +215,7 @@ export function FilesPanel({ datasetId }: { datasetId: string }) {
             data-testid="files-seal"
             disabled={seal.isPending}
             onClick={() => seal.mutate()}
-            className="rounded bg-indigo-500 hover:bg-indigo-800 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+            className="btn btn-primary"
           >
             {seal.isPending ? "Sealing" : "Seal these files"}
           </button>

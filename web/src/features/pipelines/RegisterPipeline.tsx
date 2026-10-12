@@ -98,7 +98,7 @@ export function RegisterPipeline() {
             type="submit"
             data-testid="register-pipeline-submit"
             disabled={!ready || register.isPending}
-            className="rounded bg-indigo-500 hover:bg-indigo-800 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+            className="btn btn-primary"
           >
             {register.isPending ? "Registering" : "Register"}
           </button>

@@ -28,9 +28,9 @@ from pgdb import errors as pg_errors
 
 from crypto import DestroyedKeyError, EnvelopeCrypto
 
-from . import (access_preview, activation, agent_upload, agents, auth, config,
+from . import (access_preview, activation, agent_oversight_routes, client_library, agent_risk_routes, agent_sponsor_routes, agent_tool_list_routes, agent_upload, agents, auth, config,
               dag_pipelines, db, department_approvers, derivations, external_accounts, grants, housekeeping, iceberg,
-              development_outputs, development_sample_routes, access_rules_routes, release_bar_routes, gate_purposes, file_lease_routes, notebook_routes, notebook_sign_in_routes, person_keys, release_review, release_review_routes, iceberg_catalog, ingest, legal_export, lifecycle, logs, models, opa, people, person_routes, pipeline, r2, record_routes, locked_file_routes, table_upload_routes, step_routes,
+              development_outputs, development_sample_routes, limits_routes, standard_routes, deidentification_standards, file_lease_routes, notebook_routes, notebook_sign_in_routes, person_keys, release_review, release_review_routes, iceberg_catalog, ingest, legal_export, lifecycle, logs, models, opa, people, person_routes, pipeline, r2, record_routes, locked_file_routes, table_upload_routes, step_routes,
               read_models, readability, screens, seaweed, storage, table_jobs, task_credential, temporal_client,
               versions)
 
@@ -128,6 +128,7 @@ app.add_middleware(
 )
 
 app.include_router(read_models.router)
+app.include_router(client_library.router)
 app.include_router(screens.router)
 app.include_router(housekeeping.router)
 app.include_router(people.router)
@@ -136,12 +137,16 @@ app.include_router(ingest.router)
 app.include_router(external_accounts.router)
 app.include_router(agents.router)
 app.include_router(agent_upload.router)
+app.include_router(agent_risk_routes.router)
+app.include_router(agent_tool_list_routes.router)
+app.include_router(agent_oversight_routes.router)
+app.include_router(agent_sponsor_routes.router)
 app.include_router(dag_pipelines.router)
 app.include_router(step_routes.router)
 app.include_router(development_sample_routes.router)
 app.include_router(file_lease_routes.router)
-app.include_router(access_rules_routes.router)
-app.include_router(release_bar_routes.router)
+app.include_router(limits_routes.router)
+app.include_router(standard_routes.router)
 app.include_router(notebook_routes.router)
 app.include_router(notebook_sign_in_routes.router)
 app.include_router(record_routes.router)
@@ -503,7 +508,7 @@ def get_version(version_id: str, tenant_id: str | None = Depends(auth.organisati
     storage keys of the version's files, so it must never answer without one or the other.
 
     A version made from a file somebody brought in also says so (`brought_in`): the file's name, its size and
-    its SHA-256, who sent it and when. It is null for a version nothing was brought in for, such as one a
+    its SHA-256, who sent it (`who`, and `who_label` with the person's name) and when. It is null for a version nothing was brought in for, such as one a
     pipeline made.
     """
     row = db.one(
@@ -520,8 +525,9 @@ def get_version(version_id: str, tenant_id: str | None = Depends(auth.organisati
     if not row:
         raise HTTPException(404, "no such dataset version")
     row["brought_in"] = db.one(
-        """select s.locator as file_name, s.bytes, s.checksum as sha256, s.fetched_by as who, s.fetched_at as at
+        """select s.locator as file_name, s.bytes, s.checksum as sha256, s.fetched_by as who, w.label as who_label, s.fetched_at as at
              from dataset_source s
+             left join directory w on w.id = s.fetched_by
             where s.dataset_id = %s and s.kind = 'upload' and s.checksum is not null
               and s.checksum in (select e->>'sha256' from jsonb_array_elements(%s::jsonb) e)
             order by s.fetched_at desc limit 1""",
@@ -1811,20 +1817,20 @@ def _gate_permission(row: dict, identity: dict) -> None:
 
 
 def _judged_by(row: dict, body: models.GateDecisionIn, identity: dict) -> dict:
-    """The result judged under the release bar the decider chose (the built-in one when none), or a refusal in words when it cannot be."""
+    """The result judged under the de-identification standard the decider chose (the built-in one when none), or a refusal in words when it cannot be."""
     try:
-        return gate_purposes.judge(row, release_bar_routes.resolve(identity["tenant_id"], body.release_bar_id))
-    except gate_purposes.NotJudgeable as exc:
+        return deidentification_standards.judge(row, standard_routes.resolve(identity["tenant_id"], body.standard_id))
+    except deidentification_standards.NotJudgeable as exc:
         raise HTTPException(409, {"decided": False, "reasons": [str(exc)]})
 
 
 def _judgement_columns(judged: dict) -> tuple:
-    """What a decision keeps of the bar it was judged by: which bar and version, the limits as they were, and the recommendation under them."""
-    bar = judged["bar"]
-    if bar["built_in"] and not judged["counted"]:
-        # Nothing was counted by kind of identifier, so there is no bar to say it was judged by.
+    """What a decision keeps of the standard it was judged by: which standard and version, the limits as they were, and the recommendation under them."""
+    standard = judged["standard"]
+    if standard["built_in"] and not judged["counted"]:
+        # Nothing was counted by kind of identifier, so there is no standard to say it was judged by.
         return (None, None, None, None, None, None)
-    return (bar["id"], bar["name"], bar["version"], json.dumps(bar["bars"]), judged["recommendation"], judged["reason"])
+    return (standard["id"], standard["name"], standard["version"], json.dumps(standard["limits"]), judged["recommendation"], judged["reason"])
 
 
 @app.post("/gate-decisions/{decision_id}/promote", status_code=201)
@@ -1838,7 +1844,7 @@ def decide_gate_promote(decision_id: str, body: models.GateDecisionIn,
     """
     row = _pending_gate(decision_id)
     _gate_permission(row, identity)
-    # The release bar the person chose judges the result now, from the counts the run kept. Nothing the caller sends says what the answer is.
+    # The de-identification standard the person chose judges the result now, from the counts the run kept. Nothing the caller sends says what the answer is.
     judged = _judged_by(row, body, identity)
     # The release rests on what the platform checked and what the reviewer looked at, from the same evidence the page shows.
     found = release_review.evidence(person_keys.key_service(), identity, row)
@@ -1853,7 +1859,7 @@ def decide_gate_promote(decision_id: str, body: models.GateDecisionIn,
             "mlflow_run": row["score_card_id"],
             "machine_recommendation": row["recommendation"],
             "machine_reason": row["recommendation_reason"],
-            "release_bar": {"name": judged["bar"]["name"], "version": judged["bar"]["version"], "recommendation": judged["recommendation"], "reason": judged["reason"]},
+            "standard": {"name": judged["standard"]["name"], "version": judged["standard"]["version"], "recommendation": judged["recommendation"], "reason": judged["reason"]},
             "decided_because": body.reason,
             **row["metrics"],
         },
@@ -1863,7 +1869,7 @@ def decide_gate_promote(decision_id: str, body: models.GateDecisionIn,
     db.execute(
         """update gate_decision
              set state = 'promoted', decided_by = %s, decided_at = now(),
-                 decision_reason = %s, purpose_id = %s, purpose_name = %s, purpose_version = %s, bars_used = %s,
+                 decision_reason = %s, standard_id = %s, standard_name = %s, standard_version = %s, limits_used = %s,
                  release_recommendation = %s, release_reason = %s
            where id = %s and state = 'pending'""",
         (identity["id"], body.reason, *_judgement_columns(judged), decision_id),
@@ -1884,7 +1890,7 @@ def decide_gate_refuse(decision_id: str, body: models.GateDecisionIn,
     db.execute(
         """update gate_decision
              set state = 'refused', decided_by = %s, decided_at = now(),
-                 decision_reason = %s, purpose_id = %s, purpose_name = %s, purpose_version = %s, bars_used = %s,
+                 decision_reason = %s, standard_id = %s, standard_name = %s, standard_version = %s, limits_used = %s,
                  release_recommendation = %s, release_reason = %s
            where id = %s and state = 'pending'""",
         (identity["id"], body.reason, *_judgement_columns(judged), decision_id),

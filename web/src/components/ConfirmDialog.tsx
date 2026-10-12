@@ -106,7 +106,7 @@ export function ConfirmDialog({
           <button
             type="button"
             onClick={onCancel}
-            className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+            className="btn btn-secondary"
           >
             Cancel
           </button>
@@ -116,11 +116,7 @@ export function ConfirmDialog({
             data-testid="confirm-dialog-confirm"
             disabled={!canConfirm}
             onClick={() => onConfirm(reason.trim())}
-            className={`rounded px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50 ${
-              destructive
-                ? "bg-red-700 hover:bg-red-800"
-                : "bg-indigo-500 hover:bg-indigo-800"
-            }`}
+            className={`btn ${destructive ? "btn-danger" : "btn-primary"}`}
           >
             {confirmLabel}
           </button>

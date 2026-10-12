@@ -8,23 +8,23 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from . import auth, db, gate_purposes, opa, person_keys, release_bar_routes, release_review, review_access
+from . import auth, db, deidentification_standards, opa, person_keys, release_review, review_access, standard_routes
 from .person_errors import NoSuchVersion
 
 router = APIRouter(tags=["release review"])
 
 
 @router.get("/gate-decisions/{decision_id}/review")
-def get_review(decision_id: str, release_bar_id: str | None = None, identity: dict = Depends(auth.current_session)) -> dict:
+def get_review(decision_id: str, standard_id: str | None = None, identity: dict = Depends(auth.current_session)) -> dict:
     """The files of the version a decision is about, with the checks the platform ran on each, what the caller has opened so far, and whether
-    anything stops the caller releasing it now under the release bar named (the platform's built-in one when none is). Opens nothing for the caller
+    anything stops the caller releasing it now under the de-identification standard named (the platform's built-in one when none is). Opens nothing for the caller
     to read; the files are opened through the file door."""
     row = db.one("select * from gate_decision where id = %s", (decision_id,))
     if not row or row["tenant_id"] != identity["tenant_id"]:
         raise HTTPException(404, "no such gate decision")
     try:
-        recommendation = gate_purposes.judge(row, release_bar_routes.resolve(identity["tenant_id"], release_bar_id))["recommendation"]
-    except gate_purposes.NotJudgeable as exc:
+        recommendation = deidentification_standards.judge(row, standard_routes.resolve(identity["tenant_id"], standard_id))["recommendation"]
+    except deidentification_standards.NotJudgeable as exc:
         raise HTTPException(409, {"reasons": [str(exc)]}) from exc
     try:
         service = person_keys.key_service()

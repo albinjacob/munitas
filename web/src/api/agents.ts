@@ -11,6 +11,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, API_BASE, ApiError } from "./client";
+import { invalidateAgent } from "./agentOversight";
 import { useIdentity } from "../identity/IdentityContext";
 
 export interface AgentVersion {
@@ -37,6 +38,12 @@ export interface AgentVersion {
   requested_hosts: string[];
   egress_approval_id: string | null;
   egress_state: "pending" | "approved" | "refused" | null;
+  /** Whether the owner said which tools this version uses. With this true and no tools listed, the version uses none. */
+  tools_declared: boolean;
+  /** Where the model runs, as the owner stated it. Empty when not stated. */
+  model_hosting: "platform" | "outside" | null;
+  /** Whether the platform copies the data a run is started on into the sandbox. "none" means the code is given no data. */
+  data_access: "none" | "copy" | null;
 }
 
 export interface AgentRow {
@@ -59,6 +66,7 @@ export interface ActiveVersion {
 
 export interface AgentDetail extends AgentRow {
   tenant_id: string;
+  run_by: "platform" | "outside";
   versions: AgentVersion[];
   active_version: ActiveVersion | null;
 }
@@ -110,10 +118,18 @@ export interface AgentRun {
   started_at: string;
   ended_at: string | null;
   approved_by: string | null;
+  approved_by_label: string | null;
   approved_at: string | null;
   lease_request_id: string | null;
   findings: RunFinding[];
   execution_mode: "native" | "sandboxed";
+  /** How the output of a finished run was reviewed, when it has been. */
+  review_outcome: "accepted" | "changed" | "refused" | null;
+  reviewed_by: string | null;
+  reviewed_by_label: string | null;
+  reviewed_at: string | null;
+  review_reason: string | null;
+  review_seconds: number | null;
 }
 
 function useTenant(): string | undefined {
@@ -259,6 +275,8 @@ export interface UploadedAgentVersion {
   entrypoint: string;
   bytes: number;
   sealed: boolean;
+  tools_declared: boolean;
+  widening: boolean;
 }
 
 /**
@@ -275,12 +293,18 @@ export function useUploadAgentVersion(agentId: string) {
       modelId: string;
       toolScope: string;
       requestedHosts: string;
+      declaresNoTools: boolean;
+      modelHosting: string;
+      dataAccess: "none" | "copy";
       registeredBy: string;
     }) => {
       const form = new FormData();
       form.append("zip", body.zip);
       form.append("model_id", body.modelId);
       form.append("tool_scope", body.toolScope);
+      form.append("declares_no_tools", String(body.declaresNoTools));
+      if (body.modelHosting) form.append("model_hosting", body.modelHosting);
+      form.append("data_access", body.dataAccess);
       form.append("requested_hosts", body.requestedHosts);
       form.append("registered_by", body.registeredBy);
       const response = await fetch(`${API_BASE}/agents/${agentId}/versions/upload`, {
@@ -296,6 +320,8 @@ export function useUploadAgentVersion(agentId: string) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agent"] });
+      // A new version may be held for approval, and the page must say so at once, not offer Deploy until it is reloaded.
+      invalidateAgent(queryClient, agentId);
     },
   });
 }
@@ -309,6 +335,8 @@ export function useRegisterAgent() {
       department_id: string;
       registered_by: string;
       purpose: string;
+      run_by?: "platform" | "outside";
+      proposed_level?: { level_key: string; affected: string; reasoning: string };
     }) =>
       api.post<RegisteredAgent>("/agents/register", {
         ...body,

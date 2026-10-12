@@ -40,8 +40,12 @@ import { LockedRequests } from "./features/locking/LockedRequests";
 import { LockingAudit } from "./features/locking/LockingAudit";
 import { NotebookCode, NotebookConsent, NotebookDone, NotebookLogin } from "./features/notebook/NotebookSignIn";
 import { NotebookSignIns } from "./features/notebook/NotebookSignIns";
-import { AccessRules } from "./features/access/AccessRules";
-import { ReleaseBars } from "./features/governance/ReleaseBars";
+import { Limits } from "./features/limits/Limits";
+import { DeidentificationStandards } from "./features/governance/DeidentificationStandards";
+import { AgentChanges } from "./features/agents/AgentChanges";
+import { AgentRegistry } from "./features/agents/AgentRegistry";
+import { RiskLevels } from "./features/agents/RiskLevels";
+import { ToolList } from "./features/agents/ToolList";
 
 /**
  * Somebody who has just signed in lands on the sign-in page for a moment (the session is still being read). Send them where they were going, which the gate
@@ -114,8 +118,14 @@ export default function App() {
         <Route path="/notebook-sign-in/consent" element={<NotebookConsent />} />
         <Route path="/notebook-sign-in/done" element={<NotebookDone />} />
         <Route path="/notebook-sign-ins" element={<NotebookSignIns />} />
-        <Route path="/access-rules" element={<AccessRules />} />
-        <Route path="/release-bars" element={<ReleaseBars />} />
+        <Route path="/limits" element={<Limits />} />
+        <Route path="/deidentification-standards" element={<DeidentificationStandards />} />
+        <Route path="/access-rules" element={<Navigate to="/limits" replace />} />
+        <Route path="/release-bars" element={<Navigate to="/deidentification-standards" replace />} />
+        <Route path="/agent-registry" element={<AgentRegistry />} />
+        <Route path="/risk-levels" element={<RiskLevels />} />
+        <Route path="/approved-tools" element={<ToolList />} />
+        <Route path="/agent-changes" element={<AgentChanges />} />
         <Route path="/locking-audit" element={<RoleOnly path="/locking-audit" title="Locked data audit"><LockingAudit /></RoleOnly>} />
         <Route path="/audit" element={<RoleOnly path="/audit" title="Access decisions"><AuditLog /></RoleOnly>} />
         <Route path="/gates" element={<GateQueue />} />

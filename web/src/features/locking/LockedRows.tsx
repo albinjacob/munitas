@@ -92,7 +92,7 @@ export function LockedRows() {
               data-testid="locked-rows-previous"
               disabled={page === 1}
               onClick={() => setPlaces((p) => p.slice(0, -1))}
-              className="rounded border border-slate-300 px-3 py-1 disabled:opacity-40"
+              className="btn btn-secondary"
             >
               Previous page
             </button>
@@ -104,7 +104,7 @@ export function LockedRows() {
               data-testid="locked-rows-next"
               disabled={!data.next}
               onClick={() => data.next && setPlaces((p) => [...p, data.next])}
-              className="rounded border border-slate-300 px-3 py-1 disabled:opacity-40"
+              className="btn btn-secondary"
             >
               Next page
             </button>

@@ -82,9 +82,7 @@ export function AuditLog() {
                   setResource(r);
                   setPage(1);
                 }}
-                className={`rounded px-2 py-1 ${
-                  resource === r ? "bg-indigo-600 text-white" : "text-slate-600"
-                }`}
+                className={`btn btn-sm ${resource === r ? "btn-selected" : "btn-ghost"}`}
               >
                 {r === "all" ? "All" : r === "dataset" ? "Dataset access" : "Agent activity"}
               </button>
@@ -99,9 +97,7 @@ export function AuditLog() {
                   setFilter(f);
                   setPage(1);
                 }}
-                className={`rounded px-2 py-1 ${
-                  filter === f ? "bg-indigo-600 text-white" : "text-slate-600"
-                }`}
+                className={`btn btn-sm ${filter === f ? "btn-selected" : "btn-ghost"}`}
               >
                 {f === "denied" ? `Refused (${denials})` : f === "allowed" ? "Allowed" : "All"}
               </button>

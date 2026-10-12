@@ -224,12 +224,14 @@ ROLE_LABEL = role_labels()
 GOOD_FOR = {
     "data_custodian": "Decide access requests for their own department, and be refused another department's.",
     "dpo": "Read the audit log, confirm a role is still needed, end an appointment.",
+    "ai_risk_owner": "Write the approved tools list, and give the second approval on a change to an agent held at a level that asks for one.",
     "notebook_explore": "Ask for access to a dataset, and wait to be granted or refused.",
     "pipeline_operator": "Register a dataset, upload or fetch data, seal it, start a pipeline.",
     "platform_admin": "Storage housekeeping and closing an organisation. Grants nothing and reads no data, by design.",
     "hybridops": "Support and reliability work, held alongside the administrator role.",
     "deid_reviewer": "Decide a de-identification gate: see what the pipeline missed, then release or refuse.",
     "analyst": "Read what has been released, and nothing wider.",
+    "privacy_auditor": "Read the evidence of how locked data was used, and check that no personal data is shown.",
     "network_architect": "Approve or refuse the external hosts an agent version declares before it may deploy.",
 }
 

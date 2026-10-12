@@ -679,23 +679,23 @@ test_code_registration_refusal_says_why if {
 }
 
 # ------------------------------------------------------------------
-# Setting a release bar.
+# Setting a de-identification standard.
 
-test_the_data_protection_officer_may_set_a_release_bar if {
-	access.may_set_release_bar with input as {"person": {"id": "x", "roles": ["dpo"]}}
+test_the_data_protection_officer_may_set_a_standard if {
+	access.may_set_standard with input as {"person": {"id": "x", "roles": ["dpo"]}}
 }
 
-test_nobody_else_may_set_a_release_bar if {
+test_nobody_else_may_set_a_standard if {
 	every role in ["deid_reviewer", "platform_admin", "data_custodian", "pipeline_operator", "notebook_explore", "analyst", "privacy_auditor"] {
-		not access.may_set_release_bar with input as {"person": {"id": "x", "roles": [role]}}
+		not access.may_set_standard with input as {"person": {"id": "x", "roles": [role]}}
 	}
-	not access.may_set_release_bar with input as {"person": {"id": "x", "roles": []}}
+	not access.may_set_standard with input as {"person": {"id": "x", "roles": []}}
 }
 
-test_release_bar_refusal_says_why_in_the_words_of_the_role_table if {
-	decision := access.set_release_bar_decision with input as {"person": {"id": "x", "roles": ["deid_reviewer"]}}
+test_standard_refusal_says_why_in_the_words_of_the_role_table if {
+	decision := access.set_standard_decision with input as {"person": {"id": "x", "roles": ["deid_reviewer"]}}
 	decision.allow == false
-	"only the data protection officer may set a release bar" in decision.reasons
+	"only the data protection officer may set a de-identification standard" in decision.reasons
 }
 
 # ------------------------------------------------------------------
@@ -2088,7 +2088,7 @@ test_a_lease_opens_files_to_the_person_it_belongs_to_and_real_files_stay_closed_
 	not access.may_open_record with input as {"person": {"id": "r", "roles": []}, "read": {"basis": "lease"}}
 }
 
-# ------------------------------------------------------------------ access rules an organisation has set --
+# ------------------------------------------------------------------ limits an organisation has set --
 
 locked_ask(roles, rows, days, limits) := {"requester": {"id": "p", "roles": roles}, "limits": limits, "request": {"principal": "p", "purpose": "x", "rows": rows, "days": days}}
 
@@ -2141,4 +2141,151 @@ test_an_organisation_may_set_the_file_limits if {
 	not access.may_request_file_lease with input as file_ask("notebook", 1000, 25, limits)
 	access.may_request_file_lease with input as file_ask("console", 10, 1, {})
 	not access.may_request_file_lease with input as file_ask("console", 11, 1, {})
+}
+
+# ------------------------------------------------------------------
+# Agent oversight.
+
+test_only_the_ai_risk_owner_may_manage_risk_levels if {
+	access.may_manage_risk_levels with input as {"person": {"id": "x", "roles": ["ai_risk_owner"]}}
+	every role in ["dpo", "deid_reviewer", "platform_admin", "data_custodian", "pipeline_operator", "analyst", "privacy_auditor", "network_architect"] {
+		not access.may_manage_risk_levels with input as {"person": {"id": "x", "roles": [role]}}
+	}
+	decision := access.manage_risk_levels_decision with input as {"person": {"id": "x", "roles": ["pipeline_operator"]}}
+	"only the AI risk owner may set the risk levels" in decision.reasons
+}
+
+test_the_ai_risk_owner_confirms_a_risk_level_but_not_for_their_own_agent if {
+	access.may_confirm_risk_level with input as {"person": {"id": "o", "roles": ["ai_risk_owner"]}, "agent": {"registered_by": "e"}}
+	not access.may_confirm_risk_level with input as {"person": {"id": "o", "roles": ["ai_risk_owner"]}, "agent": {"registered_by": "o"}}
+	decision := access.confirm_risk_level_decision with input as {"person": {"id": "o", "roles": ["ai_risk_owner"]}, "agent": {"registered_by": "o"}}
+	"the person who registered an agent cannot confirm its risk level; somebody else has to" in decision.reasons
+}
+
+test_nobody_but_the_ai_risk_owner_confirms_a_risk_level if {
+	every role in ["dpo", "deid_reviewer", "platform_admin", "data_custodian", "pipeline_operator"] {
+		not access.may_confirm_risk_level with input as {"person": {"id": "p", "roles": [role]}, "agent": {"registered_by": "e"}}
+	}
+	decision := access.confirm_risk_level_decision with input as {"person": {"id": "p", "roles": ["pipeline_operator"]}, "agent": {"registered_by": "e"}}
+	"only the AI risk owner may confirm the risk level of an agent" in decision.reasons
+}
+
+test_a_department_approver_gives_the_department_approval if {
+	access.may_decide_agent_change with input as {"part": "department", "approver": {"id": "a", "roles": []}, "approval": {"submitted_by": "e"}, "department": {"name": "Care", "approvers": ["a", "b"]}}
+}
+
+test_the_submitter_cannot_decide_their_own_version if {
+	not access.may_decide_agent_change with input as {"part": "department", "approver": {"id": "a", "roles": []}, "approval": {"submitted_by": "a"}, "department": {"name": "Care", "approvers": ["a"]}}
+	not access.may_decide_agent_change with input as {"part": "officer", "approver": {"id": "o", "roles": ["ai_risk_owner"]}, "approval": {"submitted_by": "o"}, "department": {"name": "Care", "approvers": []}}
+}
+
+test_somebody_outside_the_department_cannot_give_its_approval if {
+	not access.may_decide_agent_change with input as {"part": "department", "approver": {"id": "z", "roles": ["dpo"]}, "approval": {"submitted_by": "e"}, "department": {"name": "Care", "approvers": ["a"]}}
+	decision := access.agent_change_decision with input as {"part": "department", "approver": {"id": "z", "roles": []}, "approval": {"submitted_by": "e"}, "department": {"name": "Care", "approvers": ["a", "b"]}}
+	"only an approver of Care may give the department's approval; its approvers are a, b" in decision.reasons
+}
+
+test_the_refusal_names_the_approvers_by_name_when_it_is_given_them if {
+	decision := access.agent_change_decision with input as {"part": "department", "approver": {"id": "z", "roles": []}, "approval": {"submitted_by": "e"}, "department": {"name": "Care", "approvers": ["a", "b"], "approver_names": ["Ann", "Bo"]}}
+	"only an approver of Care may give the department's approval; its approvers are Ann, Bo" in decision.reasons
+}
+
+test_only_the_ai_risk_owner_gives_the_officer_approval if {
+	access.may_decide_agent_change with input as {"part": "officer", "approver": {"id": "o", "roles": ["ai_risk_owner"]}, "approval": {"submitted_by": "e"}, "department": {"name": "Care", "approvers": []}}
+	not access.may_decide_agent_change with input as {"part": "officer", "approver": {"id": "d", "roles": ["dpo"]}, "approval": {"submitted_by": "e"}, "department": {"name": "Care", "approvers": []}}
+	not access.may_decide_agent_change with input as {"part": "officer", "approver": {"id": "a", "roles": ["platform_admin"]}, "approval": {"submitted_by": "e"}, "department": {"name": "Care", "approvers": ["a"]}}
+}
+
+test_a_department_without_approvers_says_so if {
+	decision := access.agent_change_decision with input as {"part": "department", "approver": {"id": "a", "roles": []}, "approval": {"submitted_by": "e"}, "department": {"name": "Care", "approvers": []}}
+	decision.allow == false
+	"the department that owns this agent has no approvers, so nobody can give the department's approval" in decision.reasons
+}
+
+test_who_may_suspend_and_resume_an_agent if {
+	access.may_suspend_agent with input as {"person": {"id": "o", "roles": ["dpo"]}, "department": {"approvers": []}}
+	access.may_suspend_agent with input as {"person": {"id": "a", "roles": []}, "department": {"approvers": ["a"]}}
+	access.may_suspend_agent with input as {"person": {"id": "k", "roles": ["ai_risk_owner"]}, "department": {"approvers": []}}
+	access.may_suspend_agent with input as {"person": {"id": "p", "roles": ["platform_admin"]}, "department": {"approvers": []}}
+	not access.may_suspend_agent with input as {"person": {"id": "r", "roles": ["analyst"]}, "department": {"approvers": ["a"]}}
+	access.may_resume_agent with input as {"person": {"id": "a", "roles": []}, "department": {"approvers": ["a"]}, "requires_officer": false}
+	not access.may_resume_agent with input as {"person": {"id": "a", "roles": []}, "department": {"approvers": ["a"]}, "requires_officer": true}
+	access.may_resume_agent with input as {"person": {"id": "o", "roles": ["ai_risk_owner"]}, "department": {"approvers": ["a"]}, "requires_officer": true}
+	not access.may_resume_agent with input as {"person": {"id": "d", "roles": ["dpo"]}, "department": {"approvers": ["a"]}, "requires_officer": true}
+	access.may_resume_agent with input as {"person": {"id": "d", "roles": ["dpo"]}, "department": {"approvers": ["a"]}, "requires_officer": false}
+	decision := access.resume_agent_decision with input as {"person": {"id": "a", "roles": []}, "department": {"approvers": ["a"]}, "requires_officer": true}
+	"this agent's risk level asks for a second approver, so only the AI risk owner may resume it" in decision.reasons
+}
+
+test_who_may_assign_a_sponsor if {
+	access.may_assign_sponsor with input as {"person": {"id": "a", "roles": []}, "department": {"approvers": ["a"]}}
+	access.may_assign_sponsor with input as {"person": {"id": "o", "roles": ["ai_risk_owner"]}, "department": {"approvers": []}}
+	not access.may_assign_sponsor with input as {"person": {"id": "d", "roles": ["dpo"]}, "department": {"approvers": []}}
+	not access.may_assign_sponsor with input as {"person": {"id": "r", "roles": ["pipeline_operator", "platform_admin", "deid_reviewer"]}, "department": {"approvers": ["a"]}}
+	decision := access.assign_sponsor_decision with input as {"person": {"id": "r", "roles": []}, "department": {"approvers": ["a"]}}
+	"only an approver of the department that owns the agent or the AI risk owner may assign its sponsor" in decision.reasons
+}
+
+test_who_may_reconfirm_an_agent if {
+	access.may_reconfirm_agent with input as {"person": {"id": "s", "roles": []}, "sponsor": "s", "department": {"approvers": []}}
+	access.may_reconfirm_agent with input as {"person": {"id": "a", "roles": []}, "sponsor": "s", "department": {"approvers": ["a"]}}
+	access.may_reconfirm_agent with input as {"person": {"id": "o", "roles": ["ai_risk_owner"]}, "sponsor": "s", "department": {"approvers": []}}
+	not access.may_reconfirm_agent with input as {"person": {"id": "d", "roles": ["dpo"]}, "sponsor": "s", "department": {"approvers": []}}
+	not access.may_reconfirm_agent with input as {"person": {"id": "r", "roles": ["pipeline_operator", "platform_admin"]}, "sponsor": "s", "department": {"approvers": ["a"]}}
+	not access.may_reconfirm_agent with input as {"person": {"id": "r", "roles": []}, "department": {"approvers": []}}
+}
+
+test_who_may_make_an_evidence_pack if {
+	access.may_make_evidence_pack with input as {"person": {"id": "o", "roles": ["dpo"]}, "department": {"approvers": []}}
+	access.may_make_evidence_pack with input as {"person": {"id": "k", "roles": ["ai_risk_owner"]}, "department": {"approvers": []}}
+	access.may_make_evidence_pack with input as {"person": {"id": "o", "roles": ["privacy_auditor"]}, "department": {"approvers": []}}
+	access.may_make_evidence_pack with input as {"person": {"id": "a", "roles": []}, "department": {"approvers": ["a"]}}
+	not access.may_make_evidence_pack with input as {"person": {"id": "r", "roles": ["analyst", "deid_reviewer", "pipeline_operator"]}, "department": {"approvers": ["a"]}}
+}
+
+test_who_may_report_an_incident if {
+	access.may_report_incident with input as {"person": {"id": "k", "roles": ["ai_risk_owner"]}, "department": {"approvers": []}}
+	access.may_report_incident with input as {"person": {"id": "o", "roles": ["privacy_auditor"]}, "department": {"approvers": []}}
+	access.may_report_incident with input as {"person": {"id": "a", "roles": []}, "department": {"approvers": ["a"]}}
+	not access.may_report_incident with input as {"person": {"id": "r", "roles": ["analyst"]}, "department": {"approvers": ["a"]}}
+}
+
+# Who acts as the officer for an agent is one named set. These pin what it does today, so that a change of who holds the duty is a deliberate edit of the set and of these tests.
+test_the_officer_for_an_agent_is_the_ai_risk_owner_and_the_data_protection_officer_holds_none_of_these if {
+	access.agent_officer_roles == {"ai_risk_owner"}
+	access.manage_risk_levels_roles == {"ai_risk_owner"}
+	access.confirm_risk_level_roles == {"ai_risk_owner"}
+	not access.agent_officer_roles["dpo"]
+}
+
+test_the_ai_risk_owner_gives_the_officers_part_and_the_tools_list_is_theirs_alone if {
+	access.may_decide_agent_change with input as {"part": "officer", "approver": {"id": "k", "roles": ["ai_risk_owner"]}, "approval": {"submitted_by": "e"}, "department": {"name": "Care", "approvers": []}}
+	access.may_manage_tool_list with input as {"person": {"id": "k", "roles": ["ai_risk_owner"]}}
+	not access.may_manage_tool_list with input as {"person": {"id": "o", "roles": ["dpo"]}}
+	not access.may_manage_tool_list with input as {"person": {"id": "p", "roles": ["platform_admin"]}}
+	decision := access.manage_tool_list_decision with input as {"person": {"id": "o", "roles": ["dpo"]}}
+	"only the AI risk owner may write the approved tools list" in decision.reasons
+}
+
+test_either_reads_naturally_for_one_two_and_three_roles if {
+	data.munitas.role_words.either({"dpo"}) == "the data protection officer"
+	data.munitas.role_words.either({"dpo", "ai_risk_owner"}) == "the data protection officer or the AI risk owner"
+	data.munitas.role_words.either({"data_custodian", "dpo", "ai_risk_owner"}) == "data custodians, the data protection officer or the AI risk owner"
+}
+
+test_the_officers_part_of_a_change_follows_the_set if {
+	access.may_decide_agent_change with input as {"part": "officer", "approver": {"id": "o", "roles": ["ai_risk_owner"]}, "approval": {"submitted_by": "e"}, "department": {"name": "Care", "approvers": []}}
+	not access.may_decide_agent_change with input as {"part": "officer", "approver": {"id": "o", "roles": ["platform_admin"]}, "approval": {"submitted_by": "e"}, "department": {"name": "Care", "approvers": []}}
+}
+
+test_a_role_added_to_the_set_may_give_the_officers_part if {
+	access.may_decide_agent_change with input as {"part": "officer", "approver": {"id": "o", "roles": ["analyst"]}, "approval": {"submitted_by": "e"}, "department": {"name": "Care", "approvers": []}}
+		with access.agent_officer_roles as {"ai_risk_owner", "analyst"}
+}
+
+test_resuming_and_re_confirming_follow_the_set if {
+	access.may_resume_agent with input as {"person": {"id": "o", "roles": ["ai_risk_owner"]}, "requires_officer": true, "department": {"approvers": []}}
+	access.may_reconfirm_agent with input as {"person": {"id": "o", "roles": ["ai_risk_owner"]}, "department": {"approvers": []}}
+	access.may_assign_sponsor with input as {"person": {"id": "o", "roles": ["ai_risk_owner"]}, "department": {"approvers": []}}
+	not access.may_assign_sponsor with input as {"person": {"id": "x", "roles": ["analyst"]}, "department": {"approvers": []}}
 }

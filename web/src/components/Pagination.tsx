@@ -66,7 +66,7 @@ export function Pagination({
           data-testid="pagination-prev"
           disabled={page <= 1}
           onClick={() => onPageChange(page - 1)}
-          className="rounded border border-slate-300 px-2.5 py-1 text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          className="btn btn-secondary"
         >
           Previous
         </button>
@@ -82,11 +82,7 @@ export function Pagination({
               data-testid={`pagination-page-${p}`}
               aria-current={p === page ? "page" : undefined}
               onClick={() => onPageChange(p)}
-              className={`min-w-[2rem] rounded px-2.5 py-1 ${
-                p === page
-                  ? "bg-indigo-500 font-medium text-white"
-                  : "text-slate-700 hover:bg-slate-100"
-              }`}
+              className={`btn btn-sm min-w-[2rem] ${p === page ? "btn-selected" : "btn-ghost"}`}
             >
               {p}
             </button>
@@ -97,7 +93,7 @@ export function Pagination({
           data-testid="pagination-next"
           disabled={page >= totalPages}
           onClick={() => onPageChange(page + 1)}
-          className="rounded border border-slate-300 px-2.5 py-1 text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          className="btn btn-secondary"
         >
           Next
         </button>

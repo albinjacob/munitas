@@ -39,7 +39,7 @@ function Waiting({ lease }: { lease: FileLease }) {
         data-testid={`file-lease-withdraw-${lease.kind}`}
         disabled={end.isPending}
         onClick={() => end.mutate(lease.id)}
-        className="rounded border border-slate-500 px-2 py-1 text-xs text-slate-900 disabled:opacity-50"
+        className="btn btn-secondary btn-sm"
       >
         {end.isPending ? "Withdrawing" : "Withdraw the request"}
       </button>
@@ -77,7 +77,7 @@ function InForce({ lease }: { lease: FileLease }) {
         data-testid={`file-lease-end-${lease.kind}`}
         disabled={end.isPending}
         onClick={() => end.mutate(lease.id)}
-        className="rounded border border-slate-500 px-2 py-1 text-xs text-slate-900 disabled:opacity-50"
+        className="btn btn-secondary btn-sm"
       >
         {end.isPending ? "Ending" : "End now"}
       </button>
@@ -202,7 +202,7 @@ function Form({
           type="submit"
           data-testid="file-lease-submit"
           disabled={request.isPending || !purpose.trim()}
-          className="rounded bg-indigo-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-800 disabled:opacity-50"
+          className="btn btn-primary"
         >
           {request.isPending ? "Asking" : "Ask to open these files"}
         </button>

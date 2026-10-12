@@ -24,7 +24,8 @@ from datetime import timezone
 
 import pgdb
 
-from . import access_rules, db, development_samples, opa
+from . import db, development_samples, opa
+from . import limits as org_limits
 from .locked_leases import approvers_of
 from .person_errors import LeaseConflict, NoSuchLease, NoSuchVersion, NotPermitted, Refused
 
@@ -108,7 +109,7 @@ def request_lease(identity: dict, version_id: str, kind: str, purpose: str, reco
     if kind in KINDS and kind not in ENABLED_KINDS:
         raise Refused([f"a lease for a {kind} cannot be asked for yet"])
     allowed, reasons = opa.may_request_file_lease({
-        "requester": {"id": identity["id"], "roles": identity["roles"]}, "limits": access_rules.limits_for(identity["tenant_id"]),
+        "requester": {"id": identity["id"], "roles": identity["roles"]}, "limits": org_limits.limits_for(identity["tenant_id"]),
         "request": {"principal": identity["id"], "kind": kind, "purpose": purpose, "hours": hours, "records": records}})
     if not allowed:
         raise NotPermitted(reasons)
@@ -213,7 +214,7 @@ def for_version(identity: dict, version_id: str) -> dict:
         """select * from file_lease where tenant_id = %s and principal = %s and dataset_version_id = %s and status in ('requested', 'approved')
               and (status = 'requested' or expires_at > now()) order by requested_at desc""", (identity["tenant_id"], identity["id"], version_id))
     approvers = approvers_of(version["department_id"])
-    limits = access_rules.limits_for(identity["tenant_id"])
+    limits = org_limits.limits_for(identity["tenant_id"])
     caps = {"console": {"records": limits["files_in_page"]["most_files"], "hours": limits["files_in_page"]["most_hours"]},
             "notebook": {"records": limits["files_in_notebook"]["most_files"], "hours": limits["files_in_notebook"]["most_hours"]}}
     return {"version_id": version_id, "leases": _labels([_shape(r) for r in own]), "kinds": list(ENABLED_KINDS), "caps": {k: caps[k] for k in ENABLED_KINDS if k in caps},

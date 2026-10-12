@@ -24,7 +24,11 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $compose = Get-ComposePrefix -WslDistro $WslDistro -ProjectRoot $root
 
 function Invoke-Wsl([string]$Command) {
-    $out = wsl -d $WslDistro -- bash -c $Command 2>&1
+    # The command is sent as base64 and decoded inside the distro. Windows PowerShell 5.1 drops the double quotes inside an argument it passes to a program, and text
+    # piped to one starts with a byte-order mark, so neither the command nor its quotes can go through as they are.
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Command))
+    # Errors are merged into the output inside the distro: Docker prints its progress on the error stream, and under Stop PowerShell 5.1 treats any line there as a failure.
+    $out = wsl -d $WslDistro -- bash -c "echo $encoded | base64 -d | bash 2>&1"
     if ($LASTEXITCODE -ne 0) { throw "failed: $Command`n$out" }
     return $out
 }
@@ -36,6 +40,15 @@ $repo = $image.Split(":")[0]
 
 $had = (Invoke-Wsl "docker image inspect $repo`:latest >/dev/null 2>&1 && echo yes || echo no") | Select-Object -Last 1
 if ($had -eq "yes") { Invoke-Wsl "docker tag $repo`:latest $repo`:previous" | Out-Null }
+
+# The API image carries the client library people install in a notebook (GET /client). It is built from the library's own source first, so the image
+# always holds the current version, not whatever was built last time.
+if ($Service -eq "munitas-api") {
+    $python = Join-Path $root ".venv\Scripts\python.exe"
+    Write-Host "Building the client library ..."
+    & $python (Join-Path $root "scripts\build-client-wheel.py")
+    if ($LASTEXITCODE -ne 0) { throw "the client library did not build" }
+}
 
 Write-Host "Building $Service ($repo) ..."
 Invoke-Wsl "$compose build $Service" | Select-Object -Last 2 | ForEach-Object { Write-Host "  $_" }

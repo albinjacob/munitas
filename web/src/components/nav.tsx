@@ -50,6 +50,9 @@ export const GROUPS: { title: string; items: Item[] }[] = [
     title: "The platform",
     items: [
       { to: "/agents", label: "Agents", icon: AgentIcon },
+      { to: "/agent-registry", label: "Agent registry", icon: AgentIcon },
+      { to: "/agent-changes", label: "Agent changes", icon: EgressIcon },
+      { to: "/approved-tools", label: "Approved tools", icon: ShieldCheckIcon },
       { to: "/pipelines", label: "Pipelines", icon: PipelineIcon },
       { to: "/action-runs", label: "Action runs", icon: RunsIcon },
       { to: "/egress-approvals", label: "Egress approvals", icon: EgressIcon },
@@ -63,8 +66,9 @@ export const GROUPS: { title: string; items: Item[] }[] = [
     items: [
       { to: "/directory", label: "People and roles", icon: PeopleIcon },
       { to: "/roles", label: "What each role can do", icon: KeyIcon },
-      { to: "/access-rules", label: "Access rules", icon: ShieldCheckIcon },
-      { to: "/release-bars", label: "Release bars", icon: ShieldCheckIcon },
+      { to: "/limits", label: "Limits", icon: ShieldCheckIcon },
+      { to: "/deidentification-standards", label: "De-identification standards", icon: ShieldCheckIcon },
+      { to: "/risk-levels", label: "Risk levels", icon: ShieldCheckIcon },
       { to: "/closing", label: "Closing down the organisation", icon: ClosingIcon },
     ],
   },

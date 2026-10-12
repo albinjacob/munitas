@@ -48,7 +48,8 @@ from pydantic import BaseModel
 
 import tablewriter
 
-from . import access_rules, auth, config, db, grants, group_sizes, iceberg, logs, models, opa, people_lock, person_keys, storage, task_credential, temporal_client, versions
+from . import auth, config, db, grants, group_sizes, iceberg, logs, models, opa, people_lock, person_keys, storage, task_credential, temporal_client, versions
+from . import limits as org_limits
 
 log = logs.get_logger("table_jobs")
 router = APIRouter()
@@ -143,7 +144,17 @@ def _job_row(job_id: str) -> dict | None:
     return db.one("select * from table_job where id = %s", (job_id,))
 
 
-def _shown(job: dict) -> dict:
+def _name_of(person_id: str | None, names: dict | None = None) -> str | None:
+    """The name of the person who made a job, for the screen that says who brought a table in. `names` is a lookup made once for a list of jobs."""
+    if not person_id:
+        return None
+    if names is not None:
+        return names.get(person_id)
+    found = db.one("select label from directory where id = %s", (person_id,))
+    return found["label"] if found else None
+
+
+def _shown(job: dict, names: dict | None = None) -> dict:
     """A job as its owner sees it. Never the request, which holds the whole seal, and never a credential."""
     created = job["created_at"]
     waiting = None
@@ -158,7 +169,7 @@ def _shown(job: dict) -> dict:
         # The version exists only once the job is sealed. Until then it is the id the version will have.
         "version_id": str(job["version_id"]) if job["status"] == "sealed" and job["version_id"] else None,
         "outcome": job["outcome"], "reason": job["reason"], "problems": job.get("problems") or [],
-        "ready": job.get("ready", True), "progress": job.get("progress"), "brought_in_by": job.get("created_by"),
+        "ready": job.get("ready", True), "progress": job.get("progress"), "brought_in_by": job.get("created_by"), "brought_in_by_label": _name_of(job.get("created_by"), names),
         "status_url": f"/table-jobs/{job['id']}",
     }, default=str))
 
@@ -182,7 +193,9 @@ def list_jobs(status: str | None = None, limit: int = 50, tenant_id: str | None 
         where.append("status = %s")
         args.append(status)
     rows = db.all_rows(f"select * from table_job where {' and '.join(where)} order by created_at desc limit %s", (*args, min(limit, 200)))
-    return {"jobs": [_shown(r) for r in rows]}
+    ids = sorted({r["created_by"] for r in rows if r.get("created_by")})
+    names = {r["id"]: r["label"] for r in db.all_rows("select id, label from directory where id = any(%s)", (ids,))} if ids else {}
+    return {"jobs": [_shown(r, names) for r in rows]}
 
 
 # ----------------------------------------------------------------- the worker's side
@@ -532,7 +545,7 @@ async def dispatch_once() -> int:
     for job in db.all_rows("select id, tenant_id, queue, expires_at from table_job where status = 'pending' and dispatched_at is null and ready "
                            "order by created_at limit 50"):
         job_id, tenant_id = str(job["id"]), str(job["tenant_id"])
-        if active.get(tenant_id, 0) >= int(access_rules.in_force(tenant_id)["table_uploads.jobs_at_once"]["value"]):
+        if active.get(tenant_id, 0) >= int(org_limits.in_force(tenant_id)["table_uploads.jobs_at_once"]["value"]):
             continue
         left = max(60, int((job["expires_at"] - _now()).total_seconds()))
         credential = task_credential.mint(principal=f"{tenant_id}-table-writer", task_kind=KIND, task_id=job_id,

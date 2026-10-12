@@ -111,3 +111,7 @@ test-results/
 # Replaced walkthroughs the kit builds into docs/archive are a private record, not part of the repository: they are not published or linked, and each is several
 # megabytes of pictures of a console that no longer exists.
 docs/archive/
+
+# The downloadable client library (scripts/build-client-wheel.py): generated from the two library files, never committed. Only .gitkeep stays, so the API image builds before the wheel exists.
+platform/client_wheel/*
+!platform/client_wheel/.gitkeep

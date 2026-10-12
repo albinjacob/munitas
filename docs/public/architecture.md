@@ -185,6 +185,8 @@ in the stack requires a commercial licence to run or extend.
   who decides who may read it, and how that decision is made trustworthy.
 - [API reference](https://albinjacob.github.io/munitas/reference/api-reference.html): every route the control
   plane exposes, generated directly from the API's own route definitions.
+- [Roles reference](https://albinjacob.github.io/munitas/reference/roles.html): what each role can and cannot do,
+  generated from the platform's own rules.
 - [Walkthroughs](https://albinjacob.github.io/munitas/walkthroughs/feature-walkthrough.html): real screenshots
   of these guarantees end to end, for someone who has never seen the
   platform before.

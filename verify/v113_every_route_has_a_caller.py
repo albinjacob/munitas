@@ -34,6 +34,8 @@ OPEN_ON_PURPOSE = {
     ("POST", "/notebook/v1/sign-in"): "a notebook asking to sign in has no session yet; it is shown a code and nobody is identified, and it is limited by address (U167)",
     ("POST", "/notebook/v1/sign-in/token"): "the notebook polls with the device code only it holds; answers pending, denied or the pass (U167)",
     ("POST", "/notebook/v1/sign-in/refresh"): "the notebook renews with the renewal token only it holds; Hydra checks it and ends the sign-in on reuse (U167)",
+    ("GET", "/client"): "says which client library this platform offers: its file name, version and checksum, the same for every caller; pip is a plain web request and cannot carry a console session (U207)",
+    ("GET", "/client/{filename}"): "the client library file itself, which holds only the library's public code; found by its exact name, so no part of the request is used as a path, and pip cannot carry a session (U207)",
 }
 AUTH_DEPENDENCIES = {"current_session", "current_session_while_closing", "organisation_scope", "person_or_worker", "worker_only",
                      "catalog_principal", "_claim", "_worker", "_step_pass", "_handle", "_notebook"}

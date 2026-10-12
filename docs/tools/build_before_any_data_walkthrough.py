@@ -75,7 +75,7 @@ STEPS = [
     {
         "file": "05-the-limits-the-organisation-has-set.png", "actor": "priya",
         "title": "The organisation sets limits on what people may ask for",
-        "screen": "Access rules &middot; /access-rules",
+        "screen": "Limits &middot; /limits",
         "text": "When somebody asks for access, they say what they want, why, and for how long. This page shows the limits the "
                 "organisation has set on how much a person may ask for. A locked column holds values that identify a person, "
                 "and a locked file is a file that stays unreadable until somebody is allowed to open it. For each limit the "
@@ -84,11 +84,11 @@ STEPS = [
         "note": "Take <strong>Most rows in one request</strong>: the limit now is <strong>20 rows</strong>, which is also the "
                 "default, and the platform allows at most <strong>100 rows</strong>. Every line ends with "
                 "<strong>Not changed</strong>, because the organisation has kept the defaults. At the top the page says "
-                "<strong>To change a rule, ask your platform administrator.</strong>",
+                "<strong>To change a limit, ask your platform administrator.</strong>",
     },
 ]
 
-NUMBER_WORDS = {12: "Twelve"}
+NUMBER_WORDS = {12: "Twelve", 13: "Thirteen"}
 PEOPLE_FILE = "03-the-people.txt"
 
 # What each role is for, in plain words. A role that the People screen shows and this list lacks stops the build, so that
@@ -100,13 +100,14 @@ ROLE_MEANING = {
     "De-identification reviewer": "Decides whether a result with the names removed may be released.",
     "Privacy auditor": "Checks how locked data was used, and reads records of use but no personal data.",
     "Data protection officer": "Watches how the organisation handles personal data, and decides nothing about who may read it.",
+    "AI risk owner": "Answers for how the organisation holds its AI agents: writes the risk levels and the approved tools list, confirms each agent's level, and gives the second approval.",
     "Network architect": "Decides which external hosts an AI agent may call.",
     "Platform administrator, Support and reliability": "Runs Munitas itself and looks after the organisation's setup, "
                                                        "with no say over who may read a department's data.",
 }
 
 # The order people appear in the table: the platform's staff, the approvers, then the people who work with data.
-PEOPLE_ORDER = ["Priya", "Ravi", "Hartley", "Mensah", "Lindqvist", "Okonjo", "Devi", "Sam", "Imani", "Marlow", "Nakamura", "Turner"]
+PEOPLE_ORDER = ["Priya", "Ravi", "Hartley", "Mensah", "Lindqvist", "Okonjo", "Devi", "Sam", "Imani", "Marlow", "Nakamura", "Okafor", "Turner"]
 
 
 def read_people(text: str) -> dict:

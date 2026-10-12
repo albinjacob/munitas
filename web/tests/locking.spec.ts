@@ -256,6 +256,7 @@ test.describe("U135: locked columns in the console", () => {
   test("the engineer has no audit page", async ({ page }) => {
     await loginAs(page, ENGINEER);
     await page.goto("/locking-audit");
-    await expect(page.getByText("This page is for the privacy auditor")).toBeVisible();
+    // The sentence comes from the policy's screens catalogue, the one place that says who a page is for.
+    await expect(page.getByTestId("role-only-notice")).toContainText("This page is for privacy auditors and the data protection officer.");
   });
 });

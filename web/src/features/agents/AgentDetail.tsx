@@ -25,7 +25,36 @@ import { Empty, Failure, Loading, Section } from "../../components/states";
 import { CopyableHash } from "../../components/CopyableHash";
 import { notify } from "../../components/toast";
 import { UploadAgentVersion } from "./UploadAgentVersion";
+import { AgentOversightPanel } from "./AgentOversightPanel";
+import { RunOutput } from "./RunOutput";
+import { useAgentChangeApprovals, useRefuseRun } from "../../api/agentOversight";
+import { Reasons } from "../locking/LockedColumns";
 import { when } from "../../lib/when";
+
+/** Refuse what a run produced while it waits for approval. Asks for the reason first, because a refusal is kept with who made it and why. */
+function RefuseRun({ runId, agentId }: { runId: string; agentId: string }) {
+  const refuse = useRefuseRun();
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  if (!open) {
+    return (
+      <button type="button" data-testid={`refuse-run-${runId}`} onClick={() => setOpen(true)} className="btn btn-danger-outline btn-sm ml-2">
+        Refuse
+      </button>
+    );
+  }
+  return (
+    <span className="ml-2 inline-flex flex-col items-end gap-1 text-left" data-testid={`refuse-run-form-${runId}`}>
+      <textarea rows={2} aria-label="Why it is refused" data-testid={`refuse-run-reason-${runId}`} value={reason} onChange={(e) => setReason(e.target.value)} className="w-56 rounded border border-slate-400 px-2 py-1 text-xs" />
+      <span className="flex gap-2">
+        <button type="button" data-testid={`refuse-run-send-${runId}`} disabled={refuse.isPending || !reason.trim()} onClick={() => refuse.mutate({ runId, reason, agentId }, { onSuccess: () => notify("The run was refused.") })} className="btn btn-danger btn-sm">
+          Refuse this run
+        </button>
+        <button type="button" onClick={() => setOpen(false)} className="btn btn-secondary btn-sm">Cancel</button>
+      </span>
+    </span>
+  );
+}
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -43,6 +72,15 @@ export function AgentDetail() {
   const agent = useAgent(agentId);
   const runs = useAgentRuns(agentId);
   const deploy = useDeployAgent(agentId!);
+  const changes = useAgentChangeApprovals(agentId);
+  /** Why a version cannot be deployed yet because of its approval, said before the button is pressed; empty when nothing stands in the way. */
+  const heldBy = (versionId: string): string => {
+    if (!changes.data?.enforce) return "";
+    const found = changes.data.approvals.find((x) => x.agent_version_id === versionId);
+    if (!found) return "";
+    if (found.state === "refused") return "This version widens what the agent can do, and the widening was refused.";
+    return found.state === "waiting" ? `This version widens what the agent can do. It waits for ${found.waiting_for.join(" and ")}.` : "";
+  };
   const startRun = useStartAgentRun(agentId!);
   const approveRun = useApproveRun();
   const versions = useVersions();
@@ -89,6 +127,7 @@ export function AgentDetail() {
           />
         ) : (
           <div className="overflow-x-auto rounded border border-slate-200 bg-white">
+            {deploy.error ? <div role="alert" className="border-b border-slate-200 px-4 py-2 text-sm text-red-800"><Reasons error={deploy.error} fallback="The version could not be deployed." /></div> : null}
             <table data-testid="agent-versions" className="w-full text-sm">
               <thead className="whitespace-nowrap bg-slate-50 text-left text-xs uppercase text-slate-500">
                 <tr>
@@ -161,8 +200,16 @@ export function AgentDetail() {
                       <span className="text-slate-500">Tools: </span>
                       {v.tool_scope.length ? (
                         <span className="font-mono">{v.tool_scope.join(", ")}</span>
+                      ) : v.tools_declared ? (
+                        <span data-testid={`tools-none-${v.version}`}>uses no tools</span>
                       ) : (
-                        <span className="text-slate-400">none declared</span>
+                        <span className="text-amber-800" data-testid={`tools-not-declared-${v.version}`}>not declared</span>
+                      )}
+                      {v.model_hosting && <span className="mt-1 block text-slate-500">Model runs {v.model_hosting === "outside" ? "outside the platform" : "in the platform"}</span>}
+                      {v.sandboxed && (
+                        <span className="mt-1 block text-slate-500" data-testid={`data-access-${v.version}`}>
+                          {v.data_access === "copy" ? "Given a copy of the data a run is started on" : "Given no data"}
+                        </span>
                       )}
                       {v.requested_hosts.length > 0 && (
                         <span className="mt-1 block">
@@ -181,13 +228,13 @@ export function AgentDetail() {
                         <button
                           type="button"
                           data-testid={`deploy-version-${v.version}`}
-                          disabled={deploy.isPending || v.egress_state === "pending" || v.egress_state === "refused"}
+                          disabled={deploy.isPending || v.egress_state === "pending" || v.egress_state === "refused" || Boolean(heldBy(v.id))}
                           title={
                             v.egress_state === "pending"
                               ? "This version's requested hosts have not been approved yet"
                               : v.egress_state === "refused"
                                 ? "This version's requested hosts were refused"
-                                : undefined
+                                : heldBy(v.id) || undefined
                           }
                           onClick={() =>
                             deploy.mutate(
@@ -195,10 +242,13 @@ export function AgentDetail() {
                               { onSuccess: () => notify(`v${v.version} deployed.`) },
                             )
                           }
-                          className="rounded bg-indigo-500 hover:bg-indigo-800 px-2 py-1 text-xs font-medium text-white disabled:opacity-50"
+                          className="btn btn-primary btn-sm"
                         >
                           {deploy.isPending ? "Deploying" : "Deploy"}
                         </button>
+                      )}
+                      {v.id !== activeVersionId && principal && heldBy(v.id) && (
+                        <span data-testid={`held-${v.version}`} className="ml-auto mt-1 block max-w-[16rem] whitespace-normal text-right text-xs text-amber-800">{heldBy(v.id)}</span>
                       )}
                     </td>
                   </tr>
@@ -256,7 +306,7 @@ export function AgentDetail() {
                     });
                     setRunPurpose("");
                   }}
-                  className="shrink-0 whitespace-nowrap rounded bg-indigo-500 hover:bg-indigo-800 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+                  className="btn btn-primary shrink-0 whitespace-nowrap"
                 >
                   {startRun.isPending
                     ? "Starting"
@@ -391,11 +441,12 @@ export function AgentDetail() {
                                 data-testid={`approve-run-${r.id}`}
                                 disabled={approveRun.isPending}
                                 onClick={() => approveRun.mutate({ run_id: r.id })}
-                                className="rounded bg-indigo-500 hover:bg-indigo-800 px-2 py-1 text-xs font-medium text-white disabled:opacity-50"
+                                className="btn btn-primary btn-sm"
                               >
                                 {approveRun.isPending ? "Approving" : "Approve"}
                               </button>
                             ))}
+                          {r.status === "awaiting_approval" && principal && principal.id !== r.requested_by && <RefuseRun runId={r.id} agentId={agentId!} />}
                         </td>
                       </tr>
                       {hasDetail && (
@@ -403,7 +454,7 @@ export function AgentDetail() {
                           <td colSpan={5} className="px-4 pb-3 pt-0">
                             {r.approved_by && (
                               <p className="text-xs text-slate-500">
-                                Approved by {r.approved_by}
+                                Approved by {r.approved_by_label ?? r.approved_by}
                                 {r.approved_at ? ` on ${when(r.approved_at)}` : ""}
                               </p>
                             )}
@@ -423,12 +474,7 @@ export function AgentDetail() {
                               // is specific to the platform's own built-in graph, and
                               // fitting arbitrary output into it would show blank
                               // fields rather than what the code actually reported.
-                              <pre
-                                data-testid={`run-findings-${r.id}`}
-                                className="mt-2 overflow-x-auto rounded bg-slate-50 p-2 font-mono text-xs text-slate-700"
-                              >
-                                {JSON.stringify(r.findings, null, 2)}
-                              </pre>
+                              <RunOutput run={r} agentId={agentId!} me={principal?.id} />
                             ) : (
                               hasFindings && (
                                 <ul data-testid={`run-findings-${r.id}`} className="mt-2 space-y-1">
@@ -465,6 +511,7 @@ export function AgentDetail() {
           </div>
         )}
       </Section>
+      <AgentOversightPanel agentId={agentId!} />
     </>
   );
 }

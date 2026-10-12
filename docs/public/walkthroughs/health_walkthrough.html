@@ -297,7 +297,7 @@
         <li><a href="#w-people-arrive"><span class="quicknav-n">6.</span>Bring in patient data, locked under a key for each patient</a></li>
         <li><a href="#w-read-a-few-rows"><span class="quicknav-n">7.</span>Read five locked rows, with an approver's say</a></li>
         <li><a href="#w-open-a-few-files"><span class="quicknav-n">8.</span>Open two of the recordings, with an approver's say</a></li>
-        <li><a href="#w-release-bars"><span class="quicknav-n">9.</span>Set the bars a result is released under</a></li>
+        <li><a href="#w-deidentification-standards"><span class="quicknav-n">9.</span>Set the standards a result is released under</a></li>
         <li><a href="#w-de-identify-and-release"><span class="quicknav-n">10.</span>Remove names from the recordings, and a reviewer decides</a></li>
         <li><a href="#w-evidence-without-names"><span class="quicknav-n">11.</span>See how locked data was used, without seeing a name</a></li>
       </ul>
@@ -312,18 +312,22 @@
       <ul>
         <li><a href="#w-agent-asks"><span class="quicknav-n">14.</span>Grant an AI agent permission to read a dataset</a></li>
         <li><a href="#w-agent-egress"><span class="quicknav-n">15.</span>Grant an AI agent permission to call an external host</a></li>
+        <li><a href="#w-agent-levels"><span class="quicknav-n">16.</span>Set the risk levels for AI agents</a></li>
+        <li><a href="#w-agent-approval"><span class="quicknav-n">17.</span>Approve an AI agent before it can work with patient records</a></li>
+        <li><a href="#w-agent-tools"><span class="quicknav-n">18.</span>Approve the tools AI agents may add in advance, and decide the rest one at a time</a></li>
+        <li><a href="#w-agent-review"><span class="quicknav-n">19.</span>Review what an AI agent produced, and show an auditor what was decided</a></li>
       </ul>
     </li>
     <li><a class="quicknav-stage" href="#stage-custom-pipelines">Custom pipelines</a>
       <ul>
-        <li><a href="#w-custom-pipeline"><span class="quicknav-n">16.</span>Register a custom pipeline, and run it</a></li>
-        <li><a href="#w-development-sample"><span class="quicknav-n">17.</span>Test a new pipeline version on a development sample</a></li>
-        <li><a href="#w-custom-step"><span class="quicknav-n">18.</span>Approve a custom step before it runs</a></li>
+        <li><a href="#w-custom-pipeline"><span class="quicknav-n">20.</span>Register a custom pipeline, and run it</a></li>
+        <li><a href="#w-development-sample"><span class="quicknav-n">21.</span>Test a new pipeline version on a development sample</a></li>
+        <li><a href="#w-custom-step"><span class="quicknav-n">22.</span>Approve a custom step before it runs</a></li>
       </ul>
     </li>
     <li><a class="quicknav-stage" href="#stage-audit">Audit</a>
       <ul>
-        <li><a href="#w-audit-decisions"><span class="quicknav-n">19.</span>Read every access decision, including every refusal</a></li>
+        <li><a href="#w-audit-decisions"><span class="quicknav-n">23.</span>Read every access decision, including every refusal</a></li>
       </ul>
     </li>
   </ol>
@@ -396,18 +400,18 @@
       <p class="meta">You will see: A request for files, a custodian allowing fewer, a recording playing in the page, and the files closing when the permission ends.</p>
       <p class="meta">6 steps, about 5 minutes. <span class="open">Open &rarr;</span></p>
     </a>
-    <a class="tile" id="w-release-bars" href="release-bars-walkthrough.html">
+    <a class="tile" id="w-deidentification-standards" href="deidentification-standards-walkthrough.html">
       <span class="tag">9. Health organisation</span>
-      <h3>Set the bars a result is released under</h3>
+      <h3>Set the standards a result is released under</h3>
       <p>The data protection officer writes down how much identifying detail a de-identified result may still hold, once for each audience it is released to, as named sets of limits. Everyone in the organisation can read them, and nobody else can set one.</p>
-      <p class="meta">You will see: A first bar written, saved with who made it and when, a stricter second bar, and a reviewer who can read both and cannot change either.</p>
-      <p class="meta">5 steps, about 4 minutes. <span class="open">Open &rarr;</span></p>
+      <p class="meta">You will see: The page that explains how to read a standard, a first standard written, saved with who made it and when, a stricter second standard, and a reviewer who can read both and cannot change either.</p>
+      <p class="meta">6 steps, about 5 minutes. <span class="open">Open &rarr;</span></p>
     </a>
     <a class="tile" id="w-de-identify-and-release" href="de-identify-and-release-walkthrough.html">
       <span class="tag">10. Health organisation</span>
       <h3>Remove names from the recordings, and a reviewer decides</h3>
-      <p>The built-in pipeline removes names, dates and addresses from the three locked recordings and is scored against their answer keys. The person who started the run cannot decide the result, and neither can the custodian of the owning department. The de-identification reviewer chooses the release bar for the audience, decides with a written reason, and a release widens access by one step.</p>
-      <p class="meta">You will see: A run on real speech, two people refused for different reasons, the same measurement checked against two bars, a reviewer's decision that keeps the bar it was judged by, and a researcher who still cannot read the released result.</p>
+      <p>The built-in pipeline removes names, dates and addresses from the three locked recordings and is scored against their answer keys. The person who started the run cannot decide the result, and neither can the custodian of the owning department. The de-identification reviewer chooses the standard for the audience, decides with a written reason, and a release widens access by one step.</p>
+      <p class="meta">You will see: A run on real speech, two people refused for different reasons, the same measurement checked against two standards, a reviewer's decision that keeps the standard it was judged by, and a researcher who still cannot read the released result.</p>
       <p class="meta">12 steps, about 10 minutes. <span class="open">Open &rarr;</span></p>
     </a>
     <a class="tile" id="w-evidence-without-names" href="evidence-without-names-walkthrough.html">
@@ -437,7 +441,7 @@
     </a>
   </div>
   <h3 class="stage" id="stage-ai-agents">AI agents</h3>
-  <p>A program that works on data is held to the same rules as a person: it asks for access and waits for an approver to decide. A network architect decides which external hosts a version of it may call.</p>
+  <p>A program that works on data is held to the same rules as a person: it asks for access and waits for an approver to decide. A network architect decides which external hosts a version of it may call. The organisation also gives each agent a risk level, two people approve a version that lets an agent do more, and a person checks what an agent produces.</p>
   <div class="tiles">
     <a class="tile" id="w-agent-asks" href="agent-asks-walkthrough.html">
       <span class="tag">14. Health organisation</span>
@@ -453,26 +457,54 @@
       <p class="meta">You will see: A version waiting for a decision with its Deploy button greyed out, two people refused for different reasons, the architect's approval and refusal with their reasons, and what each decision does to the version.</p>
       <p class="meta">13 steps, about 10 minutes. <span class="open">Open &rarr;</span></p>
     </a>
+    <a class="tile" id="w-agent-levels" href="agent-levels-walkthrough.html">
+      <span class="tag">16. Health organisation</span>
+      <h3>Set the risk levels for AI agents</h3>
+      <p>The data protection officer writes a short list of risk levels that says how strictly each kind of AI agent is held. A change to the list, here how often an agent at the highest level has to be confirmed again, is saved as a new version with who made it, when and why, and the earlier version is kept. Everybody signed in can read the list, nobody else can change it, and the change reaches the agents held at that level.</p>
+      <p class="meta">You will see: The list of levels with who wrote it and when, the editor with each level's settings, a reason written for a change, a new version and the earlier one side by side, a reviewer who can read the list and has no way to change it, and an agent whose due date moved.</p>
+      <p class="meta">8 steps, about 6 minutes. <span class="open">Open &rarr;</span></p>
+    </a>
+    <a class="tile" id="w-agent-approval" href="agent-approval-walkthrough.html">
+      <span class="tag">17. Health organisation</span>
+      <h3>Approve an AI agent before it can work with patient records</h3>
+      <p>The data protection officer has written risk levels. A data engineer registers an agent for the Cardiology department and proposes a level, an approver of the department agrees to its first version, and the officer confirms the level and the version in one decision. A sponsor is named, the agent is listed in the registry, and a later version that adds a tool the platform does not know needs both people again before it can be deployed.</p>
+      <p class="meta">You will see: Risk levels with who wrote them and when, a proposed level waiting for the officer, a version that cannot be deployed and says why, two different people deciding, a confirmed level with its reason, a sponsor, and a second version approved by both.</p>
+      <p class="meta">19 steps, about 15 minutes. <span class="open">Open &rarr;</span></p>
+    </a>
+    <a class="tile" id="w-agent-tools" href="agent-tools-walkthrough.html">
+      <span class="tag">18. Health organisation</span>
+      <h3>Approve the tools AI agents may add in advance, and decide the rest one at a time</h3>
+      <p>The AI risk owner writes a list of tools the organisation has approved in advance, each with the highest risk level it is approved for, the conditions it is approved under and a date to look at it again. A new version of an agent that adds only listed tools does not wait for the people who would otherwise decide it, or needs only the department that owns the agent. A tool approved only up to a lower level, a tool that is not on the list and a tool that pages a person are each decided by a named person, with a written reason.</p>
+      <p class="meta">You will see: The list with who wrote it and when, a tool added and the earlier version kept, a version approved in advance with the entry that covered it, a version that needs only the department, a version that needs both people, and two versions refused with their reasons.</p>
+      <p class="meta">19 steps, about 15 minutes. <span class="open">Open &rarr;</span></p>
+    </a>
+    <a class="tile" id="w-agent-review" href="agent-review-walkthrough.html">
+      <span class="tag">19. Health organisation</span>
+      <h3>Review what an AI agent produced, and show an auditor what was decided</h3>
+      <p>An agent that drafts visit notes from consultation transcripts runs for real in a sandbox. The data engineer who started the run cannot review it, so a reviewer corrects one run and accepts another, and the platform records who decided, when and how soon after the run ended. The data protection officer reads the counts for the agent, makes an evidence pack for an auditor and checks that no record was changed.</p>
+      <p class="meta">You will see: A run waiting for permission, a custodian granting it, three drafts, a form that is offered to the reviewer and withheld from the person who started the run, a correction and an acceptance recorded, counts for the agent, an evidence pack and a check of its records.</p>
+      <p class="meta">16 steps, about 13 minutes. <span class="open">Open &rarr;</span></p>
+    </a>
   </div>
   <h3 class="stage" id="stage-custom-pipelines">Custom pipelines</h3>
   <p>An organisation can write its own pipelines, which are series of steps that Munitas runs on data. A new version first runs only on development data, and a step that reads recordings needs an approver's agreement.</p>
   <div class="tiles">
     <a class="tile" id="w-custom-pipeline" href="custom-pipeline-walkthrough.html">
-      <span class="tag">16. Health organisation</span>
+      <span class="tag">20. Health organisation</span>
       <h3>Register a custom pipeline, and run it</h3>
       <p>A data engineer in Cardiology registers a pipeline of their own, asks for access to a note, and runs the pipeline. A reviewer makes the final decision, as for every other pipeline.</p>
       <p class="meta">You will see: Registering a pipeline, asking for access, running it, and a reviewer's decision.</p>
       <p class="meta">18 steps, about 14 minutes. <span class="open">Open &rarr;</span></p>
     </a>
     <a class="tile" id="w-development-sample" href="development-sample-walkthrough.html">
-      <span class="tag">17. Health organisation</span>
+      <span class="tag">21. Health organisation</span>
       <h3>Test a new pipeline version on a development sample</h3>
       <p>A data engineer in Cardiology has written a pipeline version that is still in development, so it may run only on development data. The engineer asks for a sample of the locked recordings, a custodian approves fewer, and the platform draws them. The pipeline version then runs for real on the sample and is refused on the real recordings. The sample ends, and recordings with no real person in them are declared synthetic.</p>
       <p class="meta">You will see: A request for a sample, a custodian lowering it and the platform drawing it, a sample that says what it is, a run refused on real recordings and working on the sample, a sample that ends, and a declaration of synthetic recordings.</p>
       <p class="meta">15 steps, about 12 minutes. <span class="open">Open &rarr;</span></p>
     </a>
     <a class="tile" id="w-custom-step" href="custom-step-walkthrough.html">
-      <span class="tag">18. Health organisation</span>
+      <span class="tag">22. Health organisation</span>
       <h3>Approve a custom step before it runs</h3>
       <p>A data engineer in Cardiology uploads a pipeline with a step of their own that reads recordings and writes files. The platform refuses to run it until an approver of the owning department, who did not upload it, approves it. The run then makes a new version that waits for a review.</p>
       <p class="meta">You will see: A version waiting for an approver, a refused run, an approval, a finished run that links to what it made, and a new version that records exactly what produced it.</p>
@@ -483,7 +515,7 @@
   <p>Every request to read data, from a person or a program, is recorded with who asked, what for and why it was allowed or refused. The people who watch can read the record and change nothing.</p>
   <div class="tiles">
     <a class="tile" id="w-audit-decisions" href="audit-decisions-walkthrough.html">
-      <span class="tag">19. Health organisation</span>
+      <span class="tag">23. Health organisation</span>
       <h3>Read every access decision, including every refusal</h3>
       <p>The data protection officer opens a home page of counts, then the list of every request to read data, newest first, and then only the refusals, each with its date and time, who asked, what for and the reason. Each request is recorded twice, once for whether it was allowed and once for whether the access was given, and reading the record is itself recorded.</p>
       <p class="meta">You will see: A home page of counts and the latest refusals, every request in one list, the refusals alone with the reason for each, and the auditors' own reading appearing in the list.</p>
@@ -493,7 +525,7 @@
 </section>
 </div>
 <footer class="page-foot">
-  <p><a href="index.html">All walkthroughs</a> &middot; <a href="feature-walkthrough.html">Feature tour</a> &middot; Last updated 2026-10-11.</p>
+  <p><a href="index.html">All walkthroughs</a> &middot; <a href="feature-walkthrough.html">Feature tour</a> &middot; Last updated 2026-10-12.</p>
 </footer>
 </body>
 </html>

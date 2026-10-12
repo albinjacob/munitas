@@ -26,7 +26,7 @@ export function FirstRows({ versionId }: { versionId: string }) {
         type="button"
         data-testid="preview-show"
         onClick={() => setAsked(true)}
-        className="mt-3 rounded border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-800 hover:bg-slate-50"
+        className="btn btn-secondary mt-3"
       >
         Show the first rows
       </button>
