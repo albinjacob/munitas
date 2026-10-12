@@ -27,6 +27,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 OUT = ROOT / "docs" / "public" / "diagrams"
+INTERNAL = ROOT / "docs" / "internal" / "diagrams" / "system-architecture"
 
 # ---------------------------------------------------------------------------------------------------------------------------------------------------
 # The description. Coordinates are canvas pixels. Boxes are x, y, width, height.
@@ -539,39 +540,6 @@ def build_drawio() -> str:
     )
 
 
-LEDE = (
-    "The services that make up Munitas, grouped by network. Every request into the platform network passes through the API and is checked by the policy engine. "
-    "Sandboxed agent runs sit on a separate network with no route out, and every tool call they make is still checked by the same policy engine. A step of an "
-    "organisation's own pipeline runs on a network of its own, with no storage and no key, and reaches the platform only through one small gateway."
-)
-FOOTER = (
-    "The same diagram as text: <code>docs/public/diagrams/system-architecture.mmd</code> (Mermaid). To rearrange it, open "
-    "<code>docs/public/diagrams/system-architecture.drawio</code> in draw.io."
-)
-
-
-def build_html(existing: str, svg: str) -> str:
-    page = existing
-    page = re.sub(r'<script src="https://viewer\.diagrams\.net[^\n]*</script>\n', "", page)
-    # The legend moved into the picture, so its styles go.
-    page = re.sub(r"  h2\.legend-title \{[^\n]*\n", "", page)
-    page = re.sub(r"  table\.legend[^\n]*\n", "", page)
-    page = re.sub(r"  \.swatch \{[^\n]*\n", "", page)
-    page = re.sub(r"  \.diagram svg \{[^\n]*\n", "", page)
-    page = re.sub(r"  \.diagram \{.*?\n  \}\n", "  .diagram {\n    /* Always a light plate, whatever the page theme: the drawing uses fixed light fills. */\n"
-                  "    background: #f6f4ec; color-scheme: light; border: 1px solid var(--paper-line); border-radius: 10px;\n    padding: 24px; box-shadow: var(--shadow); overflow-x: auto;\n  }\n"
-                  "  .diagram svg { display: block; width: 100%; height: auto; }\n", page, flags=re.S)
-    page = page.replace(".wrap { max-width: 900px;", ".wrap { max-width: 1240px;")
-    block = f'<!-- diagram:start -->\n  <div class="diagram">\n{svg}\n  </div>\n  {connections_html()}\n  <!-- diagram:end -->'
-    if "<!-- diagram:start -->" in page:
-        page = re.sub(r"<!-- diagram:start -->.*?<!-- diagram:end -->", lambda m: block, page, flags=re.S)
-    else:
-        page = re.sub(r'  <div class="diagram">.*?</table>', lambda m: "  " + block, page, count=1, flags=re.S)
-    page = re.sub(r'(<p class="lede">).*?(</p>)', lambda m: f"{m.group(1)}\n    {LEDE}\n  {m.group(2)}", page, count=1, flags=re.S)
-    page = re.sub(r"<footer>.*?</footer>", lambda m: f"<footer>\n    {FOOTER}\n  </footer>", page, count=1, flags=re.S)
-    return page
-
-
 def main() -> int:
     results = run_checks()
     failed = [r for r in results if not r[1]]
@@ -584,13 +552,11 @@ def main() -> int:
         print("Nothing written.")
         return 1
     svg = build_svg()
-    page_path = OUT / "system-architecture.html"
-    existing = page_path.read_text(encoding="utf-8")
-    page = build_html(existing, svg)
+    INTERNAL.mkdir(parents=True, exist_ok=True)
     for path, text in (
-        (OUT / "system-architecture.mmd", build_mermaid()),
-        (OUT / "system-architecture.drawio", build_drawio()),
-        (page_path, page),
+        (INTERNAL / "system-architecture.mmd", build_mermaid()),
+        (INTERNAL / "system-architecture.drawio", build_drawio()),
+        (INTERNAL / "system-architecture.svg", svg),
     ):
         path.write_text(text, encoding="utf-8", newline="\n")
         print("wrote", path.relative_to(ROOT))

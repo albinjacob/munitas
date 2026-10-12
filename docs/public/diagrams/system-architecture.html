@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Munitas: System Architecture</title>
+<title>Munitas: Architecture in layers</title>
 <style>
   :root {
     --ink: #1c2333;
@@ -52,148 +52,91 @@
   .diagram svg { display: block; width: 100%; height: auto; }
   footer { margin-top: 36px; font-size: 13px; color: var(--ink-faint); }
   footer code { font-family: ui-monospace, "SF Mono", Consolas, monospace; }
+  .note { color: var(--ink-faint, #6b7280); font-size: 0.88rem; margin: 1rem 0 0; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>System architecture</h1>
+  <h1>Munitas in layers</h1>
   <p class="lede">
-    The services that make up Munitas, grouped by network. Every request into the platform network passes through the API and is checked by the policy engine. Sandboxed agent runs sit on a separate network with no route out, and every tool call they make is still checked by the same policy engine. A step of an organisation's own pipeline runs on a network of its own, with no storage and no key, and reaches the platform only through one small gateway.
+    Munitas is arranged in layers. People work through the Console or a notebook. Every request passes the governance layer: sign-in establishes who the person is, the API receives the request, and the policy engine decides it. Work that runs code happens in the processing layer, and the three kinds of code that are not the platform's own, an organisation's custom pipeline steps, derivation queries and sandboxed AI agents, run in places with restricted reach. Files and tables live in storage, one bucket per organisation, with a key for each person whose data is locked. A record of every decision runs across all of the layers.
   </p>
 
   <!-- diagram:start -->
   <div class="diagram">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1192 1080" width="1192" height="1080" role="img" aria-labelledby="diagram-title diagram-desc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif">
-<title id="diagram-title">System architecture</title>
-<desc id="diagram-desc">A diagram of the services that make up Munitas and the networks they sit on. A person signs in through the Console, and every request passes through the API, which asks the policy engine. The API reaches the database, object storage and the workflow engine. The workflow engine starts the worker and the table worker. The worker starts sandboxed agent runs, derivation runners and custom pipeline steps, which sit on networks with restricted reach. A custom pipeline step reaches the platform only through the step gateway.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1396 960" width="1396" height="960" role="img" aria-labelledby="diagram-title diagram-desc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif">
+<title id="diagram-title">Munitas in layers</title>
+<desc id="diagram-desc">A layered picture of Munitas. People work through the Console and notebooks. Governance decides every request: sign-in, the policy engine and the API. Processing runs pipelines and jobs, and three kinds of code that are not the platform&#x27;s own, in places with restricted reach. Storage holds files, tables and the keys for locked data. One record of every decision runs across all the layers.</desc>
 <defs>
 <marker id="arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L10,5 L0,10 z" fill="#1A5FA8"/></marker>
 <marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L10,5 L0,10 z" fill="#B03030"/></marker>
 </defs>
-<rect x="0" y="0" width="1192" height="1080" fill="#F6F4EC"/>
-<rect x="40" y="130" width="768" height="470" rx="10" fill="#DDEEF0" stroke="#2E7D8A" stroke-width="1.5" stroke-dasharray="6 4"/>
-<text x="64" y="586" font-size="12" font-weight="700" fill="#1F5D68">Platform network</text>
-<rect x="904" y="130" width="248" height="470" rx="10" fill="#DDEEF0" stroke="#2E7D8A" stroke-width="1.5" stroke-dasharray="6 4"/>
-<text x="928" y="586" font-size="12" font-weight="700" fill="#1F5D68">Step network</text>
-<rect x="216" y="680" width="248" height="140" rx="10" fill="#DDEEF0" stroke="#2E7D8A" stroke-width="1.5" stroke-dasharray="6 4"/>
-<text x="240" y="806" font-size="12" font-weight="700" fill="#1F5D68">Agent network, no route out</text>
-<rect x="560" y="680" width="248" height="140" rx="10" fill="#DDEEF0" stroke="#2E7D8A" stroke-width="1.5" stroke-dasharray="6 4"/>
-<text x="584" y="806" font-size="12" font-weight="700" fill="#1F5D68">No network connection</text>
-<rect x="584" y="24" width="200" height="60" rx="8" fill="#E1EEFC" stroke="#1A5FA8" stroke-width="1.5"/>
-<text x="684.0" y="49" font-size="13" font-weight="700" text-anchor="middle" fill="#1C2333">Console</text>
-<text x="684.0" y="68" font-size="11" font-style="italic" text-anchor="middle" fill="#4B5266">where a person works</text>
-<rect x="64" y="170" width="200" height="60" rx="8" fill="#E1EEFC" stroke="#1A5FA8" stroke-width="1.5"/>
-<text x="164.0" y="195" font-size="13" font-weight="700" text-anchor="middle" fill="#1C2333">Sign-in</text>
-<text x="164.0" y="214" font-size="11" font-style="italic" text-anchor="middle" fill="#4B5266">knows who each person is</text>
-<rect x="324" y="170" width="200" height="60" rx="8" fill="#E1EEFC" stroke="#1A5FA8" stroke-width="1.5"/>
-<text x="424.0" y="195" font-size="13" font-weight="700" text-anchor="middle" fill="#1C2333">Policy engine</text>
-<text x="424.0" y="214" font-size="11" font-style="italic" text-anchor="middle" fill="#4B5266">decides every request</text>
-<rect x="584" y="170" width="200" height="60" rx="8" fill="#E1EEFC" stroke="#1A5FA8" stroke-width="1.5"/>
-<text x="684.0" y="195" font-size="13" font-weight="700" text-anchor="middle" fill="#1C2333">API</text>
-<text x="684.0" y="214" font-size="11" font-style="italic" text-anchor="middle" fill="#4B5266">every request passes here</text>
-<rect x="64" y="340" width="200" height="60" rx="8" fill="#E1EEFC" stroke="#1A5FA8" stroke-width="1.5"/>
-<text x="164.0" y="365" font-size="13" font-weight="700" text-anchor="middle" fill="#1C2333">Database</text>
-<text x="164.0" y="384" font-size="11" font-style="italic" text-anchor="middle" fill="#4B5266">records every decision</text>
-<rect x="324" y="340" width="200" height="60" rx="8" fill="#E1EEFC" stroke="#1A5FA8" stroke-width="1.5"/>
-<text x="424.0" y="365" font-size="13" font-weight="700" text-anchor="middle" fill="#1C2333">Object storage</text>
-<text x="424.0" y="384" font-size="11" font-style="italic" text-anchor="middle" fill="#4B5266">where the files live</text>
-<rect x="584" y="340" width="200" height="60" rx="8" fill="#E1EEFC" stroke="#1A5FA8" stroke-width="1.5"/>
-<text x="684.0" y="365" font-size="13" font-weight="700" text-anchor="middle" fill="#1C2333">Workflow engine</text>
-<text x="684.0" y="384" font-size="11" font-style="italic" text-anchor="middle" fill="#4B5266">keeps long jobs running</text>
-<rect x="324" y="510" width="200" height="60" rx="8" fill="#E1EEFC" stroke="#1A5FA8" stroke-width="1.5"/>
-<text x="424.0" y="535" font-size="13" font-weight="700" text-anchor="middle" fill="#1C2333">Table worker</text>
-<text x="424.0" y="554" font-size="11" font-style="italic" text-anchor="middle" fill="#4B5266">writes the large tables</text>
-<rect x="584" y="510" width="200" height="60" rx="8" fill="#E1EEFC" stroke="#1A5FA8" stroke-width="1.5"/>
-<text x="684.0" y="535" font-size="13" font-weight="700" text-anchor="middle" fill="#1C2333">Worker</text>
-<text x="684.0" y="554" font-size="11" font-style="italic" text-anchor="middle" fill="#4B5266">runs pipelines and agents</text>
-<rect x="928" y="170" width="200" height="60" rx="8" fill="#E1EEFC" stroke="#1A5FA8" stroke-width="1.5"/>
-<text x="1028.0" y="195" font-size="13" font-weight="700" text-anchor="middle" fill="#1C2333">Step gateway</text>
-<text x="1028.0" y="214" font-size="11" font-style="italic" text-anchor="middle" fill="#4B5266">forwards only step routes</text>
-<rect x="928" y="510" width="200" height="60" rx="8" fill="#FAEBEB" stroke="#C9564A" stroke-width="1.5"/>
-<text x="1028.0" y="535" font-size="13" font-weight="700" text-anchor="middle" fill="#1C2333">Custom pipeline step</text>
-<text x="1028.0" y="554" font-size="11" font-style="italic" text-anchor="middle" fill="#4B5266">an organisation&#x27;s own code</text>
-<rect x="240" y="725" width="200" height="60" rx="8" fill="#FAEBEB" stroke="#C9564A" stroke-width="1.5"/>
-<text x="340.0" y="750" font-size="13" font-weight="700" text-anchor="middle" fill="#1C2333">Sandboxed agent run</text>
-<text x="340.0" y="769" font-size="11" font-style="italic" text-anchor="middle" fill="#4B5266">every tool call is checked</text>
-<rect x="584" y="725" width="200" height="60" rx="8" fill="#FAEBEB" stroke="#C9564A" stroke-width="1.5"/>
-<text x="684.0" y="750" font-size="13" font-weight="700" text-anchor="middle" fill="#1C2333">Derivation runner</text>
-<text x="684.0" y="769" font-size="11" font-style="italic" text-anchor="middle" fill="#4B5266">runs one query, no network</text>
-<path class="edge" id="console_api" d="M684,84 L684,160" fill="none" stroke="#1A5FA8" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
-<path class="edge" id="console_sign_in" d="M584,54 L164,54 L164,160" fill="none" stroke="#1A5FA8" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
-<path class="edge" id="api_policy" d="M584,200 L534,200" fill="none" stroke="#1A5FA8" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
-<path class="edge" id="gateway_api" d="M928,200 L794,200" fill="none" stroke="#1A5FA8" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
-<path class="edge" id="api_database" d="M684,230 L684,270 L164,270 L164,330" fill="none" stroke="#1A5FA8" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
-<path class="edge" id="api_storage" d="M684,230 L684,270 L424,270 L424,330" fill="none" stroke="#1A5FA8" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
-<path class="edge" id="api_workflow" d="M684,230 L684,330" fill="none" stroke="#1A5FA8" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
-<path class="edge" id="workflow_worker" d="M684,400 L684,500" fill="none" stroke="#1A5FA8" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
-<path class="edge" id="workflow_table_worker" d="M684,400 L684,440 L424,440 L424,500" fill="none" stroke="#1A5FA8" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
-<path class="edge" id="worker_agent" d="M684,570 L684,650 L340,650 L340,715" fill="none" stroke="#B03030" stroke-width="1.5" marker-end="url(#arrow-red)"/>
-<path class="edge" id="worker_derivation" d="M684,570 L684,715" fill="none" stroke="#B03030" stroke-width="1.5" marker-end="url(#arrow-red)"/>
-<path class="edge" id="worker_custom" d="M784,540 L918,540" fill="none" stroke="#B03030" stroke-width="1.5" marker-end="url(#arrow-red)"/>
-<path class="edge" id="custom_gateway" d="M1028,510 L1028,240" fill="none" stroke="#B03030" stroke-width="1.5" marker-end="url(#arrow-red)"/>
-<circle class="badge" cx="684" cy="116" r="10" fill="#FFFFFF" stroke="#1A5FA8" stroke-width="1.5"/>
-<text x="684" y="120" font-size="11" font-weight="700" text-anchor="middle" fill="#1C2333">1</text>
-<circle class="badge" cx="374" cy="54" r="10" fill="#FFFFFF" stroke="#1A5FA8" stroke-width="1.5"/>
-<text x="374" y="58" font-size="11" font-weight="700" text-anchor="middle" fill="#1C2333">2</text>
-<circle class="badge" cx="565" cy="200" r="10" fill="#FFFFFF" stroke="#1A5FA8" stroke-width="1.5"/>
-<text x="565" y="204" font-size="11" font-weight="700" text-anchor="middle" fill="#1C2333">3</text>
-<circle class="badge" cx="867" cy="200" r="10" fill="#FFFFFF" stroke="#1A5FA8" stroke-width="1.5"/>
-<text x="867" y="204" font-size="11" font-weight="700" text-anchor="middle" fill="#1C2333">4</text>
-<circle class="badge" cx="408" cy="270" r="10" fill="#FFFFFF" stroke="#1A5FA8" stroke-width="1.5"/>
-<text x="408" y="274" font-size="11" font-weight="700" text-anchor="middle" fill="#1C2333">5</text>
-<circle class="badge" cx="424" cy="294" r="10" fill="#FFFFFF" stroke="#1A5FA8" stroke-width="1.5"/>
-<text x="424" y="298" font-size="11" font-weight="700" text-anchor="middle" fill="#1C2333">6</text>
-<circle class="badge" cx="684" cy="286" r="10" fill="#FFFFFF" stroke="#1A5FA8" stroke-width="1.5"/>
-<text x="684" y="290" font-size="11" font-weight="700" text-anchor="middle" fill="#1C2333">7</text>
-<circle class="badge" cx="684" cy="456" r="10" fill="#FFFFFF" stroke="#1A5FA8" stroke-width="1.5"/>
-<text x="684" y="460" font-size="11" font-weight="700" text-anchor="middle" fill="#1C2333">8</text>
-<circle class="badge" cx="554" cy="440" r="10" fill="#FFFFFF" stroke="#1A5FA8" stroke-width="1.5"/>
-<text x="554" y="444" font-size="11" font-weight="700" text-anchor="middle" fill="#1C2333">9</text>
-<circle class="badge" cx="512" cy="650" r="10" fill="#FFFFFF" stroke="#B03030" stroke-width="1.5"/>
-<text x="512" y="654" font-size="11" font-weight="700" text-anchor="middle" fill="#1C2333">10</text>
-<circle class="badge" cx="684" cy="666" r="10" fill="#FFFFFF" stroke="#B03030" stroke-width="1.5"/>
-<text x="684" y="670" font-size="11" font-weight="700" text-anchor="middle" fill="#1C2333">11</text>
-<circle class="badge" cx="845" cy="540" r="10" fill="#FFFFFF" stroke="#B03030" stroke-width="1.5"/>
-<text x="845" y="544" font-size="11" font-weight="700" text-anchor="middle" fill="#1C2333">12</text>
-<circle class="badge" cx="1028" cy="381" r="10" fill="#FFFFFF" stroke="#B03030" stroke-width="1.5"/>
-<text x="1028" y="385" font-size="11" font-weight="700" text-anchor="middle" fill="#1C2333">13</text>
-<text x="40" y="860" font-size="13" font-weight="700" fill="#1C2333">Legend</text>
-<rect x="40" y="877" width="26" height="16" rx="4" fill="#E1EEFC" stroke="#1A5FA8" stroke-width="1.5"/>
-<text x="86" y="889" font-size="12" fill="#1C2333">A service the platform runs</text>
-<rect x="40" y="903" width="26" height="16" rx="4" fill="#FAEBEB" stroke="#C9564A" stroke-width="1.5"/>
-<text x="86" y="915" font-size="12" fill="#1C2333">A place with restricted reach: it can reach only what an arrow shows</text>
-<rect x="40" y="929" width="26" height="16" rx="4" fill="#DDEEF0" stroke="#2E7D8A" stroke-width="1.5" stroke-dasharray="4 3"/>
-<text x="86" y="941" font-size="12" fill="#1C2333">The edge of a network</text>
-<path class="legend-line" d="M40,963 L66,963" fill="none" stroke="#1A5FA8" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
-<text x="86" y="967" font-size="12" fill="#1C2333">A request, from the one that starts it to the one that answers</text>
-<path class="legend-line" d="M40,989 L66,989" fill="none" stroke="#B03030" stroke-width="1.5" marker-end="url(#arrow-red)"/>
-<text x="86" y="993" font-size="12" fill="#1C2333">A connection into or out of a restricted place</text>
-<circle cx="53" cy="1015" r="9" fill="#FFFFFF" stroke="#1A5FA8" stroke-width="1.5"/>
-<text x="53" y="1019" font-size="11" font-weight="700" text-anchor="middle" fill="#1C2333">1</text>
-<text x="86" y="1019" font-size="12" fill="#1C2333">The number of a connector: what it does is written under the picture</text>
-<text x="40" y="1045" font-size="12" font-weight="700" fill="#1C2333">API</text>
-<text x="86" y="1045" font-size="12" fill="#1C2333">Application Programming Interface, the platform&#x27;s single control plane</text>
+<rect x="0" y="0" width="1396" height="960" fill="#F6F4EC"/>
+<rect x="40" y="24" width="1028" height="150" rx="10" fill="#DDEEF0" stroke="#2E7D8A" stroke-width="1.5"/>
+<text x="64" y="160" font-size="12" font-weight="700" fill="#1F5D68">People and tools</text>
+<rect x="40" y="210" width="1028" height="150" rx="10" fill="#DDEEF0" stroke="#2E7D8A" stroke-width="1.5"/>
+<text x="64" y="346" font-size="12" font-weight="700" fill="#1F5D68">Governance</text>
+<rect x="40" y="396" width="1028" height="150" rx="10" fill="#DDEEF0" stroke="#2E7D8A" stroke-width="1.5"/>
+<text x="64" y="532" font-size="12" font-weight="700" fill="#1F5D68">Processing</text>
+<rect x="40" y="582" width="1028" height="150" rx="10" fill="#DDEEF0" stroke="#2E7D8A" stroke-width="1.5"/>
+<text x="64" y="718" font-size="12" font-weight="700" fill="#1F5D68">Storage</text>
+<rect x="1108" y="24" width="248" height="708" rx="10" fill="#DDEEF0" stroke="#2E7D8A" stroke-width="1.5"/>
+<text x="1132" y="718" font-size="12" font-weight="700" fill="#1F5D68">Across every layer</text>
+<rect x="324" y="48" width="200" height="72" rx="8" fill="#E1EEFC" stroke="#1A5FA8" stroke-width="1.5"/>
+<text x="424.0" y="73" font-size="13" font-weight="700" text-anchor="middle" fill="#1C2333">Console</text>
+<text x="424.0" y="92" font-size="11" font-style="italic" text-anchor="middle" fill="#4B5266">where a person works</text>
+<rect x="584" y="48" width="200" height="72" rx="8" fill="#E1EEFC" stroke="#1A5FA8" stroke-width="1.5"/>
+<text x="684.0" y="73" font-size="13" font-weight="700" text-anchor="middle" fill="#1C2333">Notebooks</text>
+<text x="684.0" y="92" font-size="11" font-style="italic" text-anchor="middle" fill="#4B5266">Python and client library</text>
+<rect x="194" y="234" width="200" height="72" rx="8" fill="#E1EEFC" stroke="#1A5FA8" stroke-width="1.5"/>
+<text x="294.0" y="259" font-size="13" font-weight="700" text-anchor="middle" fill="#1C2333">Sign-in</text>
+<text x="294.0" y="278" font-size="11" font-style="italic" text-anchor="middle" fill="#4B5266">knows who each person is</text>
+<rect x="454" y="234" width="200" height="72" rx="8" fill="#E1EEFC" stroke="#1A5FA8" stroke-width="1.5"/>
+<text x="554.0" y="259" font-size="13" font-weight="700" text-anchor="middle" fill="#1C2333">Policy engine</text>
+<text x="554.0" y="278" font-size="11" font-style="italic" text-anchor="middle" fill="#4B5266">decides every request</text>
+<rect x="714" y="234" width="200" height="72" rx="8" fill="#E1EEFC" stroke="#1A5FA8" stroke-width="1.5"/>
+<text x="814.0" y="259" font-size="13" font-weight="700" text-anchor="middle" fill="#1C2333">API</text>
+<text x="814.0" y="278" font-size="11" font-style="italic" text-anchor="middle" fill="#4B5266">every request passes here</text>
+<rect x="64" y="420" width="200" height="72" rx="8" fill="#E1EEFC" stroke="#1A5FA8" stroke-width="1.5"/>
+<text x="164.0" y="445" font-size="13" font-weight="700" text-anchor="middle" fill="#1C2333">Pipelines and jobs</text>
+<text x="164.0" y="464" font-size="11" font-style="italic" text-anchor="middle" fill="#4B5266">long jobs run here</text>
+<rect x="324" y="420" width="200" height="72" rx="8" fill="#FAEBEB" stroke="#C9564A" stroke-width="1.5"/>
+<text x="424.0" y="445" font-size="13" font-weight="700" text-anchor="middle" fill="#1C2333">Custom pipeline steps</text>
+<text x="424.0" y="464" font-size="11" font-style="italic" text-anchor="middle" fill="#4B5266">an organisation&#x27;s own code</text>
+<rect x="584" y="420" width="200" height="72" rx="8" fill="#FAEBEB" stroke="#C9564A" stroke-width="1.5"/>
+<text x="684.0" y="445" font-size="13" font-weight="700" text-anchor="middle" fill="#1C2333">Derivation queries</text>
+<text x="684.0" y="464" font-size="11" font-style="italic" text-anchor="middle" fill="#4B5266">run with no network</text>
+<rect x="844" y="420" width="200" height="72" rx="8" fill="#FAEBEB" stroke="#C9564A" stroke-width="1.5"/>
+<text x="944.0" y="445" font-size="13" font-weight="700" text-anchor="middle" fill="#1C2333">Sandboxed AI agents</text>
+<text x="944.0" y="464" font-size="11" font-style="italic" text-anchor="middle" fill="#4B5266">every tool call is checked</text>
+<rect x="194" y="606" width="200" height="72" rx="8" fill="#E1EEFC" stroke="#1A5FA8" stroke-width="1.5"/>
+<text x="294.0" y="631" font-size="13" font-weight="700" text-anchor="middle" fill="#1C2333">Object storage</text>
+<text x="294.0" y="650" font-size="11" font-style="italic" text-anchor="middle" fill="#4B5266">one bucket per organisation</text>
+<rect x="454" y="606" width="200" height="72" rx="8" fill="#E1EEFC" stroke="#1A5FA8" stroke-width="1.5"/>
+<text x="554.0" y="631" font-size="13" font-weight="700" text-anchor="middle" fill="#1C2333">Tables</text>
+<text x="554.0" y="650" font-size="11" font-style="italic" text-anchor="middle" fill="#4B5266">readable with open tools</text>
+<rect x="714" y="606" width="200" height="72" rx="8" fill="#E1EEFC" stroke="#1A5FA8" stroke-width="1.5"/>
+<text x="814.0" y="631" font-size="13" font-weight="700" text-anchor="middle" fill="#1C2333">Person keys</text>
+<text x="814.0" y="650" font-size="11" font-style="italic" text-anchor="middle" fill="#4B5266">one key per person</text>
+<rect x="1132" y="327" width="200" height="72" rx="8" fill="#E1EEFC" stroke="#1A5FA8" stroke-width="1.5"/>
+<text x="1232.0" y="352" font-size="13" font-weight="700" text-anchor="middle" fill="#1C2333">Record of decisions</text>
+<text x="1232.0" y="371" font-size="11" font-style="italic" text-anchor="middle" fill="#4B5266">and the reason for each</text>
+<text x="40" y="770" font-size="13" font-weight="700" fill="#1C2333">Legend</text>
+<rect x="40" y="787" width="26" height="16" rx="4" fill="#E1EEFC" stroke="#1A5FA8" stroke-width="1.5"/>
+<text x="86" y="799" font-size="12" fill="#1C2333">A service the platform runs</text>
+<rect x="40" y="813" width="26" height="16" rx="4" fill="#FAEBEB" stroke="#C9564A" stroke-width="1.5"/>
+<text x="86" y="825" font-size="12" fill="#1C2333">A place with restricted reach: it has no route to the internet</text>
+<rect x="40" y="839" width="26" height="16" rx="4" fill="#DDEEF0" stroke="#2E7D8A" stroke-width="1.5"/>
+<text x="86" y="851" font-size="12" fill="#1C2333">A layer</text>
+<text x="40" y="877" font-size="12" font-weight="700" fill="#1C2333">API</text>
+<text x="86" y="877" font-size="12" fill="#1C2333">Application Programming Interface, the platform&#x27;s single control plane</text>
 </svg>
   </div>
-  <ol class="connections" style="margin:1.2rem 0 0; padding-left:1.5rem; line-height:1.6;">
-    <li><strong>Console to API.</strong> The Console sends everything a person does to the API as a request.</li>
-    <li><strong>Console to Sign-in.</strong> The Console asks Sign-in who the person is, and Sign-in issues the session that every request carries.</li>
-    <li><strong>API to Policy engine.</strong> The API asks the policy engine whether each request is allowed, and the engine answers with a reason.</li>
-    <li><strong>Step gateway to API.</strong> The step gateway passes a custom step&#x27;s requests to the API. It forwards only the step routes and answers 404 to everything else.</li>
-    <li><strong>API to Database.</strong> The API records every decision, and the history behind it, in the database.</li>
-    <li><strong>API to Object storage.</strong> The API creates a key in object storage for one task at a time, so a task can open only the files it was allowed.</li>
-    <li><strong>API to Workflow engine.</strong> The API starts a long job, such as a pipeline run, in the workflow engine.</li>
-    <li><strong>Workflow engine to Worker.</strong> The workflow engine hands the job to the worker and keeps it going if the worker stops, so the job can resume.</li>
-    <li><strong>Workflow engine to Table worker.</strong> The workflow engine hands the writing of a large table to the table worker.</li>
-    <li><strong>Worker to Sandboxed agent run.</strong> The worker starts a sandboxed agent run on a network with no route to the internet.</li>
-    <li><strong>Worker to Derivation runner.</strong> The worker starts the derivation runner, which runs one query with no network connection.</li>
-    <li><strong>Worker to Custom pipeline step.</strong> The worker starts a custom pipeline step, which is an organisation&#x27;s own code, on a network of its own.</li>
-    <li><strong>Custom pipeline step to Step gateway.</strong> The custom step reaches the platform only through the step gateway.</li>
-  </ol>
+  <p class="note">The picture is simplified. It shows the layers and the places with restricted reach, not every service or every connection.</p>
   <!-- diagram:end -->
 
   <footer>
-    The same diagram as text: <code>docs/public/diagrams/system-architecture.mmd</code> (Mermaid). To rearrange it, open <code>docs/public/diagrams/system-architecture.drawio</code> in draw.io.
+    The same picture as text: <code>docs/public/diagrams/architecture-layers.mmd</code> (Mermaid). To rearrange it, open <code>docs/public/diagrams/architecture-layers.drawio</code> in draw.io.
   </footer>
 </div>
 </body>

@@ -21,7 +21,7 @@ organisation's own pipeline runs in a container on a network of its own,
 with no storage, no key and no route to anything but one small gateway that
 forwards only the platform's step routes.
 
-[Diagram: services and network boundaries →](https://albinjacob.github.io/munitas/diagrams/system-architecture.html)
+[Diagram: Munitas in layers →](https://albinjacob.github.io/munitas/diagrams/system-architecture.html)
 
 | Service | Role |
 | --- | --- |
