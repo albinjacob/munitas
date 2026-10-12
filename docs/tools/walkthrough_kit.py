@@ -57,7 +57,7 @@ STAGES = {
     "Regular data": "Data that does not identify anyone, such as a table of hospital admissions counted by ward and quarter. At first nobody can read the table, not even the person who brought it in. A researcher finds it and asks to read it, and the department that owns it decides. The researcher then uses it from a notebook and makes a new table from a query.",
     "Locked patient data": "Data that does identify patients, such as consultation recordings and a table of clinic appointments about the same patients. Unlike the admissions table, it names people, so every identifying detail is locked under a key made for each patient. An approver decides who may open a few rows or files. A reviewer decides whether the names have been removed well enough to release the result. An auditor can see how everything was used without seeing a name.",
     "Roles and approvers": "A person asks for a role and an approver decides. When a department's usual approver is away, another approver covers for them.",
-    "AI agents": "A program that works on data is held to the same rules as a person: it asks for access and waits for an approver to decide. A network architect decides which external hosts a version of it may call.",
+    "AI agents": "A program that works on data is held to the same rules as a person: it asks for access and waits for an approver to decide. A network architect decides which external hosts a version of it may call. The organisation also gives each agent a risk level, two people approve a version that lets an agent do more, and a person checks what an agent produces.",
     "Custom pipelines": "An organisation can write its own pipelines, which are series of steps that Munitas runs on data. A new version first runs only on development data, and a step that reads recordings needs an approver's agreement.",
     "Audit": "Every request to read data, from a person or a program, is recorded with who asked, what for and why it was allowed or refused. The people who watch can read the record and change nothing.",
     "Closing an organisation": "When an organisation stops using Munitas, it is closed in two stages of 15 days each. Its records can be kept for a legal case and handed over to the people who need them.",
@@ -116,19 +116,19 @@ SERIES = [
                 "permission, the files close again.",
      "you_see": "A request for files, a custodian allowing fewer, a recording playing in the page, and the files closing "
                 "when the permission ends"},
-    {"slug": "release-bars", "org": "health", "stage": "Locked patient data", "title": "Set the bars a result is released under",
+    {"slug": "deidentification-standards", "org": "health", "stage": "Locked patient data", "title": "Set the standards a result is released under",
      "summary": "The data protection officer writes down how much identifying detail a de-identified result may still hold, once for each "
                 "audience it is released to, as named sets of limits. Everyone in the organisation can read them, and nobody else can "
                 "set one.",
-     "you_see": "A first bar written, saved with who made it and when, a stricter second bar, and a reviewer who can read both and "
-                "cannot change either"},
+     "you_see": "The page that explains how to read a standard, a first standard written, saved with who made it and when, a stricter "
+                "second standard, and a reviewer who can read both and cannot change either"},
     {"slug": "de-identify-and-release", "org": "health", "stage": "Locked patient data", "title": "Remove names from the recordings, and a reviewer decides",
      "summary": "The built-in pipeline removes names, dates and addresses from the three locked recordings and is scored "
                 "against their answer keys. The person who started the run cannot decide the result, and neither can the "
-                "custodian of the owning department. The de-identification reviewer chooses the release bar for the audience, "
+                "custodian of the owning department. The de-identification reviewer chooses the standard for the audience, "
                 "decides with a written reason, and a release widens access by one step.",
-     "you_see": "A run on real speech, two people refused for different reasons, the same measurement checked against two bars, a "
-                "reviewer's decision that keeps the bar it was judged by, and a researcher who still cannot read the released result"},
+     "you_see": "A run on real speech, two people refused for different reasons, the same measurement checked against two standards, a "
+                "reviewer's decision that keeps the standard it was judged by, and a researcher who still cannot read the released result"},
     {"slug": "evidence-without-names", "org": "health", "stage": "Locked patient data", "title": "See how locked data was used, without seeing a name",
      "summary": "The privacy auditor and the data protection officer read the record of everything that happened to the "
                 "locked data: who read, who was refused, what was done to each column, and which key was opened and why. "
@@ -157,6 +157,33 @@ SERIES = [
                 "whose host is refused cannot.",
      "you_see": "A version waiting for a decision with its Deploy button greyed out, two people refused for different reasons, "
                 "the architect's approval and refusal with their reasons, and what each decision does to the version"},
+    {"slug": "agent-levels", "org": "health", "stage": "AI agents", "title": "Set the risk levels for AI agents",
+     "summary": "The data protection officer writes a short list of risk levels that says how strictly each kind of AI agent is held. A change to the list, here "
+                "how often an agent at the highest level has to be confirmed again, is saved as a new version with who made it, when and why, and the earlier version "
+                "is kept. Everybody signed in can read the list, nobody else can change it, and the change reaches the agents held at that level.",
+     "you_see": "The list of levels with who wrote it and when, the editor with each level's settings, a reason written for a change, a new version and the earlier one "
+                "side by side, a reviewer who can read the list and has no way to change it, and an agent whose due date moved"},
+    {"slug": "agent-approval", "org": "health", "stage": "AI agents", "title": "Approve an AI agent before it can work with patient records",
+     "summary": "The data protection officer has written risk levels. A data engineer registers an agent for the Cardiology department and proposes a level, "
+                "an approver of the department agrees to its first version, and the officer confirms the level and the version in one decision. A sponsor "
+                "is named, the agent is listed in the registry, and a later version that adds a tool the platform does not know needs both people again "
+                "before it can be deployed.",
+     "you_see": "Risk levels with who wrote them and when, a proposed level waiting for the officer, a version that cannot be deployed and says why, "
+                "two different people deciding, a confirmed level with its reason, a sponsor, and a second version approved by both"},
+    {"slug": "agent-tools", "org": "health", "stage": "AI agents", "title": "Approve the tools AI agents may add in advance, and decide the rest one at a time",
+     "summary": "The AI risk owner writes a list of tools the organisation has approved in advance, each with the highest risk level it is approved for, the conditions "
+                "it is approved under and a date to look at it again. A new version of an agent that adds only listed tools does not wait for the people who would "
+                "otherwise decide it, or needs only the department that owns the agent. A tool approved only up to a lower level, a tool that is not on the list and a "
+                "tool that pages a person are each decided by a named person, with a written reason.",
+     "you_see": "The list with who wrote it and when, a tool added and the earlier version kept, a version approved in advance with the entry that covered it, a version "
+                "that needs only the department, a version that needs both people, and two versions refused with their reasons"},
+    {"slug": "agent-review", "org": "health", "stage": "AI agents", "title": "Review what an AI agent produced, and show an auditor what was decided",
+     "summary": "An agent that drafts visit notes from consultation transcripts runs for real in a sandbox. The data engineer who started the run cannot "
+                "review it, so a reviewer corrects one run and accepts another, and the platform records who decided, when and how soon after the run "
+                "ended. The data protection officer reads the counts for the agent, makes an evidence pack for an auditor and checks that no record "
+                "was changed.",
+     "you_see": "A run waiting for permission, a custodian granting it, three drafts, a form that is offered to the reviewer and withheld from the person who started "
+                "the run, a correction and an acceptance recorded, counts for the agent, an evidence pack and a check of its records"},
     {"slug": "custom-pipeline", "org": "health", "stage": "Custom pipelines", "title": "Register a custom pipeline, and run it",
      "summary": "A data engineer in Cardiology registers a pipeline of their own, asks for access to a note, and "
                 "runs the pipeline. A reviewer makes the final decision, as for every other pipeline.",
@@ -320,7 +347,7 @@ WORDS = {
     "sealed": ("Sealed", "Finished and closed for good, so that it can never be edited."),
     "role": ("Role", "A named set of permissions that a person can hold, such as the permission to decide who may read "
                      "a department&rsquo;s data."),
-    "release_bar": ("Release bar", "A set of limits an organisation chooses for how much identifying detail a result may still hold, "
+    "deidentification_standard": ("De-identification standard", "A set of limits an organisation chooses for how much identifying detail a result may still hold, "
                                    "kept under a name for the audience the result is released to. A change adds a new version and "
                                    "the earlier ones stay."),
     "deid_reviewer": ("De-identification reviewer", "A role that allows a person to review data from which identifying "
@@ -407,6 +434,26 @@ WORDS = {
                                      "reviewer decides that it may be released."),
     "auditor": ("Privacy auditor", "A person who checks how locked data was used. The role reads records of use and no "
                                    "personal data."),
+    "risk_level": ("Risk level", "One of the levels an organisation writes for how carefully it holds its agents, from the least strict to the most strict. A level says "
+                                 "whether a change that lets an agent do more needs a second approver, how often the agent must be confirmed as still needed, and "
+                                 "whether an agent at that level may be deployed at all. The person who registers an agent proposes a level, and the AI risk "
+                                 "owner confirms it."),
+    "widening": ("Widening", "A change that lets an agent do more than the version before it: a new tool, a new external host, more data, or a different model. A "
+                             "widening has to be approved before the version can be deployed."),
+    "sponsor": ("Sponsor", "The person who answers for an agent. The sponsor is an approver of the department that owns it, and has to confirm "
+                           "from time to time that the agent is still needed and held at the right level."),
+    "agent_registry": ("Agent registry", "A list of every agent in the organisation, open to everybody signed in. It shows the department that owns each "
+                                         "agent, its risk level, its sponsor and what needs attention."),
+    "approved_tools": ("Approved tools list", "A list, written by the AI risk owner, of tools the organisation has approved in advance. Each entry names one tool, says what it does, "
+                                               "how far it is approved, the highest risk level it is approved for, the conditions, a reason and the date it must be looked at "
+                                               "again. A new version of an agent that adds only listed tools does not wait for the people who would otherwise decide it."),
+    "risk_owner": ("AI risk owner", "The one person who answers for how the organisation holds its AI agents. The role writes the risk levels and the approved tools list, "
+                                    "confirms the level of each agent, and gives the second approval on a change to an agent where its level asks for one."),
+    "evidence_pack": ("Evidence pack", "A record, made on request, of everything the platform can back about one agent over a period: its risk level history, each version that ran "
+                                       "and who approved it, its runs, how its output was reviewed, suspensions and incidents. It holds identifiers, counts, fingerprints "
+                                       "and times, and no personal data."),
+    "record_chain": ("Chain of records", "The oversight records of one agent, each stored with a fingerprint of the one before it. A record changed or removed afterwards no "
+                                         "longer matches, so the change shows."),
     "small_group": ("Small group", "A combination of readable columns, such as postcode and age band, shared by only a few "
                                    "people, so that one of them could be singled out even though no column names anybody."),
 }

@@ -186,6 +186,24 @@
         "title": "Appointment",
         "type": "object"
       },
+      "ApproveRunIn": {
+        "properties": {
+          "final_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The hash of what the reviewer ended with, when they changed what the run produced. Without it the run is recorded as accepted as it was.",
+            "title": "Final Hash"
+          }
+        },
+        "title": "ApproveRunIn",
+        "type": "object"
+      },
       "Attestation": {
         "properties": {
           "reason": {
@@ -202,32 +220,6 @@
           "still_needed"
         ],
         "title": "Attestation",
-        "type": "object"
-      },
-      "BarsIn": {
-        "properties": {
-          "overall_recall": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "The least share of identifiers that survived transcription and were removed, from 0 to 1. Empty for no overall limit.",
-            "title": "Overall Recall"
-          },
-          "types": {
-            "additionalProperties": {
-              "type": "object"
-            },
-            "description": "For a kind of identifier: `recall` (the least share removed) and `max_leaks` (the most left in the clear). Either may be empty.",
-            "title": "Types",
-            "type": "object"
-          }
-        },
-        "title": "BarsIn",
         "type": "object"
       },
       "Body_seal_table_files_datasets__dataset_id__seal_table_files_post": {
@@ -308,6 +300,22 @@
             "default": "none",
             "title": "Data Access",
             "type": "string"
+          },
+          "declares_no_tools": {
+            "default": false,
+            "title": "Declares No Tools",
+            "type": "boolean"
+          },
+          "model_hosting": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Hosting"
           },
           "model_id": {
             "title": "Model Id",
@@ -419,6 +427,33 @@
         "title": "ChallengeIn",
         "type": "object"
       },
+      "ChangeDecisionIn": {
+        "properties": {
+          "decision": {
+            "description": "`approved` or `refused`.",
+            "title": "Decision",
+            "type": "string"
+          },
+          "part": {
+            "description": "`department` for the approval of the department that owns the agent, or `officer` for the officer's part, which the AI risk owner gives.",
+            "title": "Part",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Why, which is kept with the decision.",
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "part",
+          "decision",
+          "reason"
+        ],
+        "title": "ChangeDecisionIn",
+        "type": "object"
+      },
       "CodeIn": {
         "properties": {
           "device_challenge": {
@@ -450,6 +485,51 @@
           "confirmed_by"
         ],
         "title": "ConfirmClassification",
+        "type": "object"
+      },
+      "ConfirmationIn": {
+        "properties": {
+          "affected": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Who is affected by what the agent produces. Taken from the proposal when there is one.",
+            "title": "Affected"
+          },
+          "intended_purpose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the agent is for. Taken from the proposal when there is one.",
+            "title": "Intended Purpose"
+          },
+          "level_key": {
+            "description": "The key of the level confirmed, from the organisation's list. It may differ from the one proposed.",
+            "title": "Level Key",
+            "type": "string"
+          },
+          "reasoning": {
+            "description": "Why this level.",
+            "minLength": 1,
+            "title": "Reasoning",
+            "type": "string"
+          }
+        },
+        "required": [
+          "level_key",
+          "reasoning"
+        ],
+        "title": "ConfirmationIn",
         "type": "object"
       },
       "ConnectHuggingFace": {
@@ -1361,6 +1441,39 @@
         "title": "FinishIn",
         "type": "object"
       },
+      "FirstSubmissionIn": {
+        "properties": {
+          "affected": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Who is affected by what the agent produces. Taken from the proposal when there is one.",
+            "title": "Affected"
+          },
+          "level_key": {
+            "description": "The risk level confirmed, from the organisation's list. It may differ from the one proposed.",
+            "title": "Level Key",
+            "type": "string"
+          },
+          "reasoning": {
+            "description": "Why this level, and why the first version is approved. Kept with both decisions.",
+            "minLength": 1,
+            "title": "Reasoning",
+            "type": "string"
+          }
+        },
+        "required": [
+          "level_key",
+          "reasoning"
+        ],
+        "title": "FirstSubmissionIn",
+        "type": "object"
+      },
       "GateDecisionIn": {
         "properties": {
           "grant_roles": {
@@ -1375,7 +1488,7 @@
             "title": "Reason",
             "type": "string"
           },
-          "release_bar_id": {
+          "standard_id": {
             "anyOf": [
               {
                 "type": "string"
@@ -1384,7 +1497,7 @@
                 "type": "null"
               }
             ],
-            "title": "Release Bar Id"
+            "title": "Standard Id"
           }
         },
         "required": [
@@ -1519,6 +1632,45 @@
         "title": "HoldIn",
         "type": "object"
       },
+      "IncidentIn": {
+        "properties": {
+          "action_taken": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What was done about it.",
+            "title": "Action Taken"
+          },
+          "reported_onward": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whom the organisation has told, if anyone, such as a provider or an authority. The platform sends nothing.",
+            "title": "Reported Onward"
+          },
+          "what": {
+            "description": "What happened. It holds no personal data.",
+            "minLength": 1,
+            "title": "What",
+            "type": "string"
+          }
+        },
+        "required": [
+          "what"
+        ],
+        "title": "IncidentIn",
+        "type": "object"
+      },
       "LeaseApprovalIn": {
         "properties": {
           "pattern": {
@@ -1601,6 +1753,88 @@
         "title": "LeaseRequestIn",
         "type": "object"
       },
+      "LevelIn": {
+        "properties": {
+          "blocks": {
+            "default": false,
+            "description": "Whether an agent at this level may not be deployed at all.",
+            "title": "Blocks",
+            "type": "boolean"
+          },
+          "description": {
+            "description": "What an agent at this level is like, so whoever proposes a level can tell it from the others.",
+            "title": "Description",
+            "type": "string"
+          },
+          "framework_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which framework, law or standard this level corresponds to, in the organisation's own words. Optional.",
+            "title": "Framework Label"
+          },
+          "name": {
+            "description": "What the organisation calls the level.",
+            "title": "Name",
+            "type": "string"
+          },
+          "reconfirm_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How many days may pass before somebody has to re-confirm an agent at this level. Empty for never.",
+            "title": "Reconfirm Days"
+          },
+          "second_approver": {
+            "default": false,
+            "description": "Whether widening an agent at this level needs the AI risk owner as well as the department.",
+            "title": "Second Approver",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "description"
+        ],
+        "title": "LevelIn",
+        "type": "object"
+      },
+      "LimitsIn": {
+        "properties": {
+          "overall_recall": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The least share of identifiers that survived transcription and were removed, from 0 to 1. Empty for no overall limit.",
+            "title": "Overall Recall"
+          },
+          "types": {
+            "additionalProperties": {
+              "type": "object"
+            },
+            "description": "For a kind of identifier: `recall` (the least share removed) and `max_leaks` (the most left in the clear). Either may be empty.",
+            "title": "Types",
+            "type": "object"
+          }
+        },
+        "title": "LimitsIn",
+        "type": "object"
+      },
       "LockIn": {
         "properties": {
           "columns": {
@@ -1680,20 +1914,20 @@
         "title": "LockedColumnLeaseRequestIn",
         "type": "object"
       },
-      "NewBarIn": {
+      "NewStandardIn": {
         "properties": {
-          "bars": {
-            "$ref": "#/components/schemas/BarsIn"
+          "limits": {
+            "$ref": "#/components/schemas/LimitsIn"
           },
           "name": {
-            "description": "What the organisation calls the bar, for example the audience a result is released to. It cannot be changed afterwards.",
+            "description": "What the organisation calls the standard, for example the audience a result is released to. It cannot be changed afterwards.",
             "maxLength": 120,
             "minLength": 1,
             "title": "Name",
             "type": "string"
           },
           "reason": {
-            "description": "Why the bar is set this way.",
+            "description": "Why the standard is set this way.",
             "minLength": 1,
             "title": "Reason",
             "type": "string"
@@ -1701,26 +1935,26 @@
         },
         "required": [
           "name",
-          "bars",
+          "limits",
           "reason"
         ],
-        "title": "NewBarIn",
+        "title": "NewStandardIn",
         "type": "object"
       },
       "NewVersionIn": {
         "properties": {
-          "bars": {
-            "$ref": "#/components/schemas/BarsIn"
+          "limits": {
+            "$ref": "#/components/schemas/LimitsIn"
           },
           "reason": {
-            "description": "Why the bar is changed.",
+            "description": "Why the standard is changed.",
             "minLength": 1,
             "title": "Reason",
             "type": "string"
           }
         },
         "required": [
-          "bars",
+          "limits",
           "reason"
         ],
         "title": "NewVersionIn",
@@ -1993,6 +2227,84 @@
         "title": "PromotionIn",
         "type": "object"
       },
+      "ProposalIn": {
+        "properties": {
+          "affected": {
+            "description": "Who is affected by what the agent produces.",
+            "minLength": 1,
+            "title": "Affected",
+            "type": "string"
+          },
+          "intended_purpose": {
+            "description": "What the agent is for.",
+            "minLength": 1,
+            "title": "Intended Purpose",
+            "type": "string"
+          },
+          "level_key": {
+            "description": "The key of the level proposed, from the organisation's list.",
+            "title": "Level Key",
+            "type": "string"
+          },
+          "reasoning": {
+            "description": "Why this level.",
+            "minLength": 1,
+            "title": "Reasoning",
+            "type": "string"
+          }
+        },
+        "required": [
+          "level_key",
+          "intended_purpose",
+          "affected",
+          "reasoning"
+        ],
+        "title": "ProposalIn",
+        "type": "object"
+      },
+      "ProposedLevel": {
+        "properties": {
+          "affected": {
+            "description": "Who is affected by what the agent produces.",
+            "minLength": 1,
+            "title": "Affected",
+            "type": "string"
+          },
+          "level_key": {
+            "description": "The key of the risk level proposed, from the organisation's list.",
+            "title": "Level Key",
+            "type": "string"
+          },
+          "reasoning": {
+            "description": "Why this level.",
+            "minLength": 1,
+            "title": "Reasoning",
+            "type": "string"
+          }
+        },
+        "required": [
+          "level_key",
+          "affected",
+          "reasoning"
+        ],
+        "title": "ProposedLevel",
+        "type": "object"
+      },
+      "ReasonIn": {
+        "properties": {
+          "reason": {
+            "description": "Why, which is kept with the act.",
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "ReasonIn",
+        "type": "object"
+      },
       "ReclaimRequest": {
         "properties": {
           "dry_run": {
@@ -2025,6 +2337,21 @@
           "reason"
         ],
         "title": "ReclaimRequest",
+        "type": "object"
+      },
+      "ReconfirmIn": {
+        "properties": {
+          "note": {
+            "description": "What was checked: that the agent is still needed and still held at the right level.",
+            "minLength": 1,
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "note"
+        ],
+        "title": "ReconfirmIn",
         "type": "object"
       },
       "RecordDestroyIn": {
@@ -2092,6 +2419,16 @@
             "title": "Name",
             "type": "string"
           },
+          "proposed_level": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProposedLevel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "purpose": {
             "minLength": 1,
             "title": "Purpose",
@@ -2099,6 +2436,11 @@
           },
           "registered_by": {
             "title": "Registered By",
+            "type": "string"
+          },
+          "run_by": {
+            "default": "platform",
+            "title": "Run By",
             "type": "string"
           },
           "tenant_id": {
@@ -2122,10 +2464,26 @@
             "title": "Code Hash",
             "type": "string"
           },
+          "declares_no_tools": {
+            "default": false,
+            "title": "Declares No Tools",
+            "type": "boolean"
+          },
           "image_digest": {
             "default": "native:host-venv",
             "title": "Image Digest",
             "type": "string"
+          },
+          "model_hosting": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Hosting"
           },
           "model_id": {
             "minLength": 1,
@@ -2324,6 +2682,74 @@
         "title": "RetireIn",
         "type": "object"
       },
+      "ReviewIn": {
+        "properties": {
+          "final_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "For `changed`: the text the reviewer ended with. The platform keeps its hash and never the text.",
+            "title": "Final Text"
+          },
+          "outcome": {
+            "description": "`accepted` (as it was), `changed` (the reviewer ended with different text) or `refused`.",
+            "title": "Outcome",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why. Needed for `refused`.",
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "outcome"
+        ],
+        "title": "ReviewIn",
+        "type": "object"
+      },
+      "RiskLevelsIn": {
+        "properties": {
+          "enforce": {
+            "default": false,
+            "description": "Whether an agent needs a confirmed level to start a run, and a version that widens an agent needs approval before it is deployed.",
+            "title": "Enforce",
+            "type": "boolean"
+          },
+          "levels": {
+            "description": "The levels in order from least to most strict.",
+            "items": {
+              "$ref": "#/components/schemas/LevelIn"
+            },
+            "title": "Levels",
+            "type": "array"
+          },
+          "reason": {
+            "description": "Why the levels are written this way.",
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "levels",
+          "reason"
+        ],
+        "title": "RiskLevelsIn",
+        "type": "object"
+      },
       "RoleRequest": {
         "properties": {
           "days": {
@@ -2401,6 +2827,27 @@
           "rows"
         ],
         "title": "SealTableIn",
+        "type": "object"
+      },
+      "SponsorIn": {
+        "properties": {
+          "reason": {
+            "description": "Why this person.",
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "sponsor_id": {
+            "description": "The person who will answer for the agent. They have to be an approver of the department that owns it.",
+            "title": "Sponsor Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sponsor_id",
+          "reason"
+        ],
+        "title": "SponsorIn",
         "type": "object"
       },
       "StartAgentRun": {
@@ -2546,6 +2993,86 @@
           "length"
         ],
         "title": "TestIn",
+        "type": "object"
+      },
+      "ToolEntryIn": {
+        "properties": {
+          "ceiling": {
+            "description": "The key of the highest risk level it is approved for. An agent held at a stricter level is not covered.",
+            "title": "Ceiling",
+            "type": "string"
+          },
+          "conditions": {
+            "default": "",
+            "description": "What it is approved under, for example who confirms what it creates. Required unless the tool only reads.",
+            "title": "Conditions",
+            "type": "string"
+          },
+          "description": {
+            "description": "What the tool does, in plain words.",
+            "title": "Description",
+            "type": "string"
+          },
+          "reach": {
+            "description": "What kind of tool it is: `reads`, `adds_for_review`, `creates_draft` or `hands_off`.",
+            "title": "Reach",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Why it is approved in advance.",
+            "title": "Reason",
+            "type": "string"
+          },
+          "review_by": {
+            "description": "The date it must be looked at again, as year-month-day. After it the entry approves nothing.",
+            "title": "Review By",
+            "type": "string"
+          },
+          "tier": {
+            "description": "How far it is approved: 1 for pre-approved, 2 for department approval only.",
+            "title": "Tier",
+            "type": "integer"
+          },
+          "tool": {
+            "description": "The name of the tool, as a version of an agent declares it: lower case letters, digits and underscores, for example `queue_summary_notification`.",
+            "title": "Tool",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool",
+          "description",
+          "reach",
+          "tier",
+          "ceiling",
+          "reason",
+          "review_by"
+        ],
+        "title": "ToolEntryIn",
+        "type": "object"
+      },
+      "ToolListIn": {
+        "properties": {
+          "entries": {
+            "description": "Every tool on the list. It replaces the list, so include the entries that stay.",
+            "items": {
+              "$ref": "#/components/schemas/ToolEntryIn"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "reason": {
+            "description": "Why the list is written this way, or what changed.",
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "entries",
+          "reason"
+        ],
+        "title": "ToolListIn",
         "type": "object"
       },
       "ValidationError": {
@@ -2957,72 +3484,6 @@
         "summary": "Access Preview"
       }
     },
-    "/access-rules": {
-      "get": {
-        "description": "Every rule of the caller's organisation: the value in force, the default, the most the platform allows, and who set it and why when the organisation has.",
-        "operationId": "rules_access_rules_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "title": "Response Rules Access Rules Get",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Rules",
-        "tags": [
-          "access rules"
-        ]
-      }
-    },
-    "/access-rules/what-would-happen": {
-      "post": {
-        "description": "Would a request of this size, from a person holding this role, be accepted under this organisation's rules, and if not, which rule says so. Records nothing.",
-        "operationId": "what_would_happen_access_rules_what_would_happen_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TestIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "title": "Response What Would Happen Access Rules What Would Happen Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "What Would Happen",
-        "tags": [
-          "access rules"
-        ]
-      }
-    },
     "/action-runs": {
       "get": {
         "description": "Runs, with how each one started, and the total for real page controls.\n\n`trigger_kind`/`triggered_by`/`schedule_id` say whether a human ran this by\nhand or a schedule fired it; `operator` stays the workload that executed\nit regardless, the same separation `requested_by` keeps for leases.\n\nEnvelope shape matches `/datasets`/`/agents`: `{action_runs, shown,\ntotal, limit, offset}`, not a bare list, so one pagination component\ncan front all three.\n\nFor data engineers and platform administrators.",
@@ -3134,6 +3595,252 @@
           }
         },
         "summary": "Start Run"
+      }
+    },
+    "/agent-change-approvals": {
+      "get": {
+        "description": "Every version of the organisation's agents with what it changed against the one before it, newest first, with the state of its approval and, for a part still to give, whether the caller may give it. `state` limits the list to `waiting`, `approved`, `approved_in_advance` (every tool the version adds is on the approved tools list), `refused` or `not_needed`. `enforce` says whether the organisation holds agents to its risk levels: when it does not, a version that widens an agent is shown as waiting and nothing is refused because of it.",
+        "operationId": "change_approvals_agent_change_approvals_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Change Approvals Agent Change Approvals Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change Approvals",
+        "tags": [
+          "agent oversight"
+        ]
+      }
+    },
+    "/agent-change-approvals/{approval_id}/decisions": {
+      "post": {
+        "description": "Approve or refuse a version that widens an agent, as the department that owns it or as the officer, which is the AI risk owner. Nobody decides a version they submitted. Any refusal refuses the version.",
+        "operationId": "decide_change_agent_change_approvals__approval_id__decisions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "approval_id",
+            "required": true,
+            "schema": {
+              "title": "Approval Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeDecisionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Decide Change Agent Change Approvals  Approval Id  Decisions Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Decide Change",
+        "tags": [
+          "agent oversight"
+        ]
+      }
+    },
+    "/agent-change-approvals/{approval_id}/first-submission": {
+      "post": {
+        "description": "The AI risk owner's one decision on an agent's first submission: confirm its risk level and approve its first version together. Both are recorded, in one step, with the same reason. The department's approval is still its own decision. Only for a first version, and only while the officer's part is still to give.",
+        "operationId": "decide_first_submission_agent_change_approvals__approval_id__first_submission_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "approval_id",
+            "required": true,
+            "schema": {
+              "title": "Approval Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FirstSubmissionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Decide First Submission Agent Change Approvals  Approval Id  First Submission Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Decide First Submission",
+        "tags": [
+          "agent oversight"
+        ]
+      }
+    },
+    "/agent-registry": {
+      "get": {
+        "description": "Every agent of the organisation in one list: its department, owner, purpose, confirmed risk level, active version, tools as declared, model and where it runs, who runs it, its last run, what waits for approval, and what needs attention.",
+        "operationId": "agent_registry_agent_registry_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Agent Registry Agent Registry Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Agent Registry",
+        "tags": [
+          "agent oversight"
+        ]
+      }
+    },
+    "/agent-tool-list": {
+      "get": {
+        "description": "The approved tools of the caller's organisation at their latest version, every earlier version, the organisation's risk levels that an entry may be approved up to, what each tier and kind of tool means, and whether the caller may write the list.",
+        "operationId": "agent_tool_list_page_agent_tool_list_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Agent Tool List Page Agent Tool List Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Agent Tool List Page",
+        "tags": [
+          "agent oversight"
+        ]
+      },
+      "post": {
+        "description": "Write the organisation's approved tools list as a new version. Only the AI risk owner may. Earlier versions stay. A change takes effect for versions registered afterwards: a version already registered keeps the decision it was given.",
+        "operationId": "write_agent_tool_list_agent_tool_list_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolListIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Write Agent Tool List Agent Tool List Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Write Agent Tool List",
+        "tags": [
+          "agent oversight"
+        ]
       }
     },
     "/agent-versions/{version_id}/egress-status": {
@@ -3403,6 +4110,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ApproveRunIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "202": {
             "content": {
@@ -3429,6 +4153,114 @@
         "summary": "Approve Run",
         "tags": [
           "agents"
+        ]
+      }
+    },
+    "/agents/runs/{run_id}/refuse": {
+      "post": {
+        "description": "Refuse what a run produced while it waits for approval. The run stops, the reason is kept, and the review is recorded with who, when and how long it took.",
+        "operationId": "refuse_run_agents_runs__run_id__refuse_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReasonIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Refuse Run Agents Runs  Run Id  Refuse Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refuse Run",
+        "tags": [
+          "agent oversight"
+        ]
+      }
+    },
+    "/agents/runs/{run_id}/review": {
+      "post": {
+        "description": "Review what a finished run produced: accept it as it was, change it, or refuse it. A person other than the one who started the run does it, once per run. The platform keeps who, when, how long it took, the hash of the draft (worked out from the run's output, never taken from the caller) and, for a change, the hash of the text the reviewer ended with. It never keeps the text. A run that waits at an approval step is approved or refused there instead.",
+        "operationId": "review_finished_run_agents_runs__run_id__review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Review Finished Run Agents Runs  Run Id  Review Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Finished Run",
+        "tags": [
+          "agent oversight"
         ]
       }
     },
@@ -3529,6 +4361,50 @@
         ]
       }
     },
+    "/agents/{agent_id}/change-approvals": {
+      "get": {
+        "description": "What each version of one agent changed against the one before it, newest first, with the state of its approval.",
+        "operationId": "agent_change_approvals_agents__agent_id__change_approvals_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Agent Change Approvals Agents  Agent Id  Change Approvals Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Agent Change Approvals",
+        "tags": [
+          "agent oversight"
+        ]
+      }
+    },
     "/agents/{agent_id}/deploy": {
       "post": {
         "description": "Mark a version as the one this agent runs.\n\nNever an update. A new row is appended to `agent_deployment`; \"the\nactive version\" is read back as the most recent one. Redeploying an\nearlier version is just another row with an earlier agent_version_id,\nwhich is how a rollback happens here, not a special case.",
@@ -3580,6 +4456,484 @@
         "summary": "Deploy",
         "tags": [
           "agents"
+        ]
+      }
+    },
+    "/agents/{agent_id}/evidence-pack": {
+      "get": {
+        "description": "Everything the platform can back about one agent over a period (the last 90 days unless dates are given), for an approver of its department, the AI risk owner, the data protection officer, a privacy auditor or a platform administrator: identity, risk level history, every version that ran with what it changed and who approved, deployments, runs, access decisions counted, how reviewers decided, suspensions, incidents, the release decision of the data it read, and which facts are declared by the owner and which the platform enforces. It holds no personal data. Making it is recorded, with a hash of what was handed over.",
+        "operationId": "evidence_pack_agents__agent_id__evidence_pack_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "title": "Agent Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Evidence Pack Agents  Agent Id  Evidence Pack Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Evidence Pack",
+        "tags": [
+          "agent oversight"
+        ]
+      }
+    },
+    "/agents/{agent_id}/incidents": {
+      "post": {
+        "description": "Record an incident about an agent: what happened, whom the organisation has told, and what was done. The platform sends nothing to anybody.",
+        "operationId": "report_incident_agents__agent_id__incidents_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IncidentIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Report Incident Agents  Agent Id  Incidents Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Report Incident",
+        "tags": [
+          "agent oversight"
+        ]
+      }
+    },
+    "/agents/{agent_id}/oversight": {
+      "get": {
+        "description": "Whether an agent is suspended and the history of that, its incidents, how the people who review its output have decided (counted for the agent, never by person), and whether the caller may suspend, resume or report.",
+        "operationId": "agent_oversight_view_agents__agent_id__oversight_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Agent Oversight View Agents  Agent Id  Oversight Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Agent Oversight View",
+        "tags": [
+          "agent oversight"
+        ]
+      }
+    },
+    "/agents/{agent_id}/reconfirmation": {
+      "post": {
+        "description": "Re-confirm an agent: say that it is still needed and still held at the right level. Its sponsor, an approver of the department that owns it or the AI risk owner may. It restarts the clock its level sets.",
+        "operationId": "reconfirm_agent_agents__agent_id__reconfirmation_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReconfirmIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Reconfirm Agent Agents  Agent Id  Reconfirmation Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reconfirm Agent",
+        "tags": [
+          "agent oversight"
+        ]
+      }
+    },
+    "/agents/{agent_id}/record-chain": {
+      "get": {
+        "description": "Check that the oversight records of an agent have not been changed. The platform recomputes the chain from what it holds now and says what no longer matches: a record that was edited, one that was removed, one that was added outside the platform, or a link that was altered. For the people who may make the evidence pack.",
+        "operationId": "record_chain_agents__agent_id__record_chain_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Record Chain Agents  Agent Id  Record Chain Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record Chain",
+        "tags": [
+          "agent oversight"
+        ]
+      }
+    },
+    "/agents/{agent_id}/resumption": {
+      "post": {
+        "description": "Let a suspended agent start runs again. Where the agent's level asks for a second approver, only the AI risk owner may.",
+        "operationId": "resume_agents__agent_id__resumption_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReasonIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Resume Agents  Agent Id  Resumption Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resume",
+        "tags": [
+          "agent oversight"
+        ]
+      }
+    },
+    "/agents/{agent_id}/risk": {
+      "get": {
+        "description": "Where an agent stands on risk: its confirmed level, any proposal waiting for the AI risk owner, the level its approvals are held at, every proposal and decision with who and when, the organisation's levels, and whether the caller may confirm.",
+        "operationId": "agent_risk_standing_agents__agent_id__risk_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Agent Risk Standing Agents  Agent Id  Risk Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Agent Risk Standing",
+        "tags": [
+          "agent oversight"
+        ]
+      }
+    },
+    "/agents/{agent_id}/risk/confirmations": {
+      "post": {
+        "description": "Confirm or change the risk level of an agent. Only the AI risk owner may, and never for an agent the AI risk owner registered. Either way it is recorded with who and when.",
+        "operationId": "confirm_level_agents__agent_id__risk_confirmations_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmationIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Confirm Level Agents  Agent Id  Risk Confirmations Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm Level",
+        "tags": [
+          "agent oversight"
+        ]
+      }
+    },
+    "/agents/{agent_id}/risk/proposals": {
+      "post": {
+        "description": "Propose a risk level for an agent. The AI risk owner confirms or changes it. Until it is confirmed the agent is held at the strictest level that allows deployment.",
+        "operationId": "propose_level_agents__agent_id__risk_proposals_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposalIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Propose Level Agents  Agent Id  Risk Proposals Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Propose Level",
+        "tags": [
+          "agent oversight"
         ]
       }
     },
@@ -3679,6 +5033,158 @@
         "summary": "Start Run",
         "tags": [
           "agents"
+        ]
+      }
+    },
+    "/agents/{agent_id}/sponsor": {
+      "post": {
+        "description": "Assign the sponsor of an agent. Only an approver of the department that owns the agent or the AI risk owner may. The sponsor has to be an approver of that department, so the person who answers for the agent is always somebody who can act on it.",
+        "operationId": "assign_sponsor_agents__agent_id__sponsor_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SponsorIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Assign Sponsor Agents  Agent Id  Sponsor Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Assign Sponsor",
+        "tags": [
+          "agent oversight"
+        ]
+      }
+    },
+    "/agents/{agent_id}/sponsorship": {
+      "get": {
+        "description": "Who sponsors an agent and whether that person can still act, every assignment with who made it and when, the re-confirmations, when the agent is due for the next one under its level, the approvers of its department who could be sponsor, and whether the caller may assign a sponsor or re-confirm.",
+        "operationId": "agent_sponsorship_agents__agent_id__sponsorship_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Agent Sponsorship Agents  Agent Id  Sponsorship Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Agent Sponsorship",
+        "tags": [
+          "agent oversight"
+        ]
+      }
+    },
+    "/agents/{agent_id}/suspension": {
+      "post": {
+        "description": "Suspend an agent: no new run starts, and every run of it that has not finished is halted, with the reason. Who may is decided by policy.",
+        "operationId": "suspend_agents__agent_id__suspension_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReasonIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Suspend Agents  Agent Id  Suspension Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Suspend",
+        "tags": [
+          "agent oversight"
         ]
       }
     },
@@ -4078,6 +5584,70 @@
         ]
       }
     },
+    "/client": {
+      "get": {
+        "description": "The Munitas client library this platform offers: its version, the file to install, and the checksum of that file.\n\nOpen to anyone who can reach the platform, because `pip` cannot sign in. `path` is where the file is downloaded from, relative to the platform's address; install it\nwith `pip install <the platform's address><path>`. `sha256` is the checksum of exactly that file, for anyone who wants to check what they downloaded. When the\nlibrary was not built into this platform, `available` is false and nothing else is returned.",
+        "operationId": "client_library_client_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Client Library Client Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Client Library",
+        "tags": [
+          "client library"
+        ]
+      }
+    },
+    "/client/{filename}": {
+      "get": {
+        "description": "Download the client library as the file `pip` installs. Only the file this platform offers (named in `GET /client`) can be downloaded; any other name is not found.",
+        "operationId": "client_library_file_client__filename__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "filename",
+            "required": true,
+            "schema": {
+              "title": "Filename",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Client Library File",
+        "tags": [
+          "client library"
+        ]
+      }
+    },
     "/credentials": {
       "post": {
         "description": "Mint a storage credential for one dataset version, or refuse and say why.\n\nThe order of operations matters and is not negotiable: decide, record the\ndecision, then act on it. File after acting would lose the audit trail\nfor exactly the requests that fail partway.\n\nThree outcomes: 200 with the key when access is allowed and in effect,\n403 when it is refused, and 202 when it is allowed but the storage\npermissions could not be updated yet. A 202 is never a refusal: the\nactivator finishes the job and resumes a run that parked on it.",
@@ -4253,7 +5823,7 @@
     },
     "/dataset-versions/{version_id}": {
       "get": {
-        "description": "One version, with the fields a detail screen needs.\n\n`version_class` deliberately carries only the class question. The name,\ncontent hash and record count are joined in here rather than added to the\nview, because widening the view would make every caller pay for columns most\nof them ignore, and the view's single purpose is what makes it trustworthy.\n\nThe organisation comes from the caller's session (`auth.organisation_scope`), never from\nthe URL, and a version belonging to another is **not found** rather than forbidden. That\ndistinction is the point: 403 confirms the version exists, which is half of what somebody\nprobing ids was trying to learn. The platform's own workers send the worker token instead\nand name the organisation they act for. This endpoint also returns `object_manifest`, the\nstorage keys of the version's files, so it must never answer without one or the other.\n\nA version made from a file somebody brought in also says so (`brought_in`): the file's name, its size and\nits SHA-256, who sent it and when. It is null for a version nothing was brought in for, such as one a\npipeline made.",
+        "description": "One version, with the fields a detail screen needs.\n\n`version_class` deliberately carries only the class question. The name,\ncontent hash and record count are joined in here rather than added to the\nview, because widening the view would make every caller pay for columns most\nof them ignore, and the view's single purpose is what makes it trustworthy.\n\nThe organisation comes from the caller's session (`auth.organisation_scope`), never from\nthe URL, and a version belonging to another is **not found** rather than forbidden. That\ndistinction is the point: 403 confirms the version exists, which is half of what somebody\nprobing ids was trying to learn. The platform's own workers send the worker token instead\nand name the organisation they act for. This endpoint also returns `object_manifest`, the\nstorage keys of the version's files, so it must never answer without one or the other.\n\nA version made from a file somebody brought in also says so (`brought_in`): the file's name, its size and\nits SHA-256, who sent it (`who`, and `who_label` with the person's name) and when. It is null for a version nothing was brought in for, such as one a\npipeline made.",
         "operationId": "get_version_dataset_versions__version_id__get",
         "parameters": [
           {
@@ -6678,6 +8248,166 @@
         ]
       }
     },
+    "/deidentification-standards": {
+      "get": {
+        "description": "The de-identification standards of the caller's organisation, each at its latest version, with the Platform default standard, the kinds of identifier a standard can limit, and whether the caller may set standards. `aliases` names the labels a run keeps its counts under that stand for one of those kinds.",
+        "operationId": "list_standards_deidentification_standards_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response List Standards Deidentification Standards Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List de-identification standards",
+        "tags": [
+          "de-identification standards"
+        ]
+      },
+      "post": {
+        "description": "Create a de-identification standard, at version 1. Only the data protection officer may. The name is the organisation's own and is never changed afterwards.",
+        "operationId": "create_standard_deidentification_standards_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewStandardIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Create Standard Deidentification Standards Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create a de-identification standard",
+        "tags": [
+          "de-identification standards"
+        ]
+      }
+    },
+    "/deidentification-standards/{standard_id}/versions": {
+      "get": {
+        "description": "Every version of one de-identification standard, newest first, each with the limits as they were, who set it, when and why.",
+        "operationId": "standard_versions_deidentification_standards__standard_id__versions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "standard_id",
+            "required": true,
+            "schema": {
+              "title": "Standard Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Standard Versions Deidentification Standards  Standard Id  Versions Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Versions of a de-identification standard",
+        "tags": [
+          "de-identification standards"
+        ]
+      },
+      "post": {
+        "description": "Change a de-identification standard by adding a version to it. Only the data protection officer may. Earlier versions stay as they were, and a decision already made keeps the version it was judged by.",
+        "operationId": "change_standard_deidentification_standards__standard_id__versions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "standard_id",
+            "required": true,
+            "schema": {
+              "title": "Standard Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewVersionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Change Standard Deidentification Standards  Standard Id  Versions Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change a de-identification standard",
+        "tags": [
+          "de-identification standards"
+        ]
+      }
+    },
     "/departments/{department_id}/approver-candidates": {
       "get": {
         "description": "The people who could be added as an approver right now: the organisation's people who hold the data custodian role today and are not\nalready approvers of this department. For the approvers of the department, who are the only people who may add one.\n\n\"Hold the role today\" is worked out here, at the moment of asking, from the same live union the add route checks (the role a person has\npermanently plus any grant that has not been withdrawn or lapsed), so the list a person chooses from agrees with what the platform will accept.",
@@ -8498,7 +10228,7 @@
     },
     "/gate-decisions/{decision_id}/judgement": {
       "get": {
-        "description": "What the recommendation for a result waiting for a decision would be under a release bar (the Platform default when none is named), with the bar and the reason. Nothing is recorded.",
+        "description": "What the recommendation for a result waiting for a decision would be under a de-identification standard (the Platform default when none is named), with the standard and the reason. Nothing is recorded.",
         "operationId": "judge_waiting_result_gate_decisions__decision_id__judgement_get",
         "parameters": [
           {
@@ -8512,7 +10242,7 @@
           },
           {
             "in": "query",
-            "name": "release_bar_id",
+            "name": "standard_id",
             "required": false,
             "schema": {
               "anyOf": [
@@ -8523,7 +10253,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Release Bar Id"
+              "title": "Standard Id"
             }
           }
         ],
@@ -8552,7 +10282,7 @@
         },
         "summary": "Judge Waiting Result",
         "tags": [
-          "release bars"
+          "de-identification standards"
         ]
       }
     },
@@ -8660,7 +10390,7 @@
     },
     "/gate-decisions/{decision_id}/review": {
       "get": {
-        "description": "The files of the version a decision is about, with the checks the platform ran on each, what the caller has opened so far, and whether\nanything stops the caller releasing it now under the release bar named (the platform's built-in one when none is). Opens nothing for the caller\nto read; the files are opened through the file door.",
+        "description": "The files of the version a decision is about, with the checks the platform ran on each, what the caller has opened so far, and whether\nanything stops the caller releasing it now under the de-identification standard named (the platform's built-in one when none is). Opens nothing for the caller\nto read; the files are opened through the file door.",
         "operationId": "get_review_gate_decisions__decision_id__review_get",
         "parameters": [
           {
@@ -8674,7 +10404,7 @@
           },
           {
             "in": "query",
-            "name": "release_bar_id",
+            "name": "standard_id",
             "required": false,
             "schema": {
               "anyOf": [
@@ -8685,7 +10415,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Release Bar Id"
+              "title": "Standard Id"
             }
           }
         ],
@@ -10945,6 +12675,72 @@
         ]
       }
     },
+    "/limits": {
+      "get": {
+        "description": "Every limit of the caller's organisation: the value in force, the default, the most the platform allows, and who set it and why when the organisation has.",
+        "operationId": "list_limits_limits_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response List Limits Limits Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List the limits of the organisation",
+        "tags": [
+          "limits"
+        ]
+      }
+    },
+    "/limits/what-would-happen": {
+      "post": {
+        "description": "Would a request of this size, from a person holding this role, be accepted under this organisation's limits, and if not, which limit says so. Records nothing.",
+        "operationId": "what_would_happen_limits_what_would_happen_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response What Would Happen Limits What Would Happen Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Test a request against the limits",
+        "tags": [
+          "limits"
+        ]
+      }
+    },
     "/lineage/{version_id}": {
       "get": {
         "operationId": "get_lineage_lineage__version_id__get",
@@ -13009,16 +14805,16 @@
         "summary": "Open Record"
       }
     },
-    "/release-bars": {
+    "/risk-levels": {
       "get": {
-        "description": "The release bars of the caller's organisation, each at its latest version, with the Platform default bar, the kinds of identifier a bar can limit, and whether the caller may set bars. `aliases` names the labels a run keeps its counts under that stand for one of those kinds.",
-        "operationId": "release_bars_release_bars_get",
+        "description": "The risk levels of the caller's organisation at their latest version, every earlier version, and whether the caller may write them. An organisation that has written none uses the built-in list, which says so.",
+        "operationId": "risk_levels_risk_levels_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "title": "Response Release Bars Release Bars Get",
+                  "title": "Response Risk Levels Risk Levels Get",
                   "type": "object"
                 }
               }
@@ -13026,19 +14822,19 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Release Bars",
+        "summary": "Risk Levels",
         "tags": [
-          "release bars"
+          "agent oversight"
         ]
       },
       "post": {
-        "description": "Create a release bar, at version 1. Only the data protection officer may. The name is the organisation's own and is never changed afterwards.",
-        "operationId": "create_release_bar_release_bars_post",
+        "description": "Write the organisation's risk levels as a new version. Only the AI risk owner may. Earlier versions stay, and an agent keeps the level it was confirmed at.",
+        "operationId": "write_risk_levels_risk_levels_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/NewBarIn"
+                "$ref": "#/components/schemas/RiskLevelsIn"
               }
             }
           },
@@ -13049,7 +14845,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "title": "Response Create Release Bar Release Bars Post",
+                  "title": "Response Write Risk Levels Risk Levels Post",
                   "type": "object"
                 }
               }
@@ -13067,105 +14863,9 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Create Release Bar",
+        "summary": "Write Risk Levels",
         "tags": [
-          "release bars"
-        ]
-      }
-    },
-    "/release-bars/{bar_id}/versions": {
-      "get": {
-        "description": "Every version of one release bar, newest first, each with the limits as they were, who set it, when and why.",
-        "operationId": "release_bar_versions_release_bars__bar_id__versions_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "bar_id",
-            "required": true,
-            "schema": {
-              "title": "Bar Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "title": "Response Release Bar Versions Release Bars  Bar Id  Versions Get",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Release Bar Versions",
-        "tags": [
-          "release bars"
-        ]
-      },
-      "post": {
-        "description": "Change a release bar by adding a version to it. Only the data protection officer may. Earlier versions stay as they were, and a decision already made keeps the version it was judged by.",
-        "operationId": "change_release_bar_release_bars__bar_id__versions_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "bar_id",
-            "required": true,
-            "schema": {
-              "title": "Bar Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/NewVersionIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "title": "Response Change Release Bar Release Bars  Bar Id  Versions Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Change Release Bar",
-        "tags": [
-          "release bars"
+          "agent oversight"
         ]
       }
     },

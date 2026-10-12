@@ -77,7 +77,7 @@
       "id": "uploads",
       "title": "Bringing in a table in parts",
       "kind": "setting",
-      "intro": "A person sends a large file in parts through the platform, each of which can be sent again, and the file becomes a table that a worker writes. These limits keep a few people from slowing everybody else down. An organisation's own limits (its largest file, how many tables are written at once, how much it may keep waiting and bring in a day) are access rules, which the organisation can lower."
+      "intro": "A person sends a large file in parts through the platform, each of which can be sent again, and the file becomes a table that a worker writes. These limits keep a few people from slowing everybody else down. An organisation's own limits (its largest file, how many tables are written at once, how much it may keep waiting and bring in a day) are limits, which the organisation can lower."
     },
     {
       "id": "jobs",

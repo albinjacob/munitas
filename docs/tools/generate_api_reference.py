@@ -30,6 +30,7 @@ TAG_LABELS = {
     "read": "Read models",
     "ingest": "Ingest",
     "agents": "Agents",
+    "agent oversight": "Agent oversight",
     "pipelines": "Pipeline registry",
     "pipeline": "Pipeline runs",
     "external-accounts": "External accounts",
@@ -50,9 +51,10 @@ TAG_LABELS = {
     "development samples": "Asking for a small sample of locked files to build a pipeline version on, deciding the request, and declaring files synthetic",
     "file leases": "Asking an approver to allow opening a few real files, deciding it, and ending it",
     "notebook files": "Reading the few real files a notebook was allowed to open, with the token made for them",
+    "client library": "The Munitas client library for notebooks: its version, the file to install it from, and the checksum of that file (open to anyone who can reach the platform)",
     "notebook sign-in": "A notebook signing in on behalf of a person: the code, the approval, the short-lived pass, renewing it and ending it",
-    "access rules": "What people in an organisation may ask for and how much: the rules in force, and what would happen to a request of a given size",
-    "release bars": "How much identifying detail a de-identified result may hold, for the audience it is released to: the bars an organisation keeps, and what a waiting result would be recommended under one",
+    "limits": "What people in an organisation may ask for and how much: the limits in force, and what would happen to a request of a given size",
+    "de-identification standards": "How much identifying detail a de-identified result may hold, for the audience it is released to: the standards an organisation keeps, and what a waiting result would be recommended under one",
     "iceberg": "Iceberg catalog (for DuckDB, PyIceberg and other standard tools)",
 }
 TAG_ORDER = list(TAG_LABELS.keys())

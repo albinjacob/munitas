@@ -62,7 +62,7 @@ test("capture: before any data arrives", async ({ page }) => {
   await shot(page, "what-each-role-can-do", true);
 
   // ---- The limits the organisation has set ------------------------------
-  await page.goto("/access-rules");
-  await expect(page.getByRole("heading", { name: /access rules/i }).first()).toBeVisible();
+  await page.goto("/limits");
+  await expect(page.getByRole("heading", { name: "Limits" }).first()).toBeVisible();
   await shot(page, "the-limits-the-organisation-has-set", true);
 });

@@ -1,0 +1,533 @@
+{
+  "_comment": "What each role can and cannot do, in plain words, for the public Roles reference (docs/public/reference/roles.html). The names of roles come from platform/policy/role_words.rego and the facts about who holds a power come from the sets in platform/policy/access.rego: this file says what each power means and which set grants it. verify/v189_roles_documented.py fails when this file and the policy disagree, so a role or a power added in the policy has to be written here before the page can be regenerated. Roles that are not people are not listed.",
+  "ignored_sets": {
+    "storage_roles": "Names the platform's own services and the keys they run with. It is not a power that people hold."
+  },
+  "powers": [
+    {
+      "id": "manage_tool_list",
+      "text": "Writes the approved tools list: the tools a new version of an agent may add without a request, each with the highest risk level it is approved for",
+      "sets": [
+        "manage_tool_list_roles"
+      ]
+    },
+    {
+      "id": "approve_access",
+      "text": "Approves or refuses a request to read data that their department owns, for a person or for an agent",
+      "sets": [
+        "approver_roles"
+      ]
+    },
+    {
+      "id": "approve_roles",
+      "text": "Approves or refuses a request for a role, for people in their organisation",
+      "sets": [
+        "role_approver_roles"
+      ]
+    },
+    {
+      "id": "open_files",
+      "text": "Opens the files of a version when the platform finds a reason to: a development sample drawn for them, synthetic files, or files under a lease. Every opening is logged",
+      "sets": [
+        "open_record_roles"
+      ]
+    },
+    {
+      "id": "confirm_claim",
+      "text": "Confirms another person's claim about how sensitive a dataset is",
+      "sets": [
+        "confirmer_roles"
+      ]
+    },
+    {
+      "id": "manage_approvers",
+      "text": "Adds or removes the approvers of their department, and names cover while one is away",
+      "sets": [
+        "approver_change_roles"
+      ]
+    },
+    {
+      "id": "bring_in_data",
+      "text": "Brings data in",
+      "sets": [
+        "intake_roles"
+      ]
+    },
+    {
+      "id": "register_code",
+      "text": "Registers code: agents, agent versions, pipelines and pipeline versions",
+      "sets": [
+        "code_registration_roles"
+      ]
+    },
+    {
+      "id": "start_runs",
+      "text": "Starts pipeline runs",
+      "sets": [
+        "operator_roles"
+      ]
+    },
+    {
+      "id": "decide_release",
+      "text": "Decides whether a de-identified result may be released, and chooses the de-identification standard for it",
+      "sets": [
+        "decider_roles"
+      ]
+    },
+    {
+      "id": "set_standards",
+      "text": "Sets the de-identification standards: how much identifying detail a released result may still hold",
+      "sets": [
+        "set_standard_roles"
+      ]
+    },
+    {
+      "id": "approve_hosts",
+      "text": "Approves or refuses the outside hosts that an agent version asks to call",
+      "sets": [
+        "egress_architect_roles"
+      ]
+    },
+    {
+      "id": "ask_locked_lease",
+      "text": "Asks for a lease to see real values of locked data, for a stated purpose and a short time",
+      "sets": [
+        "locked_lease_requester_roles"
+      ]
+    },
+    {
+      "id": "ask_dev_sample",
+      "text": "Asks for a development sample of real recordings, to build and test a pipeline version",
+      "sets": [
+        "development_sample_requester_roles"
+      ]
+    },
+    {
+      "id": "read_audit_evidence",
+      "text": "Reads the evidence of how locked data was used: who read, who was refused, and which keys were opened. It never holds a name or a value",
+      "sets": [
+        "audit_evidence_roles"
+      ]
+    },
+    {
+      "id": "write_levels",
+      "text": "Writes the risk levels that say how strictly agents are held",
+      "sets": [
+        "manage_risk_levels_roles"
+      ]
+    },
+    {
+      "id": "confirm_level",
+      "text": "Confirms the risk level of an agent",
+      "sets": [
+        "confirm_risk_level_roles"
+      ]
+    },
+    {
+      "id": "agent_officer",
+      "text": "Gives the officer's part of an agent change, which is the second approval at the High level. Resumes an agent that needs it, and may assign a sponsor and re-confirm an agent",
+      "sets": [
+        "agent_officer_roles"
+      ]
+    },
+    {
+      "id": "suspend_agent",
+      "text": "Suspends an agent, which stops new runs at once",
+      "sets": [
+        "suspend_agent_roles"
+      ]
+    },
+    {
+      "id": "evidence_pack",
+      "text": "Makes the evidence pack of an agent, and checks that its records have not been changed",
+      "sets": [
+        "evidence_pack_roles"
+      ]
+    },
+    {
+      "id": "report_incident",
+      "text": "Reports an incident about an agent",
+      "sets": [
+        "report_incident_roles"
+      ]
+    },
+    {
+      "id": "attest_roles",
+      "text": "Confirms that a role given to somebody is still needed",
+      "sets": [
+        "attester_roles"
+      ]
+    },
+    {
+      "id": "close_organisation",
+      "text": "Closes down an organisation, with a reason that is recorded: a custodian closes their own organisation, and a platform administrator can close any",
+      "sets": [
+        "lifecycle_actor_roles",
+        "approver_roles"
+      ]
+    },
+    {
+      "id": "legal_hold",
+      "text": "Records or approves a legal hold, never alone: one administrator records the notice and a different one approves it",
+      "sets": [
+        "lifecycle_actor_roles"
+      ]
+    },
+    {
+      "id": "see_housekeeping_own",
+      "text": "Sees the storage housekeeping record of their own organisation",
+      "sets": [
+        "tenant_housekeeping_roles"
+      ]
+    },
+    {
+      "id": "see_housekeeping_all",
+      "text": "Sees the storage housekeeping record of every organisation, which names no data",
+      "sets": [
+        "platform_housekeeping_roles"
+      ]
+    },
+    {
+      "id": "reclaim_storage",
+      "text": "Reclaims storage, and must give a reason that is recorded beside what was removed",
+      "sets": [
+        "housekeeping_actor_roles"
+      ]
+    }
+  ],
+  "roles": {
+    "data_custodian": {
+      "audience": "people",
+      "summary": "Answers for the data a department owns, and decides who may read it.",
+      "powers": [
+        "approve_access",
+        "approve_roles",
+        "open_files",
+        "confirm_claim",
+        "manage_approvers",
+        "bring_in_data",
+        "attest_roles",
+        "close_organisation",
+        "see_housekeeping_own"
+      ],
+      "also": [
+        "As an approver of a department, gives the department's part of an agent change, suspends an agent that the department owns, and assigns its sponsor."
+      ],
+      "cannot": [
+        {
+          "text": "Cannot decide whether a de-identified result may be released",
+          "not_in": [
+            "decider_roles"
+          ]
+        },
+        {
+          "text": "Cannot register code",
+          "not_in": [
+            "code_registration_roles"
+          ]
+        }
+      ]
+    },
+    "pipeline_operator": {
+      "audience": "people",
+      "summary": "Brings data in, registers code and runs the jobs. Does not read what the jobs produce.",
+      "powers": [
+        "bring_in_data",
+        "register_code",
+        "start_runs",
+        "open_files",
+        "ask_locked_lease",
+        "ask_dev_sample",
+        "report_incident"
+      ],
+      "also": [],
+      "cannot": [
+        {
+          "text": "Cannot approve a request to read data",
+          "not_in": [
+            "approver_roles"
+          ]
+        },
+        {
+          "text": "Cannot decide whether a de-identified result may be released",
+          "not_in": [
+            "decider_roles"
+          ]
+        }
+      ]
+    },
+    "deid_reviewer": {
+      "audience": "people",
+      "summary": "Judges whether removing identifying details worked well enough for a result to be released.",
+      "powers": [
+        "decide_release",
+        "open_files",
+        "ask_locked_lease",
+        "ask_dev_sample",
+        "report_incident"
+      ],
+      "also": [
+        "May review what an agent produced, unless the same person started the run."
+      ],
+      "cannot": [
+        {
+          "text": "Cannot approve a request to read data",
+          "not_in": [
+            "approver_roles"
+          ]
+        },
+        {
+          "text": "Cannot register code",
+          "not_in": [
+            "code_registration_roles"
+          ]
+        }
+      ]
+    },
+    "privacy_auditor": {
+      "audience": "people",
+      "summary": "Checks how locked data was used, from evidence that holds no names and no values.",
+      "powers": [
+        "read_audit_evidence",
+        "ask_locked_lease",
+        "evidence_pack",
+        "report_incident"
+      ],
+      "also": [],
+      "cannot": [
+        {
+          "text": "Cannot approve a request to read data, so that the checking stays independent",
+          "not_in": [
+            "approver_roles"
+          ]
+        },
+        {
+          "text": "Cannot decide whether a de-identified result may be released",
+          "not_in": [
+            "decider_roles"
+          ]
+        },
+        {
+          "text": "Cannot register code",
+          "not_in": [
+            "code_registration_roles"
+          ]
+        }
+      ]
+    },
+    "network_architect": {
+      "audience": "people",
+      "summary": "Decides which outside hosts an agent version may call.",
+      "powers": [
+        "approve_hosts"
+      ],
+      "also": [],
+      "cannot": [
+        {
+          "text": "Cannot decide a version that they uploaded themselves",
+          "unchecked": "a rule about the person who asks, not about a role"
+        },
+        {
+          "text": "Cannot approve a request to read data",
+          "not_in": [
+            "approver_roles"
+          ]
+        },
+        {
+          "text": "Cannot register code",
+          "not_in": [
+            "code_registration_roles"
+          ]
+        }
+      ]
+    },
+    "analyst": {
+      "audience": "people",
+      "summary": "Works with the data an organisation has published.",
+      "powers": [],
+      "also": [],
+      "cannot": [
+        {
+          "text": "Cannot approve a request to read data",
+          "not_in": [
+            "approver_roles"
+          ]
+        },
+        {
+          "text": "Cannot register code",
+          "not_in": [
+            "code_registration_roles"
+          ]
+        },
+        {
+          "text": "Cannot decide whether a de-identified result may be released",
+          "not_in": [
+            "decider_roles"
+          ]
+        }
+      ]
+    },
+    "notebook_explore": {
+      "audience": "people",
+      "summary": "Works with the data an organisation has published, from a notebook.",
+      "powers": [],
+      "also": [
+        "Signs a notebook in as themselves, and makes a new dataset from a query under the same rules as the data it came from."
+      ],
+      "cannot": [
+        {
+          "text": "Cannot approve a request to read data",
+          "not_in": [
+            "approver_roles"
+          ]
+        },
+        {
+          "text": "Cannot register code",
+          "not_in": [
+            "code_registration_roles"
+          ]
+        },
+        {
+          "text": "Cannot decide whether a de-identified result may be released",
+          "not_in": [
+            "decider_roles"
+          ]
+        }
+      ]
+    },
+    "dpo": {
+      "audience": "people",
+      "summary": "Watches how the organisation handles personal data, advises on it, and may stop an agent.",
+      "powers": [
+        "set_standards",
+        "suspend_agent",
+        "evidence_pack",
+        "read_audit_evidence",
+        "ask_locked_lease",
+        "report_incident",
+        "attest_roles",
+        "see_housekeeping_own"
+      ],
+      "also": [],
+      "cannot": [
+        {
+          "text": "Cannot approve a request to read data, so that oversight stays independent of what it oversees",
+          "not_in": [
+            "approver_roles"
+          ]
+        },
+        {
+          "text": "Cannot register code",
+          "not_in": [
+            "code_registration_roles"
+          ]
+        },
+        {
+          "text": "Cannot decide whether a de-identified result may be released",
+          "not_in": [
+            "decider_roles"
+          ]
+        },
+        {
+          "text": "Cannot write the risk levels, confirm the level of an agent or give the second approval on a change to an agent, because those decide how agents are held",
+          "not_in": [
+            "manage_risk_levels_roles",
+            "confirm_risk_level_roles",
+            "agent_officer_roles"
+          ]
+        }
+      ]
+    },
+    "platform_admin": {
+      "audience": "platform staff",
+      "summary": "Runs the platform itself. Holds no standing access to what is inside an organisation.",
+      "powers": [
+        "suspend_agent",
+        "evidence_pack",
+        "report_incident",
+        "reclaim_storage",
+        "legal_hold",
+        "close_organisation",
+        "see_housekeeping_all"
+      ],
+      "also": [],
+      "cannot": [
+        {
+          "text": "Cannot approve a request to read data",
+          "not_in": [
+            "approver_roles"
+          ]
+        },
+        {
+          "text": "Cannot register code",
+          "not_in": [
+            "code_registration_roles"
+          ]
+        },
+        {
+          "text": "Cannot decide whether a de-identified result may be released",
+          "not_in": [
+            "decider_roles"
+          ]
+        }
+      ]
+    },
+    "hybridops": {
+      "audience": "platform staff",
+      "summary": "Keeps the platform running and supported, with telemetry and never records.",
+      "powers": [
+        "see_housekeeping_all"
+      ],
+      "also": [],
+      "cannot": [
+        {
+          "text": "Cannot approve a request to read data",
+          "not_in": [
+            "approver_roles"
+          ]
+        },
+        {
+          "text": "Cannot reclaim storage or close down an organisation",
+          "not_in": [
+            "housekeeping_actor_roles",
+            "lifecycle_actor_roles"
+          ]
+        }
+      ]
+    },
+    "ai_risk_owner": {
+      "audience": "people",
+      "summary": "Answers for how the organisation holds its AI agents.",
+      "powers": [
+        "manage_tool_list",
+        "write_levels",
+        "confirm_level",
+        "agent_officer",
+        "suspend_agent",
+        "evidence_pack",
+        "report_incident"
+      ],
+      "also": [],
+      "cannot": [
+        {
+          "text": "Cannot approve a request to read data",
+          "not_in": [
+            "approver_roles"
+          ]
+        },
+        {
+          "text": "Cannot register code",
+          "not_in": [
+            "code_registration_roles"
+          ]
+        },
+        {
+          "text": "Cannot decide whether a de-identified result may be released",
+          "not_in": [
+            "decider_roles"
+          ]
+        }
+      ]
+    }
+  }
+}
