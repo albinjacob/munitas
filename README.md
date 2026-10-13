@@ -231,7 +231,7 @@ For more detail:
 - [Architecture](docs/public/architecture.md): the services and how they fit together.
 - [Governance model](docs/public/design/governance-model.md): who is accountable for what, and why.
 - [Configuration reference](https://albinjacob.github.io/munitas/reference/configuration.html): every setting and its default.
-- [API Reference](https://albinjacob.github.io/munitas/reference/api-reference.html): every route the control plane exposes, generated from the API's own route definitions and checked automatically so the two cannot drift apart.
+- [API Reference](https://albinjacob.github.io/munitas/reference/api-reference.html): every route the API exposes, generated from the API's own route definitions and checked automatically so the two cannot drift apart.
 - [What each role can do](https://albinjacob.github.io/munitas/reference/roles.html): generated from the policy and checked the same way.
 
 ## See it in action
@@ -371,7 +371,7 @@ your machine, not inside the container.
 | Kratos migration | One-time job that sets up Kratos's own database schema |
 | Hydra | Signs a notebook in on a person's behalf, with a short-lived pass |
 | Hydra migration | One-time job that sets up Hydra's own database schema |
-| API | The control plane everything else talks to |
+| API | The one place every request goes through |
 | Table worker | Writes large tables in a background job |
 | Step gateway | The only route a custom pipeline step has to the API; it answers 404 to everything else |
 
